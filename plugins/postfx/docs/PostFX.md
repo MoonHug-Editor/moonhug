@@ -5,7 +5,7 @@ order: 10
 tags: ["rendering", "plugins"]
 ---
 
-The postfx plugin ships six render steps (plugins/engine/docs/RenderPipeline.md). The default pipeline places `postfx_motion_blur` and `postfx_dof` (both muted) between `scene_taa` and `scene_over`, and three of the others in its Main lane after `scene_over` and before `final_blit`, in this order, `postfx_exposure` muted:
+The postfx plugin ships six render steps (plugins/engine/docs/RenderPipeline.md). The default pipeline places `postfx_motion_blur` and `postfx_dof` (both muted) right after `scene_taa`, and three of the others after them and before `scene_over`, which draws the gizmos onto the finished image, in this order, `postfx_exposure` muted:
 
 | Step | Reads | Writes | What |
 |---|---|---|---|
@@ -50,7 +50,7 @@ The bloom's bright pass multiplies the scene by it, so the threshold applies to 
 - the blur spans `intensity` of the motion, centred on the pixel (half before, half after), capped at `max_blur` of the view's height, in `samples` taps offset per pixel by noise so the steps do not band. Pixels that moved less than half a pixel are left alone
 - each pixel gathers along its own motion only: a moving object blurs inside its silhouette and does not smear over what is behind it, and a static object in front of a moving background keeps its edge
 - the motion is per frame as drawn, not per second: a faster frame rate shows less blur for the same speed, as a camera with the same shutter share would
-- placed after `scene_taa` and before `scene_over`, so the gizmos stay sharp. The scene view's debug modes skip it
+- placed after `scene_taa` and before the rest of the post chain. `scene_over` comes last, so the gizmos stay sharp. The scene view's debug modes skip it
 
 ## Depth of field
 
@@ -60,7 +60,7 @@ The bloom's bright pass multiplies the scene by it, so the threshold applies to 
 - each half-size pixel gathers `samples` taps on a disc of the widest radius (a golden-angle spiral, turned per pixel by noise). A tap counts where its own circle, or the pixel's, reaches it: a blurred near object spreads over its sharp neighbours, and a sharp object does not bleed into a blurred one behind it (`dof_bokeh`)
 - the combine takes the sharp scene where the circle is under half a pixel and the blur, read in a 4-tap tent, where it is two pixels or more, blended between (`dof_combine`)
 - the sky is at the far plane: it blurs when the focus is near, as a camera's would
-- placed with the motion blur, after `scene_taa` and before `scene_over`, so the gizmos stay sharp. The scene view's debug modes skip it. The focus follows the step's settings, a Volume can move it per place
+- placed with the motion blur, after `scene_taa`. `scene_over` comes last, so the gizmos stay sharp. The scene view's debug modes skip it. The focus follows the step's settings, a Volume can move it per place
 
 ## Colour grading
 

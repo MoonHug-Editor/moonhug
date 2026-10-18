@@ -28,6 +28,10 @@ layout(location = 9) in vec4 in_tint;
 
 layout(set = 1, binding = 0) uniform UBO {
     mat4 view_proj;
+    // x = how far toward the camera, as a fraction of the vertex's distance,
+    // the depth of a depth-tested line moves (gfx LINE_DEPTH_PULL), 0 for
+    // everything else.
+    vec4 vert_params;
 };
 
 layout(location = 0) out vec2 frag_uv;
@@ -40,7 +44,8 @@ layout(location = 4) out vec4 frag_tangent;
 layout(location = 5) out vec2 frag_uv2;
 
 // The same vertex gives the same depth in every pipeline: a depth prepass
-// and the shading pass after it compare equal.
+// and the shading pass after it compare equal. A depth-tested line is the one
+// exception: its depth moves toward the camera on purpose (vert_params.x).
 invariant gl_Position;
 
 // A color brighter than 1 is an sRGB color times a linear intensity, as in
@@ -55,6 +60,14 @@ void main() {
     mat4 model = mat4(in_model0, in_model1, in_model2, in_model3);
     vec4 world = model * vec4(in_position, 1.0);
     gl_Position = view_proj * world;
+    // A line lying on a surface (a gizmo on a mesh, the grid on a floor) has
+    // the surface's depths, and lines rasterize a little differently from
+    // triangles, so the two fight. Moving the line's depth a small fraction of
+    // its distance toward the camera wins every such tie at any distance,
+    // with its place on screen unchanged: to first order, z - f * (w - z) is
+    // the clip depth of the point f of its view distance closer, for a
+    // perspective and an orthographic camera alike.
+    gl_Position.z -= vert_params.x * (gl_Position.w - gl_Position.z);
     frag_uv     = in_uv;
     frag_uv2    = in_uv2;
     frag_color  = vec4(srgb_to_linear(in_color.rgb) * srgb_to_linear(in_tint.rgb), in_color.a * in_tint.a);

@@ -166,7 +166,8 @@ test_gizmo_shapes_geometry :: proc(t: ^testing.T) {
 	check(t, tc, "wire_box", 12, 0)
 	gizmos.solid_box({0, 0, 0}, {1, 1, 1});                          check(t, tc, "solid_box", 0, 12)
 	gizmos.wire_circle({0, 0, 0}, {0, 1, 0}, 2, segments = 16)
-	for p in _prims(tc) do testing.expect(t, abs(linalg.length(p.p[0]) - 2) < 1e-4 && abs(p.p[0].y) < 1e-5, "circle points at the radius, in the plane")
+	// The polygon around the circle: each side touches it at its middle.
+	for p in _prims(tc) do testing.expect(t, abs(linalg.length((p.p[0] + p.p[1]) * 0.5) - 2) < 1e-4 && linalg.length(p.p[0]) > 2 && abs(p.p[0].y) < 1e-5, "circle sides touch the radius from outside, in the plane")
 	check(t, tc, "wire_circle", 16, 0)
 	gizmos.solid_circle({0, 0, 0}, {0, 0, 1}, 1, segments = 8);      check(t, tc, "solid_circle", 0, 8)
 	gizmos.wire_arc({0, 0, 0}, {0, 0, 1}, {1, 0, 0}, math.PI, 1, segments = 6)
@@ -179,7 +180,8 @@ test_gizmo_shapes_geometry :: proc(t: ^testing.T) {
 	gizmos.wire_triangle({0, 0, 0}, {1, 0, 0}, {0, 1, 0});            check(t, tc, "wire_triangle", 3, 0)
 	gizmos.solid_polygon({{0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0}, {-1, 0.5, 0}}); check(t, tc, "solid_polygon", 0, 3)
 	gizmos.wire_sphere({0, 0, 0}, 1, segments = 8);                   check(t, tc, "wire_sphere", 24, 0)
-	gizmos.wire_capsule({0, 0, 0}, {0, 2, 0}, 0.5, segments = 8);     check(t, tc, "wire_capsule", 8 + 8 + 4 + 4 * 4, 0)
+	// Rings, sides, and four caps of 4 sides plus a half side at each end.
+	gizmos.wire_capsule({0, 0, 0}, {0, 2, 0}, 0.5, segments = 8);     check(t, tc, "wire_capsule", 8 + 8 + 4 + 4 * 5, 0)
 	gizmos.wire_cylinder({0, 0, 0}, {0, 2, 0}, 0.5, segments = 8);    check(t, tc, "wire_cylinder", 8 + 8 + 4, 0)
 	gizmos.wire_cone({0, 0, 0}, {0, 2, 0}, 0.5, segments = 8);        check(t, tc, "wire_cone", 8 + 4, 0)
 	gizmos.solid_cone({0, 0, 0}, {0, 2, 0}, 0.5, segments = 8);       check(t, tc, "solid_cone", 0, 8 + 8)

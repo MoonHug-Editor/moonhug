@@ -121,7 +121,7 @@ curve_bezier :: proc(p0, p1, p2, p3: [3]f32, segments := 24) {
 wire_circle :: proc(center, normal: [3]f32, radius: f32, segments := 32) {
 	bt := _batch()
 	u, v := _basis(normal)
-	_ring(bt, center, u, v, radius, 0, math.TAU, segments)
+	_ring_around(bt, center, u, v, radius, segments)
 }
 
 solid_circle :: proc(center, normal: [3]f32, radius: f32, segments := 32) {
@@ -217,9 +217,9 @@ solid_box :: proc(center, size: [3]f32) {
 // Three great circles, one per axis plane.
 wire_sphere :: proc(center: [3]f32, radius: f32, segments := 32) {
 	bt := _batch()
-	_ring(bt, center, {1, 0, 0}, {0, 1, 0}, radius, 0, math.TAU, segments)
-	_ring(bt, center, {1, 0, 0}, {0, 0, 1}, radius, 0, math.TAU, segments)
-	_ring(bt, center, {0, 1, 0}, {0, 0, 1}, radius, 0, math.TAU, segments)
+	_ring_around(bt, center, {1, 0, 0}, {0, 1, 0}, radius, segments)
+	_ring_around(bt, center, {1, 0, 0}, {0, 0, 1}, radius, segments)
+	_ring_around(bt, center, {0, 1, 0}, {0, 0, 1}, radius, segments)
 }
 
 solid_sphere :: proc(center: [3]f32, radius: f32, segments := 16) {
@@ -254,14 +254,14 @@ wire_capsule :: proc(a, b: [3]f32, radius: f32, segments := 24) {
 	dir := axis / length
 	u, v := _basis(dir)
 	bt := _batch()
-	_ring(bt, a, u, v, radius, 0, math.TAU, segments)
-	_ring(bt, b, u, v, radius, 0, math.TAU, segments)
+	_ring_around(bt, a, u, v, radius, segments)
+	_ring_around(bt, b, u, v, radius, segments)
 	for side in ([4][3]f32{u, -u, v, -v}) do _seg(bt, a + side * radius, b + side * radius)
 	half := max(segments / 2, 2)
-	_ring(bt, b, u, dir, radius, 0, math.PI, half)
-	_ring(bt, b, v, dir, radius, 0, math.PI, half)
-	_ring(bt, a, u, -dir, radius, 0, math.PI, half)
-	_ring(bt, a, v, -dir, radius, 0, math.PI, half)
+	_arc_around(bt, b, u, dir, radius, 0, math.PI, half)
+	_arc_around(bt, b, v, dir, radius, 0, math.PI, half)
+	_arc_around(bt, a, u, -dir, radius, 0, math.PI, half)
+	_arc_around(bt, a, v, -dir, radius, 0, math.PI, half)
 }
 
 solid_capsule :: proc(a, b: [3]f32, radius: f32, segments := 16) {
@@ -444,6 +444,50 @@ _ring :: proc(bt: ^_Batch, center, u, v: [3]f32, radius, t0, t1: f32, segments: 
 		_seg(bt, prev, p)
 		prev = p
 	}
+}
+
+// A full circle as the polygon around it: each of the `segments` sides
+// touches the circle at its middle, so no part of the ring lies inside the
+// circle. A mesh of the same shape lies inside its true surface (its faces cut
+// across), so a ring drawn inside could dip behind the mesh and flicker
+// against it, by more than the line depth pull covers up close. Drawn around,
+// the ring is always on or outside the surface. For the outlines of surfaces:
+// a sphere's, a circle's, a capsule's.
+@(private)
+_ring_around :: proc(bt: ^_Batch, center, u, v: [3]f32, radius: f32, segments: int) {
+	n := max(segments, 3)
+	step := math.TAU / f32(n)
+	r := radius / math.cos(step * 0.5)
+	// Corners half a step off the axes, so a side touches the circle on +u,
+	// +v, -u and -v (with `segments` a multiple of 4), where a capsule's side
+	// lines end.
+	corner :: proc(center, u, v: [3]f32, r, t: f32) -> [3]f32 {
+		return center + u * (r * math.cos(t)) + v * (r * math.sin(t))
+	}
+	prev := corner(center, u, v, r, -step * 0.5)
+	for i in 0 ..< n {
+		p := corner(center, u, v, r, step * (f32(i) + 0.5))
+		_seg(bt, prev, p)
+		prev = p
+	}
+}
+
+// An arc from t0 to t1 that never cuts inside its circle, with its ends on
+// the circle so other lines meet them: `segments` sides touching the circle
+// at their middles, plus a half side at each end along the circle's tangent.
+@(private)
+_arc_around :: proc(bt: ^_Batch, center, u, v: [3]f32, radius, t0, t1: f32, segments: int) {
+	n := max(segments, 1)
+	step := (t1 - t0) / f32(n)
+	r := radius / math.cos(step * 0.5)
+	prev := center + u * (radius * math.cos(t0)) + v * (radius * math.sin(t0))
+	for i in 0 ..< n {
+		t := t0 + step * (f32(i) + 0.5)
+		p := center + u * (r * math.cos(t)) + v * (r * math.sin(t))
+		_seg(bt, prev, p)
+		prev = p
+	}
+	_seg(bt, prev, center + u * (radius * math.cos(t1)) + v * (radius * math.sin(t1)))
 }
 
 // The area of _ring, as triangles from the center.

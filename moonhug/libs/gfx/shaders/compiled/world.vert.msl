@@ -8,6 +8,7 @@ using namespace metal;
 struct UBO
 {
     float4x4 view_proj;
+    float4 vert_params;
 };
 
 struct main0_out
@@ -51,13 +52,17 @@ vertex main0_out main0(main0_in in [[stage_in]], constant UBO& _115 [[buffer(0)]
     float4 world = model * float4(in.in_position, 1.0);
     float4 _120 = _115.view_proj * world;
     out.gl_Position = _120;
+    float _133 = out.gl_Position.w - out.gl_Position.z;
+    float _134 = _115.vert_params.x * _133;
+    float _137 = out.gl_Position.z - _134;
+    out.gl_Position.z = _137;
     out.frag_uv = in.in_uv;
     out.frag_uv2 = in.in_uv2;
     float3 param = in.in_color.xyz;
-    float3 _137 = srgb_to_linear(param);
+    float3 _153 = srgb_to_linear(param);
     float3 param_1 = in.in_tint.xyz;
-    float3 _142 = srgb_to_linear(param_1);
-    out.frag_color = float4(_137 * _142, in.in_color.w * in.in_tint.w);
+    float3 _158 = srgb_to_linear(param_1);
+    out.frag_color = float4(_153 * _158, in.in_color.w * in.in_tint.w);
     out.frag_normal = float3x3(model[0].xyz, model[1].xyz, model[2].xyz) * in.in_normal;
     out.frag_world_pos = world.xyz;
     float mirror = (determinant(float3x3(model[0].xyz, model[1].xyz, model[2].xyz)) < 0.0) ? (-1.0) : 1.0;

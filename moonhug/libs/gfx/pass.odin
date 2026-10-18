@@ -82,7 +82,14 @@ MAX_FRAGMENT_SAMPLERS :: 16
 // Must match the world vertex shader's UBO (std140: mat4).
 _Uniform :: struct {
 	view_proj: matrix[4, 4]f32,
+	params:    [4]f32, // x = the depth pull (LINE_DEPTH_PULL for depth-tested lines, else 0)
 }
+
+// How far a depth-tested line's depth moves toward the camera, as a fraction
+// of its distance (world.vert): enough that a line on a surface, a gizmo on a
+// mesh or the grid on a floor, wins every depth tie, little enough that a
+// line just behind a surface stays hidden (2 mm per metre).
+LINE_DEPTH_PULL :: f32(0.002)
 
 // One drawn object: vertex buffer slot 1 of every world pipeline, read per
 // instance (world.vert in_model0..3, in_tint). A mesh draw covers a run of
@@ -1364,6 +1371,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	bound: ^sdl.GPUGraphicsPipeline
 	batch_bound := false
 	pushed_vp := i32(-1)
+	pushed_pull := f32(-1) // the depth pull the vertex block holds, -1 = none pushed
 	pushed_light_vp := i32(-1)
 	pushed_cutoff := f32(-1)
 	pushed_probe := Probe_Blend{weight = -1}
@@ -1497,10 +1505,11 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			pushed_draw_vp = -1
 			batch_bound = false
 		} else if d.is_mesh {
-			if pushed_vp != d.vp_index {
+			if pushed_vp != d.vp_index || pushed_pull != 0 {
 				u := _Uniform{view_proj = _pass.vps[d.vp_index].vp}
 				sdl.PushGPUVertexUniformData(_gfx.cmd, 0, &u, size_of(_Uniform))
 				pushed_vp = d.vp_index
+				pushed_pull = 0
 			}
 			_push_material(&d)
 
@@ -1515,10 +1524,12 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			_stats_draw(int(d.instance_count), int(d.mesh_count / 3))
 			batch_bound = false
 		} else {
-			if pushed_vp != d.vp_index {
-				u := _Uniform{view_proj = _pass.vps[d.vp_index].vp}
+			pull := (d.kind == .Lines || d.kind == .Lines_Depth) ? LINE_DEPTH_PULL : 0
+			if pushed_vp != d.vp_index || pushed_pull != pull {
+				u := _Uniform{view_proj = _pass.vps[d.vp_index].vp, params = {pull, 0, 0, 0}}
 				sdl.PushGPUVertexUniformData(_gfx.cmd, 0, &u, size_of(_Uniform))
 				pushed_vp = d.vp_index
+				pushed_pull = pull
 			}
 			_push_material(&d)
 			if !batch_bound {

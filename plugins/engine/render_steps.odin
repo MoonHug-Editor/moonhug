@@ -26,12 +26,13 @@ package engine
 //   scene_transparent the alpha-blended quads, back to front
 //   motion_vectors    (render_taa.odin) the moved meshes' motion vectors
 //   scene_taa         (render_taa.odin) temporal anti-aliasing
-//   scene_over        the host's drawing over the scene (gizmos, the app's
-//                     DebugDraw phase)
+//   scene_over        the host's drawing over the finished image (gizmos, the
+//                     app's DebugDraw phase), after the post chain so post
+//                     effects leave it alone, depth-tested against the scene
 //   final_blit        copies the finished image (ctx.final) onto the view's
 //                     target. A post chain (the postfx plugin: bloom, tonemap,
-//                     FXAA) slots in between, each step rendering a new image
-//                     and naming it
+//                     FXAA) slots in before scene_over, each step rendering a
+//                     new image and naming it
 //
 // Every scene step is one gfx pass on the same target, sharing its depth
 // (scene_target_begin): a step placed between them in the pipeline draws
@@ -138,12 +139,26 @@ scene_transparent :: proc(ctx: ^Render_Ctx) {
 	gfx.pass_end()
 }
 
-// The host's drawing over the scene: the editor's gizmos, the app's DebugDraw
-// phase. Depth-tested against the whole scene.
-@(render_step={summary="what the host draws over the scene: gizmos, debug draw", reads="hdr", writes="hdr:HDR"})
+// The host's drawing over the finished image: the editor's gizmos, the app's
+// DebugDraw phase. It draws onto the latest image (`final`), so placed after
+// the post chain, as the shipped pipelines have it, exposure, bloom and
+// tonemapping leave it alone and it keeps its own colours. It depth-tests
+// against the scene's depth (`hdr`), so the scene still hides it, and draws
+// through the camera without the TAA jitter, since the image it lands on is
+// already resolved. A finished image of another size than the scene cannot
+// share its depth: then it draws into the scene image as an earlier step
+// would.
+@(render_step={summary="what the host draws over the finished image: gizmos, debug draw", reads="final hdr", writes="hdr:HDR"})
 scene_over :: proc(ctx: ^Render_Ctx) {
 	if ctx.overlay_over == nil do return
-	scene_target_begin(ctx)
+	hdr := render_input(ctx, HDR_TARGET)
+	final := render_input(ctx, FINAL_INPUT)
+	if hdr == nil || final == nil || final == hdr || final.width != hdr.width || final.height != hdr.height || final.format == .Display {
+		scene_target_begin(ctx)
+	} else {
+		gfx.pass_begin_target(final, nil, keep_depth = true, shared_depth = hdr)
+		gfx.set_view_proj(ctx.view.view_proj, ctx.view.cam_pos)
+	}
 	ctx.overlay_over()
 	gfx.pass_end()
 }

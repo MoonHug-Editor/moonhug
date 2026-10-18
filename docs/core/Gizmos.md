@@ -59,7 +59,7 @@ State comes from scopes that undo themselves at the end of the enclosing block (
 - `in_world_space()` — replaces the current space with world space, for code that already converted its points (handles do).
 - `with_view(v)` — `v` is the current view until the end of the block, then the previous one comes back. The game view draws with its camera's view this way.
 - `with_shapes(enabled)` and `with_icons(enabled)` — off, lines, triangles and labels (or icons) record nothing. The gizmo settings hide a component type this way around its hook.
-- `with_depth_test(enabled)` — on by default. Handles and the transform gizmo turn it off to draw over everything.
+- `with_depth_test(enabled)` — on by default. Handles and the transform gizmo turn it off to draw over everything. A depth-tested line's depth moves toward the camera by a small fraction of its distance (gfx `LINE_DEPTH_PULL`, 2 mm per metre), so a line lying on a surface, a collider's box on its mesh or a selection outline, always wins against it instead of flickering, while a line behind a surface stays hidden. Circles, spheres and capsules draw as the polygon around their curve, each side touching it from outside, because a mesh's flat faces lie inside its true surface: a polygon drawn inside the curve could dip behind the mesh by more than the pull covers up close
 - `with_channel(channel)` — `.Game` by default, shown in the game view and the scene view. The editor sets the channel around its `@(on_draw_gizmos)` procs, handles and the transform gizmo, so their code never calls it.
 
 ```odin

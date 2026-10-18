@@ -108,13 +108,6 @@
       "settings": null
     },
     {
-      "id": 5,
-      "step": "scene_over",
-      "slot": "Main",
-      "binds": [],
-      "muted": false
-    },
-    {
       "id": 16,
       "step": "postfx_exposure",
       "slot": "Main",
@@ -132,6 +125,13 @@
     {
       "id": 7,
       "step": "postfx_tonemap",
+      "slot": "Main",
+      "binds": [],
+      "muted": false
+    },
+    {
+      "id": 5,
+      "step": "scene_over",
       "slot": "Main",
       "binds": [],
       "muted": false

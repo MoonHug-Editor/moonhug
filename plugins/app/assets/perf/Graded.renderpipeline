@@ -92,13 +92,6 @@
       "settings": null
     },
     {
-      "id": 5,
-      "step": "scene_over",
-      "slot": "Main",
-      "binds": [],
-      "muted": false
-    },
-    {
       "id": 16,
       "step": "postfx_exposure",
       "slot": "Main",
@@ -137,6 +130,13 @@
           "lut_contribution": 1.0
         }
       }
+    },
+    {
+      "id": 5,
+      "step": "scene_over",
+      "slot": "Main",
+      "binds": [],
+      "muted": false
     },
     {
       "id": 9,
