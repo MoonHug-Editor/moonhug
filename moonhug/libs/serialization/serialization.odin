@@ -1,5 +1,6 @@
 package serialization
 
+import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:encoding/json"
@@ -26,7 +27,10 @@ mapBeforeSerialize: map[typeid]BeforeSerializeProc
 // rebuild what the file does not store.
 //
 // `type` selects the type and `priority` decides which of two procs is used.
-// The proc takes the value's pointer and its typeid.
+// The proc takes the value's pointer and its typeid. Both hooks run for asset
+// files and for copy and paste, not for scene components. A package's procs
+// register from its own generated serialization_hooks_generated.odin, so a
+// plugin can declare them (plugin_example's spawn_table.odin).
 @(reserved)
 @(extension_point={attribute="after_deserialize", target="proc", fields="type priority"})
 mapAfterDeserialize: map[typeid]AfterDeserializeProc
@@ -36,9 +40,51 @@ init :: proc() {
 	@(static) done := false
 	if done do return
 	done = true
-	mapBeforeSerialize = make(map[typeid]BeforeSerializeProc)
-	mapAfterDeserialize = make(map[typeid]AfterDeserializeProc)
-	init_serialization_callbacks()
+	_hook_maps_ensure()
+}
+
+// The priority each registered hook came with, to settle two hooks for one
+// type.
+@(private = "file")
+_before_priority: map[typeid]int
+@(private = "file")
+_after_priority: map[typeid]int
+
+// The hook maps live for the program. Registrations arrive at @(init), before
+// any phase runs, so the maps are made on first use.
+@(private = "file")
+_hook_maps_ensure :: proc() {
+	if mapBeforeSerialize != nil do return
+	mapBeforeSerialize = make(map[typeid]BeforeSerializeProc, runtime.default_allocator())
+	mapAfterDeserialize = make(map[typeid]AfterDeserializeProc, runtime.default_allocator())
+	_before_priority = make(map[typeid]int, runtime.default_allocator())
+	_after_priority = make(map[typeid]int, runtime.default_allocator())
+}
+
+// Registers the @(before_serialize) proc of one type. Each package that
+// declares such procs calls this from its generated
+// serialization_hooks_generated.odin at @(init). Of two procs for one type the
+// higher priority wins. Two at the same priority are a conflict.
+register_before_serialize :: proc(tid: typeid, p: BeforeSerializeProc, priority: int) {
+	_hook_maps_ensure()
+	if prev, has := _before_priority[tid]; has {
+		fmt.assertf(prev != priority, "two @(before_serialize) procs for %v at priority %d: give one a higher priority", tid, priority)
+		if prev > priority do return
+	}
+	mapBeforeSerialize[tid] = p
+	_before_priority[tid] = priority
+}
+
+// Registers the @(after_deserialize) proc of one type, as
+// register_before_serialize does.
+register_after_deserialize :: proc(tid: typeid, p: AfterDeserializeProc, priority: int) {
+	_hook_maps_ensure()
+	if prev, has := _after_priority[tid]; has {
+		fmt.assertf(prev != priority, "two @(after_deserialize) procs for %v at priority %d: give one a higher priority", tid, priority)
+		if prev > priority do return
+	}
+	mapAfterDeserialize[tid] = p
+	_after_priority[tid] = priority
 }
 
 Run_Before_Serialize :: proc(ptr: rawptr, tid: typeid, is_cleanup: bool) {

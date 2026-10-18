@@ -2,7 +2,8 @@ package plugin_example
 
 // Example plugin package (docs/core/Plugins.md). Demonstrates the whole surface:
 // a component (inspector + serialization come from the attribute), an
-// @(fixed_update) tick, an editor-only subpackage with a menu item (editor/), and
+// @(fixed_update) tick, an asset type with the two serialization hooks
+// (spawn_table.odin), an editor-only subpackage with a menu item (editor/), and
 // mounted content (assets/). Everything registers through prebuild — no
 // source edits outside this folder.
 

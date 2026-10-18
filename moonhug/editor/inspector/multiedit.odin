@@ -502,8 +502,17 @@ multi_array_structural :: proc(
 	// Every object that will actually be touched joins ONE session, so the
 	// whole add/remove across the selection is a single undo step.
 	targets := make([dynamic]undo.Edit_Target, 0, len(peers) + 1, context.temp_allocator)
-	if o, ok := undo.current_owner(); ok && o.kind == .Pooled {
-		append(&targets, undo.edit_target_whole(o.handle))
+	// The object being drawn: a component, an asset document (the project
+	// inspector) or a struct the editor owns (project settings), whole.
+	if o, ok := undo.current_owner(); ok {
+		#partial switch o.kind {
+		case .Pooled:
+			append(&targets, undo.edit_target_whole(o.handle))
+		case .Asset:
+			append(&targets, undo.edit_target_asset(o.asset_guid, o.asset_tid, o.asset_doc))
+		case .Raw:
+			if o.raw_tid != nil do append(&targets, undo.Edit_Target{kind = .Raw, raw_ptr = o.base_ptr, raw_tid = o.raw_tid})
+		}
 	}
 	for peer in peers {
 		if peer.base == nil do continue

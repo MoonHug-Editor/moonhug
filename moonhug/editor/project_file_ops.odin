@@ -30,6 +30,8 @@ import clip "moonhug:editor/clipboard"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
 import assets "moonhug:libs/assets"
+import "moonhug:libs/serialization"
+import core "moonhug:libs/core"
 
 // --- File clipboard -----------------------------------------------------------
 // Cut and Copy put the selected files on the editor's clipboard (clipboard
@@ -62,14 +64,16 @@ _file_clip_set :: proc(cut: bool) {
 // --- Op helpers ---------------------------------------------------------------
 
 // dir/name, or dir/"name N" when taken (extension preserved for files).
+// `sep` goes between the name and the number: a space for folders and copies,
+// none for a new asset's file name.
 @(private = "file")
-_project_unique_dest :: proc(dir, name: string) -> string {
+_project_unique_dest :: proc(dir, name: string, sep := " ") -> string {
 	dst, _ := filepath.join({dir, name}, context.temp_allocator)
 	if !os.exists(dst) do return dst
 	stem := filepath.stem(name)
 	ext := filepath.ext(name) // "" for folders, ".mat" style for files
 	for i in 1 ..< 1000 {
-		cand, _ := filepath.join({dir, fmt.tprintf("%s %d%s", stem, i, ext)}, context.temp_allocator)
+		cand, _ := filepath.join({dir, fmt.tprintf("%s%s%d%s", stem, sep, i, ext)}, context.temp_allocator)
 		if !os.exists(cand) do return cand
 	}
 	return dst
@@ -139,6 +143,33 @@ project_ops_new_folder :: proc() {
 	dst := _project_unique_dest(dir, "New Folder")
 	if os.make_directory(dst) != nil {
 		fmt.printf("[Editor] New Folder: failed to create %s\n", dst)
+		return
+	}
+	asset_pipeline.asset_db_refresh()
+	project_dir_cache_invalidate()
+	_project_set_selected(dst)
+	_project_begin_rename(dst, false)
+}
+
+// Assets ▸ Create ▸ <type>: a new asset of that type with its reset defaults,
+// in the open folder under a free file name (`file_name`, numbered when
+// taken), then known to the asset database, selected and ready to rename, as
+// New Folder does. The generated create menu items call it.
+project_ops_create_asset :: proc(file_name: string, type_key: core.TypeKey) {
+	dir := projectViewData.currentPath
+	if dir == "" do return
+	if dir == _PROJECT_PACKAGES_PATH {
+		fmt.println("[Editor] Create: the Packages node lists packages, not files — create inside a package's content instead")
+		return
+	}
+	dst := _project_unique_dest(dir, file_name, sep = "")
+	instance := core.create_instance_by_type_key(type_key)
+	defer {
+		core.type_cleanup(type_key, instance.data)
+		free(instance.data)
+	}
+	if !serialization.write_asset_to_path(dst, core.get_guid_by_type_key(type_key), instance) {
+		fmt.printf("[Editor] Create: failed to write %s\n", dst)
 		return
 	}
 	asset_pipeline.asset_db_refresh()

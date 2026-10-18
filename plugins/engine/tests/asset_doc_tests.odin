@@ -5,6 +5,7 @@ package engine_tests
 // writes to where the asset is now. Before, a deleted material with unsaved
 // edits came back on the next File/Save, without its .meta, as a new asset.
 
+import "base:runtime"
 import "core:os"
 import "core:testing"
 import "moonhug:editor/inspector"
@@ -164,4 +165,59 @@ test_revert_restores_the_file_and_undoes :: proc(t: ^testing.T) {
 
 	undo.apply_redo(s)
 	testing.expect_value(t, (^engine.Material)(doc.data.data).color, [4]f32{1, 1, 1, 1})
+}
+
+// "+ Add" and "x" on a dynamic array of an asset shown in the Project
+// Inspector: each grows or shrinks the document's array as one undo step, and
+// undo puts it back. The array buttons used to take their undo target only
+// from a component, so in an asset they did nothing.
+@(test)
+test_asset_array_add_and_remove_undo :: proc(t: ^testing.T) {
+	path :: _DIR + "/Arrays.renderpipeline"
+	os.make_directory(_DIR)
+	defer {
+		_remove_tree(_DIR)
+		_remove_tree("library")
+	}
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+	defer engine.asset_db_shutdown()
+	defer inspector.asset_docs_shutdown()
+
+	pipeline := `{"__type_guid": "6b1f3c2e-7d4a-4e85-9c0b-2a5f8d1e4c73", "slots": [], "steps": [], "next_id": 1}`
+	testing.expect(t, os.write_entire_file(path, transmute([]u8)string(pipeline)) == nil)
+	asset_pipeline.asset_pipeline_init()
+	engine.asset_db_init(_DIR)
+	undo.set_asset_apply(inspector.asset_doc_apply_json)
+	undo.set_asset_doc_lookup(inspector.asset_doc_payload_ptr)
+	doc := inspector.asset_doc_get(path)
+	if !testing.expect(t, doc != nil, "the pipeline loads as a document") do return
+
+	undo.push_asset_owner(doc.guid, doc.data.data, doc.data.id)
+	defer undo.pop_owner()
+	elem := type_info_of(engine.Pipeline_Slot)
+	// The document's live array, fetched fresh for every step as the
+	// inspector does each frame.
+	slots :: proc(doc: ^inspector.Asset_Doc) -> ^runtime.Raw_Dynamic_Array {
+		return (^runtime.Raw_Dynamic_Array)(&(^engine.Render_Pipeline)(doc.data.data).slots)
+	}
+	offset := offset_of(engine.Render_Pipeline, slots)
+
+	inspector.array_add_element(slots(doc), offset, elem, nil)
+	testing.expect_value(t, slots(doc).len, 1)
+	testing.expect_value(t, len(s.items), 1)
+	inspector.array_add_element(slots(doc), offset, elem, nil)
+	inspector.array_remove_element(slots(doc), offset, elem, 0, nil)
+	testing.expect_value(t, slots(doc).len, 1)
+	testing.expect_value(t, len(s.items), 3)
+
+	undo.apply_undo(s)
+	testing.expect_value(t, slots(doc).len, 2)
+	undo.apply_undo(s)
+	testing.expect_value(t, slots(doc).len, 1)
+	undo.apply_undo(s)
+	testing.expect_value(t, slots(doc).len, 0)
 }
