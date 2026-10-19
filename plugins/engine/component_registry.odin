@@ -34,9 +34,11 @@ Component_Desc :: struct {
 	make_entry:   proc(pool: rawptr) -> Pool_Entry,
 	each_alive:   proc(pool: rawptr, fn: proc(key: TypeKey, comp: rawptr)),
 
-	// Leaving the world, nil = none. reset_T, cleanup_T and on_validate_T are
-	// not here: the type tables (core/type_lifecycle.odin) hold them for every
-	// @(typ_guid) type, filled by register_type_guids.
+	// The game's lifecycle hooks, nil = none: @(comp_awake) and
+	// @(comp_on_destroy) (component_lifecycle.odin). reset_T, cleanup_T and on_validate_T
+	// are not here: the type tables (core/type_lifecycle.odin) hold them for
+	// every @(typ_guid) type, filled by register_type_guids.
+	awake:       proc(comp: rawptr),
 	on_destroy:  proc(comp: rawptr),
 
 	// Capability tags a reference field can name with `ref:"@Tag"` instead of
@@ -103,6 +105,7 @@ component_register :: proc(desc: Component_Desc) {
 		component_registry[desc.type_key] = desc
 		_component_registry_by_guid[desc.type_guid] = desc.type_key
 
+		if desc.awake != nil do component_awake_procs[desc.type_key] = desc.awake
 		if desc.on_destroy != nil do component_on_destroy_procs[desc.type_key] = desc.on_destroy
 	}
 

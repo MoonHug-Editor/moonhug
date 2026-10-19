@@ -5,6 +5,10 @@ import core "moonhug:libs/core"
 
 UserContext :: struct {
     world         : ^World,
+    // The world the game runs in. A preview or thumbnail render swaps `world`
+    // and leaves this one, so game hooks (component_lifecycle.odin) never
+    // run on preview content.
+    game_world    : ^World,
     scene_manager : SceneManager,
     // TRUE IN THE EDITOR BINARY, false in the standalone app. Unity's
     // Application.isEditor: fixed per binary, unaffected by Simulate. Set by each
@@ -13,6 +17,8 @@ UserContext :: struct {
     // Unity's Application.isPlaying. The app sets it once at startup (true for
     // the process lifetime). The editor's Simulate sets it at Start and clears it
     // at Stop - it stays true while paused, pause being a separate condition.
+    // Changes go through application_set_playing, which runs the game's awake
+    // and comp_on_destroy passes.
     // "Is this a simulation?" is not stored anywhere: it is is_playing &&
     // is_editor.
     is_playing : bool,

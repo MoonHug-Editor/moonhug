@@ -28,6 +28,9 @@ transform_add_comp :: proc(tH: Transform_Handle, key: TypeKey) -> (Owned, rawptr
         bimap_insert(&t.scene.local_ids, base.local_id, handle)
     }
     append(&t.components, owned)
+    // Added on its own while the game runs: awake now. Inside a creation
+    // batch the outermost creation awakes it with the rest.
+    component_awake(key, pComp)
     return owned, pComp
 }
 
@@ -105,22 +108,3 @@ transform_remove_comp :: proc(tH: Transform_Handle, comp_handle: Handle) {
 // The lifecycle tables (reset, cleanup, on_validate) are core's
 // (core/type_lifecycle.odin): any @(typ_guid) type has them.
 
-// Runs a proc when an instance of one component type leaves its pool: the
-// component is removed, its object destroyed, or its scene unloaded, in the
-// editor and in a game alike.
-//
-// `component = T` names a @(component) type of the same package, and the proc
-// is `proc(c: ^T)`, named `comp_on_destroy_<T>`. It releases
-// what the instance holds outside itself: a physics body, a playing voice.
-// The instance's cleanup_T runs right after and frees its memory. A type has
-// at most one: the name is fixed and it sits in the type's package.
-@(extension_point={attribute="comp_on_destroy", target="proc", fields="component"})
-component_on_destroy_procs: [TypeKey]proc(rawptr)
-
-// A component instance leaves the world: its @(comp_on_destroy) procs (a
-// physics body released, a voice stopped), then its cleanup_T frees what it
-// owns. Runs on destroy and on removal, before the pool slot goes.
-component_on_destroy :: proc(key: TypeKey, ptr: rawptr) {
-	if fn := component_on_destroy_procs[key]; fn != nil do fn(ptr)
-	type_cleanup(key, ptr)
-}

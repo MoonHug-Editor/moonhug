@@ -21,10 +21,46 @@ A `@(typ_guid)` type declares its lifecycle procs by name in its own file. Prebu
 - `reset_T :: proc(t: ^T)` calls `cleanup_T` first when the type has one, then sets the defaults, so a reset on a live value frees what it owned and a direct `reset_T` call is safe anywhere. `create_instance_by_type_key` runs it on a new zeroed instance (a new asset, first import settings, a component on add), and the inspector's Reset runs it on a live value.
 - A field missing from a file loads as the type's reset default, not zero. [Missing fields and reset defaults](#missing-fields-and-reset-defaults) has the rule, the load paths and the setting that turns it off.
 - `cleanup_T :: proc(t: ^T)` frees what a `T` owns (strings, arrays, authored blobs) and leaves the value zeroed. It does not free `t`. It runs when a component leaves the world, when a union variant goes (`tween_destroy`, `script_destroy`), when a tween node is destroyed, and through `type_cleanup(key, ptr)` for anything else that holds a value.
+- A component's `cleanup_T` also releases what the instance holds outside itself: a physics body, a mixer track, GPU buffers. It runs on destroy and removal, and on a live value too (Reset, an undo write), so the resource goes or rebuilds with the value. A copy of a value is safe to clean up: resource handles are `json:"-"`, so a copy made through JSON (undo, deserialize scratch, remap temps) holds a zero handle and releases nothing.
 - `on_validate_T :: proc(t: ^T)` runs after an inspector edit and after a value is loaded from data, to keep the value valid. Loading is zero → reset defaults → JSON → on_validate.
-- `@(comp_on_destroy={component=T})` on a `proc(c: ^T)` of T's package, named `comp_on_destroy_T`, is a component's only: the instance leaves the world, before its pool slot goes (a physics body released, a voice stopped). The name is enforced and the proc sits in T's package, so a type has at most one. The engine runs `cleanup_T` right after them, on destroy and on removal, so a component never forwards one to the other.
+- `@(comp_awake)` and `@(comp_on_destroy)` are a component's game hooks, not value procs: see [Game lifecycle](#game-lifecycle).
 
 `type_reset`, `type_cleanup` and `type_on_validate` take a `TypeKey` and a pointer, `type_has_reset` says whether Reset applies. The procs are explicit: a `cleanup_T` frees its own fields, and calls `type_cleanup` on a field of another type when that type owns something. Nothing walks fields on its own, since the tables cannot know which allocator a nested value came from.
+
+## Game lifecycle
+
+Two hooks run game logic when a component instance enters and leaves the running game (`component_lifecycle.odin`):
+
+- `@(comp_awake={component=T})` on a `proc(c: ^T)` named `comp_awake_T`, in T's package, runs once per instance when it enters the running game.
+- `@(comp_on_destroy={component=T})` on a `proc(c: ^T)` named `comp_on_destroy_T`, in T's package, runs when the instance leaves the running game. It is for game logic and for what `comp_awake_T` created outside the instance. `cleanup_T` runs right after it.
+- The generator enforces the name and stops the build on a hook whose T is no `@(component)` of the package, so a type has at most one of each.
+
+Both run only while the game runs in the game world (`game_running()`): `application_is_playing()` is true and the context's world is `UserContext.game_world`. They never run in edit mode, and never on preview or thumbnail content, which renders in a world swapped into `UserContext.world`.
+
+When awake runs:
+
+- At play start (`application_set_playing(true)`), on every loaded scene in slot order.
+- Right after a creation while the game runs: a scene load, `scene_instantiate_guid`, `scene_instantiate_guid_nested`, `scene_paste_subtree` (and `scene_duplicate_subtree`), `transform_add_comp`, and the undo steps that restore objects or components.
+- Active and enabled state do not matter: every instance in the running game has had its awake.
+
+Awake order:
+
+- An object's components in their list order, then its children, depth first.
+- A creation inside another (an instantiate pastes, a scene load resolves its prefabs) runs in the outer one's batch (`awake_batch_begin` / `awake_batch_end`). The outermost creation awakes the whole result once, after every component exists and every reference is bound.
+- A component or object an awake proc creates awakes on its own. The walk visits only what each object had when the walk reached it.
+
+When comp_on_destroy runs:
+
+- The object is destroyed, the component removed or its scene unloaded, while the game runs (`component_on_destroy`, the path every destroy takes).
+- Play stops (`application_set_playing(false)`): every live component of the game world, type by type, while the game still runs. Simulate's Stop does this before its restore, and the player at `EngineShutdown` before anything shuts down. The destroys after it only run `cleanup_T`.
+
+### Destroying from game code
+
+`transform_destroy` destroys at once. Code that runs inside an update loop over a pool queues the object instead:
+
+- `transform_destroy_later(tH)` marks the object (`Transform.destroy`) and queues it. A second call before the queue runs does nothing.
+- `frame_tick` destroys the queue after its last stage (`transform_destroy_pending`), in queue order. An object a `@(comp_on_destroy)` proc queues while the queue runs goes in the same pass. An object already gone (with its parent, or by a direct destroy) is skipped.
+- Stopping the game drops the queue. An object that stays loses its mark and can be queued again.
 
 ## Missing fields and reset defaults
 

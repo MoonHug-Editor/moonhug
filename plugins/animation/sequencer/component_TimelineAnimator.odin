@@ -112,11 +112,6 @@ reset_TimelineAnimator :: proc(a: ^TimelineAnimator) {
 	a.speed = 1
 }
 
-@(comp_on_destroy={component=TimelineAnimator})
-comp_on_destroy_TimelineAnimator :: proc(a: ^TimelineAnimator) {
-	cleanup_TimelineAnimator(a)
-}
-
 // Reached two ways, and both matter: component destruction, and a value being
 // replaced under it — undo calls type_cleanup before unmarshalling a restored
 // value. comp_zero clears graph_ready along with every freed pointer, which is

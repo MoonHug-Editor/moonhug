@@ -16,8 +16,9 @@ package core
 //                  data, to keep the value consistent (a zero that means
 //                  "default" becomes the default here).
 //
-// @(comp_on_destroy) stays a component's (plugins/engine/components.odin): it
-// is about leaving a world, not about the value.
+// @(comp_awake) and @(comp_on_destroy) stay a component's
+// (plugins/engine/component_lifecycle.odin): they are game logic that runs
+// while the game runs, not about the value.
 
 import "base:runtime"
 import "core:encoding/json"

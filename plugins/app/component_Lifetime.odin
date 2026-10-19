@@ -1,7 +1,7 @@
 package app
 
 // Self-destruct timer, ticked by comp_fixed_update_Lifetime (fixed update): the owner is
-// destroyed once time_spent passes duration. App-level (not engine): scene
+// queued for destroy (transform_destroy_later) once time_spent passes duration. App-level (not engine): scene
 // records live in ext_components keyed by the type guid, so the guid below is
 // the on-disk identity and must never change.
 
@@ -29,8 +29,5 @@ on_validate_Lifetime :: proc(comp: ^Lifetime)
 @(comp_fixed_update={order=-50, component=Lifetime})
 comp_fixed_update_Lifetime :: proc(dt: f32, lt: ^Lifetime) {
     lt.time_spent += dt
-    if lt.time_spent >= lt.duration {
-        t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(lt.owner))
-        if t != nil do t.destroy = true
-    }
+    if lt.time_spent >= lt.duration do engine.transform_destroy_later(lt.owner)
 }

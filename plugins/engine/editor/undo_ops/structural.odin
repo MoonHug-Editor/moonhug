@@ -448,6 +448,9 @@ _paste_subtree_preserve_ids :: proc(payload: []byte, parent: engine.Transform_Ha
 	if engine.application_is_editor() {
 		engine._scene_resolve_nested_in_subtree(root_tH)
 	}
+	// While the game runs the restored objects awake as a new creation, at
+	// the end, once the rebind below has bound their references.
+	defer engine.awake_subtree(root_tH)
 
 	// Components OUTSIDE the restored subtree may reference INTO it (a Tank on
 	// the root pointing at a deleted-then-restored Turret) — their handles are
@@ -464,8 +467,14 @@ _do_add_component :: proc(v: Add_Component_Command) {
 	if !ok do return
 	tH := engine.Transform_Handle(owner_h)
 
+	// While the game runs the restored component awakes at the end, once its
+	// recorded values and references are back: the add runs in a batch so it
+	// skips its own awake.
+	engine.awake_batch_begin()
 	owned, ptr := engine.transform_add_comp(tH, v.type_key)
+	engine.awake_batch_end({})
 	if ptr == nil do return
+	defer engine.component_awake(v.type_key, ptr)
 
 	if v.payload != nil && len(v.payload) > 0 {
 		tid := engine.get_typeid_by_type_key(v.type_key)

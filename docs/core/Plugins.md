@@ -205,7 +205,7 @@ A package can own an asset type end to end — the audio package is the referenc
 - A guid-keyed runtime cache in the package loads the artifact (`clip_load`), mirroring the engine's texture cache. It registers an `engine.asset_pipeline_add_reimport_hook` to evict on artifact change — the same hook the texture cache uses, so settings edits apply live.
 - An editor subpackage can register `inspector.mapAssetPreview[".ext"]` from an `@(provider_install)` proc — the drawer renders in the Preview section pinned to the bottom of the Project Inspector when a matching asset is selected.
 - A component references the asset through a plain `engine.Asset_GUID` field. An `ext:"mp3,wav,ogg"` field tag gives it the standard inspector picker and drag-drop, filtered to those extensions — no editor code.
-- Playback state stays in runtime-only fields (`json:"-" inspect:"-"`), cleaned up in the component's `cleanup_`/`on_destroy_` hooks.
+- Playback state stays in runtime-only fields (`json:"-" inspect:"-"`), released in the component's `cleanup_` proc.
 
 The engine contributes only generated glue (type registration, pool accessors, update dispatch). No engine or editor source knows the asset type exists.
 

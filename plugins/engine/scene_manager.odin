@@ -341,7 +341,11 @@ _scene_load_additive :: proc(scene_file: ^SceneFile, scene_asset_guid: Asset_GUI
     s := scene_new()
     s.asset_guid = scene_asset_guid
 
+    // The scene awakes as one creation once it is fully built, its nested
+    // prefabs resolved: inside the batch, nothing awakes on its own.
+    awake_batch_begin()
     root_tH := _scene_load_as_child(scene_file, {}, s)
+    defer awake_batch_end(root_tH)
 
     // A variant's root is a NestedScene with transform_parent == 0 — the file
     // names the base root lid as sf.root but contains no such transform, so
@@ -519,8 +523,12 @@ scene_lib_register :: proc(guid: Asset_GUID) -> bool {
 // resolve + unpack and snapshots the result into scene_lib_unpacked_cache;
 // every subsequent call just scene_paste_subtree's the cached bytes — no
 // resolve, no override application, no NS bookkeeping at runtime.
-scene_instantiate_guid :: proc(guid: Asset_GUID, parent: Transform_Handle) -> Transform_Handle {
+scene_instantiate_guid :: proc(guid: Asset_GUID, parent: Transform_Handle) -> (instance: Transform_Handle) {
     if parent == {} do return {}
+    // One creation: the paste or the first resolve inside awakes nothing on
+    // its own, the instance awakes once at the end.
+    awake_batch_begin()
+    defer awake_batch_end(instance)
 
     if cached, has := scene_lib_unpacked_cache[guid]; has {
         return scene_paste_subtree(cached, parent)
@@ -546,8 +554,10 @@ scene_instantiate_guid :: proc(guid: Asset_GUID, parent: Transform_Handle) -> Tr
 // Editor spawn: instantiates a prefab as a NestedScene reference under
 // `parent`. Keeps NS metadata and `nested_owned` flags so the editor can show
 // override badges, capture edits as overrides on save, etc.
-scene_instantiate_guid_nested :: proc(guid: Asset_GUID, parent: Transform_Handle) -> Transform_Handle {
+scene_instantiate_guid_nested :: proc(guid: Asset_GUID, parent: Transform_Handle) -> (instance: Transform_Handle) {
     if !scene_lib_register(guid) do return {}
+    awake_batch_begin()
+    defer awake_batch_end(instance)
     w := ctx_world()
     pt := pool_get(&w.transforms, Handle(parent))
     if pt == nil do return {}

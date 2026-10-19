@@ -23,9 +23,9 @@ Tick_Hooks :: struct {
 
 // One frame of simulation, the only place the order is written: the fixed
 // ticks the accumulator owes (each latching input first), then the frame
-// tick, then the late tick. `step` runs exactly one fixed tick and one frame
-// tick at the fixed delta, ignoring the accumulator, for the editor's Step
-// button.
+// tick, then the late tick, then the objects transform_destroy_later queued.
+// `step` runs exactly one fixed tick and one frame tick at the fixed delta,
+// ignoring the accumulator, for the editor's Step button.
 frame_tick :: proc(hooks: Tick_Hooks, dt: f32, step := false) {
 	fdt := fixed_dt()
 	steps := 1 if step else fixed_frame_ticks(dt)
@@ -38,6 +38,7 @@ frame_tick :: proc(hooks: Tick_Hooks, dt: f32, step := false) {
 	frame_dt := fdt if step else dt
 	if hooks.update != nil do hooks.update(frame_dt)
 	if hooks.late_update != nil do hooks.late_update(frame_dt)
+	transform_destroy_pending()
 }
 
 // 60 rather than Unity's 50: with view interpolation deferred, 60 aligns

@@ -198,6 +198,12 @@ stop :: proc() {
     // the restored scene. Asset edits stay.
     undo.play_end(undo.get())
 
+    // Playing goes false before the restore: the game's own teardown runs
+    // first, while the run's objects are all alive, and the restore after it
+    // destroys and reloads in edit mode.
+    _state = .Stopped
+    _sync_context()
+
     // Back to the scene set of Start, then the captured scene reverts. Objects
     // the game destroyed are absent from the restored scene too, so they do
     // not resolve and drop out of the selection.
@@ -215,8 +221,6 @@ stop :: proc() {
     _snapshot = nil
     _scene = {}
 
-    _state = .Stopped
-    _sync_context()
     world_reset_time()
     _fire(.EnteredEditMode)
 }

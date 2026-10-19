@@ -211,7 +211,8 @@ Component_GenComp :: struct {
 	pkg:             string,
 	pkg_path:        string,
 	max:             int,
-	on_destroy_procs: []string, // the type's @(comp_on_destroy) proc, at most one (its name is fixed)
+	has_awake:       bool, // the type has a @(comp_awake) proc, named comp_awake_<T>
+	has_on_destroy:  bool, // the type has a @(comp_on_destroy) proc, named comp_on_destroy_<T>
 	field_types:     []string,
 	ref_tags:        []string,
 	origin:          string,

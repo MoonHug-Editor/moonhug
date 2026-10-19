@@ -37,15 +37,11 @@ reset_AudioSource :: proc(comp: ^AudioSource) {
 	comp.max_distance = 500
 }
 
+// Runs on destroy, removal, Reset and undo: the track goes with the
+// component, or it keeps playing.
 cleanup_AudioSource :: proc(comp: ^AudioSource) {
 	_destroy_track(comp)
 	engine.comp_zero(comp)
-}
-
-// Live destroy — the track must die with the component or it keeps playing.
-@(comp_on_destroy={component=AudioSource})
-comp_on_destroy_AudioSource :: proc(comp: ^AudioSource) {
-	_destroy_track(comp)
 }
 
 _destroy_track :: proc(comp: ^AudioSource) {

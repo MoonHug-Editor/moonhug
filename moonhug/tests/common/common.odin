@@ -85,6 +85,7 @@ setup :: proc(tc: ^TestCtx, path: string = "") {
 	_register_once() // done at start (_register_at_start), a no-op here
 	engine.w_init(&tc.world)
 	tc.uc.world = &tc.world
+	tc.uc.game_world = &tc.world
 	// Tests exercise editor behaviour: nested-prefab resolve is gated on
 	// application_is_editor(), and the fixtures assume it runs.
 	tc.uc.is_editor = true

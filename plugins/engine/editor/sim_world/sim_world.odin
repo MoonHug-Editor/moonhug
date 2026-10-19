@@ -145,12 +145,11 @@ _release :: proc(snapshot: []byte) {
 	free(snap)
 }
 
-// Feeds engine.application_is_playing().
+// Feeds engine.application_is_playing(): Start awakes the loaded scenes, Stop
+// runs the game's comp_on_destroy pass before the restore.
 @(private = "file")
 _set_playing :: proc(playing: bool) {
-	if uc := engine.ctx_get(); uc != nil {
-		uc.is_playing = playing
-	}
+	engine.application_set_playing(playing)
 }
 
 @(private = "file")

@@ -44,6 +44,9 @@ reset_BoxCollider2D :: proc(comp: ^BoxCollider2D) {
 	comp.friction = 0.6
 }
 
+// Every collider's cleanup runs on destroy, removal, Reset and undo: the
+// shape and the implicit static body go with the component, or they keep
+// colliding as ghosts.
 cleanup_BoxCollider2D :: proc(comp: ^BoxCollider2D) {
 	_destroy_shape(&comp.shape, &comp.static_body)
 	engine.comp_zero(comp)
@@ -113,21 +116,4 @@ reset_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {
 cleanup_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {
 	_destroy_shape(&comp.shape, &comp.static_body)
 	engine.comp_zero(comp)
-}
-
-// Live destroys (transform_destroy_components) — shapes and implicit static
-// bodies must die with their components or they keep colliding as ghosts.
-@(comp_on_destroy={component=BoxCollider2D})
-comp_on_destroy_BoxCollider2D :: proc(comp: ^BoxCollider2D) {
-	_destroy_shape(&comp.shape, &comp.static_body)
-}
-
-@(comp_on_destroy={component=CircleCollider2D})
-comp_on_destroy_CircleCollider2D :: proc(comp: ^CircleCollider2D) {
-	_destroy_shape(&comp.shape, &comp.static_body)
-}
-
-@(comp_on_destroy={component=CapsuleCollider2D})
-comp_on_destroy_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {
-	_destroy_shape(&comp.shape, &comp.static_body)
 }

@@ -1,5 +1,6 @@
 package engine
 
+import "base:runtime"
 import "core:math/linalg"
 import "core:strings"
 import core "moonhug:libs/core"
@@ -16,6 +17,8 @@ Transform :: struct {
     scene_asset_guid: Asset_GUID `json:"-"`,
     name: string,
     is_active: bool,
+    // Queued by transform_destroy_later: the object goes at the end of the
+    // frame tick. Set, it keeps a second call from queueing it twice.
     destroy: bool `json:"-"`,
     nested_owned: bool `json:"-"`,
     position: [3]f32,
@@ -350,19 +353,40 @@ transform_get_sibling_index :: proc(tH: Transform_Handle) -> int {
     return -1
 }
 
-transform_tick_destroy :: proc() {
+// Destroys the object at the end of the current frame tick, after every
+// update stage, instead of now: for code that runs inside an update loop over
+// a pool. A second call before then does nothing.
+transform_destroy_later :: proc(tH: Transform_Handle) {
     w := ctx_world()
-    to_destroy: [dynamic]Transform_Handle
-    defer delete(to_destroy)
-    it := pool_iterator(&w.transforms)
-    for t, h in pool_next(&it) {
-        if t.destroy {
-            h := h
-            h.type_key = .Transform
-            append(&to_destroy, Transform_Handle(h))
-        }
+    t := pool_get(&w.transforms, Handle(tH))
+    if t == nil || t.destroy do return
+    t.destroy = true
+    // Cross-frame state: the queue outlives whatever allocator the caller is
+    // on, so it pins the default one.
+    if w.destroy_queue.allocator.procedure == nil {
+        w.destroy_queue = make([dynamic]Transform_Handle, runtime.default_allocator())
     }
-    for tH in to_destroy {
-        transform_destroy(tH)
+    append(&w.destroy_queue, tH)
+}
+
+// Destroys every object transform_destroy_later queued, in queue order. The
+// frame tick runs it after its last stage. An object queued while the queue
+// runs (by a @(comp_on_destroy) proc) goes in the same pass. An object already
+// gone, with its parent or by a direct destroy, is skipped.
+transform_destroy_pending :: proc() {
+    w := ctx_world()
+    for i := 0; i < len(w.destroy_queue); i += 1 {
+        transform_destroy(w.destroy_queue[i])
     }
+    clear(&w.destroy_queue)
+}
+
+// Drops the queue without destroying: Stop and quit take every object down
+// on their own. An object that stays (a scene the run did not load) loses its
+// mark, so it can be queued again.
+_destroy_queue_drop :: proc(w: ^World) {
+    for tH in w.destroy_queue {
+        if t := pool_get(&w.transforms, Handle(tH)); t != nil do t.destroy = false
+    }
+    clear(&w.destroy_queue)
 }

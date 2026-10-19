@@ -20,6 +20,7 @@ engine_init_world :: proc() {
 	_world = new(World)
 	w_init(_world)
 	ctx_get().world = _world
+	ctx_get().game_world = _world
 }
 
 // Unity's Application.isEditor: fixed per binary.
@@ -40,6 +41,14 @@ engine_init_caches :: proc() {
 	mesh_cache_init()
 	material_cache_init()
 	shader_cache_init()
+}
+
+// The game stops before anything shuts down: comp_on_destroy runs on every
+// live component while the world and every plugin still work. A no-op when the
+// editor quits outside Simulate.
+@(phase={key=EngineShutdown, order=1000})
+engine_shutdown_game :: proc() {
+	application_set_playing(false)
 }
 
 @(phase={key=EngineShutdown, order=10})

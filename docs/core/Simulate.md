@@ -69,7 +69,9 @@ The snapshot is **the same bytes a save writes**, held in memory instead of writ
 
 So "can Simulate revert correctly?" is the same question as "can the editor save and load a scene?", which every save and `tests/resave_scenes` exercise. There is no separate capture format to fall behind when a field is added.
 
-Restore reuses the ordinary scene load, so per-object teardown runs the same code path a manual delete does: `transform_destroy` fires each component's `on_destroy_*`, releasing subsystem state (box2d bodies, audio voices, animation runners). `physics2d/tests` covers this for physics.
+Restore reuses the ordinary scene load, so per-object teardown runs the same code path a manual delete does: `transform_destroy` runs each component's `cleanup_T`, releasing subsystem state (box2d bodies, audio voices, animation runners). `physics2d/tests` covers this for physics.
+
+Stop turns playing off before the restore. That runs the game's `@(comp_on_destroy)` on every live component while the run's objects are all alive, so the restore's destroys and reloads after it run in edit mode and run no game hook (plugins/engine/docs/Components.md "Game lifecycle").
 
 Restore is **scoped to the simulated scene** (`scene_reload_in_place_bytes`, called from the engine's world provider). The restored scene keeps its slot and its active-scene status, so the editor carries on editing what it was editing. The scene SET is restored as well: scenes the run loaded additively are unloaded, and scenes the run unloaded come back from disk. Only the simulated scene's contents are snapshotted; other scenes present at Start keep whatever the run did to them.
 
@@ -152,6 +154,8 @@ my_setup :: proc() { ... }
 ```
 
 `ExitingEditMode` fires only once the snapshot exists, so a failed start emits no unpaired transition. `ExitingPlayMode` runs before the scene is touched, so subscribers can read the simulated world. Pause fires nothing, not being a mode change.
+
+The game's component hooks run between the phases: `@(comp_awake)` on the loaded scenes after `ExitingEditMode`, before `EnteredPlayMode`, and `@(comp_on_destroy)` on every live component after `ExitingPlayMode`, before the restore.
 
 Subscribers owned by a runnable package run only when that package is the active sim host.
 

@@ -1743,8 +1743,12 @@ scene_copy_subtree :: proc(tH: Transform_Handle, include_nested_owned := false) 
 	return data
 }
 
-scene_paste_subtree :: proc(data: []byte, parent: Transform_Handle) -> Transform_Handle {
+scene_paste_subtree :: proc(data: []byte, parent: Transform_Handle) -> (root_tH: Transform_Handle) {
 	if parent == {} || len(data) == 0 do return {}
+	// One creation: the pasted subtree awakes once, after its nested prefabs
+	// resolve.
+	awake_batch_begin()
+	defer awake_batch_end(root_tH)
 	w := ctx_world()
 	if !pool_valid(&w.transforms, Handle(parent)) do return {}
 
@@ -1759,7 +1763,7 @@ scene_paste_subtree :: proc(data: []byte, parent: Transform_Handle) -> Transform
 	s := pt.scene
 
 	_scene_file_remap_local_ids(&sf, s)
-	root_tH := _scene_load_as_child(&sf, parent, s)
+	root_tH = _scene_load_as_child(&sf, parent, s)
 	// Resolve builds the AUTHORING structures (live prefab-content/override split
 	// the inspector edits through). The standalone app only needs the objects, so
 	// this is an editor-binary question, not a gameplay-state one - Simulate must

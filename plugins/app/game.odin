@@ -112,8 +112,3 @@ projectiles_tick :: proc(dt: f32) {
         t.position[1] += p.dir[1] * p.speed * dt
     }
 }
-
-@(fixed_update={order=9999})
-tick_destroy :: proc(dt: f32) {
-    engine.transform_tick_destroy()
-}

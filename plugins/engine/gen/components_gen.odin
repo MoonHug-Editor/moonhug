@@ -25,7 +25,8 @@ ComponentEntry :: struct {
 	pkg:             string, // package name ("engine", "app", ...)
 	pkg_path:        string, // scan path ("moonhug/app", "moonhug/packages/x")
 	max:             int,
-	on_destroy_procs: []string, // the @(comp_on_destroy) proc, at most one (its name is fixed)
+	has_awake:       bool, // comp_awake_<T> exists, marked @(comp_awake={component=T})
+	has_on_destroy:  bool, // comp_on_destroy_<T> exists, marked @(comp_on_destroy={component=T})
 	field_types:     []string, // rendered type of every field, for pointer-type registration
 	ref_tags:        []string, // `ref_tags="A,B"` on the attribute: capability tags for `ref:"@A"` fields
 	// Where the @(component) was declared, rendered by gen_facts.attr_origin.
@@ -117,34 +118,14 @@ components_provide :: proc(w: ^db.World) -> bool {
 	}
 	defer for k in struct_by_name do delete(k)
 
-	// @(comp_on_destroy={component=T}) procs, by "<package path>/<T>". They
-	// sit in T's own package: the generated registration calls them from
+	// The @(comp_awake) and @(comp_on_destroy) procs, by "<package path>/<T>".
+	// They sit in T's own package: the generated registration calls them from
 	// there. A proc still named by the old on_destroy_<T> convention would
 	// never be called, so it stops the build.
-	on_destroy := make(map[string][dynamic]string, context.temp_allocator)
-	{
-		procs := db.get_comps(w, gen_facts.Proc_GenComp)
-		pm := db.all_of(db.r(decls), db.r(procs), db.r(attrs)); defer db.matcher_destroy(&pm)
-		for entity in db.matched(w, &pm) {
-			decl := db.get(decls, entity)
-			if decl.name == "" do continue
-			args, found := gen_facts.attr_find(db.get(attrs, entity), "comp_on_destroy")
-			if !found do continue
-			comp := args.fields["component"]
-			if comp == "" do comp = gen_facts.attr_keyname(args, "component")
-			if comp == "" || strings.contains(comp, ".") {
-				fmt.eprintf("components_gen: %s.%s: @(comp_on_destroy) names its component with component=T, a type of the same package\n", decl.pkg.name, decl.name)
-				return false
-			}
-			if want := gen_facts.comp_proc_name("comp_on_destroy", comp); decl.name != want {
-				fmt.eprintf("components_gen: %s.%s: a @(comp_on_destroy={{component=%s}}) proc is named %s\n", decl.pkg.name, decl.name, comp, want)
-				return false
-			}
-			key := fmt.tprintf("%s/%s", decl.pkg_path, comp)
-			if key not_in on_destroy do on_destroy[key] = make([dynamic]string, context.temp_allocator)
-			append(&on_destroy[key], decl.name)
-		}
-	}
+	awake, ok_awake := _scan_comp_procs(w, "comp_awake")
+	if !ok_awake do return false
+	on_destroy, ok_destroy := _scan_comp_procs(w, "comp_on_destroy")
+	if !ok_destroy do return false
 	{
 		procs := db.get_comps(w, gen_facts.Proc_GenComp)
 		pm := db.all_of(db.r(decls), db.r(procs)); defer db.matcher_destroy(&pm)
@@ -159,6 +140,10 @@ components_provide :: proc(w: ^db.World) -> bool {
 			return false
 		}
 	}
+
+	// Every @(component) by "<package path>/<T>", so a hook naming no
+	// component is caught after the loop.
+	claimed := make(map[string]bool, context.temp_allocator)
 
 	m := db.all_of(db.r(decls), db.r(structs), db.r(attrs)); defer db.matcher_destroy(&m)
 	for entity in db.matched(w, &m) {
@@ -193,6 +178,8 @@ components_provide :: proc(w: ^db.World) -> bool {
 				fmt.eprintf("components_gen: @(component) %s.%s has no @(typ_guid) guid\n", decl.pkg.name, type_name)
 				return false
 			}
+			key := fmt.tprintf("%s/%s", decl.pkg_path, type_name)
+			claimed[key] = true
 			db.set(_components, entity, gen_facts.Component_GenComp{
 				kind            = .Component,
 				snake_name      = snake,
@@ -201,7 +188,8 @@ components_provide :: proc(w: ^db.World) -> bool {
 				pkg             = decl.pkg.name,
 				pkg_path        = decl.pkg_path,
 				max             = gen_facts.attr_int(args, "max"),
-				on_destroy_procs = on_destroy[fmt.tprintf("%s/%s", decl.pkg_path, type_name)][:],
+				has_awake       = key in awake,
+				has_on_destroy  = key in on_destroy,
 				field_types     = field_types[:],
 				ref_tags        = _split_tags(args.fields["ref_tags"]),
 				origin          = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, type_name),
@@ -220,7 +208,44 @@ components_provide :: proc(w: ^db.World) -> bool {
 			})
 		}
 	}
+	for hooks in ([]map[string]string{awake, on_destroy}) {
+		for key, proc_name in hooks {
+			if key in claimed do continue
+			fmt.eprintf("components_gen: %s names a component its package does not declare: no @(component) %s\n", proc_name, key)
+			return false
+		}
+	}
 	return true
+}
+
+// The procs marked @(<attribute>={component=T}), by "<package path>/<T>",
+// each to "<package>.<proc>" for error messages. T is unqualified, a type of
+// the proc's own package, and the proc is named <attribute>_<T>. A violation
+// stops the build.
+_scan_comp_procs :: proc(w: ^db.World, attribute: string) -> (found: map[string]string, ok: bool) {
+	decls := db.get_comps_DeclInfo()
+	attrs := db.get_comps(w, gen_facts.Attrs_GenComp)
+	procs := db.get_comps(w, gen_facts.Proc_GenComp)
+	found = make(map[string]string, context.temp_allocator)
+	pm := db.all_of(db.r(decls), db.r(procs), db.r(attrs)); defer db.matcher_destroy(&pm)
+	for entity in db.matched(w, &pm) {
+		decl := db.get(decls, entity)
+		if decl.name == "" do continue
+		args, tagged := gen_facts.attr_find(db.get(attrs, entity), attribute)
+		if !tagged do continue
+		comp := args.fields["component"]
+		if comp == "" do comp = gen_facts.attr_keyname(args, "component")
+		if comp == "" || strings.contains(comp, ".") {
+			fmt.eprintf("components_gen: %s.%s: @(%s) names its component with component=T, a type of the same package\n", decl.pkg.name, decl.name, attribute)
+			return nil, false
+		}
+		if want := gen_facts.comp_proc_name(attribute, comp); decl.name != want {
+			fmt.eprintf("components_gen: %s.%s: a @(%s={{component=%s}}) proc is named %s\n", decl.pkg.name, decl.name, attribute, comp, want)
+			return nil, false
+		}
+		found[fmt.tprintf("%s/%s", decl.pkg_path, comp)] = fmt.tprintf("%s.%s", decl.pkg.name, decl.name)
+	}
+	return found, true
 }
 
 // Every field type of the struct, then of every same-package struct those
@@ -273,7 +298,8 @@ _collect_data :: proc(w: ^db.World) -> _ComponentData {
 				pkg             = component.pkg,
 				pkg_path        = component.pkg_path,
 				max             = component.max,
-				on_destroy_procs = component.on_destroy_procs,
+				has_awake       = component.has_awake,
+				has_on_destroy  = component.has_on_destroy,
 				field_types     = component.field_types,
 				ref_tags        = component.ref_tags,
 				origin          = component.origin,
@@ -377,10 +403,11 @@ _write_desc_registrations :: proc(b: ^strings.Builder, entries: []ComponentEntry
 		fmt.sbprintf(b, "\t\t\tpool_destroy = proc(pool: rawptr) {{ free(cast(^%s)pool) }},\n", pool_t)
 		fmt.sbprintf(b, "\t\t\tmake_entry = proc(pool: rawptr) -> %sPool_Entry {{ return %spool_make_entry(cast(^%s)pool) }},\n", qual, qual, pool_t)
 		fmt.sbprintf(b, "\t\t\teach_alive = proc(pool: rawptr, fn: proc(key: %sTypeKey, comp: rawptr)) {{\n\t\t\t\tit := %spool_iterator(cast(^%s)pool)\n\t\t\t\tfor data, _ in %spool_next(&it) do fn(.%s, data)\n\t\t\t}},\n", qual, qual, pool_t, qual, e.type_name)
-		if len(e.on_destroy_procs) > 0 {
-			fmt.sbprintf(b, "\t\t\ton_destroy = proc(ptr: rawptr) {{")
-			for p in e.on_destroy_procs do fmt.sbprintf(b, " %s(cast(^%s)ptr);", p, e.type_name)
-			strings.write_string(b, " },\n")
+		if e.has_awake {
+			fmt.sbprintf(b, "\t\t\tawake = proc(ptr: rawptr) {{ comp_awake_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
+		}
+		if e.has_on_destroy {
+			fmt.sbprintf(b, "\t\t\ton_destroy = proc(ptr: rawptr) {{ comp_on_destroy_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
 		}
 		if len(e.ref_tags) > 0 {
 			strings.write_string(b, "\t\t\tref_tags = {")
@@ -515,6 +542,8 @@ components_generate :: proc(w: ^db.World) -> bool {
 	}
 	strings.write_string(&b, "\text_pools: [TypeKey]rawptr,\n")
 	strings.write_string(&b, "\tpool_table: [TypeKey]Pool_Entry,\n")
+	strings.write_string(&b, "\t// Objects transform_destroy_later queued, destroyed at the end of the frame tick.\n")
+	strings.write_string(&b, "\tdestroy_queue: [dynamic]Transform_Handle,\n")
 	strings.write_string(&b, "}\n\n")
 
 	strings.write_string(&b, "w_init :: proc(w:^World)\n")
@@ -609,10 +638,12 @@ components_generate :: proc(w: ^db.World) -> bool {
 		strings.write_string(&b, "}\n\n")
 	}
 
-	strings.write_string(&b, "// Every component still alive leaves the world (its @(comp_on_destroy) procs, then\n")
-	strings.write_string(&b, "// cleanup_T) with its pool, then the transforms' own heap goes.\n")
+	strings.write_string(&b, "// Every component still alive leaves the world (component_on_destroy) with its\n")
+	strings.write_string(&b, "// pool, then the transforms' own heap and the destroy queue go.\n")
 	strings.write_string(&b, "world_destroy_all :: proc(w: ^World) {\n")
 	strings.write_string(&b, "\t_world_destroy_ext(w)\n")
+	strings.write_string(&b, "\tdelete(w.destroy_queue)\n")
+	strings.write_string(&b, "\tw.destroy_queue = {}\n")
 	strings.write_string(&b, "\tit := pool_iterator(&w.transforms)\n")
 	strings.write_string(&b, "\tfor t, _ in pool_next(&it) {\n")
 	strings.write_string(&b, "\t\tdelete(t.name)\n")

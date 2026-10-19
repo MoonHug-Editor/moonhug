@@ -33,14 +33,9 @@ reset_Rigidbody :: proc(comp: ^Rigidbody) {
 	comp.use_gravity = true
 }
 
+// Runs on destroy, removal, Reset and undo: the body goes with the
+// component, or it keeps colliding as a ghost.
 cleanup_Rigidbody :: proc(comp: ^Rigidbody) {
 	_destroy_body(&comp.body)
 	engine.comp_zero(comp)
-}
-
-// Live destroy (transform_destroy_components) — the body must die with the
-// component or it keeps colliding as a ghost.
-@(comp_on_destroy={component=Rigidbody})
-comp_on_destroy_Rigidbody :: proc(comp: ^Rigidbody) {
-	_destroy_body(&comp.body)
 }

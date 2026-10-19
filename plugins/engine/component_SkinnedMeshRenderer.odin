@@ -76,11 +76,6 @@ skinned_mesh_world_bounds :: proc(smr: ^SkinnedMeshRenderer) -> (lo, hi: [3]f32,
     return smr.posed_min, smr.posed_max, true
 }
 
-@(comp_on_destroy={component=SkinnedMeshRenderer})
-comp_on_destroy_SkinnedMeshRenderer :: proc(smr: ^SkinnedMeshRenderer) {
-    cleanup_SkinnedMeshRenderer(smr)
-}
-
 cleanup_SkinnedMeshRenderer :: proc(smr: ^SkinnedMeshRenderer) {
     if smr.bound_ready do gfx.skinned_mesh_destroy(&smr.gpu)
     delete(smr.joints)
