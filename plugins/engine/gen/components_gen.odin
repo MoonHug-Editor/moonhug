@@ -29,6 +29,11 @@ ComponentEntry :: struct {
 	has_on_destroy:  bool, // comp_on_destroy_<T> exists, marked @(comp_on_destroy={component=T})
 	has_on_enable:   bool, // comp_on_enable_<T> exists, marked @(comp_on_enable={component=T})
 	has_on_disable:  bool, // comp_on_disable_<T> exists, marked @(comp_on_disable={component=T})
+	// The physics contact hooks, comp_<hook>_<T> marked @(comp_<hook>={component=T}).
+	has_on_collision_enter: bool,
+	has_on_collision_exit:  bool,
+	has_on_trigger_enter:   bool,
+	has_on_trigger_exit:    bool,
 	field_types:     []string, // rendered type of every field, for pointer-type registration
 	ref_tags:        []string, // `ref_tags="A,B"` on the attribute: capability tags for `ref:"@A"` fields
 	// Where the @(component) was declared, rendered by gen_facts.attr_origin.
@@ -133,6 +138,14 @@ components_provide :: proc(w: ^db.World) -> bool {
 	if !ok_enable do return false
 	on_disable, ok_disable := _scan_comp_procs(w, "comp_on_disable")
 	if !ok_disable do return false
+	collision_enter, ok_ce := _scan_comp_procs(w, "comp_on_collision_enter")
+	if !ok_ce do return false
+	collision_exit, ok_cx := _scan_comp_procs(w, "comp_on_collision_exit")
+	if !ok_cx do return false
+	trigger_enter, ok_te := _scan_comp_procs(w, "comp_on_trigger_enter")
+	if !ok_te do return false
+	trigger_exit, ok_tx := _scan_comp_procs(w, "comp_on_trigger_exit")
+	if !ok_tx do return false
 	{
 		procs := db.get_comps(w, gen_facts.Proc_GenComp)
 		pm := db.all_of(db.r(decls), db.r(procs)); defer db.matcher_destroy(&pm)
@@ -199,6 +212,10 @@ components_provide :: proc(w: ^db.World) -> bool {
 				has_on_destroy  = key in on_destroy,
 				has_on_enable   = key in on_enable,
 				has_on_disable  = key in on_disable,
+				has_on_collision_enter = key in collision_enter,
+				has_on_collision_exit  = key in collision_exit,
+				has_on_trigger_enter   = key in trigger_enter,
+				has_on_trigger_exit    = key in trigger_exit,
 				field_types     = field_types[:],
 				ref_tags        = _split_tags(args.fields["ref_tags"]),
 				origin          = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, type_name),
@@ -217,7 +234,7 @@ components_provide :: proc(w: ^db.World) -> bool {
 			})
 		}
 	}
-	for hooks in ([]map[string]string{awake, on_destroy, on_enable, on_disable}) {
+	for hooks in ([]map[string]string{awake, on_destroy, on_enable, on_disable, collision_enter, collision_exit, trigger_enter, trigger_exit}) {
 		for key, proc_name in hooks {
 			if key in claimed do continue
 			fmt.eprintf("components_gen: %s names a component its package does not declare: no @(component) %s\n", proc_name, key)
@@ -311,6 +328,10 @@ _collect_data :: proc(w: ^db.World) -> _ComponentData {
 				has_on_destroy  = component.has_on_destroy,
 				has_on_enable   = component.has_on_enable,
 				has_on_disable  = component.has_on_disable,
+				has_on_collision_enter = component.has_on_collision_enter,
+				has_on_collision_exit  = component.has_on_collision_exit,
+				has_on_trigger_enter   = component.has_on_trigger_enter,
+				has_on_trigger_exit    = component.has_on_trigger_exit,
 				field_types     = component.field_types,
 				ref_tags        = component.ref_tags,
 				origin          = component.origin,
@@ -425,6 +446,10 @@ _write_desc_registrations :: proc(b: ^strings.Builder, entries: []ComponentEntry
 		}
 		if e.has_on_disable {
 			fmt.sbprintf(b, "\t\t\ton_disable = proc(ptr: rawptr) {{ comp_on_disable_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
+		}
+		for hook, i in ([4]string{"on_collision_enter", "on_collision_exit", "on_trigger_enter", "on_trigger_exit"}) {
+			if !([4]bool{e.has_on_collision_enter, e.has_on_collision_exit, e.has_on_trigger_enter, e.has_on_trigger_exit})[i] do continue
+			fmt.sbprintf(b, "\t\t\t%s = proc(ptr: rawptr, other: %sTransform_Handle) {{ comp_%s_%s(cast(^%s)ptr, other) }},\n", hook, qual, hook, e.type_name, e.type_name)
 		}
 		if len(e.ref_tags) > 0 {
 			strings.write_string(b, "\t\t\tref_tags = {")

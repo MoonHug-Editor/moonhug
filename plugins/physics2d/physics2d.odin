@@ -96,6 +96,16 @@ physics_step :: proc(fixed_dt: f32) {
 	b2.World_Step(_state.world, fixed_dt, _SUB_STEPS)
 	_write_back(w)
 	_collect_events(w)
+	_dispatch_events()
+}
+
+// The step's begin and end events reach the components' contact hooks
+// (engine/physics_hooks.odin) in the same tick, after the solver is done.
+_dispatch_events :: proc() {
+	for c in _state.contact_begin do engine.physics_contact_dispatch(.Collision_Enter, c.a, c.b)
+	for c in _state.contact_end do engine.physics_contact_dispatch(.Collision_Exit, c.a, c.b)
+	for c in _state.sensor_begin do engine.physics_contact_dispatch(.Trigger_Enter, c.a, c.b)
+	for c in _state.sensor_end do engine.physics_contact_dispatch(.Trigger_Exit, c.a, c.b)
 }
 
 _ensure_world :: proc() {

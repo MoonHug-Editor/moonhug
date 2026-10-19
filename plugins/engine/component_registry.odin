@@ -43,6 +43,11 @@ Component_Desc :: struct {
 	on_destroy:  proc(comp: rawptr),
 	on_enable:   proc(comp: rawptr),
 	on_disable:  proc(comp: rawptr),
+	// The physics contact hooks (physics_hooks.odin), nil = none.
+	on_collision_enter: Physics_Hook_Proc,
+	on_collision_exit:  Physics_Hook_Proc,
+	on_trigger_enter:   Physics_Hook_Proc,
+	on_trigger_exit:    Physics_Hook_Proc,
 
 	// Capability tags a reference field can name with `ref:"@Tag"` instead of
 	// a type: every registered component carrying the tag is a valid target.
@@ -112,6 +117,7 @@ component_register :: proc(desc: Component_Desc) {
 		if desc.on_destroy != nil do component_on_destroy_procs[desc.type_key] = desc.on_destroy
 		if desc.on_enable != nil do component_on_enable_procs[desc.type_key] = desc.on_enable
 		if desc.on_disable != nil do component_on_disable_procs[desc.type_key] = desc.on_disable
+		_physics_hooks_register(desc)
 	}
 
 	// Outside the override block: pools belong to the WORLD and must be

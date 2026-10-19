@@ -20,6 +20,10 @@ Transform :: struct {
     // Queued by transform_destroy_later: the object goes at the end of the
     // frame tick. Set, it keeps a second call from queueing it twice.
     destroy: bool `json:"-"`,
+    // A component of this object may have a physics contact hook
+    // (physics_hooks.odin). Set when such a component awakes, cleared by a
+    // dispatch that finds none.
+    physics_hooked: bool `json:"-"`,
     nested_owned: bool `json:"-"`,
     position: [3]f32,
     rotation: [4]f32,

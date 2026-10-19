@@ -215,6 +215,11 @@ Component_GenComp :: struct {
 	has_on_destroy:  bool, // the type has a @(comp_on_destroy) proc, named comp_on_destroy_<T>
 	has_on_enable:   bool, // the type has a @(comp_on_enable) proc, named comp_on_enable_<T>
 	has_on_disable:  bool, // the type has a @(comp_on_disable) proc, named comp_on_disable_<T>
+	// The physics contact hooks: @(comp_on_collision_enter) and so on, named comp_<hook>_<T>.
+	has_on_collision_enter: bool,
+	has_on_collision_exit:  bool,
+	has_on_trigger_enter:   bool,
+	has_on_trigger_exit:    bool,
 	field_types:     []string,
 	ref_tags:        []string,
 	origin:          string,

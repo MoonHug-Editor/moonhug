@@ -65,6 +65,15 @@ When comp_on_destroy runs (`comp_on_disable` first when the instance was enabled
 - The object is destroyed, the component removed or its scene unloaded, while the game runs (`component_on_destroy`, the path every destroy takes).
 - Play stops (`application_set_playing(false)`): every live component of the game world, type by type, while the game still runs. Simulate's Stop does this before its restore, and the player at `EngineShutdown` before anything shuts down. The destroys after it only run `cleanup_T`.
 
+### Physics contact hooks
+
+Four more hooks, `comp_on_collision_enter`, `comp_on_collision_exit`, `comp_on_trigger_enter` and `comp_on_trigger_exit`, are `proc(c: ^T, other: Transform_Handle)` named `comp_<hook>_T` (`physics_hooks.odin`):
+
+- A physics plugin polls its library's begin and end events after the solver step and calls `physics_contact_dispatch` for each, in the same fixed tick. A hook may destroy, spawn or push bodies freely: the step is over.
+- A hook runs on the components of the shape's own object only, not on its parents or children, with `other` the object of the other shape. Both objects of an event get their hooks.
+- There is no stay hook. A component that needs one keeps its own set from enter and exit.
+- `Transform.physics_hooked` skips objects without a hooked component: a component of a hooked type sets it at awake, and a dispatch that finds no hooked component clears it. A contact between two unhooked objects costs two bit tests.
+
 ### Destroying from game code
 
 `transform_destroy` destroys at once. Code that runs inside an update loop over a pool queues the object instead:

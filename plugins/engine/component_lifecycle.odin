@@ -123,6 +123,9 @@ component_awake :: proc(key: TypeKey, ptr: rawptr) {
 
 @(private = "file")
 _awake_one :: proc(key: TypeKey, ptr: rawptr) {
+	if component_physics_hooked[key] {
+		if t := pool_get(&ctx_world().transforms, Handle((cast(^CompData)ptr).owner)); t != nil do t.physics_hooked = true
+	}
 	if fn := component_awake_procs[key]; fn != nil do fn(ptr)
 }
 

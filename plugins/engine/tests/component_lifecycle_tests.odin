@@ -88,8 +88,17 @@ _disable_mr :: proc(ptr: rawptr) {
 }
 
 @(private = "file")
+_collision_mf :: proc(ptr: rawptr, other: engine.Transform_Handle) {
+	if !_recording do return
+	ot := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(other))
+	_rec(fmt.tprintf("collision_enter other=%s", ot != nil ? ot.name : "?"), .MeshFilter, ptr)
+}
+
+@(private = "file")
 _begin :: proc() {
 	sync.mutex_lock(&_lock)
+	engine.component_on_collision_enter_procs[.MeshFilter] = _collision_mf
+	engine.component_physics_hooked[.MeshFilter] = true
 	engine.component_awake_procs[.MeshFilter] = _awake_mf
 	engine.component_awake_procs[.MeshRenderer] = _awake_mr
 	engine.component_on_destroy_procs[.MeshFilter] = _destroy_mf
@@ -115,6 +124,8 @@ _end :: proc() {
 	engine.component_on_enable_procs[.MeshRenderer] = nil
 	engine.component_on_disable_procs[.MeshFilter] = nil
 	engine.component_on_disable_procs[.MeshRenderer] = nil
+	engine.component_on_collision_enter_procs[.MeshFilter] = nil
+	engine.component_physics_hooked[.MeshFilter] = false
 	sync.mutex_unlock(&_lock)
 }
 
@@ -420,4 +431,42 @@ test_enable_follows_undo_writes :: proc(t: ^testing.T) {
 	testing.expect(t, undo.apply_redo(s), "the toggle redoes")
 	_expect_log(t, {"disable A:MeshFilter"})
 	engine.enabled_verify()
+}
+
+// A contact event runs the hooks of the shape owners' own components, both
+// ways. An object with no hooked component is skipped by its bit, and the
+// bit clears once its hooked components are gone.
+@(test)
+test_physics_contact_hooks :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	_begin()
+	defer _end()
+
+	root := engine.Transform_Handle(tc.scene.root.handle)
+	a := _obj("A", root, .MeshFilter)
+	b := _obj("B", root, .MeshRenderer)
+	engine.physics_contact_dispatch(.Collision_Enter, a, b)
+	_expect_log(t, {})
+
+	engine.application_set_playing(true)
+	defer engine.application_set_playing(false)
+	_log_n = 0
+	at := engine.pool_get(&tc.world.transforms, engine.Handle(a))
+	bt := engine.pool_get(&tc.world.transforms, engine.Handle(b))
+	testing.expect(t, at.physics_hooked, "awake marks the object with a hooked component")
+	testing.expect(t, !bt.physics_hooked, "an object without one stays unmarked")
+
+	engine.physics_contact_dispatch(.Collision_Enter, b, a)
+	_expect_log(t, {"collision_enter other=B A:MeshFilter"})
+
+	owned, _ := engine.transform_get_comp_key(a, .MeshFilter)
+	engine.transform_remove_comp(a, owned.handle)
+	_expect_log(t, {"disable A:MeshFilter", "destroy A:MeshFilter"})
+	engine.physics_contact_dispatch(.Collision_Enter, a, b)
+	_expect_log(t, {})
+	testing.expect(t, !at.physics_hooked, "a dispatch that finds no hook clears the mark")
 }
