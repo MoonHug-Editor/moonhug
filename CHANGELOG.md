@@ -1,3 +1,15 @@
+## [0.136.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.135.0...v0.136.0) (2026-10-19)
+
+### Features
+
+* comp_awake, comp_on_destroy (playmode only), old on_destroy release procs removed (cleanup_T releases) ([bf3443e](https://github.com/MoonHug-Editor/moonhug/commit/bf3443eb4cbbcc953bf3e87e0a31589c6ee0eaf2))
+* rename comp related attributes ([827e93d](https://github.com/MoonHug-Editor/moonhug/commit/827e93d80eaa323b54c3eb90f2b24f8ed5063901))
+
+### Bug Fixes
+
+* gizmo flickering fix ([618ad8c](https://github.com/MoonHug-Editor/moonhug/commit/618ad8c1adcaf425eebb25308c7a15a6fc3a6741))
+* plugins can declare serialization hooks, array Add and Remove work in asset inspectors, Assets > Create refreshes, selects and never overwrites, plugin_example adds a Spawn Table asset showing both hooks ([17a02c0](https://github.com/MoonHug-Editor/moonhug/commit/17a02c0c3cb764a88bb6a4c9c46af15af9fc729d))
+
 ## [0.135.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.134.2...v0.135.0) (2026-10-18)
 
 ### Features
