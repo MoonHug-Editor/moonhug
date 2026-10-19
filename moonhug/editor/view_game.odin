@@ -1,5 +1,6 @@
 package editor
 
+import "core:fmt"
 import gfx "moonhug:libs/gfx"
 import im "moonhug:external/odin-imgui"
 import "menu"
@@ -46,6 +47,11 @@ game_size_flipped: bool
 // game view too (the scene view always shows them). Persists in editor_settings.
 @(view_menu={view="Game", label="Gizmos"})
 game_gizmos: bool
+
+// The render statistics panel over the game image (the toolbar's Stats
+// button): frame time, draw calls, instances, triangles and passes, averaged
+// over the last 60 rendered frames (gfx.stats_average).
+game_stats: bool
 
 GAME_TOOLBAR_PAD :: f32(4)
 
@@ -179,6 +185,42 @@ _draw_game_over :: proc() {
 	}
 }
 
+// The Stats panel: a box in the top right corner of the view's area under the
+// toolbar, over the letterbox or the image, with the last 60 frames'
+// averages. The editor renders the scene view in the same frames, so its
+// draws count too.
+@(private = "file")
+_draw_game_stats :: proc() {
+	view_min := im.GetWindowPos()
+	view_max := view_min + im.GetWindowSize()
+	avg, n := gfx.stats_average(60)
+	frame_ms := avg.cpu_ms + avg.wait_ms
+	fps := frame_ms > 0 ? 1000 / frame_ms : 0
+	lines := [?]cstring{
+		fmt.ctprintf("%.1f ms  %.0f FPS", frame_ms, fps),
+		fmt.ctprintf("CPU %.2f ms  GPU wait %.2f ms", avg.cpu_ms, avg.wait_ms),
+		fmt.ctprintf("Draw calls %d  Passes %d", avg.draw_calls, avg.passes),
+		fmt.ctprintf("Instances %d  Triangles %d", avg.instances, avg.triangles),
+		fmt.ctprintf("%d frames", n),
+	}
+	pad := im.Vec2{8, 6}
+	size := im.Vec2{0, 0}
+	for l in lines {
+		ts := im.CalcTextSize(l)
+		size.x = max(size.x, ts.x)
+		size.y += ts.y
+	}
+	rect_max := im.Vec2{view_max.x - 8, view_min.y + 8 + size.y + pad.y * 2}
+	rect_min := im.Vec2{rect_max.x - size.x - pad.x * 2, view_min.y + 8}
+	dl := im.GetWindowDrawList()
+	im.DrawList_AddRectFilled(dl, rect_min, rect_max, 0xAA222222, 4)
+	y := rect_min.y + pad.y
+	for l in lines {
+		im.DrawList_AddText(dl, {rect_min.x + pad.x, y}, 0xFFEEEEEE, l)
+		y += im.CalcTextSize(l).y
+	}
+}
+
 // Game view toolbar: Unity's size dropdown and scale slider. Drawn inside the
 // window above the image, taking its own height.
 @(private = "file")
@@ -235,11 +277,22 @@ _draw_game_toolbar :: proc(area: im.Vec2) {
 	// The slider takes the rest of the toolbar, so a wider view gives a longer
 	// track (the inspector's range rows stretch the same way). The right pad
 	// keeps the value box off the window edge.
+	// The Stats toggle sits at the right end, so the slider leaves it room.
+	stats_label: cstring = "Stats"
+	stats_w := im.CalcTextSize(stats_label).x + im.GetStyle().FramePadding.x * 2
 	im.BeginDisabled(free_size)
-	slider_w := max(im.GetContentRegionAvail().x - GAME_TOOLBAR_PAD, widgets.slider_width_for_track(40))
+	slider_w := max(im.GetContentRegionAvail().x - GAME_TOOLBAR_PAD * 2 - stats_w - im.GetStyle().ItemSpacing.x, widgets.slider_width_for_track(40))
 	widgets.slider_float("##game_scale", &game_scale, lo, GAME_SCALE_MAX, "%.2f", slider_w)
 	widgets.tooltip(free_size ? "Zoom applies to a fixed aspect or resolution" : "Zoom the rendered rect. 1x is the size's actual pixels", im.HoveredFlags_AllowWhenDisabled)
 	im.EndDisabled()
+
+	im.SameLine()
+	// Captured before the button, as the flip toggle above.
+	stats_on := game_stats
+	if stats_on do im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
+	if im.Button(stats_label) do game_stats = !game_stats
+	if stats_on do im.PopStyleColor()
+	widgets.tooltip("Render statistics over the last 60 frames")
 }
 
 draw_game_view :: proc() {
@@ -311,6 +364,7 @@ draw_game_view :: proc() {
 			}
 
 			_game_view_hovered = im.IsItemHovered()
+			if game_stats do _draw_game_stats()
 
 			if !had_camera {
 				// Centered on the part of the area in view.

@@ -65,6 +65,7 @@ EditorSettings :: struct {
     game_scale:               f32,                      // game view zoom (view_game.odin)
     game_size_flipped:        bool,                     // game view size width/height swap (view_game.odin)
     game_gizmos:              bool,                     // game view Gizmos toggle (view_game.odin)
+    game_stats:               bool,                     // game view Stats panel (view_game.odin)
     scene_gizmos_off:         bool,                     // scene view Gizmos toggle, inverted so an older file keeps it on (gizmos.scene_gizmos)
     gizmo_icon_px:            f32,                      // gizmo settings' Icon Size, 0 = the default
     gizmo_hidden_icons:       [dynamic]string,          // component types whose icon the gizmo settings hide
@@ -99,6 +100,7 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
             if editor_settings.game_scale > 0 do game_scale = editor_settings.game_scale
             game_size_flipped = editor_settings.game_size_flipped
             game_gizmos = editor_settings.game_gizmos
+            game_stats = editor_settings.game_stats
             gizmos.scene_gizmos = !editor_settings.scene_gizmos_off
             if editor_settings.gizmo_icon_px > 0 do handles.icon_px = editor_settings.gizmo_icon_px
             for name in editor_settings.gizmo_hidden_icons do gizmos.gizmo_type_set(name, .Icon, false)
@@ -177,6 +179,7 @@ save_editor_settings :: proc() {
     editor_settings.game_scale = game_scale
     editor_settings.game_size_flipped = game_size_flipped
     editor_settings.game_gizmos = game_gizmos
+    editor_settings.game_stats = game_stats
     editor_settings.scene_gizmos_off = !gizmos.scene_gizmos
     editor_settings.gizmo_icon_px = handles.icon_px
     delete(editor_settings.gizmo_hidden_icons)
