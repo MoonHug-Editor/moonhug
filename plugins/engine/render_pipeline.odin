@@ -398,6 +398,7 @@ _render_pipeline_shutdown :: proc() {
 	_active_built = false
 	_settings_loaded = false
 	_layers_shutdown()
+	_groups_shutdown()
 	delete(_frame_ran)
 	_frame_ran = nil
 	for k in _warned_slots do delete(k)

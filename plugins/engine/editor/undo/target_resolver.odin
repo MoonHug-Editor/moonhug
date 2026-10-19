@@ -19,7 +19,7 @@ install_target_resolver :: proc() {
 		pooled_base      = _pooled_base,
 		pooled_identity  = _pooled_identity,
 		fixup_refs       = _fixup_refs,
-		value_written    = engine.enabled_sync_handle,
+		value_written    = engine.editor_value_written,
 		scene_alive      = _scene_alive,
 		scene_mark_dirty = _scene_mark_dirty,
 		scene_name       = _scene_name,

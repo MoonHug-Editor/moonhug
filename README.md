@@ -86,6 +86,7 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 
 - [Asset Pipeline](docs/core/AssetPipeline.md) - asset importer/loader
 - [Components](plugins/engine/docs/Components.md) - component data layer: pools, handles, iteration contract
+- [Groups](plugins/engine/docs/Groups.md) - named groups of objects: a Groups component holds membership bits, alive and active lists per group kept by the lifecycle hooks, names in a Group Names asset
 - [Scenes](plugins/engine/docs/Scenes.md)
 - [Tweens](plugins/tween/docs/Tweens.md)
 - [Reference Handles](plugins/engine/docs/ReferenceHandles.md)

@@ -178,9 +178,18 @@ enabled_sync_subtree :: proc(tH: Transform_Handle) {
 	_walk(ctx_world(), tH, enabled_sync)
 }
 
+// After the editor wrote a value into a pooled target (the inspector, undo
+// and redo, an MCP write, a multi-edit): the game state that follows the
+// value catches up. The enable hooks for every write, the group lists for a
+// Groups component. The undo stack calls it with the owner's handle.
+editor_value_written :: proc(h: Handle) {
+	enabled_sync_handle(h)
+	if !game_running() || h.type_key != .Groups do return
+	if ptr := world_pool_get(ctx_world(), h); ptr != nil do groups_resync(cast(^Groups)ptr)
+}
+
 // enabled_sync for the owner of a pooled handle: an object's subtree, or one
-// component. The undo stack calls it after every value write (the inspector,
-// undo and redo, an MCP write, a multi-edit).
+// component.
 enabled_sync_handle :: proc(h: Handle) {
 	if !game_running() || !_type_key_valid(h.type_key) do return
 	if h.type_key == .Transform {
