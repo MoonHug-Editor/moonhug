@@ -1468,7 +1468,7 @@ _draw_components_section_nested :: proc(
 		_draw_components_section_nested_rows(t, tH, host_tH, w, common, multi)
 	}
 
-	_draw_add_component_button_nested(t, tH, host_tH)
+	_draw_add_component_button(t, tH, nested = true)
 }
 
 @(private)
@@ -1613,32 +1613,12 @@ _draw_components_section_nested_rows :: proc(
 	}
 }
 
-// Add Component on prefab-instance content. The add itself is the shared path
-// (component_add_to_selected records the addition on the instance's NestedScene);
-// this only supplies the button, with its own popup id so it can't collide with
-// the non-nested one.
+// The Add Component button with the searchable popup. The add itself is the
+// shared path (component_add_to_selected), which on prefab-instance content
+// records the addition on the instance's NestedScene. `nested` only changes
+// the tooltip.
 @(private)
-_draw_add_component_button_nested :: proc(t: ^engine.Transform, tH: engine.Transform_Handle, host_tH: engine.Transform_Handle) {
-	im.Spacing()
-	im.Separator()
-	im.Spacing()
-
-	avail := im.GetContentRegionAvail().x
-	btn_w: f32 = 220
-	im.SetCursorPosX((avail - btn_w) * 0.5 + im.GetCursorPosX())
-	if im.Button("Add Component", im.Vec2{btn_w, 0}) {
-		im.OpenPopup("##AddComponentPopupNested")
-	}
-	widgets.tooltip("Adds a component to this prefab instance only (recorded as an override)")
-
-	if im.BeginPopup("##AddComponentPopupNested") {
-		menu.draw_menu_subtree("Component")
-		im.EndPopup()
-	}
-}
-
-@(private)
-_draw_add_component_button :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
+_draw_add_component_button :: proc(t: ^engine.Transform, tH: engine.Transform_Handle, nested := false) {
 	im.Spacing()
 	im.Separator()
 	im.Spacing()
@@ -1649,6 +1629,7 @@ _draw_add_component_button :: proc(t: ^engine.Transform, tH: engine.Transform_Ha
 	if im.Button("Add Component", im.Vec2{btn_w, 0}) {
 		im.OpenPopup("##AddComponentPopup")
 	}
+	if nested do widgets.tooltip("Adds a component to this prefab instance only (recorded as an override)")
 
 	if im.BeginPopup("##AddComponentPopup") {
 		add_component_popup_draw()
