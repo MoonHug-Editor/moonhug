@@ -1,3 +1,10 @@
+## [0.137.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.136.0...v0.137.0) (2026-10-19)
+
+### Features
+
+* comp_on_enable, comp_on_disable ([01f04cd](https://github.com/MoonHug-Editor/moonhug/commit/01f04cd70e9cf556e7ddfb067b97064a22c9b0ce))
+* physics contact hooks comp_on_collision_enter/exit and comp_on_trigger_enter/exit, dispatched by physics2d/3d after the step in the same fixed tick ([fc02310](https://github.com/MoonHug-Editor/moonhug/commit/fc02310f997cdaaf77230bf33f971a2e67d60884))
+
 ## [0.136.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.135.0...v0.136.0) (2026-10-19)
 
 ### Features
