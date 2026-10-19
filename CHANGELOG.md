@@ -1,3 +1,9 @@
+## [0.138.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.137.0...v0.138.0) (2026-10-19)
+
+### Features
+
+* game view stats panel toggle ([01b0c0b](https://github.com/MoonHug-Editor/moonhug/commit/01b0c0b0c8596332a2ec1bfe7fd95d96f148688a))
+
 ## [0.137.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.136.0...v0.137.0) (2026-10-19)
 
 ### Features
