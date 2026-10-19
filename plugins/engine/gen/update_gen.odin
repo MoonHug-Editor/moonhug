@@ -26,8 +26,8 @@ package engine_gen
 //
 // The comp_ attributes (comp_update, comp_late_update, comp_fixed_update) name
 // a @(component) or @(poolable) type and are the only per-component shape: a
-// plain attribute with component= stops the build. By convention the proc is
-// named `<attribute>_<T>`. The generated wrapper `__<proc>` iterates its pool,
+// plain attribute with component= stops the build. The proc is named
+// `<attribute>_<T>`, which the generator enforces. The generated wrapper `__<proc>` iterates its pool,
 // skips disabled components (a poolable has no `enabled`, every alive item
 // runs) and calls the proc.
 
@@ -91,6 +91,10 @@ update_provide :: proc(w: ^db.World) -> bool {
 				}
 				if !per_item && component != "" {
 					fmt.eprintf("update_gen: %s.%s: @(%s) is a system, the per-component shape is @(%s={component=%s})\n", decl.pkg.name, decl.name, key, _attr_name(k, true), component)
+					return false
+				}
+				if want := gen_facts.comp_proc_name(key, component); per_item && decl.name != want {
+					fmt.eprintf("update_gen: %s.%s: a @(%s={{component=%s}}) proc is named %s\n", decl.pkg.name, decl.name, key, component, want)
 					return false
 				}
 				divisor := k == .Fixed ? max(gen_facts.attr_int(args, "divisor"), 1) : 0

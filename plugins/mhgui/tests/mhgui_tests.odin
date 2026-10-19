@@ -739,7 +739,7 @@ _ui_case :: proc() -> _UI_Case {
 @(private = "file")
 _rect_tool :: proc(user: rawptr) {
 	c := cast(^_UI_Case)user
-	mhgui_editor.rect_transform_handles(c.rt, handles.Gizmo_Context{state = {.Selected, .Active, .In_Selection}, tool = .Handles})
+	mhgui_editor.comp_on_scene_handles_RectTransform(c.rt, handles.Gizmo_Context{state = {.Selected, .Active, .In_Selection}, tool = .Handles})
 }
 
 // With snapping on (a 10 unit step), the rect tool's body moves by whole

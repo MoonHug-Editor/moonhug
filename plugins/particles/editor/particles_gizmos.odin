@@ -26,7 +26,7 @@ _SHAPE_GIZMO_LENGTH :: f32(1)
 _ICON_GLYPH :: '\ue80f'
 
 @(comp_on_draw_gizmos={component=ParticleSystem})
-particle_shape_gizmos :: proc(ps: ^particles.ParticleSystem, ctx: handles.Gizmo_Context) {
+comp_on_draw_gizmos_ParticleSystem :: proc(ps: ^particles.ParticleSystem, ctx: handles.Gizmo_Context) {
 	owner := engine.Transform_Handle(ps.owner)
 	handles.icon(engine.transform_world_position(owner), owner, _ICON_GLYPH)
 	if .In_Selection not_in ctx.state do return
@@ -76,7 +76,7 @@ particle_shape_gizmos :: proc(ps: ^particles.ParticleSystem, ctx: handles.Gizmo_
 _edit: undo.Edit_Session
 
 @(comp_on_scene_handles={component=ParticleSystem})
-particle_shape_handles :: proc(ps: ^particles.ParticleSystem, ctx: handles.Gizmo_Context) {
+comp_on_scene_handles_ParticleSystem :: proc(ps: ^particles.ParticleSystem, ctx: handles.Gizmo_Context) {
 	if ctx.tool != .Handles do return
 	h, ok := engine.comp_handle_of(&ps.base)
 	if !ok do return

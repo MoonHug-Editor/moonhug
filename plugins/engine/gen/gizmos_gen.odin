@@ -72,10 +72,16 @@ gizmos_provide :: proc(w: ^db.World) -> bool {
 				return false
 			}
 		}
-		if args, found := gen_facts.attr_find(attr_set, "comp_on_draw_gizmos"); found {
-			db.set(_gizmos, entity, Gizmos_GenComp{component = _component_arg(args), kind = .Draw})
-		} else if args, hfound := gen_facts.attr_find(attr_set, "comp_on_scene_handles"); hfound {
-			db.set(_gizmos, entity, Gizmos_GenComp{component = _component_arg(args), kind = .Handles})
+		for key, kind in ([2]struct{key: string, kind: Gizmo_Hook_Kind}{{"comp_on_draw_gizmos", .Draw}, {"comp_on_scene_handles", .Handles}}) {
+			args, found := gen_facts.attr_find(attr_set, key.key)
+			if !found do continue
+			component := _component_arg(args)
+			if want := gen_facts.comp_proc_name(key.key, component); decl.name != want {
+				fmt.eprintf("gizmos_gen: %s.%s: a @(%s={{component=%s}}) proc is named %s\n", decl.pkg.name, decl.name, key.key, component, want)
+				return false
+			}
+			db.set(_gizmos, entity, Gizmos_GenComp{component = component, kind = key.kind})
+			break
 		}
 	}
 	return true

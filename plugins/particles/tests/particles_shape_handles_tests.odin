@@ -1,6 +1,6 @@
 package particles_tests
 
-// Particle shape handles (particles_editor.particle_shape_handles) through the
+// Particle shape handles (particles_editor.comp_on_scene_handles_ParticleSystem) through the
 // real hook: in the Handles tool (T) the cone's far rim opens the angle, in
 // other tools nothing edits the shape.
 
@@ -20,7 +20,7 @@ _Case :: struct {
 @(private = "file")
 _body :: proc(user: rawptr) {
 	c := cast(^_Case)user
-	particles_editor.particle_shape_handles(c.ps, handles.Gizmo_Context{state = {.Selected}, tool = c.tool})
+	particles_editor.comp_on_scene_handles_ParticleSystem(c.ps, handles.Gizmo_Context{state = {.Selected}, tool = c.tool})
 }
 
 // Emission along +Z toward the camera: base radius 0.5 and 0.3 radians put the

@@ -39,7 +39,7 @@ _icon_speaker :: proc() {
 _WAVE :: f32(0.7) // half the sound waves' angle, radians
 
 @(comp_on_draw_gizmos={component=AudioSource})
-audio_source_gizmos :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) {
+comp_on_draw_gizmos_AudioSource :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) {
 	pos := engine.transform_world_position(a.owner)
 	handles.icon(pos, a.owner, _icon_speaker)
 	if .In_Selection not_in ctx.state do return
@@ -49,7 +49,7 @@ audio_source_gizmos :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) {
 }
 
 @(comp_on_scene_handles={component=AudioSource})
-audio_source_handles :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) {
+comp_on_scene_handles_AudioSource :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) {
 	h, ok := engine.comp_handle_of(&a.base)
 	if !ok do return
 	pos := engine.transform_world_position(a.owner)

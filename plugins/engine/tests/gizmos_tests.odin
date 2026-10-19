@@ -424,7 +424,7 @@ test_icon_picking :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(lamp, .Light)
 	l := cast(^engine.Light)raw
 	l.enabled = true
-	scene_tools.light_gizmos(l, handles.Gizmo_Context{})
+	scene_tools.comp_on_draw_gizmos_Light(l, handles.Gizmo_Context{})
 	testing.expect_value(t, len(gizmos.icons({.Game, .Editor, .Tools})), 1)
 
 	at, _ := gizmos.helper_project_in(v, {1, 0, 0})
@@ -572,7 +572,7 @@ test_scene_gizmos_toggle :: proc(t: ^testing.T) {
 	l.enabled = true
 	{
 		gizmos.with_channel(.Editor)
-		scene_tools.light_gizmos(l, handles.Gizmo_Context{})
+		scene_tools.comp_on_draw_gizmos_Light(l, handles.Gizmo_Context{})
 	}
 	at, _ := gizmos.helper_project_in(v, {0, 0, 0})
 	_, ok := scene_tools.scene_view_pick(v, at.x, at.y)

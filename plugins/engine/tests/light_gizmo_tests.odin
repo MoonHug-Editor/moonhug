@@ -14,7 +14,7 @@ import "moonhug:packages/engine/editor/scene_tools"
 
 @(private = "file")
 _light_body :: proc(user: rawptr) {
-	scene_tools.light_handles(cast(^engine.Light)user, handles.Gizmo_Context{state = {.Selected, .Active, .In_Selection}, tool = .Translate})
+	scene_tools.comp_on_scene_handles_Light(cast(^engine.Light)user, handles.Gizmo_Context{state = {.Selected, .Active, .In_Selection}, tool = .Translate})
 }
 
 // Turned so its forward (-Z) points along +X: range 2 puts the tip at

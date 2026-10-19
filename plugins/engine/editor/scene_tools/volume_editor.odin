@@ -24,7 +24,7 @@ VOLUME_GIZMO_COLOR :: [4]f32{0.55, 0.85, 1, 0.6}
 // The box, and the blend distance's outer box around it (world units, so
 // drawn without the transform's scale).
 @(comp_on_draw_gizmos={component=Volume})
-volume_gizmos :: proc(v: ^engine.Volume, ctx: handles.Gizmo_Context) {
+comp_on_draw_gizmos_Volume :: proc(v: ^engine.Volume, ctx: handles.Gizmo_Context) {
 	if .In_Selection not_in ctx.state || v.global do return
 	tH := engine.Transform_Handle(v.owner)
 	gizmos.with_color(VOLUME_GIZMO_COLOR)

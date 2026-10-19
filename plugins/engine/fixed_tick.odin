@@ -133,8 +133,8 @@ Update_Proc :: proc(dt: f32)
 // with the frame's delta time in seconds.
 //
 // `component = T` names a @(component) or @(poolable) type (every alive
-// instance of a poolable runs), and the proc is `proc(dt: f32, c: ^T)`, by
-// convention named `comp_update_<T>`. `order` sorts it among every @(update)
+// instance of a poolable runs), and the proc is `proc(dt: f32, c: ^T)`,
+// named `comp_update_<T>` (the generator enforces it). `order` sorts it among every @(update)
 // and @(comp_update) proc. The generated loop lives in update_generated.odin
 // next to the dispatcher.
 @(extension_point={attribute="comp_update", target="proc", fields="order component"})
@@ -150,8 +150,8 @@ Comp_Update_Proc :: proc(dt: f32, c: rawptr)
 Late_Update_Proc :: proc(dt: f32)
 
 // @(late_update) for every enabled instance of one component type:
-// `component = T`, `proc(dt: f32, c: ^T)` named `comp_late_update_<T>` by
-// convention, as for @(comp_update).
+// `component = T`, `proc(dt: f32, c: ^T)` named `comp_late_update_<T>`, as for
+// @(comp_update).
 @(extension_point={attribute="comp_late_update", target="proc", fields="order component"})
 Comp_Late_Update_Proc :: proc(dt: f32, c: rawptr)
 
@@ -165,7 +165,7 @@ Fixed_Update_Proc :: proc(fixed_dt: f32)
 
 // @(fixed_update) for every enabled instance of one component type:
 // `component = T`, `proc(fixed_dt: f32, c: ^T)` named
-// `comp_fixed_update_<T>` by convention. `order` and `divisor` work as for
+// `comp_fixed_update_<T>`. `order` and `divisor` work as for
 // @(fixed_update).
 @(extension_point={attribute="comp_fixed_update", target="proc", fields="order divisor component"})
 Comp_Fixed_Update_Proc :: proc(fixed_dt: f32, c: rawptr)

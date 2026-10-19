@@ -16,19 +16,19 @@ import "moonhug:editor/undo"
 import physics3d "moonhug:packages/physics3d"
 
 @(comp_on_draw_gizmos={component=BoxCollider})
-box_collider_gizmos :: proc(c: ^physics3d.BoxCollider, ctx: handles.Gizmo_Context) {
+comp_on_draw_gizmos_BoxCollider :: proc(c: ^physics3d.BoxCollider, ctx: handles.Gizmo_Context) {
 	if .In_Selection not_in ctx.state do return
 	physics3d.draw_box_collider_wires(c, physics3d.COLLIDER_GIZMO_COLOR)
 }
 
 @(comp_on_draw_gizmos={component=SphereCollider})
-sphere_collider_gizmos :: proc(c: ^physics3d.SphereCollider, ctx: handles.Gizmo_Context) {
+comp_on_draw_gizmos_SphereCollider :: proc(c: ^physics3d.SphereCollider, ctx: handles.Gizmo_Context) {
 	if .In_Selection not_in ctx.state do return
 	physics3d.draw_sphere_collider_wires(c, physics3d.COLLIDER_GIZMO_COLOR)
 }
 
 @(comp_on_draw_gizmos={component=CapsuleCollider})
-capsule_collider_gizmos :: proc(c: ^physics3d.CapsuleCollider, ctx: handles.Gizmo_Context) {
+comp_on_draw_gizmos_CapsuleCollider :: proc(c: ^physics3d.CapsuleCollider, ctx: handles.Gizmo_Context) {
 	if .In_Selection not_in ctx.state do return
 	physics3d.draw_capsule_collider_wires(c, physics3d.COLLIDER_GIZMO_COLOR)
 }
@@ -68,7 +68,7 @@ _axis :: proc(d: physics3d.Capsule_Direction) -> handles.Axis {
 }
 
 @(comp_on_scene_handles={component=BoxCollider})
-box_collider_handles :: proc(c: ^physics3d.BoxCollider, ctx: handles.Gizmo_Context) {
+comp_on_scene_handles_BoxCollider :: proc(c: ^physics3d.BoxCollider, ctx: handles.Gizmo_Context) {
 	if ctx.tool != .Handles do return
 	h, ok := engine.comp_handle_of(&c.base)
 	if !ok do return
@@ -92,7 +92,7 @@ box_collider_handles :: proc(c: ^physics3d.BoxCollider, ctx: handles.Gizmo_Conte
 }
 
 @(comp_on_scene_handles={component=SphereCollider})
-sphere_collider_handles :: proc(c: ^physics3d.SphereCollider, ctx: handles.Gizmo_Context) {
+comp_on_scene_handles_SphereCollider :: proc(c: ^physics3d.SphereCollider, ctx: handles.Gizmo_Context) {
 	if ctx.tool != .Handles do return
 	h, ok := engine.comp_handle_of(&c.base)
 	if !ok do return
@@ -116,7 +116,7 @@ sphere_collider_handles :: proc(c: ^physics3d.SphereCollider, ctx: handles.Gizmo
 }
 
 @(comp_on_scene_handles={component=CapsuleCollider})
-capsule_collider_handles :: proc(c: ^physics3d.CapsuleCollider, ctx: handles.Gizmo_Context) {
+comp_on_scene_handles_CapsuleCollider :: proc(c: ^physics3d.CapsuleCollider, ctx: handles.Gizmo_Context) {
 	if ctx.tool != .Handles do return
 	h, ok := engine.comp_handle_of(&c.base)
 	if !ok do return

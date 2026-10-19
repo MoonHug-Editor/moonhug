@@ -110,10 +110,10 @@ transform_remove_comp :: proc(tH: Transform_Handle, comp_handle: Handle) {
 // editor and in a game alike.
 //
 // `component = T` names a @(component) type of the same package, and the proc
-// is `proc(c: ^T)`, by convention named `comp_on_destroy_<T>`. It releases
+// is `proc(c: ^T)`, named `comp_on_destroy_<T>`. It releases
 // what the instance holds outside itself: a physics body, a playing voice.
-// The instance's cleanup_T runs right after and frees its memory. Several
-// procs for one type run in declaration order.
+// The instance's cleanup_T runs right after and frees its memory. A type has
+// at most one: the name is fixed and it sits in the type's package.
 @(extension_point={attribute="comp_on_destroy", target="proc", fields="component"})
 component_on_destroy_procs: [TypeKey]proc(rawptr)
 

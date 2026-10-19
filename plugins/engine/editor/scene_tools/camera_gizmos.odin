@@ -22,7 +22,7 @@ _icon_camera :: proc() {
 }
 
 @(comp_on_draw_gizmos={component=Camera})
-camera_gizmos :: proc(cam: ^engine.Camera, ctx: handles.Gizmo_Context) {
+comp_on_draw_gizmos_Camera :: proc(cam: ^engine.Camera, ctx: handles.Gizmo_Context) {
 	handles.icon(engine.transform_world_position(engine.Transform_Handle(cam.owner)), engine.Transform_Handle(cam.owner), _icon_camera)
 	if .In_Selection not_in ctx.state do return
 	tw := engine.transform_world(engine.Transform_Handle(cam.owner))

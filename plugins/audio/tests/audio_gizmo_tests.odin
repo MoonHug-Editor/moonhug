@@ -1,6 +1,6 @@
 package audio_tests
 
-// AudioSource handles (audio_editor.audio_source_handles) through the real
+// AudioSource handles (audio_editor.comp_on_scene_handles_AudioSource) through the real
 // hook: the min distance pushes the max out and lets it back, one undo step.
 
 import "core:testing"
@@ -13,7 +13,7 @@ import common "moonhug:tests/common"
 
 @(private = "file")
 _body :: proc(user: rawptr) {
-	audio_editor.audio_source_handles(cast(^audio.AudioSource)user, handles.Gizmo_Context{state = {.Selected}, tool = .Translate})
+	audio_editor.comp_on_scene_handles_AudioSource(cast(^audio.AudioSource)user, handles.Gizmo_Context{state = {.Selected}, tool = .Translate})
 }
 
 @(test)

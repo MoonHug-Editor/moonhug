@@ -25,7 +25,7 @@ ComponentEntry :: struct {
 	pkg:             string, // package name ("engine", "app", ...)
 	pkg_path:        string, // scan path ("moonhug/app", "moonhug/packages/x")
 	max:             int,
-	on_destroy_procs: []string, // @(comp_on_destroy) procs, in declaration order
+	on_destroy_procs: []string, // the @(comp_on_destroy) proc, at most one (its name is fixed)
 	field_types:     []string, // rendered type of every field, for pointer-type registration
 	ref_tags:        []string, // `ref_tags="A,B"` on the attribute: capability tags for `ref:"@A"` fields
 	// Where the @(component) was declared, rendered by gen_facts.attr_origin.
@@ -134,6 +134,10 @@ components_provide :: proc(w: ^db.World) -> bool {
 			if comp == "" do comp = gen_facts.attr_keyname(args, "component")
 			if comp == "" || strings.contains(comp, ".") {
 				fmt.eprintf("components_gen: %s.%s: @(comp_on_destroy) names its component with component=T, a type of the same package\n", decl.pkg.name, decl.name)
+				return false
+			}
+			if want := gen_facts.comp_proc_name("comp_on_destroy", comp); decl.name != want {
+				fmt.eprintf("components_gen: %s.%s: a @(comp_on_destroy={{component=%s}}) proc is named %s\n", decl.pkg.name, decl.name, comp, want)
 				return false
 			}
 			key := fmt.tprintf("%s/%s", decl.pkg_path, comp)

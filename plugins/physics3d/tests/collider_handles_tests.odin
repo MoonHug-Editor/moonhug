@@ -16,7 +16,7 @@ import physics3d_editor "../editor"
 @(private = "file")
 _box_body :: proc(user: rawptr) {
 	c := cast(^physics3d.BoxCollider)user
-	physics3d_editor.box_collider_handles(c, handles.Gizmo_Context{state = {.Selected, .Active, .In_Selection}, tool = .Handles})
+	physics3d_editor.comp_on_scene_handles_BoxCollider(c, handles.Gizmo_Context{state = {.Selected, .Active, .In_Selection}, tool = .Handles})
 }
 
 @(test)
@@ -75,7 +75,7 @@ box_collider_handles_only_in_handles_tool :: proc(t: ^testing.T) {
 
 	body :: proc(user: rawptr) {
 		c := cast(^physics3d.BoxCollider)user
-		physics3d_editor.box_collider_handles(c, handles.Gizmo_Context{state = {.Selected}, tool = .Translate})
+		physics3d_editor.comp_on_scene_handles_BoxCollider(c, handles.Gizmo_Context{state = {.Selected}, tool = .Translate})
 	}
 	common.handles_drag(common.handles_test_view(), {1, 0, 0}, {2, 0, 0}, body, box)
 	testing.expect_value(t, box.size, [3]f32{2, 2, 2})

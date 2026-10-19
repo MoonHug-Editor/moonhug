@@ -211,7 +211,7 @@ Component_GenComp :: struct {
 	pkg:             string,
 	pkg_path:        string,
 	max:             int,
-	on_destroy_procs: []string, // the type's @(comp_on_destroy) procs, in declaration order
+	on_destroy_procs: []string, // the type's @(comp_on_destroy) proc, at most one (its name is fixed)
 	field_types:     []string,
 	ref_tags:        []string,
 	origin:          string,
@@ -326,4 +326,16 @@ runnable_packages :: proc(w: ^db.World) -> [dynamic]Runnable_Pkg {
 is_runnable :: proc(runnables: []Runnable_Pkg, pkg_name: string) -> bool {
 	for r in runnables do if r.name == pkg_name do return true
 	return false
+}
+
+// The one name a proc carrying a comp_ attribute (comp_update,
+// comp_on_destroy, ...) may have: `<attribute>_<T>`, T the component its
+// `component=` names, without a package qualifier. `comp_update_Spinner`,
+// `comp_on_destroy_Rigidbody`. The generators that own those attributes stop
+// the build on any other name, so a package has at most one proc per
+// attribute and component.
+comp_proc_name :: proc(attribute, component: string) -> string {
+	t := component
+	if i := strings.last_index_byte(t, '.'); i >= 0 do t = t[i + 1:]
+	return fmt.tprintf("%s_%s", attribute, t)
 }
