@@ -42,9 +42,7 @@ exit_ScriptSetActive :: proc(s: ^ScriptSetActive, ctx: ^core.Script_Ctx) {
 _set_active :: proc(s: ^ScriptSetActive, active: bool) {
 	w := engine.ctx_world()
 	if !engine.pool_valid(&w.transforms, s.target.handle) do return
-	if t := engine.pool_get(&w.transforms, s.target.handle); t != nil {
-		t.is_active = active
-	}
+	engine.transform_set_active(engine.Transform_Handle(s.target.handle), active)
 }
 
 // Writes to the log — the editor console during Play, stdout standalone. An

@@ -155,7 +155,7 @@ my_setup :: proc() { ... }
 
 `ExitingEditMode` fires only once the snapshot exists, so a failed start emits no unpaired transition. `ExitingPlayMode` runs before the scene is touched, so subscribers can read the simulated world. Pause fires nothing, not being a mode change.
 
-The game's component hooks run between the phases: `@(comp_awake)` on the loaded scenes after `ExitingEditMode`, before `EnteredPlayMode`, and `@(comp_on_destroy)` on every live component after `ExitingPlayMode`, before the restore.
+The game's component hooks run between the phases: `@(comp_awake)` then `@(comp_on_enable)` on the loaded scenes after `ExitingEditMode`, before `EnteredPlayMode`, and `@(comp_on_disable)` then `@(comp_on_destroy)` on every live component after `ExitingPlayMode`, before the restore.
 
 Subscribers owned by a runnable package run only when that package is the active sim host.
 

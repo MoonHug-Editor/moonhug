@@ -2,21 +2,35 @@ package engine
 
 // The game's per-component lifecycle hooks (docs/Components.md "Game
 // lifecycle"): @(comp_awake) when an instance enters the running game,
-// @(comp_on_destroy) when it leaves it. Both run only while the game runs in
-// the game world (game_running): never in edit mode, never in a preview or
-// thumbnail world.
+// @(comp_on_enable) / @(comp_on_disable) when its effective enabled state
+// changes, @(comp_on_destroy) when it leaves the game. All run only while the
+// game runs in the game world (game_running): never in edit mode, never in a
+// preview or thumbnail world.
 //
 // - Awake runs once per instance: at play start for every loaded scene, and
 //   right after a creation while the game runs (scene load, instantiate,
 //   paste, duplicate, add component). Active and enabled state do not matter.
 // - Awake order: an object's components in their list order, then its
-//   children, depth first.
+//   children, depth first. A creation runs in two passes: awake on everything,
+//   then on_enable on everything enabled, so every on_enable sees the whole
+//   creation awake.
 // - A creation inside another (an instantiate pastes, a build adds
 //   components) runs in the outer one's batch, so the outermost creation
 //   awakes the whole result once, after every component exists.
+// - Enabled means `enabled && transform_active_in_hierarchy(owner)`.
+//   CompData.notified_enabled records what the hooks last reported, and
+//   enabled_sync fires on_enable or on_disable when the state differs. Game
+//   code changes the flags through transform_set_active and comp_set_enabled,
+//   which sync at once. Every editor write (inspector, undo, MCP, overrides)
+//   reaches enabled_sync through the undo stack's value_written hook or the
+//   nested-scene patch procs. enabled_verify, run by frame_tick in debug
+//   builds and by the tests, panics on a component the hooks missed.
 // - comp_on_destroy runs when an instance leaves the running game: its object
 //   destroyed, the component removed, its scene unloaded, play stopped, the
-//   player quitting. cleanup_T runs after it, in every mode.
+//   player quitting. on_disable runs before it when the instance was enabled.
+//   cleanup_T runs after it, in every mode.
+
+import "core:fmt"
 
 // Runs a proc once when an instance of one component type enters the running
 // game: at play start, or right after its creation while the game runs.
@@ -39,6 +53,25 @@ component_awake_procs: [TypeKey]proc(rawptr)
 // fixed and it sits in the type's package.
 @(extension_point={attribute="comp_on_destroy", target="proc", fields="component"})
 component_on_destroy_procs: [TypeKey]proc(rawptr)
+
+// Runs a proc when an instance of one component type becomes enabled in the
+// running game: right after its awake when it is enabled, and on every change
+// to enabled while its object is active in the hierarchy, or to that.
+//
+// `component = T` names a @(component) type of the same package, and the proc
+// is `proc(c: ^T)`, named `comp_on_enable_<T>`. The first call sees every
+// component of the same creation awake. A type has at most one.
+@(extension_point={attribute="comp_on_enable", target="proc", fields="component"})
+component_on_enable_procs: [TypeKey]proc(rawptr)
+
+// Runs a proc when an instance of one component type stops being enabled in
+// the running game: its enabled flag or its object's active state goes off,
+// or it leaves the game while enabled (before comp_on_destroy).
+//
+// `component = T` names a @(component) type of the same package, and the proc
+// is `proc(c: ^T)`, named `comp_on_disable_<T>`. A type has at most one.
+@(extension_point={attribute="comp_on_disable", target="proc", fields="component"})
+component_on_disable_procs: [TypeKey]proc(rawptr)
 
 // Whether the game runs in the current world: playing, and the context's
 // world is the game world, not a preview or thumbnail world swapped in.
@@ -66,45 +99,140 @@ awake_batch_end :: proc(root: Transform_Handle) {
 	awake_subtree(root)
 }
 
-// Runs the @(comp_awake) procs under `root` while the game runs and no batch
-// is open: each object's components in list order, then its children, depth
-// first. What an awake proc creates awakes on its own, so the walk visits only
-// the components and children each object had when the walk reached it.
+// Runs the game hooks of a creation under `root` while the game runs and no
+// batch is open: @(comp_awake) on every component, each object's components
+// in list order then its children, depth first, then on_enable on every
+// enabled one in the same order. What an awake proc creates awakes on its
+// own, so the walk visits only the components and children each object had
+// when the walk reached it.
 awake_subtree :: proc(root: Transform_Handle) {
 	if _awake_batch > 0 || !game_running() do return
-	_awake_walk(ctx_world(), root)
+	w := ctx_world()
+	_walk(w, root, _awake_one)
+	_walk(w, root, enabled_sync)
 }
 
-// The @(comp_awake) proc of one component, while the game runs and no batch is
-// open: the awake of a component added on its own.
+// The game hooks of one component added on its own, while the game runs and
+// no batch is open: its @(comp_awake), then on_enable when it is enabled.
 component_awake :: proc(key: TypeKey, ptr: rawptr) {
 	if _awake_batch > 0 || !game_running() do return
 	if !_type_key_valid(key) do return
-	if fn := component_awake_procs[key]; fn != nil do fn(ptr)
+	_awake_one(key, ptr)
+	enabled_sync(key, ptr)
 }
 
 @(private = "file")
-_awake_walk :: proc(w: ^World, tH: Transform_Handle) {
+_awake_one :: proc(key: TypeKey, ptr: rawptr) {
+	if fn := component_awake_procs[key]; fn != nil do fn(ptr)
+}
+
+// Calls `fn` on every live component under `tH`: an object's components in
+// list order, then its children, depth first.
+@(private = "file")
+_walk :: proc(w: ^World, tH: Transform_Handle, fn: proc(key: TypeKey, ptr: rawptr)) {
 	t := pool_get(&w.transforms, Handle(tH))
 	if t == nil do return
-	// Copies: an awake proc may add components or children, which awake on
-	// their own, or destroy them, which the handle checks below skip.
+	// Copies: a hook may add components or children, which get their hooks
+	// on their own, or destroy them, which the handle checks below skip.
 	comps := make([]Owned, len(t.components), context.temp_allocator)
 	copy(comps, t.components[:])
 	children := make([]Ref, len(t.children), context.temp_allocator)
 	copy(children, t.children[:])
 	for c in comps {
 		if !_type_key_valid(c.handle.type_key) do continue
-		fn := component_awake_procs[c.handle.type_key]
-		if fn == nil do continue
-		if ptr := world_pool_get(w, c.handle); ptr != nil do fn(ptr)
+		if ptr := world_pool_get(w, c.handle); ptr != nil do fn(c.handle.type_key, ptr)
 	}
-	for c in children do _awake_walk(w, Transform_Handle(c.handle))
+	for c in children do _walk(w, Transform_Handle(c.handle), fn)
 }
 
-// A component instance leaves the world: its @(comp_on_destroy) proc while the
-// game runs, then its cleanup_T frees what it owns, in every mode. Runs on
-// destroy and on removal, before the pool slot goes.
+// Whether a component counts as enabled for the game: its flag, and its object
+// active with every ancestor.
+component_enabled :: proc(ptr: rawptr) -> bool {
+	base := cast(^CompData)ptr
+	return base.enabled && transform_active_in_hierarchy(base.owner)
+}
+
+// Brings one component's reported state up to date: on_enable or on_disable
+// fires when component_enabled differs from what was last reported. A no-op
+// outside the running game.
+enabled_sync :: proc(key: TypeKey, ptr: rawptr) {
+	if !game_running() do return
+	base := cast(^CompData)ptr
+	now := component_enabled(ptr)
+	if now == base.notified_enabled do return
+	base.notified_enabled = now
+	if now {
+		if fn := component_on_enable_procs[key]; fn != nil do fn(ptr)
+	} else {
+		if fn := component_on_disable_procs[key]; fn != nil do fn(ptr)
+	}
+}
+
+// enabled_sync on every component under an object: for a change of the
+// object's active state.
+enabled_sync_subtree :: proc(tH: Transform_Handle) {
+	if !game_running() do return
+	_walk(ctx_world(), tH, enabled_sync)
+}
+
+// enabled_sync for the owner of a pooled handle: an object's subtree, or one
+// component. The undo stack calls it after every value write (the inspector,
+// undo and redo, an MCP write, a multi-edit).
+enabled_sync_handle :: proc(h: Handle) {
+	if !game_running() || !_type_key_valid(h.type_key) do return
+	if h.type_key == .Transform {
+		enabled_sync_subtree(Transform_Handle(h))
+		return
+	}
+	if ptr := world_pool_get(ctx_world(), h); ptr != nil do enabled_sync(h.type_key, ptr)
+}
+
+// Sets an object's active flag and syncs its subtree at once: the setter game
+// code uses. An editor write goes through the undo stack instead, which syncs
+// after the write.
+transform_set_active :: proc(tH: Transform_Handle, active: bool) {
+	t := pool_get(&ctx_world().transforms, Handle(tH))
+	if t == nil || t.is_active == active do return
+	t.is_active = active
+	enabled_sync_subtree(tH)
+}
+
+// Sets a component's enabled flag and syncs it at once: the setter game code
+// uses.
+comp_set_enabled :: proc(c: ^CompData, enabled: bool) {
+	if c.enabled == enabled do return
+	c.enabled = enabled
+	h, ok := comp_handle_of(c)
+	if !ok do return
+	enabled_sync(h.type_key, c)
+}
+
+// Panics on a component whose reported enabled state differs from its real
+// one: a writer that bypassed the setters and the undo stack. Visits only the
+// types that have an enable hook. frame_tick runs it in debug builds, the
+// tests run it directly. A no-op outside the running game.
+enabled_verify :: proc() {
+	if !game_running() do return
+	w := ctx_world()
+	for key in TypeKey {
+		if component_on_enable_procs[key] == nil && component_on_disable_procs[key] == nil do continue
+		desc := component_registry[key]
+		pool := w.ext_pools[key]
+		if pool == nil || desc.each_alive == nil do continue
+		desc.each_alive(pool, proc(key: TypeKey, ptr: rawptr) {
+			base := cast(^CompData)ptr
+			if component_enabled(ptr) == base.notified_enabled do return
+			t := pool_get(&ctx_world().transforms, Handle(base.owner))
+			name := t != nil ? t.name : "?"
+			fmt.panicf("component_lifecycle: %v on %q is %s but was reported %s: a writer changed enabled or is_active without transform_set_active, comp_set_enabled or the undo stack", key, name, component_enabled(ptr) ? "enabled" : "disabled", base.notified_enabled ? "enabled" : "disabled")
+		})
+	}
+}
+
+// A component instance leaves the world: on_disable when it was enabled and
+// its @(comp_on_destroy) proc, while the game runs, then its cleanup_T frees
+// what it owns, in every mode. Runs on destroy and on removal, before the pool
+// slot goes.
 component_on_destroy :: proc(key: TypeKey, ptr: rawptr) {
 	_component_on_destroy_notify(key, ptr)
 	type_cleanup(key, ptr)
@@ -113,6 +241,11 @@ component_on_destroy :: proc(key: TypeKey, ptr: rawptr) {
 @(private = "file")
 _component_on_destroy_notify :: proc(key: TypeKey, ptr: rawptr) {
 	if !game_running() do return
+	base := cast(^CompData)ptr
+	if base.notified_enabled {
+		base.notified_enabled = false
+		if fn := component_on_disable_procs[key]; fn != nil do fn(ptr)
+	}
 	if fn := component_on_destroy_procs[key]; fn != nil do fn(ptr)
 }
 
@@ -121,8 +254,8 @@ _component_on_destroy_notify :: proc(key: TypeKey, ptr: rawptr) {
 // Stop.
 //
 // - Starting awakes every loaded scene, in scene slot order.
-// - Stopping runs comp_on_destroy on every live component first, while the
-//   game still runs, and drops the pending destroys. What is destroyed after
+// - Stopping runs on_disable and comp_on_destroy on every live component
+//   first, while the game still runs, and drops the pending destroys. What is destroyed after
 //   it (a Simulate restore, the world teardown) only runs cleanup_T.
 application_set_playing :: proc(playing: bool) {
 	uc := ctx_get()
@@ -151,14 +284,14 @@ _awake_loaded_scenes :: proc() {
 	}
 }
 
-// comp_on_destroy on every live component of the game world, type by type.
-// Only the types that have the proc are visited.
+// on_disable and comp_on_destroy on every live component of the game world,
+// type by type. Only the types that have one of the procs are visited.
 @(private = "file")
 _on_destroy_all :: proc() {
 	if !game_running() do return
 	w := ctx_world()
-	for fn, key in component_on_destroy_procs {
-		if fn == nil do continue
+	for key in TypeKey {
+		if component_on_destroy_procs[key] == nil && component_on_disable_procs[key] == nil do continue
 		desc := component_registry[key]
 		pool := w.ext_pools[key]
 		if pool == nil || desc.each_alive == nil do continue

@@ -227,7 +227,7 @@ _activation_track_tick :: proc(ctx: ^Track_Ctx) {
 	for &c in ctx.track.clips {
 		if track_clip_active(ctx, &c) do active = true
 	}
-	t.is_active = active
+	engine.transform_set_active(engine.Transform_Handle(at.target.handle), active)
 }
 
 // Write back the pre-tick state the tick captured — the editor never leaves
@@ -241,7 +241,7 @@ _activation_preview_end :: proc(ctx: ^Track_Ctx) {
 	if at == nil do return
 	w := engine.ctx_world()
 	if !engine.pool_valid(&w.transforms, at.target.handle) do return
-	if t := engine.pool_get(&w.transforms, at.target.handle); t != nil do t.is_active = st.was_active
+	engine.transform_set_active(engine.Transform_Handle(at.target.handle), st.was_active)
 }
 
 // Control: each clip plays a NESTED TIMELINE — the clip node's child subtree

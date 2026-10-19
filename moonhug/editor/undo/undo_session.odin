@@ -191,6 +191,7 @@ edit_session_end :: proc(sess: ^Edit_Session) {
 		push_value(s, e.target, e.old_json, new_json, sess.label)
 		e.old_json = nil
 		wrote = true
+		value_written(e.target)
 	}
 
 	if wrote {

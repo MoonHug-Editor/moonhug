@@ -187,7 +187,5 @@ demo_menu_get :: proc() -> ^DemoMenu {
 
 @(private = "file")
 _menu_root_set_active :: proc(menu: ^DemoMenu, active: bool) {
-    w := engine.ctx_world()
-    t := engine.pool_get(&w.transforms, engine.Handle(menu.owner))
-    if t != nil do t.is_active = active
+    engine.transform_set_active(menu.owner, active)
 }

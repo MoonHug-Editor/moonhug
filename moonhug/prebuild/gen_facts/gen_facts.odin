@@ -213,6 +213,8 @@ Component_GenComp :: struct {
 	max:             int,
 	has_awake:       bool, // the type has a @(comp_awake) proc, named comp_awake_<T>
 	has_on_destroy:  bool, // the type has a @(comp_on_destroy) proc, named comp_on_destroy_<T>
+	has_on_enable:   bool, // the type has a @(comp_on_enable) proc, named comp_on_enable_<T>
+	has_on_disable:  bool, // the type has a @(comp_on_disable) proc, named comp_on_disable_<T>
 	field_types:     []string,
 	ref_tags:        []string,
 	origin:          string,

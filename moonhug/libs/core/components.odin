@@ -19,6 +19,9 @@ CompData :: struct {
     local_id: Local_ID `inspect:"-"`,
     enabled: bool,
     nested_owned: bool `json:"-" inspect:"-"`,
+    // What comp_on_enable / comp_on_disable last reported (engine's
+    // component_lifecycle.odin). Runtime-only: a copy starts unreported.
+    notified_enabled: bool `json:"-" inspect:"-"`,
 }
 
 comp_zero :: proc(p: ^$T) where

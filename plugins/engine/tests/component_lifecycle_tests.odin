@@ -1,10 +1,11 @@
 package engine_tests
 
-// The game's lifecycle hooks (component_lifecycle.odin): @(comp_awake) and
-// @(comp_on_destroy) run only while the game runs in the game world, awake
-// walks an object's components then its children, a creation batch awakes
-// once at its end, and transform_destroy_later destroys at the end of the
-// frame tick.
+// The game's lifecycle hooks (component_lifecycle.odin): @(comp_awake),
+// @(comp_on_enable), @(comp_on_disable) and @(comp_on_destroy) run only while
+// the game runs in the game world, awake walks an object's components then
+// its children in two passes (awake, then on_enable), a creation batch awakes
+// once at its end, the enable hooks follow the setters and the undo stack, and
+// transform_destroy_later destroys at the end of the frame tick.
 //
 // No test component declares the hooks, so the tests install recorder procs
 // for MeshFilter and MeshRenderer into the engine's tables. The lock keeps the
@@ -15,6 +16,7 @@ package engine_tests
 import "core:fmt"
 import "core:sync"
 import "core:testing"
+import "moonhug:editor/undo"
 import "moonhug:packages/engine"
 
 @(private = "file") _lock: sync.Mutex
@@ -66,12 +68,36 @@ _destroy_mr :: proc(ptr: rawptr) {
 }
 
 @(private = "file")
+_enable_mf :: proc(ptr: rawptr) {
+	if _recording do _rec("enable", .MeshFilter, ptr)
+}
+
+@(private = "file")
+_enable_mr :: proc(ptr: rawptr) {
+	if _recording do _rec("enable", .MeshRenderer, ptr)
+}
+
+@(private = "file")
+_disable_mf :: proc(ptr: rawptr) {
+	if _recording do _rec("disable", .MeshFilter, ptr)
+}
+
+@(private = "file")
+_disable_mr :: proc(ptr: rawptr) {
+	if _recording do _rec("disable", .MeshRenderer, ptr)
+}
+
+@(private = "file")
 _begin :: proc() {
 	sync.mutex_lock(&_lock)
 	engine.component_awake_procs[.MeshFilter] = _awake_mf
 	engine.component_awake_procs[.MeshRenderer] = _awake_mr
 	engine.component_on_destroy_procs[.MeshFilter] = _destroy_mf
 	engine.component_on_destroy_procs[.MeshRenderer] = _destroy_mr
+	engine.component_on_enable_procs[.MeshFilter] = _enable_mf
+	engine.component_on_enable_procs[.MeshRenderer] = _enable_mr
+	engine.component_on_disable_procs[.MeshFilter] = _disable_mf
+	engine.component_on_disable_procs[.MeshRenderer] = _disable_mr
 	_recording = true
 	_log_n = 0
 	_add_in_awake = false
@@ -85,6 +111,10 @@ _end :: proc() {
 	engine.component_awake_procs[.MeshRenderer] = nil
 	engine.component_on_destroy_procs[.MeshFilter] = nil
 	engine.component_on_destroy_procs[.MeshRenderer] = nil
+	engine.component_on_enable_procs[.MeshFilter] = nil
+	engine.component_on_enable_procs[.MeshRenderer] = nil
+	engine.component_on_disable_procs[.MeshFilter] = nil
+	engine.component_on_disable_procs[.MeshRenderer] = nil
 	sync.mutex_unlock(&_lock)
 }
 
@@ -128,7 +158,11 @@ test_awake_order_on_play_and_paste :: proc(t: ^testing.T) {
 	_obj("D", a, .MeshRenderer)
 	_expect_log(t, {})
 
-	order := []string{"awake A:MeshFilter", "awake A:MeshRenderer", "awake B:MeshFilter", "awake C:MeshRenderer", "awake D:MeshRenderer"}
+	// Two passes: every awake, then every on_enable, in the same order.
+	order := []string{
+		"awake A:MeshFilter", "awake A:MeshRenderer", "awake B:MeshFilter", "awake C:MeshRenderer", "awake D:MeshRenderer",
+		"enable A:MeshFilter", "enable A:MeshRenderer", "enable B:MeshFilter", "enable C:MeshRenderer", "enable D:MeshRenderer",
+	}
 	engine.application_set_playing(true)
 	defer engine.application_set_playing(false)
 	_expect_log(t, order)
@@ -157,17 +191,17 @@ test_awake_on_add_and_batch :: proc(t: ^testing.T) {
 
 	engine.application_set_playing(true)
 	defer engine.application_set_playing(false)
-	_expect_log(t, {"awake A:MeshFilter"})
+	_expect_log(t, {"awake A:MeshFilter", "enable A:MeshFilter"})
 
 	engine.transform_add_comp(a, .MeshRenderer)
-	_expect_log(t, {"awake A:MeshRenderer"})
+	_expect_log(t, {"awake A:MeshRenderer", "enable A:MeshRenderer"})
 
 	engine.awake_batch_begin()
 	b := _obj("B", a, .MeshFilter)
 	_obj("C", b, .MeshRenderer)
 	_expect_log(t, {})
 	engine.awake_batch_end(b)
-	_expect_log(t, {"awake B:MeshFilter", "awake C:MeshRenderer"})
+	_expect_log(t, {"awake B:MeshFilter", "awake C:MeshRenderer", "enable B:MeshFilter", "enable C:MeshRenderer"})
 }
 
 // A component an awake proc adds awakes once, on its own: the walk visits only
@@ -188,7 +222,7 @@ test_awake_added_in_awake_runs_once :: proc(t: ^testing.T) {
 	engine.application_set_playing(true)
 	defer engine.application_set_playing(false)
 	_add_in_awake = false
-	_expect_log(t, {"awake A:MeshFilter", "awake A:MeshRenderer"})
+	_expect_log(t, {"awake A:MeshFilter", "awake A:MeshRenderer", "enable A:MeshRenderer", "enable A:MeshFilter"})
 }
 
 // The hooks run only in the game world: a preview or thumbnail world swapped
@@ -211,7 +245,7 @@ test_hooks_skip_other_worlds :: proc(t: ^testing.T) {
 	engine.application_set_playing(true)
 	defer engine.application_set_playing(false)
 	testing.expect(t, engine.game_running())
-	_expect_log(t, {"awake A:MeshFilter"})
+	_expect_log(t, {"awake A:MeshFilter", "enable A:MeshFilter"})
 
 	preview := new(engine.World)
 	defer free(preview)
@@ -244,14 +278,14 @@ test_on_destroy_only_while_playing :: proc(t: ^testing.T) {
 	_expect_log(t, {})
 
 	engine.application_set_playing(true)
-	_expect_log(t, {"awake B:MeshRenderer"})
+	_expect_log(t, {"awake B:MeshRenderer", "enable B:MeshRenderer"})
 	engine.transform_destroy(b)
-	_expect_log(t, {"destroy B:MeshRenderer"})
+	_expect_log(t, {"disable B:MeshRenderer", "destroy B:MeshRenderer"})
 
 	c := _obj("C", root, .MeshFilter)
-	_expect_log(t, {"awake C:MeshFilter"})
+	_expect_log(t, {"awake C:MeshFilter", "enable C:MeshFilter"})
 	engine.application_set_playing(false)
-	_expect_log(t, {"destroy C:MeshFilter"})
+	_expect_log(t, {"disable C:MeshFilter", "destroy C:MeshFilter"})
 
 	engine.transform_destroy(c)
 	_expect_log(t, {})
@@ -286,7 +320,7 @@ test_destroy_later_at_frame_end :: proc(t: ^testing.T) {
 	_expect_log(t, {})
 
 	engine.frame_tick({}, 0)
-	_expect_log(t, {"destroy A:MeshFilter", "destroy B:MeshRenderer"})
+	_expect_log(t, {"disable A:MeshFilter", "destroy A:MeshFilter", "disable B:MeshRenderer", "destroy B:MeshRenderer"})
 	testing.expect(t, !_alive(tc, a), "the queued object is gone")
 	testing.expect(t, !_alive(tc, b), "the object queued while the queue ran is gone too")
 }
@@ -312,4 +346,78 @@ test_stop_drops_destroy_queue :: proc(t: ^testing.T) {
 	engine.transform_destroy_later(a)
 	engine.transform_destroy_pending()
 	testing.expect(t, !_alive(tc, a), "the dropped object queues again")
+}
+
+// The enable hooks follow the effective state: an inactive object's
+// components awake without on_enable, the setters fire at once for the whole
+// subtree, and a disabled component gets no on_enable from an active parent.
+@(test)
+test_enable_follows_setters :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	_begin()
+	defer _end()
+
+	root := engine.Transform_Handle(tc.scene.root.handle)
+	a := _obj("A", root, .MeshFilter)
+	b := _obj("B", a, .MeshRenderer)
+	if bt := engine.pool_get(&tc.world.transforms, engine.Handle(b)); bt != nil do bt.is_active = false
+
+	engine.application_set_playing(true)
+	defer engine.application_set_playing(false)
+	_expect_log(t, {"awake A:MeshFilter", "awake B:MeshRenderer", "enable A:MeshFilter"})
+	engine.enabled_verify()
+
+	engine.transform_set_active(b, true)
+	_expect_log(t, {"enable B:MeshRenderer"})
+	engine.transform_set_active(b, true)
+	_expect_log(t, {})
+
+	_, mr := engine.transform_get_comp_key(b, .MeshRenderer)
+	engine.comp_set_enabled(cast(^engine.CompData)mr, false)
+	_expect_log(t, {"disable B:MeshRenderer"})
+
+	engine.transform_set_active(a, false)
+	_expect_log(t, {"disable A:MeshFilter"})
+	engine.transform_set_active(a, true)
+	_expect_log(t, {"enable A:MeshFilter"})
+	engine.comp_set_enabled(cast(^engine.CompData)mr, true)
+	_expect_log(t, {"enable B:MeshRenderer"})
+	engine.enabled_verify()
+}
+
+// An editor write of the active flag reaches the hooks through the undo stack:
+// the edit session syncs after the gesture, and undo syncs after its write.
+@(test)
+test_enable_follows_undo_writes :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+	_begin()
+	defer _end()
+
+	root := engine.Transform_Handle(tc.scene.root.handle)
+	a := _obj("A", root, .MeshFilter)
+	engine.application_set_playing(true)
+	defer engine.application_set_playing(false)
+	_log_n = 0
+
+	at := engine.pool_get(&tc.world.transforms, engine.Handle(a))
+	e := undo.edit_begin(a, &at.is_active, typeid_of(bool), "Toggle Active")
+	at.is_active = false
+	_expect_log(t, {})
+	undo.edit_end(&e)
+	_expect_log(t, {"disable A:MeshFilter"})
+	engine.enabled_verify()
+
+	testing.expect(t, undo.apply_undo(s), "the toggle undoes")
+	_expect_log(t, {"enable A:MeshFilter"})
+	testing.expect(t, undo.apply_redo(s), "the toggle redoes")
+	_expect_log(t, {"disable A:MeshFilter"})
+	engine.enabled_verify()
 }

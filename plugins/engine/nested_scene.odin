@@ -2754,6 +2754,8 @@ _nested_patch_live_field :: proc(
     // Override values may hold Ref_Local source lids — bind them into the
     // instance namespace (composed lid + live handle).
     _nested_bind_source_refs_in_value(live_ptr, type_info_of(live_tid), s, ns)
+    // The value may be an enabled or active flag: the game hooks follow it.
+    if h, found := bimap_get(&s.local_ids, target_id); found do enabled_sync_handle(h)
     return true
 }
 

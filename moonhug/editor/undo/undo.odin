@@ -617,6 +617,15 @@ _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
 			core.type_on_validate(h.type_key, base)
 		}
 	}
+	value_written(vc.target)
+}
+
+// Tells the engine a pooled target's value changed: after an undo or redo
+// write, and after each edit session entry that recorded a change.
+value_written :: proc(t: Property_Target) {
+	if t.kind != .Pooled || _resolver.value_written == nil do return
+	_, h, ok := resolve_pooled_base(t)
+	if ok do _resolver.value_written(h)
 }
 
 // Writes a captured value (capture_json output) into a live field, replacing

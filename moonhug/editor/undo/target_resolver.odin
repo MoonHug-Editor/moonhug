@@ -19,6 +19,9 @@ Target_Resolver :: struct {
 	pooled_identity:  proc(h: core.Handle) -> (scene: core.Scene_Ref, local_id: core.Local_ID, ok: bool),
 	// After a value is written back: rebinds reference fields inside it against the scene.
 	fixup_refs:       proc(ptr: rawptr, tid: typeid, scene: core.Scene_Ref),
+	// After a pooled target's value is written, with the owner's handle: the
+	// engine syncs game state that depends on the value (enabled hooks).
+	value_written:    proc(h: core.Handle),
 	scene_alive:      proc(r: core.Scene_Ref) -> bool,
 	scene_mark_dirty: proc(r: core.Scene_Ref),
 	scene_name:       proc(r: core.Scene_Ref) -> string,

@@ -27,6 +27,8 @@ ComponentEntry :: struct {
 	max:             int,
 	has_awake:       bool, // comp_awake_<T> exists, marked @(comp_awake={component=T})
 	has_on_destroy:  bool, // comp_on_destroy_<T> exists, marked @(comp_on_destroy={component=T})
+	has_on_enable:   bool, // comp_on_enable_<T> exists, marked @(comp_on_enable={component=T})
+	has_on_disable:  bool, // comp_on_disable_<T> exists, marked @(comp_on_disable={component=T})
 	field_types:     []string, // rendered type of every field, for pointer-type registration
 	ref_tags:        []string, // `ref_tags="A,B"` on the attribute: capability tags for `ref:"@A"` fields
 	// Where the @(component) was declared, rendered by gen_facts.attr_origin.
@@ -118,14 +120,19 @@ components_provide :: proc(w: ^db.World) -> bool {
 	}
 	defer for k in struct_by_name do delete(k)
 
-	// The @(comp_awake) and @(comp_on_destroy) procs, by "<package path>/<T>".
-	// They sit in T's own package: the generated registration calls them from
+	// The game lifecycle procs (@(comp_awake), @(comp_on_destroy),
+	// @(comp_on_enable), @(comp_on_disable)), by "<package path>/<T>". They
+	// sit in T's own package: the generated registration calls them from
 	// there. A proc still named by the old on_destroy_<T> convention would
 	// never be called, so it stops the build.
 	awake, ok_awake := _scan_comp_procs(w, "comp_awake")
 	if !ok_awake do return false
 	on_destroy, ok_destroy := _scan_comp_procs(w, "comp_on_destroy")
 	if !ok_destroy do return false
+	on_enable, ok_enable := _scan_comp_procs(w, "comp_on_enable")
+	if !ok_enable do return false
+	on_disable, ok_disable := _scan_comp_procs(w, "comp_on_disable")
+	if !ok_disable do return false
 	{
 		procs := db.get_comps(w, gen_facts.Proc_GenComp)
 		pm := db.all_of(db.r(decls), db.r(procs)); defer db.matcher_destroy(&pm)
@@ -190,6 +197,8 @@ components_provide :: proc(w: ^db.World) -> bool {
 				max             = gen_facts.attr_int(args, "max"),
 				has_awake       = key in awake,
 				has_on_destroy  = key in on_destroy,
+				has_on_enable   = key in on_enable,
+				has_on_disable  = key in on_disable,
 				field_types     = field_types[:],
 				ref_tags        = _split_tags(args.fields["ref_tags"]),
 				origin          = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, type_name),
@@ -208,7 +217,7 @@ components_provide :: proc(w: ^db.World) -> bool {
 			})
 		}
 	}
-	for hooks in ([]map[string]string{awake, on_destroy}) {
+	for hooks in ([]map[string]string{awake, on_destroy, on_enable, on_disable}) {
 		for key, proc_name in hooks {
 			if key in claimed do continue
 			fmt.eprintf("components_gen: %s names a component its package does not declare: no @(component) %s\n", proc_name, key)
@@ -300,6 +309,8 @@ _collect_data :: proc(w: ^db.World) -> _ComponentData {
 				max             = component.max,
 				has_awake       = component.has_awake,
 				has_on_destroy  = component.has_on_destroy,
+				has_on_enable   = component.has_on_enable,
+				has_on_disable  = component.has_on_disable,
 				field_types     = component.field_types,
 				ref_tags        = component.ref_tags,
 				origin          = component.origin,
@@ -408,6 +419,12 @@ _write_desc_registrations :: proc(b: ^strings.Builder, entries: []ComponentEntry
 		}
 		if e.has_on_destroy {
 			fmt.sbprintf(b, "\t\t\ton_destroy = proc(ptr: rawptr) {{ comp_on_destroy_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
+		}
+		if e.has_on_enable {
+			fmt.sbprintf(b, "\t\t\ton_enable = proc(ptr: rawptr) {{ comp_on_enable_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
+		}
+		if e.has_on_disable {
+			fmt.sbprintf(b, "\t\t\ton_disable = proc(ptr: rawptr) {{ comp_on_disable_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
 		}
 		if len(e.ref_tags) > 0 {
 			strings.write_string(b, "\t\t\tref_tags = {")

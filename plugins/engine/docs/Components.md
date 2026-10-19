@@ -29,10 +29,13 @@ A `@(typ_guid)` type declares its lifecycle procs by name in its own file. Prebu
 
 ## Game lifecycle
 
-Two hooks run game logic when a component instance enters and leaves the running game (`component_lifecycle.odin`):
+Four hooks run game logic on a component instance in the running game (`component_lifecycle.odin`). Each is `@(comp_<hook>={component=T})` on a `proc(c: ^T)` named `comp_<hook>_T`, in T's package:
 
-- `@(comp_awake={component=T})` on a `proc(c: ^T)` named `comp_awake_T`, in T's package, runs once per instance when it enters the running game.
-- `@(comp_on_destroy={component=T})` on a `proc(c: ^T)` named `comp_on_destroy_T`, in T's package, runs when the instance leaves the running game. It is for game logic and for what `comp_awake_T` created outside the instance. `cleanup_T` runs right after it.
+- `comp_awake` runs once per instance when it enters the running game.
+- `comp_on_enable` runs when the instance becomes enabled: right after its awake when it is, then on every change to that. Enabled means `enabled && transform_active_in_hierarchy(owner)`.
+- `comp_on_disable` runs when the instance stops being enabled, and before `comp_on_destroy` when it was.
+- `comp_on_destroy` runs when the instance leaves the running game. It is for game logic and for what `comp_awake_T` created outside the instance. `cleanup_T` runs right after it.
+- There is no Start hook: the first `comp_on_enable` of a creation sees the whole creation awake, so a bool in the component covers "once, after everything exists".
 - The generator enforces the name and stops the build on a hook whose T is no `@(component)` of the package, so a type has at most one of each.
 
 Both run only while the game runs in the game world (`game_running()`): `application_is_playing()` is true and the context's world is `UserContext.game_world`. They never run in edit mode, and never on preview or thumbnail content, which renders in a world swapped into `UserContext.world`.
@@ -46,10 +49,18 @@ When awake runs:
 Awake order:
 
 - An object's components in their list order, then its children, depth first.
+- Two passes over the creation: `comp_awake` on everything, then `comp_on_enable` on everything enabled, in the same order. Every `comp_on_enable` sees the whole creation awake.
 - A creation inside another (an instantiate pastes, a scene load resolves its prefabs) runs in the outer one's batch (`awake_batch_begin` / `awake_batch_end`). The outermost creation awakes the whole result once, after every component exists and every reference is bound.
 - A component or object an awake proc creates awakes on its own. The walk visits only what each object had when the walk reached it.
 
-When comp_on_destroy runs:
+How enable changes are noticed:
+
+- `CompData.notified_enabled` (runtime-only) records what the hooks last reported. `enabled_sync(key, ptr)` compares it with the real state and fires `comp_on_enable` or `comp_on_disable` on a difference. Nothing runs per frame.
+- Game code changes the flags through `transform_set_active(tH, active)` and `comp_set_enabled(c, enabled)`, which sync at once: the subtree, or the one component.
+- Editor writes (the inspector, the hierarchy checkbox, undo and redo, an MCP write, a multi-edit) reach the sync through the undo stack: `Target_Resolver.value_written` runs after every value write with the owner's handle. Override reverts sync their target in `nested_scene_patch_live_field`.
+- A writer that bypasses both is a bug. `enabled_verify` panics on the first component whose reported state differs from its real one, naming the object and the component. `frame_tick` runs it in debug builds, and the tests run it directly.
+
+When comp_on_destroy runs (`comp_on_disable` first when the instance was enabled):
 
 - The object is destroyed, the component removed or its scene unloaded, while the game runs (`component_on_destroy`, the path every destroy takes).
 - Play stops (`application_set_playing(false)`): every live component of the game world, type by type, while the game still runs. Simulate's Stop does this before its restore, and the player at `EngineShutdown` before anything shuts down. The destroys after it only run `cleanup_T`.

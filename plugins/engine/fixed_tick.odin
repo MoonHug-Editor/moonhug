@@ -27,6 +27,8 @@ Tick_Hooks :: struct {
 // `step` runs exactly one fixed tick and one frame tick at the fixed delta,
 // ignoring the accumulator, for the editor's Step button.
 frame_tick :: proc(hooks: Tick_Hooks, dt: f32, step := false) {
+	// A debug build checks that no writer bypassed the enable hooks.
+	when ODIN_DEBUG do enabled_verify()
 	fdt := fixed_dt()
 	steps := 1 if step else fixed_frame_ticks(dt)
 	for _ in 0 ..< steps {

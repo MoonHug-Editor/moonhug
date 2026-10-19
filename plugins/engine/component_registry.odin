@@ -34,12 +34,15 @@ Component_Desc :: struct {
 	make_entry:   proc(pool: rawptr) -> Pool_Entry,
 	each_alive:   proc(pool: rawptr, fn: proc(key: TypeKey, comp: rawptr)),
 
-	// The game's lifecycle hooks, nil = none: @(comp_awake) and
-	// @(comp_on_destroy) (component_lifecycle.odin). reset_T, cleanup_T and on_validate_T
-	// are not here: the type tables (core/type_lifecycle.odin) hold them for
+	// The game's lifecycle hooks, nil = none: @(comp_awake),
+	// @(comp_on_destroy), @(comp_on_enable), @(comp_on_disable)
+	// (component_lifecycle.odin). reset_T, cleanup_T and on_validate_T are
+	// not here: the type tables (core/type_lifecycle.odin) hold them for
 	// every @(typ_guid) type, filled by register_type_guids.
 	awake:       proc(comp: rawptr),
 	on_destroy:  proc(comp: rawptr),
+	on_enable:   proc(comp: rawptr),
+	on_disable:  proc(comp: rawptr),
 
 	// Capability tags a reference field can name with `ref:"@Tag"` instead of
 	// a type: every registered component carrying the tag is a valid target.
@@ -107,6 +110,8 @@ component_register :: proc(desc: Component_Desc) {
 
 		if desc.awake != nil do component_awake_procs[desc.type_key] = desc.awake
 		if desc.on_destroy != nil do component_on_destroy_procs[desc.type_key] = desc.on_destroy
+		if desc.on_enable != nil do component_on_enable_procs[desc.type_key] = desc.on_enable
+		if desc.on_disable != nil do component_on_disable_procs[desc.type_key] = desc.on_disable
 	}
 
 	// Outside the override block: pools belong to the WORLD and must be
