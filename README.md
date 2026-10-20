@@ -151,7 +151,6 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 
 - physics3d follow-ups:
   - mesh colliders
-  - explicit mass
 
 - bulk entity tier for mass simulation (100k-scale sprite battles): SoA arrays + fixed-tick sim + GPU instancing, see [Components](plugins/engine/docs/Components.md) "Two data regimes"
 

@@ -13,6 +13,9 @@ import "moonhug:packages/engine"
 @(typ_guid={guid = "82976d39-c450-4464-87e2-c260c430c157"})
 Rigidbody :: struct {
 	using base:      engine.CompData `inspect:"-"`,
+	// The body's mass in kilograms. The colliders' density decides how it is
+	// spread: the center of mass and the inertia.
+	mass:            f32 `decor:min(0.0001)`,
 	use_gravity:     bool,
 	is_kinematic:    bool,
 	linear_damping:  f32,
@@ -30,6 +33,7 @@ Rigidbody :: struct {
 
 reset_Rigidbody :: proc(comp: ^Rigidbody) {
 	cleanup_Rigidbody(comp)
+	comp.mass = 1
 	comp.use_gravity = true
 }
 

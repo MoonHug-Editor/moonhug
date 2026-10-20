@@ -7,7 +7,9 @@ app runs.
 
 ## Components (Add Component → Physics)
 
-- **Rigidbody** — makes the object dynamic. `use_gravity` toggles gravity,
+- **Rigidbody** — makes the object dynamic. `mass` is the body's mass in
+  kilograms (default 1), and the colliders' `density` only spreads it: the
+  center of mass and the inertia. `use_gravity` toggles gravity,
   `is_kinematic` makes it animation/code-driven (it pushes dynamic bodies but
   is never pushed), freeze flags lock position/rotation per axis.
 - **BoxCollider / SphereCollider / CapsuleCollider** — collision shapes with

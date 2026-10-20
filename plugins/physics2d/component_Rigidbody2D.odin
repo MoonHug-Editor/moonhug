@@ -20,6 +20,11 @@ Body_Type :: enum {
 Rigidbody2D :: struct {
 	using base:      engine.CompData `inspect:"-"`,
 	body_type:       Body_Type,
+	// The colliders' density decides the mass. Off, `mass` does and the density
+	// only spreads it: the center of mass and the inertia.
+	use_auto_mass:   bool,
+	// The body's mass in kilograms, when use_auto_mass is off.
+	mass:            f32 `decor:min(0.0001)`,
 	gravity_scale:   f32,
 	linear_damping:  f32,
 	angular_damping: f32,
@@ -33,10 +38,13 @@ Rigidbody2D :: struct {
 	using layer_overrides: Physics2D_Layer_Overrides `inline:""`,
 
 	body: b2.BodyId `json:"-" inspect:"-"`,
+	// The body carries `mass` instead of its shapes' (physics2d.odin _sync_mass).
+	mass_set: bool `json:"-" inspect:"-"`,
 }
 
 reset_Rigidbody2D :: proc(comp: ^Rigidbody2D) {
 	cleanup_Rigidbody2D(comp)
+	comp.mass = 1
 	comp.gravity_scale = 1
 }
 

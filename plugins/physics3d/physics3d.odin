@@ -92,6 +92,7 @@ physics_step :: proc(fixed_dt: f32) {
 	w := engine.ctx_world()
 	_sync_bodies(w, fixed_dt)
 	_sync_colliders(w)
+	_sync_mass(w)
 	b3.World_Step(_state.world, fixed_dt, _SUB_STEPS)
 	_write_back(w)
 	_collect_events(w)
@@ -120,6 +121,29 @@ _ensure_world :: proc() {
 }
 
 // --- Sync: components -> box3d --------------------------------------------------
+
+// Every dynamic body gets its Rigidbody's mass. box3d computes a body's mass
+// from its shapes' density whenever a shape is added, so the check runs each
+// step, after the colliders sync: the inertia scales by the same ratio, and
+// the center of mass stays where the shapes put it.
+_sync_mass :: proc(w: ^engine.World) {
+	it := engine.pool_iterator(rigidbodies(w))
+	for rb, _ in engine.pool_next(&it) {
+		if rb.is_kinematic || !b3.Body_IsValid(rb.body) do continue
+		want := max(rb.mass, 0.0001)
+		md := b3.Body_GetMassData(rb.body)
+		if abs(md.mass - want) <= want * 1e-6 do continue
+		// A body with no shape yet has no inertia to scale: a unit sphere's.
+		if md.mass > 0 {
+			k := want / md.mass
+			for i in 0 ..< 3 do for j in 0 ..< 3 do md.inertia[i, j] *= k
+		} else {
+			md.inertia = matrix[3, 3]f32{0.4 * want, 0, 0, 0, 0.4 * want, 0, 0, 0, 0.4 * want}
+		}
+		md.mass = want
+		b3.Body_SetMassData(rb.body, md)
+	}
+}
 
 // A material changed (an inspector edit, its file on disk): every live shape
 // takes its collider's material again.

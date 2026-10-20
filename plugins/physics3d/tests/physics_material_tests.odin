@@ -102,3 +102,39 @@ physics3d_material_bounces_ball :: proc(t: ^testing.T) {
 	testing.expectf(t, peak_after[0] < low[0] + 0.3, "the plain ball stays down (low %v, peak after %v)", low[0], peak_after[0])
 	testing.expectf(t, peak_after[1] > low[1] + 2, "the bouncy ball comes back up (low %v, peak after %v)", low[1], peak_after[1])
 }
+
+// The Rigidbody's mass is the body's, on the next step, whatever the
+// colliders' density computes, and a live edit follows with the inertia
+// scaled in proportion.
+@(test)
+physics3d_explicit_mass :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	ball := engine.transform_new("Ball")
+	_, rb_ptr := engine.transform_add_comp(ball, .Rigidbody)
+	rb := cast(^physics3d.Rigidbody)rb_ptr
+	rb.enabled = true
+	testing.expect_value(t, rb.mass, f32(1))
+	rb.mass = 5
+	_, sp := engine.transform_add_comp(ball, .SphereCollider)
+	s := cast(^physics3d.SphereCollider)sp
+	s.enabled = true
+	s.radius = 0.5
+	s.density = 1
+
+	physics3d.physics_step(1.0 / 60.0)
+	body, ok := physics3d.body_of(ball)
+	testing.expect(t, ok, "the body exists")
+	testing.expect_value(t, b3.Body_GetMass(body), f32(5))
+	i5 := b3.Body_GetMassData(body).inertia[0, 0]
+
+	rb.mass = 2
+	physics3d.physics_step(1.0 / 60.0)
+	testing.expect_value(t, b3.Body_GetMass(body), f32(2))
+	i2 := b3.Body_GetMassData(body).inertia[0, 0]
+	testing.expectf(t, abs(i2 / i5 - 0.4) < 1e-4, "the inertia scales with the mass (%v -> %v)", i5, i2)
+}

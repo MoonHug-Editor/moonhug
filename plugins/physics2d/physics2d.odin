@@ -93,6 +93,7 @@ physics_step :: proc(fixed_dt: f32) {
 	w := engine.ctx_world()
 	_sync_bodies(w, fixed_dt)
 	_sync_colliders(w)
+	_sync_mass(w)
 	b2.World_Step(_state.world, fixed_dt, _SUB_STEPS)
 	_write_back(w)
 	_collect_events(w)
@@ -283,6 +284,33 @@ _shape_target :: proc(w: ^engine.World, owner: engine.Transform_Handle, offset: 
 		static_body^ = b2.CreateBody(_state.world, def)
 	}
 	return {body = static_body^, center = offset, angle = 0}, true
+}
+
+// Every dynamic body with use_auto_mass off gets its Rigidbody2D's mass. box2d
+// computes a body's mass from its shapes' density whenever a shape is added,
+// so the check runs each step, after the colliders sync: the inertia scales by
+// the same ratio, and the center of mass stays where the shapes put it. A
+// body switched to auto mass gets its shapes' mass back.
+_sync_mass :: proc(w: ^engine.World) {
+	it := engine.pool_iterator(rigidbody2_ds(w))
+	for rb, _ in engine.pool_next(&it) {
+		if rb.body_type != .Dynamic || !b2.Body_IsValid(rb.body) do continue
+		if rb.use_auto_mass {
+			if rb.mass_set {
+				b2.Body_ApplyMassFromShapes(rb.body)
+				rb.mass_set = false
+			}
+			continue
+		}
+		rb.mass_set = true
+		want := max(rb.mass, 0.0001)
+		md := b2.Body_GetMassData(rb.body)
+		if abs(md.mass - want) <= want * 1e-6 do continue
+		// A body with no shape yet has no inertia to scale: a unit disc's.
+		md.rotationalInertia = md.rotationalInertia * want / md.mass if md.mass > 0 else 0.5 * want
+		md.mass = want
+		b2.Body_SetMassData(rb.body, md)
+	}
 }
 
 // A collider's material: its own, else the Rigidbody2D it attaches to's.

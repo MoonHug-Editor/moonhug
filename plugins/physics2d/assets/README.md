@@ -12,7 +12,9 @@ plane and rotate around Z.
 
 - **Rigidbody2D** — makes the object simulated. `body_type` picks Dynamic
   (fully simulated), Kinematic (animation/code-driven, pushes dynamic bodies
-  but is never pushed) or Static. `gravity_scale` tunes gravity per body,
+  but is never pushed) or Static. `mass` is the body's mass in kilograms
+  (default 1), and the colliders' `density` only spreads it, unless
+  `use_auto_mass` is on, when the density decides the mass. `gravity_scale` tunes gravity per body,
   `fixed_rotation` locks rotation.
 - **BoxCollider2D / CircleCollider2D / CapsuleCollider2D** — collision shapes
   with a local `offset`. Transform scale affects the shape size. `material`

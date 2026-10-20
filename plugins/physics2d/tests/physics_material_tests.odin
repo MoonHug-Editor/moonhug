@@ -113,3 +113,44 @@ physics2d_material_bounces_ball :: proc(t: ^testing.T) {
 	testing.expectf(t, peak_after[0] < low[0] + 0.3, "the plain ball stays down (low %v, peak after %v)", low[0], peak_after[0])
 	testing.expectf(t, peak_after[1] > low[1] + 2, "the bouncy ball comes back up (low %v, peak after %v)", low[1], peak_after[1])
 }
+
+// With use_auto_mass off the Rigidbody2D's mass is the body's, on the next
+// step, and a live edit follows. On, the colliders' density decides.
+@(test)
+physics2d_explicit_mass :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	ball := engine.transform_new("Ball")
+	_, rb_ptr := engine.transform_add_comp(ball, .Rigidbody2D)
+	rb := cast(^physics2d.Rigidbody2D)rb_ptr
+	rb.enabled = true
+	rb.body_type = .Dynamic
+	testing.expect_value(t, rb.mass, f32(1))
+	testing.expect(t, !rb.use_auto_mass, "auto mass is off by default")
+	rb.mass = 3
+	_, cp := engine.transform_add_comp(ball, .CircleCollider2D)
+	c := cast(^physics2d.CircleCollider2D)cp
+	c.enabled = true
+	c.radius = 0.5
+	c.density = 1
+
+	physics2d.physics_step(1.0 / 60.0)
+	body, ok := physics2d.body_of(ball)
+	testing.expect(t, ok, "the body exists")
+	testing.expect_value(t, b2.Body_GetMass(body), f32(3))
+	i3 := b2.Body_GetMassData(body).rotationalInertia
+
+	rb.mass = 1.5
+	physics2d.physics_step(1.0 / 60.0)
+	testing.expect_value(t, b2.Body_GetMass(body), f32(1.5))
+	testing.expectf(t, abs(b2.Body_GetMassData(body).rotationalInertia / i3 - 0.5) < 1e-4, "the inertia scales with the mass")
+
+	// Auto mass: the shapes' density decides again, pi * 0.5^2 * 1.
+	rb.use_auto_mass = true
+	physics2d.physics_step(1.0 / 60.0)
+	testing.expectf(t, abs(b2.Body_GetMass(body) - 0.7853982) < 1e-4, "auto mass is the density's (%v)", b2.Body_GetMass(body))
+}
