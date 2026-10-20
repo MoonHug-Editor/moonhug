@@ -42,7 +42,7 @@ cleanup_Group_Names :: proc(g: ^Group_Names) {
 // The Groups project setting: which Group Names asset the project uses. Unset
 // is no names.
 Groups_Settings :: struct {
-	group_names: Asset_GUID `ref:"Group_Names"`,
+	group_names: Asset_GUID `ref:"Group_Names" expand`,
 }
 
 @(project_settings={name="Groups"})

@@ -47,7 +47,7 @@ cleanup_Render_Layers :: proc(l: ^Render_Layers) {
 // The Layers project setting: which Render Layers asset the project uses. A
 // zero guid is the essentials plugin's default asset.
 Layers_Settings :: struct {
-	render_layers: Asset_GUID `ref:"Render_Layers"`,
+	render_layers: Asset_GUID `ref:"Render_Layers" expand`,
 }
 
 @(project_settings={name="Layers"})
