@@ -26,8 +26,9 @@ BoxCollider2D :: struct {
 	size:        [2]f32,
 	offset:      [2]f32,
 	density:     f32,
-	friction:    f32,
-	bounciness:  f32,
+	// How the surface slides and bounces (physics_material.odin). Unset is
+	// the Rigidbody2D's material, then a new Physics Material 2D's defaults.
+	material:    engine.Asset_GUID `ref:"PhysicsMaterial2D" expand`,
 	is_trigger:  bool,
 	layers:       u32 `decor:layers(domain="physics2d")`,
 	using layer_overrides: Physics2D_Layer_Overrides `inline:""`,
@@ -41,7 +42,6 @@ reset_BoxCollider2D :: proc(comp: ^BoxCollider2D) {
 	comp.layers = 1
 	comp.size = {1, 1}
 	comp.density = 1
-	comp.friction = 0.6
 }
 
 // Every collider's cleanup runs on destroy, removal, Reset and undo: the
@@ -59,8 +59,9 @@ CircleCollider2D :: struct {
 	radius:      f32,
 	offset:      [2]f32,
 	density:     f32,
-	friction:    f32,
-	bounciness:  f32,
+	// How the surface slides and bounces (physics_material.odin). Unset is
+	// the Rigidbody2D's material, then a new Physics Material 2D's defaults.
+	material:    engine.Asset_GUID `ref:"PhysicsMaterial2D" expand`,
 	is_trigger:  bool,
 	layers:       u32 `decor:layers(domain="physics2d")`,
 	using layer_overrides: Physics2D_Layer_Overrides `inline:""`,
@@ -74,7 +75,6 @@ reset_CircleCollider2D :: proc(comp: ^CircleCollider2D) {
 	comp.layers = 1
 	comp.radius = 0.5
 	comp.density = 1
-	comp.friction = 0.6
 }
 
 cleanup_CircleCollider2D :: proc(comp: ^CircleCollider2D) {
@@ -95,8 +95,9 @@ CapsuleCollider2D :: struct {
 	direction:   Capsule_Direction,
 	offset:      [2]f32,
 	density:     f32,
-	friction:    f32,
-	bounciness:  f32,
+	// How the surface slides and bounces (physics_material.odin). Unset is
+	// the Rigidbody2D's material, then a new Physics Material 2D's defaults.
+	material:    engine.Asset_GUID `ref:"PhysicsMaterial2D" expand`,
 	is_trigger:  bool,
 	layers:       u32 `decor:layers(domain="physics2d")`,
 	using layer_overrides: Physics2D_Layer_Overrides `inline:""`,
@@ -110,7 +111,6 @@ reset_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {
 	comp.layers = 1
 	comp.size = {1, 2}
 	comp.density = 1
-	comp.friction = 0.6
 }
 
 cleanup_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {

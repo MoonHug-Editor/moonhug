@@ -31,7 +31,6 @@ physics2d_dynamic_body_falls_onto_static_floor :: proc(t: ^testing.T) {
 	box.enabled = true
 	box.size = {20, 1}
 	box.density = 1
-	box.friction = 0.6
 
 	// Ball: dynamic rigidbody + circle collider, dropped from y = 3.
 	ball := engine.transform_new("Ball")
@@ -47,7 +46,6 @@ physics2d_dynamic_body_falls_onto_static_floor :: proc(t: ^testing.T) {
 	circle.enabled = true
 	circle.radius = 0.5
 	circle.density = 1
-	circle.friction = 0.6
 
 	// ~3.3 sim seconds at 60 Hz — plenty to fall 5m and settle.
 	for _ in 0 ..< 200 {

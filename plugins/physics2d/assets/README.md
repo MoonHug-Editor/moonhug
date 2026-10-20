@@ -15,7 +15,9 @@ plane and rotate around Z.
   but is never pushed) or Static. `gravity_scale` tunes gravity per body,
   `fixed_rotation` locks rotation.
 - **BoxCollider2D / CircleCollider2D / CapsuleCollider2D** — collision shapes
-  with a local `offset`. Transform scale affects the shape size.
+  with a local `offset`. Transform scale affects the shape size. `material`
+  names a Physics Material 2D, and a Rigidbody2D's `material` is the default
+  of its colliders ("Physics materials").
 
 ## How bodies form
 
@@ -54,6 +56,15 @@ Every collider has `layers`, the layers it is on. Several bits are allowed, and 
 
 A collider's own overrides add to those of the rigidbody it attaches to, so an override on the body applies to every collider attached to it. The filter mask is the matrix's rows for the collider's `layers`, plus both includes, minus both excludes (`collision_mask`). Two colliders collide when `(a.layers & b.mask) != 0 && (b.layers & a.mask) != 0`, box2d's own rule, so an exclude on either side wins. The same test decides whether a trigger reports an overlap. The layers and the mask become the shape filter's `categoryBits` and `maskBits` when the shape is created, and each physics step writes a changed value into the live shape, so an edit of the matrix, the layers or the overrides applies on the next step.
 
+## Physics materials
+
+A Physics Material 2D asset (`PhysicsMaterial2D`, Assets ▸ Create ▸ Physics Material 2D) says how a surface slides and bounces: `friction`, `bounciness` (0 to 1), and how each combines with the other collider's when two touch: `friction_combine` and `bounce_combine`, each Average, Mean (the geometric mean, `sqrt(a * b)`), Multiply, Minimum or Maximum. When the two colliders' modes differ, the higher-ranked one wins: Maximum above Minimum above Multiply above Mean above Average.
+
+- A collider names its material in `material`, with a foldout that edits the asset in place. A collider with none takes the material of the Rigidbody2D it attaches to, so one body can set the material of all its colliders.
+- A collider and Rigidbody2D with no material use the Physics 2D settings' Default Material (Edit ▸ Project Settings… ▸ Physics 2D), and with that unset the defaults of a new asset: friction 0.4, bounciness 0, friction combined by Mean and bounciness by Maximum, which is how Box2D mixes them on its own.
+- An edit of a material, in the inspector or on disk, reaches the colliders that use it on the next physics step, also while the game runs.
+- Box2D keeps one friction coefficient per shape, for sliding and resting alike.
+
 ## Going beyond the components
 
 `body_of(handle)` returns the live box2d body, so forces, joints, raycasts
@@ -62,4 +73,4 @@ and anything else box2d offers can be used directly from game code.
 ## Current limitations
 
 - Moving or rescaling a child collider after creation doesn't re-bake its shape, and runtime component field edits other than `layers` and `layer_overrides` don't re-sync (use `body_of`).
-- No effectors, polygon/edge colliders, or physics material assets yet.
+- No effectors or polygon/edge colliders yet.

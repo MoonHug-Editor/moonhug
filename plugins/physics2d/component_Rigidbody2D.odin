@@ -25,6 +25,8 @@ Rigidbody2D :: struct {
 	angular_damping: f32,
 	fixed_rotation:  bool,
 	continuous:      bool, // continuous collision detection (box2d bullet)
+	// The material of every collider attached to this body that names none.
+	material:        engine.Asset_GUID `ref:"PhysicsMaterial2D" expand`,
 
 	// Collides with these layers besides the collision matrix, or never,
 	// for every collider attached to this body.

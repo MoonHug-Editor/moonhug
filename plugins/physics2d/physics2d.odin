@@ -113,6 +113,9 @@ _ensure_world :: proc() {
 	if _state.gravity == {} do _state.gravity = GRAVITY_DEFAULT
 	def := b2.DefaultWorldDef()
 	def.gravity = _state.gravity
+	// The colliders' combine modes (physics_material.odin).
+	def.frictionCallback = _combine_friction
+	def.restitutionCallback = _combine_bounce
 	_state.world = b2.CreateWorld(def)
 	_state.world_ready = true
 }
@@ -282,13 +285,35 @@ _shape_target :: proc(w: ^engine.World, owner: engine.Transform_Handle, offset: 
 	return {body = static_body^, center = offset, angle = 0}, true
 }
 
-_shape_def :: proc(density, friction, bounciness: f32, is_trigger: bool, layer, mask: u32) -> b2.ShapeDef {
+// A collider's material: its own, else the Rigidbody2D it attaches to's.
+_collider_material :: proc(w: ^engine.World, owner: engine.Transform_Handle, own: engine.Asset_GUID) -> engine.Asset_GUID {
+	if own != {} do return own
+	if _, body_tH, ok := _ancestor_body(w, owner); ok {
+		if _, rb := engine.transform_get_comp(body_tH, Rigidbody2D); rb != nil do return rb.material
+	}
+	return {}
+}
+
+// A material changed (an inspector edit, its file on disk): every live shape
+// takes its collider's material again.
+_push_materials :: proc(w: ^engine.World) {
+	push :: proc(w: ^engine.World, shape: b2.ShapeId, owner: engine.Transform_Handle, material: engine.Asset_GUID) {
+		if !b2.Shape_IsValid(shape) do return
+		s := b2.Shape_GetSurfaceMaterial(shape)
+		material_apply(&s, material_of(_collider_material(w, owner, material)))
+		b2.Shape_SetSurfaceMaterial(shape, s)
+	}
+	{ it := engine.pool_iterator(box_collider2_ds(w)); for c, _ in engine.pool_next(&it) do push(w, c.shape, c.owner, c.material) }
+	{ it := engine.pool_iterator(circle_collider2_ds(w)); for c, _ in engine.pool_next(&it) do push(w, c.shape, c.owner, c.material) }
+	{ it := engine.pool_iterator(capsule_collider2_ds(w)); for c, _ in engine.pool_next(&it) do push(w, c.shape, c.owner, c.material) }
+}
+
+_shape_def :: proc(density: f32, material: engine.Asset_GUID, is_trigger: bool, layer, mask: u32) -> b2.ShapeDef {
 	def := b2.DefaultShapeDef()
 	def.filter.categoryBits = u64(layer)
 	def.filter.maskBits = u64(mask)
 	def.density = density
-	def.material.friction = friction
-	def.material.restitution = bounciness
+	material_apply(&def.material, material_of(material))
 	def.isSensor = is_trigger
 	def.enableContactEvents = true
 	def.enableSensorEvents = true
@@ -317,6 +342,15 @@ _register_shape :: proc(shape: b2.ShapeId, owner: engine.Transform_Handle) {
 _sync_colliders :: proc(w: ^engine.World) {
 	// The collision matrix the masks read, once per step.
 	layers_sync()
+	// A new default material in the settings reaches the shapes that use it.
+	if physics2d_settings.default_material != _materials.default_guid {
+		_materials.default_guid = physics2d_settings.default_material
+		_materials.dirty = true
+	}
+	if _materials.dirty {
+		_materials.dirty = false
+		_push_materials(w)
+	}
 	{
 		it := engine.pool_iterator(box_collider2_ds(w))
 		for c, _ in engine.pool_next(&it) {
@@ -329,7 +363,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			size, offset := box_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, offset, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
+			def := _shape_def(c.density, _collider_material(w, c.owner, c.material), c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 			box := b2.MakeOffsetBox(size.x * 0.5, size.y * 0.5, target.center, b2.MakeRot(target.angle))
 			c.shape = b2.CreatePolygonShape(target.body, def, &box)
 			_register_shape(c.shape, c.owner)
@@ -347,7 +381,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			radius, offset := circle_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, offset, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
+			def := _shape_def(c.density, _collider_material(w, c.owner, c.material), c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 			circle := b2.Circle{center = target.center, radius = radius}
 			c.shape = b2.CreateCircleShape(target.body, def, &circle)
 			_register_shape(c.shape, c.owner)
@@ -365,7 +399,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			size, offset := capsule_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, offset, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
+			def := _shape_def(c.density, _collider_material(w, c.owner, c.material), c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 			radius, half: f32
 			axis: [2]f32
 			if c.direction == .Vertical {

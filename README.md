@@ -35,7 +35,7 @@ To build and run the editor, see [Install, Build and Run](docs/general/InstallBu
 ## UX Features
 - Editor development happens through features
   - Each feature provides specific UX solution with optional extensibility
-  - At high level, UX features build around window views, assets and/or components
+  - At high level, UX features are built around window views, assets and/or components
 
 #### Contribution
 
@@ -140,7 +140,6 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
   - first consumer: a sequencer track that drives a transform along a spline
 
 - transform:
-  - use bit set + procs, instead of direct bool change
   - consider making transform regular component (required or optional), node will hold all components
 
 - improve default types inspector UX
@@ -148,11 +147,9 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 - project file ops: Windows trash/reveal (darwin-only today, see project_os_stub.odin)
 
 - physics2d follow-ups:
-  - PhysicsMaterial2D asset
   - effectors/polygon colliders
 
 - physics3d follow-ups:
-  - PhysicsMaterial asset
   - mesh colliders
   - explicit mass
 

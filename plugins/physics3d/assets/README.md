@@ -11,7 +11,8 @@ app runs.
   `is_kinematic` makes it animation/code-driven (it pushes dynamic bodies but
   is never pushed), freeze flags lock position/rotation per axis.
 - **BoxCollider / SphereCollider / CapsuleCollider** — collision shapes with
-  a local `center` offset. Transform scale affects the shape size.
+  a local `center` offset. Transform scale affects the shape size. `material`
+  names a Physics Material ("Physics materials").
 
 ## How bodies form
 
@@ -50,6 +51,15 @@ Every collider has `layers`, the layers it is on. Several bits are allowed, and 
 
 A collider's own overrides add to those of the rigidbody it attaches to, so an override on the body applies to every collider attached to it. The filter mask is the matrix's rows for the collider's `layers`, plus both includes, minus both excludes (`collision_mask`). Two colliders collide when `(a.layers & b.mask) != 0 && (b.layers & a.mask) != 0`, box3d's own rule, so an exclude on either side wins. The same test decides whether a trigger reports an overlap. The layers and the mask become the shape filter's `categoryBits` and `maskBits` when the shape is created, and each physics step writes a changed value into the live shape, so an edit of the matrix, the layers or the overrides applies on the next step.
 
+## Physics materials
+
+A Physics Material asset (`PhysicsMaterial`, Assets ▸ Create ▸ Physics Material) says how a surface slides and bounces: `friction`, `bounciness` (0 to 1), and how each combines with the other collider's when two touch: `friction_combine` and `bounce_combine`, each Average, Minimum, Multiply or Maximum. When the two colliders' modes differ, the higher-ranked one wins: Maximum above Multiply above Minimum above Average.
+
+- A collider names its material in `material`, with a foldout that edits the asset in place.
+- A collider with no material uses the Physics 3D settings' Default Material (Edit ▸ Project Settings… ▸ Physics 3D), and with that unset the defaults of a new asset: friction 0.6, bounciness 0, both combines Average.
+- An edit of a material, in the inspector or on disk, reaches the colliders that use it on the next physics step, also while the game runs.
+- Box3D keeps one friction coefficient per shape, for sliding and resting alike.
+
 ## Going beyond the components
 
 `body_of(handle)` returns the live box3d body, so forces, joints, raycasts
@@ -58,4 +68,4 @@ and anything else box3d offers can be used directly from game code.
 ## Current limitations
 
 - Moving or rescaling a child collider after creation doesn't re-bake its shape, and runtime component field edits other than `layers` and `layer_overrides` don't re-sync (use `body_of`).
-- No mesh colliders or physics material assets yet.
+- No mesh colliders yet.

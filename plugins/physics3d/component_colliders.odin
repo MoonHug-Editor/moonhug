@@ -26,8 +26,9 @@ BoxCollider :: struct {
 	size:        [3]f32,
 	center:      [3]f32,
 	density:     f32,
-	friction:    f32,
-	bounciness:  f32,
+	// How the surface slides and bounces (physics_material.odin). Unset is a
+	// new Physics Material's defaults.
+	material:    engine.Asset_GUID `ref:"PhysicsMaterial" expand`,
 	is_trigger:  bool,
 	layers:       u32 `decor:layers(domain="physics3d")`,
 	using layer_overrides: Physics3D_Layer_Overrides `inline:""`,
@@ -41,7 +42,6 @@ reset_BoxCollider :: proc(comp: ^BoxCollider) {
 	comp.layers = 1
 	comp.size = {1, 1, 1}
 	comp.density = 1
-	comp.friction = 0.6
 }
 
 // Every collider's cleanup runs on destroy, removal, Reset and undo: the
@@ -59,8 +59,9 @@ SphereCollider :: struct {
 	radius:      f32,
 	center:      [3]f32,
 	density:     f32,
-	friction:    f32,
-	bounciness:  f32,
+	// How the surface slides and bounces (physics_material.odin). Unset is a
+	// new Physics Material's defaults.
+	material:    engine.Asset_GUID `ref:"PhysicsMaterial" expand`,
 	is_trigger:  bool,
 	layers:       u32 `decor:layers(domain="physics3d")`,
 	using layer_overrides: Physics3D_Layer_Overrides `inline:""`,
@@ -74,7 +75,6 @@ reset_SphereCollider :: proc(comp: ^SphereCollider) {
 	comp.layers = 1
 	comp.radius = 0.5
 	comp.density = 1
-	comp.friction = 0.6
 }
 
 cleanup_SphereCollider :: proc(comp: ^SphereCollider) {
@@ -98,8 +98,9 @@ CapsuleCollider :: struct {
 	direction:   Capsule_Direction,
 	center:      [3]f32,
 	density:     f32,
-	friction:    f32,
-	bounciness:  f32,
+	// How the surface slides and bounces (physics_material.odin). Unset is a
+	// new Physics Material's defaults.
+	material:    engine.Asset_GUID `ref:"PhysicsMaterial" expand`,
 	is_trigger:  bool,
 	layers:       u32 `decor:layers(domain="physics3d")`,
 	using layer_overrides: Physics3D_Layer_Overrides `inline:""`,
@@ -115,7 +116,6 @@ reset_CapsuleCollider :: proc(comp: ^CapsuleCollider) {
 	comp.height = 2
 	comp.direction = .Y_Axis
 	comp.density = 1
-	comp.friction = 0.6
 }
 
 cleanup_CapsuleCollider :: proc(comp: ^CapsuleCollider) {

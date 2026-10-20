@@ -13,6 +13,10 @@ Physics2D_Settings :: struct {
 	// pairs collide (layers.odin). Unset is the built-in default: layer 0
 	// "Default", every pair colliding.
 	layers:  engine.Asset_GUID `ref:"Physics2D_Layers"`,
+	// The material of every collider that names none and whose Rigidbody2D
+	// names none (physics_material.odin). Unset is a new Physics Material 2D's
+	// defaults: friction 0.4, bounciness 0, Mean and Maximum.
+	default_material: engine.Asset_GUID `ref:"PhysicsMaterial2D" expand`,
 }
 
 @(project_settings={name="Physics 2D"})

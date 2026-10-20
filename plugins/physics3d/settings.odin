@@ -11,6 +11,10 @@ Physics3D_Settings :: struct {
 	// pairs collide (layers.odin). Unset is the built-in default: layer 0
 	// "Default", every pair colliding.
 	layers: engine.Asset_GUID `ref:"Physics3D_Layers"`,
+	// The material of every collider that names none (physics_material.odin).
+	// Unset is a new Physics Material's defaults: friction 0.6, bounciness 0,
+	// both combines Average.
+	default_material: engine.Asset_GUID `ref:"PhysicsMaterial" expand`,
 }
 
 @(project_settings={name="Physics 3D"})

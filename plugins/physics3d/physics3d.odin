@@ -112,11 +112,28 @@ _ensure_world :: proc() {
 	if _state.gravity == {} do _state.gravity = GRAVITY_DEFAULT
 	def := b3.DefaultWorldDef()
 	def.gravity = _state.gravity
+	// The colliders' combine modes (physics_material.odin).
+	def.frictionCallback = _combine_friction
+	def.restitutionCallback = _combine_bounce
 	_state.world = b3.CreateWorld(def)
 	_state.world_ready = true
 }
 
 // --- Sync: components -> box3d --------------------------------------------------
+
+// A material changed (an inspector edit, its file on disk): every live shape
+// takes its collider's material again.
+_push_materials :: proc(w: ^engine.World) {
+	push :: proc(shape: b3.ShapeId, material: engine.Asset_GUID) {
+		if !b3.Shape_IsValid(shape) do return
+		s := b3.Shape_GetSurfaceMaterial(shape)
+		material_apply(&s, material_of(material))
+		b3.Shape_SetSurfaceMaterial(shape, s)
+	}
+	{ it := engine.pool_iterator(box_colliders(w)); for c, _ in engine.pool_next(&it) do push(c.shape, c.material) }
+	{ it := engine.pool_iterator(sphere_colliders(w)); for c, _ in engine.pool_next(&it) do push(c.shape, c.material) }
+	{ it := engine.pool_iterator(capsule_colliders(w)); for c, _ in engine.pool_next(&it) do push(c.shape, c.material) }
+}
 
 _world_quat :: proc(rotation: [4]f32) -> b3.Quat {
 	return engine.quat_to_native(rotation)
@@ -286,13 +303,12 @@ _shape_target :: proc(w: ^engine.World, owner: engine.Transform_Handle, center: 
 	return {body = static_body^, center = center, rot = 1}, true
 }
 
-_shape_def :: proc(density, friction, bounciness: f32, is_trigger: bool, layer, mask: u32) -> b3.ShapeDef {
+_shape_def :: proc(density: f32, material: engine.Asset_GUID, is_trigger: bool, layer, mask: u32) -> b3.ShapeDef {
 	def := b3.DefaultShapeDef()
 	def.filter.categoryBits = u64(layer)
 	def.filter.maskBits = u64(mask)
 	def.density = density
-	def.baseMaterial.friction = friction
-	def.baseMaterial.restitution = bounciness
+	material_apply(&def.baseMaterial, material_of(material))
 	def.isSensor = is_trigger
 	def.enableContactEvents = true
 	def.enableSensorEvents = true
@@ -331,6 +347,15 @@ _capsule_axis :: proc(dir: Capsule_Direction) -> [3]f32 {
 _sync_colliders :: proc(w: ^engine.World) {
 	// The collision matrix the masks read, once per step.
 	layers_sync()
+	// A new default material in the settings reaches the shapes that use it.
+	if physics3d_settings.default_material != _materials.default_guid {
+		_materials.default_guid = physics3d_settings.default_material
+		_materials.dirty = true
+	}
+	if _materials.dirty {
+		_materials.dirty = false
+		_push_materials(w)
+	}
 	{
 		it := engine.pool_iterator(box_colliders(w))
 		for c, _ in engine.pool_next(&it) {
@@ -343,7 +368,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			size, center := box_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, center, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
+			def := _shape_def(c.density, c.material, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 			h := size * 0.5
 			bh := b3.MakeTransformedBoxHull(h.x, h.y, h.z, b3.Transform{p = target.center, q = target.rot})
 			c.shape = b3.CreateHullShape(target.body, def, &bh.base)
@@ -362,7 +387,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			radius, center := sphere_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, center, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
+			def := _shape_def(c.density, c.material, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 			sphere := b3.Sphere{center = target.center, radius = radius}
 			c.shape = b3.CreateSphereShape(target.body, def, &sphere)
 			_register_shape(c.shape, c.owner)
@@ -380,7 +405,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			radius, height, center := capsule_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, center, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
+			def := _shape_def(c.density, c.material, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 			half := max(height * 0.5 - radius, 0)
 			axis := linalg.quaternion128_mul_vector3(target.rot, _capsule_axis(c.direction))
 			capsule := b3.Capsule{
