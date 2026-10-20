@@ -22,6 +22,10 @@
          the REPO, not to where the page sits on the site: a page is mounted
          where its `path:` says, and its links are written against its folder. */ -}}
     {{- $srcDir := strings.TrimPrefix (printf "%s/" hugo.WorkingDir) (path.Dir .PageInner.File.Filename) -}}
+    {{- /* A doc page is a copy mh docs writes into the build folder: its repo
+         file is the `mh_source` front matter, and its links are written
+         against that file's folder. */ -}}
+    {{- with .PageInner.Params.mh_source -}}{{- $srcDir = path.Dir . -}}{{- end -}}
     {{- /* Pages mh docs writes into the build folder (the README copy, the
          License page) link against the repo root. */ -}}
     {{- if hasPrefix $srcDir "builds/" -}}{{- $srcDir = "" -}}{{- end -}}

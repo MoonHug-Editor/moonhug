@@ -5,8 +5,10 @@
      pages and the copied home page have no file to open. */ -}}
 {{- with .File -}}
   {{- $file := strings.TrimPrefix (printf "%s/" hugo.WorkingDir) .Filename -}}
-  {{- /* The home page is the README, copied into the build folder. */ -}}
+  {{- /* The home page is the README, copied into the build folder, and
+       every doc page is a copy that names its repo file in `mh_source`. */ -}}
   {{- if $.IsHome -}}{{- $file = "README.md" -}}{{- end -}}
+  {{- with $.Params.mh_source -}}{{- $file = . -}}{{- end -}}
   {{- if and (not (hasPrefix $file "docs/reference/")) (not (hasPrefix $file "builds/")) -}}
     {{- $tpl := site.Params.source_url -}}
     {{- if $tpl -}}

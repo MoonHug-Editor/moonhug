@@ -15,7 +15,9 @@ import "core:os"
 import "core:path/filepath"
 import "core:slice"
 import "core:strings"
+import "core:sync"
 import "core:thread"
+import "core:time"
 
 DOCS_CONFIG :: "tools/docs/hugo.toml"
 DOCS_MOUNTS :: "builds/docs-mounts.toml"
@@ -76,11 +78,79 @@ docs_regenerate :: proc() -> bool {
 	return true
 }
 
+// Writes `data` to `path` unless the file already holds it. The served site
+// watches what it reads, and an unchanged write would re-render pages.
+docs_write_if_changed :: proc(path: string, data: []byte) -> os.Error {
+	if old, rerr := os.read_entire_file(path, context.temp_allocator); rerr == nil && string(old) == string(data) do return nil
+	return os.write_entire_file(path, data)
+}
+
+// The files written into the home folder by this regenerate. docs_write_plugin_mounts
+// prunes the rest at its end, so a page that moved or went leaves no copy.
+@(private = "file") _home_written: map[string]bool
+
+// A write into the home folder: the folders made, the file kept from the
+// prune, and nothing written when it already holds `data`.
+docs_home_write :: proc(path: string, data: []byte) -> os.Error {
+	{
+		context.allocator = context.temp_allocator
+		os.make_directory_all(filepath.dir(path))
+	}
+	_home_written[strings.clone(path, context.temp_allocator)] = true
+	return docs_write_if_changed(path, data)
+}
+
+// Deletes every file under `dir` this regenerate did not write, and the
+// folders left empty. True when `dir` itself is empty after it.
+@(private = "file")
+_home_prune :: proc(dir: string) -> (empty: bool) {
+	handle, oerr := os.open(dir)
+	if oerr != nil do return true
+	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+	os.close(handle)
+	if rerr != nil do return false
+	empty = true
+	for e in entries {
+		path := fmt.tprintf("%s/%s", dir, e.name)
+		if e.type == .Directory {
+			if _home_prune(path) {
+				os.remove(path)
+			} else {
+				empty = false
+			}
+		} else if path in _home_written {
+			empty = false
+		} else {
+			os.remove(path)
+		}
+	}
+	return
+}
+
+// `page` with `mh_source: "<repo path>"` added to its front matter, or a
+// front matter holding it when the page has none.
+@(private = "file")
+_with_source :: proc(page, repo_path: string) -> string {
+	line := fmt.tprintf("mh_source: %q\n", repo_path)
+	if strings.has_prefix(page, "---\n") do return strings.concatenate({"---\n", line, page[4:]}, context.temp_allocator)
+	return strings.concatenate({"---\n", line, "---\n", page}, context.temp_allocator)
+}
+
 // The served site's Rebuild button: a loopback-only HTTP endpoint on
 // DOCS_REBUILD_PORT, beside the Hugo server. `GET /ping` answers so the page
 // knows to show the button, `POST /rebuild` runs docs_regenerate and answers
 // once it is done. Only the served site's own origin may call it. A port
 // already taken leaves the site without the button.
+//
+// A saved or reverted .md shows on its own. Every page is a copy in the home
+// folder (docs_page_mounts), which the server watches, so a thread checks the
+// docs' .md files once a second and on a change rewrites the copies, the home
+// page (the README's copy) and the section indexes, each only if it changed,
+// and prunes copies of pages that went. The server re-renders the one page
+// that changed, in tens of milliseconds, and its livereload reloads it. A
+// page added, removed or moved by its `path:` also changes the sidebar, which
+// re-renders more. No prebuild runs: the reference pages, which come from the
+// code, regenerate with the Rebuild button.
 DOCS_REBUILD_PORT :: 7271
 
 docs_rebuild_listen :: proc() {
@@ -90,6 +160,106 @@ docs_rebuild_listen :: proc() {
 		return
 	}
 	thread.create_and_start_with_poly_data(sock, _docs_rebuild_serve, self_cleanup = true)
+	thread.create_and_start_with_poly_data(rawptr(nil), _docs_watch, self_cleanup = true)
+}
+
+// The button and the watcher regenerate from their own threads: one at a time.
+@(private = "file") _docs_regen_lock: sync.Mutex
+
+@(private = "file")
+_docs_regenerate_locked :: proc() -> bool {
+	sync.mutex_lock(&_docs_regen_lock)
+	defer sync.mutex_unlock(&_docs_regen_lock)
+	return docs_regenerate()
+}
+
+// The pages part of docs_regenerate: mounts, home, indexes. No prebuild.
+@(private = "file")
+_docs_pages_locked :: proc() -> bool {
+	sync.mutex_lock(&_docs_regen_lock)
+	defer sync.mutex_unlock(&_docs_regen_lock)
+	return docs_write_plugin_mounts()
+}
+
+@(private = "file")
+_docs_watch :: proc(_: rawptr) {
+	context.allocator = runtime.default_allocator()
+	last := _docs_md_fingerprint()
+	free_all(context.temp_allocator)
+	for {
+		time.sleep(time.Second)
+		now := _docs_md_fingerprint()
+		if now != last {
+			last = now
+			_docs_pages_locked()
+		}
+		free_all(context.temp_allocator)
+	}
+}
+
+// The folders whose .md files the watcher follows: the docs without the
+// generated reference, the README, and every plugin's docs/ folder, including
+// a plugin inside a plugin.
+@(private = "file")
+_docs_md_fingerprint :: proc() -> u64 {
+	h: u64 = 14695981039346656037
+	_fold_md_dir(&h, "docs", skip = "docs/reference")
+	_fold_md_file(&h, "README.md")
+	handle, oerr := os.open("plugins")
+	if oerr != nil do return h
+	defer os.close(handle)
+	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+	if rerr != nil do return h
+	for e in entries {
+		if strings.has_prefix(e.name, ".") do continue
+		dir := fmt.tprintf("plugins/%s", e.name)
+		_fold_md_dir(&h, fmt.tprintf("%s/docs", dir))
+		sub_handle, serr := os.open(dir)
+		if serr != nil do continue
+		defer os.close(sub_handle)
+		if subs, suberr := os.read_dir(sub_handle, -1, context.temp_allocator); suberr == nil {
+			for s in subs do if os.is_dir(fmt.tprintf("%s/%s", dir, s.name)) && !strings.has_prefix(s.name, ".") do _fold_md_dir(&h, fmt.tprintf("%s/%s/docs", dir, s.name))
+		}
+	}
+	return h
+}
+
+@(private = "file")
+_fold_md_dir :: proc(h: ^u64, dir: string, skip := "") {
+	if dir == skip do return
+	handle, oerr := os.open(dir)
+	if oerr != nil do return
+	defer os.close(handle)
+	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+	if rerr != nil do return
+	for e in entries {
+		if strings.has_prefix(e.name, ".") do continue
+		path := fmt.tprintf("%s/%s", dir, e.name)
+		if os.is_dir(path) {
+			_fold_md_dir(h, path, skip)
+		} else if strings.has_suffix(e.name, ".md") {
+			_fold(h, path, e.modification_time._nsec)
+		}
+	}
+}
+
+@(private = "file")
+_fold_md_file :: proc(h: ^u64, path: string) {
+	t, err := os.modification_time_by_path(path)
+	if err != nil do return
+	_fold(h, path, t._nsec)
+}
+
+// FNV-1a over the path and the modification time.
+@(private = "file")
+_fold :: proc(h: ^u64, path: string, nsec: i64) {
+	for b in transmute([]byte)path {
+		h^ = (h^ ~ u64(b)) * 1099511628211
+	}
+	n := u64(nsec)
+	for i in 0 ..< 8 {
+		h^ = (h^ ~ ((n >> (8 * u64(i))) & 0xff)) * 1099511628211
+	}
 }
 
 @(private = "file")
@@ -107,7 +277,7 @@ _docs_rebuild_serve :: proc(sock: net.TCP_Socket) {
 			status, body = "200 OK", "ok"
 		case strings.has_prefix(request, "POST /rebuild "):
 			fmt.println("mh: rebuilding the docs for the Rebuild button")
-			if docs_regenerate() {
+			if _docs_regenerate_locked() {
 				status, body = "200 OK", "ok"
 			} else {
 				status, body = "500 Internal Server Error", "failed, see the terminal"
@@ -266,6 +436,7 @@ _strip_attr :: proc(html: string, prefix: string) -> string {
 // replaces an earlier file's [[module.mounts]] array rather than adding to it,
 // so a split list would silently drop whichever half came first.
 docs_write_plugin_mounts :: proc() -> bool {
+	_home_written = make(map[string]bool, context.temp_allocator)
 	handle, oerr := os.open("plugins")
 	if oerr != nil {
 		fmt.eprintfln("mh: cannot open plugins/: %v", oerr)
@@ -312,6 +483,7 @@ docs_write_plugin_mounts :: proc() -> bool {
 	if !docs_write_home(names[:]) do return false
 	if !docs_write_viewer() do return false
 	if !docs_write_group_indexes(groups) do return false
+	_home_prune(DOCS_HOME_DIR)
 	os.make_directory("builds")
 	// Unchanged content is not rewritten: the served site watches this file
 	// as config, and a write would reload the whole site.
@@ -339,12 +511,8 @@ docs_write_home :: proc(plugins: []string) -> bool {
 	// dead on the site. The site gets a License page (written below), and the
 	// site's copy of the README links there. GitHub keeps the plain link.
 	body, _ = strings.replace_all(body, "](LICENSE)", "](docs/general/legal/License.md)", context.temp_allocator)
-	// Rebuilt whole: a page this stops writing must not survive from an
-	// earlier build, it would still be mounted into the site.
-	os.remove_all(DOCS_HOME_DIR)
-	os.make_directory(DOCS_HOME_DIR)
 	page := strings.concatenate({"---\ntitle: \"\"\ntype: \"docs\"\n---\n\n", body}, context.temp_allocator)
-	if err := os.write_entire_file(DOCS_HOME_DIR + "/_index.md", transmute([]byte)page); err != nil {
+	if err := docs_home_write(DOCS_HOME_DIR + "/_index.md", transmute([]byte)page); err != nil {
 		fmt.eprintfln("mh: cannot write %s/_index.md: %v", DOCS_HOME_DIR, err)
 		return false
 	}
@@ -357,7 +525,7 @@ docs_write_home :: proc(plugins: []string) -> bool {
 	}
 	os.make_directory_all(fmt.tprintf("%s/general/legal", DOCS_HOME_DIR))
 	lp := strings.concatenate({"---\ntitle: \"License\"\ndescription: \"The license MoonHug is distributed under\"\norder: 1004\ntags: [\"contributing\"]\n---\n\n", string(license)}, context.temp_allocator)
-	if err := os.write_entire_file(fmt.tprintf("%s/general/legal/License.md", DOCS_HOME_DIR), transmute([]byte)lp); err != nil {
+	if err := docs_home_write(fmt.tprintf("%s/general/legal/License.md", DOCS_HOME_DIR), transmute([]byte)lp); err != nil {
 		fmt.eprintfln("mh: cannot write the License page: %v", err)
 		return false
 	}
@@ -365,7 +533,7 @@ docs_write_home :: proc(plugins: []string) -> bool {
 	// one, the section exists only on the site, so it is written here.
 	os.make_directory(fmt.tprintf("%s/plugins", DOCS_HOME_DIR))
 	sec := "---\ntitle: \"Plugins\"\ndescription: \"Documentation that ships with each plugin\"\norder: 30\n---\n\nEach plugin keeps its pages in its own `docs/` folder and they are collected here at build time. The plugins model itself is described in [Plugins](/docs/core/Plugins.md), and how this site is put together in [Documentation](/docs/general/Documentation.md).\n"
-	if err := os.write_entire_file(fmt.tprintf("%s/plugins/_index.md", DOCS_HOME_DIR), transmute([]byte)sec); err != nil {
+	if err := docs_home_write(fmt.tprintf("%s/plugins/_index.md", DOCS_HOME_DIR), transmute([]byte)sec); err != nil {
 		fmt.eprintfln("mh: cannot write plugins/_index.md: %v", err)
 		return false
 	}
@@ -382,7 +550,7 @@ docs_write_home :: proc(plugins: []string) -> bool {
 		dir := fmt.tprintf("%s/plugins/%s", DOCS_HOME_DIR, n)
 		os.make_directory(dir)
 		ip := fmt.tprintf("---\ntitle: \"%s\"\ndescription: \"%s\"\n---\n", n, desc)
-		if err := os.write_entire_file(fmt.tprintf("%s/_index.md", dir), transmute([]byte)ip); err != nil {
+		if err := docs_home_write(fmt.tprintf("%s/_index.md", dir), transmute([]byte)ip); err != nil {
 			fmt.eprintfln("mh: cannot write %s/_index.md: %v", dir, err)
 			return false
 		}
@@ -420,7 +588,7 @@ _json_string_field :: proc(json: string, field: string) -> string {
 // closing pre, style or textarea tag, so the script writes "<\/pre>".
 docs_write_viewer :: proc() -> bool {
 	path := fmt.tprintf("%s/source.md", DOCS_HOME_DIR)
-	if err := os.write_entire_file(path, transmute([]byte)string(DOCS_VIEWER_PAGE)); err != nil {
+	if err := docs_home_write(path, transmute([]byte)string(DOCS_VIEWER_PAGE)); err != nil {
 		fmt.eprintfln("mh: cannot write %s: %v", path, err)
 		return false
 	}
@@ -571,6 +739,12 @@ docs_page_mounts :: proc(b: ^strings.Builder, plugins: []string) -> (groups: []s
 	first := true
 	// Site folder -> whether a page mounted its _index.md there.
 	dirs := make(map[string]bool, context.temp_allocator)
+	// Each page is copied into the home folder at its site path, not mounted:
+	// the served site watches that folder, so an edit, copied over by the docs
+	// watcher, re-renders that page alone. A single-file mount is not watched,
+	// and only a full config reload would re-read it. The copy names its repo
+	// file in `mh_source`, which the link hook and the source link read
+	// instead of the copy's own path.
 	add :: proc(b, pages: ^strings.Builder, first: ^bool, dirs: ^map[string]bool, repo_path, default_dir: string) -> bool {
 		data, rerr := os.read_entire_file(repo_path, context.temp_allocator)
 		if rerr != nil {
@@ -582,7 +756,10 @@ docs_page_mounts :: proc(b: ^strings.Builder, plugins: []string) -> (groups: []s
 		if p := _front_matter_value(string(data), "path"); p != "" {
 			target = p if strings.has_suffix(p, ".md") else fmt.tprintf("%s/%s", strings.trim_suffix(p, "/"), name)
 		}
-		fmt.sbprintf(b, "[[module.mounts]]\nsource = '%s'\ntarget = 'content/%s'\n", repo_path, target)
+		if err := docs_home_write(fmt.tprintf("%s/%s", DOCS_HOME_DIR, target), transmute([]byte)_with_source(string(data), repo_path)); err != nil {
+			fmt.eprintfln("mh: cannot copy %s: %v", repo_path, err)
+			return false
+		}
 		{
 			context.allocator = context.temp_allocator
 			dir := filepath.dir(target)
@@ -626,7 +803,7 @@ docs_page_mounts :: proc(b: ^strings.Builder, plugins: []string) -> (groups: []s
 	}
 	strings.write_string(&pages, "\n}\n")
 	os.make_directory_all("builds/docs-data")
-	if err := os.write_entire_file("builds/docs-data/pages.json", transmute([]byte)strings.to_string(pages)); err != nil {
+	if err := docs_write_if_changed("builds/docs-data/pages.json", transmute([]byte)strings.to_string(pages)); err != nil {
 		fmt.eprintfln("mh: cannot write builds/docs-data/pages.json: %v", err)
 		return {}, false
 	}
@@ -654,7 +831,7 @@ docs_write_group_indexes :: proc(groups: []string) -> bool {
 		out_dir := fmt.tprintf("%s/%s", DOCS_HOME_DIR, dir)
 		os.make_directory_all(out_dir)
 		page := fmt.tprintf("---\ntitle: \"%s\"\n---\n", title)
-		if err := os.write_entire_file(fmt.tprintf("%s/_index.md", out_dir), transmute([]byte)page); err != nil {
+		if err := docs_home_write(fmt.tprintf("%s/_index.md", out_dir), transmute([]byte)page); err != nil {
 			fmt.eprintfln("mh: cannot write %s/_index.md: %v", out_dir, err)
 			return false
 		}

@@ -79,7 +79,7 @@ docs_write_package_pages :: proc() -> bool {
 	entry := strings.builder_make(context.temp_allocator)
 	strings.write_string(&entry, "package docs_all\n\n// Written by mh docs: imports every documented package for odin doc.\n\n")
 	for &p in pages do fmt.sbprintf(&entry, "import _ \"%s\"\n", p.import_path)
-	if err := os.write_entire_file(DOCS_ALL_FILE, transmute([]byte)strings.to_string(entry)); err != nil {
+	if err := docs_write_if_changed(DOCS_ALL_FILE, transmute([]byte)strings.to_string(entry)); err != nil {
 		fmt.eprintfln("mh: cannot write %s: %v", DOCS_ALL_FILE, err)
 		return false
 	}
@@ -133,7 +133,7 @@ docs_write_package_pages :: proc() -> bool {
 	flush :: proc(layer: string, b: ^strings.Builder) -> bool {
 		if layer == "" do return true
 		path := fmt.tprintf("%s/%s/_index.md", DOCS_PKG_DIR, layer)
-		if err := os.write_entire_file(path, transmute([]byte)strings.to_string(b^)); err != nil {
+		if err := docs_write_if_changed(path, transmute([]byte)strings.to_string(b^)); err != nil {
 			fmt.eprintfln("mh: cannot write %s: %v", path, err)
 			return false
 		}
@@ -165,7 +165,7 @@ docs_write_package_pages :: proc() -> bool {
 	}
 	if !flush(layer, &layer_index) do return false
 	if layer != "" do fmt.sbprintf(&index, "- [%s](%s/_index.md) — %d %s\n", layer, layer, layer_count, layer_count == 1 ? "package" : "packages")
-	if err := os.write_entire_file(DOCS_PKG_DIR + "/_index.md", transmute([]byte)strings.to_string(index)); err != nil {
+	if err := docs_write_if_changed(DOCS_PKG_DIR + "/_index.md", transmute([]byte)strings.to_string(index)); err != nil {
 		fmt.eprintfln("mh: cannot write %s/_index.md: %v", DOCS_PKG_DIR, err)
 		return false
 	}

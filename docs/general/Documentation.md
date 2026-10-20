@@ -6,7 +6,7 @@ tags: ["build", "contributing", "prebuild"]
 path: general
 ---
 
-`mh docs` (or `make docs`) builds the site into `builds/docs`, clearing that folder first. Double-click `builds/docs/index.html` to read it from the file system. `mh docs --open` (or `make docs OPEN=1`, since make cannot pass `--open` through) serves it with `hugo server` on port 7272, rendering to memory so the server never writes into `builds/docs` (`DOCS_PORT` in `tools/mh/docs.odin`) and opens the browser, which is the mode where search works.
+`mh docs` (or `make docs`) builds the site into `builds/docs`, clearing that folder first. Double-click `builds/docs/index.html` to read it from the file system. `mh docs --open` (or `make docs OPEN=1`, since make cannot pass `--open` through) serves it with `hugo server` on port 7272, rendering to memory so the server never writes into `builds/docs` (`DOCS_PORT` in `tools/mh/docs.odin`) and opens the browser, which is the mode where search works. While it serves, a saved or reverted `.md` shows by itself about a second later. Every page is a copy mh writes into `builds/docs-home` at its site path, carrying its repo file in `mh_source` for the link hook and the source link, because the server watches that folder and not a page mounted as a single file. mh checks the docs' `.md` files once a second and rewrites the copies that changed, so the server re-renders only that page and its livereload reloads it. No prebuild runs. The reference pages come from the code: the page's Rebuild button regenerates them, and reloads the page when the new build is served.
 
 ## What is here
 

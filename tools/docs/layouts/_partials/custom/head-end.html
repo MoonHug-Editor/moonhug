@@ -47,7 +47,12 @@
 </script>
 {{- /* The Rebuild button, served site only: `mh docs --open` listens on a
      loopback port beside the server, and the button shows when it answers.
-     A click regenerates the reference pages, and the server reloads the page. */ -}}
+     A click regenerates the reference pages. The page then polls itself
+     until the build id below changes, which is when Hugo has re-rendered it,
+     and reloads: the server answers before Hugo finishes, so a timer would
+     reload a stale page. The pending id sits in sessionStorage, so a reload
+     Hugo's livereload pushes in between resumes the wait. */ -}}
+<meta name="mh-build" content="{{ now.UnixNano }}">
 <style>
   .mh-open-source { display: inline-flex; vertical-align: middle; margin-left: 0.5rem; padding: 0.25rem; border-radius: 6px; color: inherit; opacity: 0.5; }
   .mh-open-source:hover { opacity: 1; background: rgba(128,128,128,0.15); }
@@ -67,6 +72,11 @@
   document.addEventListener("DOMContentLoaded", function () {
     if (!location.protocol.startsWith("http")) return;
     var endpoint = "http://localhost:7271";
+    var PENDING = "mh-rebuild-from";
+    var buildId = function (doc) {
+      var m = doc.querySelector('meta[name="mh-build"]');
+      return m ? m.getAttribute("content") : "";
+    };
     fetch(endpoint + "/ping").then(function (r) {
       if (!r.ok) return;
       var button = document.createElement("button");
@@ -77,18 +87,45 @@
       button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>';
       var nav = document.querySelector(".hextra-nav-container nav");
       if (nav) nav.appendChild(button); else { button.classList.add("mh-floating"); document.body.appendChild(button); }
+      var fail = function (why) {
+        sessionStorage.removeItem(PENDING);
+        button.disabled = false;
+        button.classList.add("mh-failed");
+        button.title = why;
+      };
+      // Polls this page until Hugo has re-rendered it (a new build id), then
+      // reloads. Gives up after 90 s: a rebuild that changed nothing.
+      var waitForBuild = function (from) {
+        button.disabled = true;
+        button.classList.remove("mh-failed");
+        button.title = "Rebuilding…";
+        var started = Date.now();
+        var poll = function () {
+          fetch(location.href, { cache: "no-store" }).then(function (r) { return r.text(); }).then(function (html) {
+            var id = buildId(new DOMParser().parseFromString(html, "text/html"));
+            if (id && id !== from) { sessionStorage.removeItem(PENDING); location.reload(); return; }
+            if (Date.now() - started > 90000) { sessionStorage.removeItem(PENDING); location.reload(); return; }
+            setTimeout(poll, 500);
+          }).catch(function () { setTimeout(poll, 1000); });
+        };
+        setTimeout(poll, 500);
+      };
+      // A reload in the middle of a wait (livereload) lands here with the
+      // id still pending: keep waiting on the same id.
+      var pending = sessionStorage.getItem(PENDING);
+      if (pending) {
+        if (pending === buildId(document)) waitForBuild(pending); else sessionStorage.removeItem(PENDING);
+      }
       button.addEventListener("click", function () {
+        var from = buildId(document);
+        sessionStorage.setItem(PENDING, from);
         button.disabled = true;
         button.classList.remove("mh-failed");
         button.title = "Rebuilding…";
         fetch(endpoint + "/rebuild", { method: "POST" }).then(function (res) {
           if (!res.ok) throw new Error("failed");
-          setTimeout(function () { location.reload(); }, 1500);
-        }).catch(function () {
-          button.disabled = false;
-          button.classList.add("mh-failed");
-          button.title = "Rebuild failed, see the terminal";
-        });
+          waitForBuild(from);
+        }).catch(function () { fail("Rebuild failed, see the terminal"); });
       });
     }).catch(function () {});
   });

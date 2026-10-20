@@ -10,24 +10,38 @@ The libs are the packages that run nothing on their own. Two executables are bui
 
 ## Vocabulary
 
+### The layers
+
 | Word | Means | Lives in |
 |---|---|---|
 | **Libs** | Small packages the Editor and an App build on, each imported on its own and only where it is used: `core` (handles, references, phases, the type registry, settings), `log`, `serialization`, `assets` and `catalog` (the asset database and what an App ships), `gfx` and `input` (the window and the platform), `gizmos`, `crash_journal`. | `moonhug/libs/<name>` |
 | **Editor** | The generic editing application: windows, docking, menus, inspector, undo, project view, viewport, Simulate, console. It declares the extension points plugins fill and builds with no plugin installed. | `moonhug/editor` |
-| **Plugin** | A package a project installs. It has a runtime part that ships in the App and an optional `editor/` part that is linked only into the Editor. It extends the Editor and the App through attributes. | `plugins/<name>` |
+| **Plugins** | A package with special folders, can extend editor using attributes. See [Plugins](Plugins.md) | `plugins/<name>` |
+
+A **package** is an Odin package. Plugin is a role a package plays. The Editor and the libs are packages too, but they are not plugins: a plugin is something a project can leave out, and the Editor cannot leave out itself.
+
+### The plugins with a special role
+
+| Word | Means | Lives in |
+|---|---|---|
 | **Engine** | The plugin that brings scenes, transforms, components, rendering, materials, meshes, the fixed tick and the App's frame loop. Other plugins build on it. | `plugins/engine` |
 | **App** | A runnable plugin, one whose root declares `main`, built as its own executable. A game is one kind of app. | `plugins/app`, a project's own package |
-| **Prebuild** | The generator that runs before compiling. It reads the attributes in every installed package and writes the glue: dispatchers, registrations, the editor's windows and menus, the reference docs. Plugins ship their own generators in `gen/`. | `moonhug/prebuild` |
 
-A **package** is an Odin package. Plugin, engine and app are roles a package plays. The Editor and the libs are packages too, but they are never plugins: a plugin is something a project can leave out, and the Editor cannot leave out its own shell.
+### The generator
+
+| Word | Means | Lives in |
+|---|---|---|
+| **Prebuild** | The generator that runs before compiling. It reads the attributes in every installed package and writes the glue: dispatchers, registrations, the editor's windows and menus, the reference docs. Plugins ship their own generators in `gen/`. | `moonhug/prebuild` |
 
 ## Layers
 
 ```
-App      libs ── engine plugin ── other plugins —— the app package
+App      libs ── engine plugin ── other plugins ── the app package
+
 Editor   libs ─┬ engine plugin ── other plugins ── the app package
-               │  └ engine/editor/   └ <plugin>/editor/   └ app/editor/  <- */editor packages can import editor
-               └ editor
+               │    │                 │                    │
+               │    └ engine/editor/  └ <plugin>/editor/   └ app/editor/  <- */editor packages can import editor and plugins
+               └ editor──┴────────────────┴───────────────────┘
 ```
 
 Imports go one way, from right to left along a line and up a branch. The Editor runs the same plugin code the App does, and adds each plugin's `editor/` part, which imports its own plugin and the shell. The shell branches off the libs beside the plugins: it imports no plugin, and no runtime part imports the shell or any `editor/` part.
