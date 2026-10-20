@@ -1,3 +1,14 @@
+## [0.139.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.138.0...v0.139.0) (2026-10-20)
+
+### Features
+
+* groups feature ([fcaf081](https://github.com/MoonHug-Editor/moonhug/commit/fcaf08152a980edd1c5dbd9aaa32c59ab284b009))
+* input actions feature plugin ([c05e113](https://github.com/MoonHug-Editor/moonhug/commit/c05e11365cdf68f35bd9684f860d434165e52a1a))
+
+### Bug Fixes
+
+* prefab-instance content gets the same searchable Add Component popup as plain objects ([bb716ad](https://github.com/MoonHug-Editor/moonhug/commit/bb716addc1bff1b4c59e12e4401ff58e4b0bde0c))
+
 ## [0.138.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.137.0...v0.138.0) (2026-10-19)
 
 ### Features
