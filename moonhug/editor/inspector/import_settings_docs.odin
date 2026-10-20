@@ -39,7 +39,7 @@ import "../undo"
 // use. nil when the asset has no import settings. Marks the document as shown
 // this frame, which is what import_settings_track looks at.
 import_settings_doc_get :: proc(path: string) -> ^Asset_Doc {
-	context.allocator = runtime.default_allocator()
+	context.allocator = doc_alloc()
 	raw, ok := assets.asset_db_get_guid(path)
 	if !ok do return nil
 	key := Doc_Key{core.Asset_GUID(raw), .Import_Settings}
@@ -71,7 +71,7 @@ import_settings_doc_get :: proc(path: string) -> ^Asset_Doc {
 // Apply: writes the document into the .meta and reimports. The document
 // stays, now equal to the .meta.
 import_settings_apply :: proc(doc: ^Asset_Doc) -> bool {
-	context.allocator = runtime.default_allocator()
+	context.allocator = doc_alloc()
 	if doc == nil || doc.data.data == nil do return false
 	path, known := assets.asset_db_get_path(uuid.Identifier(doc.guid))
 	if !known do return false
@@ -96,7 +96,7 @@ import_settings_apply :: proc(doc: ^Asset_Doc) -> bool {
 // inside the drawer), the same as undo's rebuild of an asset document.
 import_settings_revert :: proc(doc: ^Asset_Doc) {
 	if doc == nil do return
-	settings, ok := assets.asset_pipeline_get_settings(doc.path, runtime.default_allocator())
+	settings, ok := assets.asset_pipeline_get_settings(doc.path, doc_alloc())
 	if !ok do return
 	before := _settings_json(doc.data, context.allocator)
 	doc_data_retire(doc.data)
@@ -110,7 +110,7 @@ import_settings_revert :: proc(doc: ^Asset_Doc) {
 // same reason as in Revert.
 @(private = "file")
 _import_settings_reimported :: proc(guid: core.Asset_GUID) {
-	context.allocator = runtime.default_allocator()
+	context.allocator = doc_alloc()
 	doc, found := _docs[Doc_Key{guid, .Import_Settings}]
 	if !found || doc.dirty do return
 	settings, ok := assets.asset_pipeline_get_settings(doc.path)
@@ -155,7 +155,7 @@ import_settings_track :: proc(check: bool) {
 // the tracker does not record the restore itself.
 @(private)
 _import_settings_apply_json :: proc(guid: core.Asset_GUID, json_bytes: []byte) -> bool {
-	context.allocator = runtime.default_allocator()
+	context.allocator = doc_alloc()
 	doc, found := _docs[Doc_Key{guid, .Import_Settings}]
 	if !found {
 		path, path_ok := assets.asset_db_get_path(uuid.Identifier(guid))
@@ -183,7 +183,7 @@ _import_settings_apply_json :: proc(guid: core.Asset_GUID, json_bytes: []byte) -
 
 @(private = "file")
 _import_settings_rebaseline :: proc(doc: ^Asset_Doc) {
-	context.allocator = runtime.default_allocator()
+	context.allocator = doc_alloc()
 	delete(doc.baseline)
 	doc.baseline = _settings_json(doc.data)
 	doc.dirty = string(doc.baseline) != string(doc.applied)

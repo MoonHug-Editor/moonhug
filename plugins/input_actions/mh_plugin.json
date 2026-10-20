@@ -1,0 +1,7 @@
+{
+  "name": "input_actions",
+  "guid": "80d8bf05-e5a1-4a98-b1ca-c36faf0b9bb7",
+  "description": "Input actions: an asset of action maps with bindings per device, a priority stack of maps, and per-frame and per-tick action values",
+  "dependencies": ["engine"],
+  "dependencies_custom": []
+}

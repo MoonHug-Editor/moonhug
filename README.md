@@ -87,6 +87,7 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 - [Asset Pipeline](docs/core/AssetPipeline.md) - asset importer/loader
 - [Components](plugins/engine/docs/Components.md) - component data layer: pools, handles, iteration contract
 - [Groups](plugins/engine/docs/Groups.md) - named groups of objects: a Groups component holds membership bits, alive and active lists per group kept by the lifecycle hooks, names in a Group Names asset
+- [Input Actions](plugins/input_actions/docs/InputActions.md) - the input_actions plugin, in Enhanced Input's vocabulary: named actions over keys, mouse and gamepad from an Input Actions asset of mapping contexts with key mappings, a priority stack of contexts that consume the keys below them (all, or the listed actions'), per-frame and per-tick values, a table inspector with a key picker and Listen
 - [Scenes](plugins/engine/docs/Scenes.md)
 - [Tweens](plugins/tween/docs/Tweens.md)
 - [Reference Handles](plugins/engine/docs/ReferenceHandles.md)

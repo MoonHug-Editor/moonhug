@@ -67,11 +67,23 @@ doc_preview_register :: proc(tid: typeid, p: Doc_Preview) {
     _doc_previews[tid] = p
 }
 
+// The allocator documents live on: their values, and every string a drawer or
+// an undo write puts into them. Drawers and undo's field writes allocate and
+// free with context.allocator, so the editor's main sets this to its own
+// allocator (the tracking allocator in a debug build) and the two match.
+// Unset it is the process heap.
+doc_allocator: runtime.Allocator
+
+doc_alloc :: proc() -> runtime.Allocator {
+	if doc_allocator.procedure == nil do return runtime.default_allocator()
+	return doc_allocator
+}
+
 // The open document for a path — reused if already loaded (unsaved edits
 // survive clicking away and back), loaded from disk otherwise. nil on load
 // failure or when the file isn't in the asset db.
 asset_doc_get :: proc(path: string) -> ^Asset_Doc {
-    context.allocator = runtime.default_allocator()
+    context.allocator = doc_alloc()
     raw_guid, ok := assets.asset_db_get_guid(path)
     if !ok do return nil
     guid := core.Asset_GUID(raw_guid)
@@ -103,7 +115,7 @@ asset_doc_get :: proc(path: string) -> ^Asset_Doc {
 // saves where it is now. An asset whose file is gone is not written: that
 // would bring it back without its .meta, as a different asset.
 asset_doc_save :: proc(doc: ^Asset_Doc) -> bool {
-    context.allocator = runtime.default_allocator()
+    context.allocator = doc_alloc()
     if doc == nil || doc.data.data == nil do return false
     // An import settings document written here would land on the asset file
     // itself: those commit through import_settings_apply.
@@ -144,7 +156,7 @@ asset_docs_save_dirty :: proc() -> (saved, failed: int) {
 // instance is retired (doc_data_retire): a wrapper may still draw it this frame.
 asset_doc_apply_json :: proc(guid: core.Asset_GUID, kind: undo.Doc_Kind, json_bytes: []byte) -> bool {
     if kind == .Import_Settings do return _import_settings_apply_json(guid, json_bytes)
-    context.allocator = runtime.default_allocator()
+    context.allocator = doc_alloc()
     doc, found := _docs[Doc_Key{guid, .File}]
     if !found {
         path, path_ok := assets.asset_db_get_path(uuid.Identifier(guid))
@@ -181,7 +193,7 @@ asset_doc_revert :: proc(doc: ^Asset_Doc) {
     fresh: any
     ok: bool
     {
-        context.allocator = runtime.default_allocator()
+        context.allocator = doc_alloc()
         fresh, ok = ser.load_from_file(doc.path)
     }
     if !ok {
@@ -199,7 +211,7 @@ asset_doc_revert :: proc(doc: ^Asset_Doc) {
 // and the live previews follow. Document state is on the default allocator.
 @(private = "file")
 _doc_replace :: proc(doc: ^Asset_Doc, fresh: any, dirty: bool) {
-    context.allocator = runtime.default_allocator()
+    context.allocator = doc_alloc()
     tid := fresh.id
     doc_data_retire(doc.data)
     doc.data = fresh
@@ -222,7 +234,7 @@ _asset_doc_gone :: proc(guid: core.Asset_GUID, path: string) {
     // Before the pin: undo entries free with the allocator that made them, the
     // caller's, like every purge.
     undo.purge_asset(undo.get(), guid)
-    context.allocator = runtime.default_allocator()
+    context.allocator = doc_alloc()
     if inspectorData.filePath == path do unload()
     for kind in undo.Doc_Kind {
         doc, found := _docs[Doc_Key{guid, kind}]
@@ -237,7 +249,7 @@ _asset_doc_gone :: proc(guid: core.Asset_GUID, path: string) {
 // the instance. Documents live on the default allocator.
 doc_data_release :: proc(data: any) {
     if data.data == nil do return
-    context.allocator = runtime.default_allocator()
+    context.allocator = doc_alloc()
     core.type_cleanup_by_typeid(data.id, data.data)
     free(data.data)
 }
@@ -257,7 +269,7 @@ _retired: [dynamic]_Retired
 
 doc_data_retire :: proc(data: any) {
     if data.data == nil do return
-    context.allocator = runtime.default_allocator()
+    context.allocator = doc_alloc()
     _doc_retired_drain(false)
     append(&_retired, _Retired{data = data, frame = gfx.frame_index})
 }
@@ -265,7 +277,7 @@ doc_data_retire :: proc(data: any) {
 // Frees what was retired in an earlier frame, or everything (shutdown).
 @(private = "file")
 _doc_retired_drain :: proc(all: bool) {
-    context.allocator = runtime.default_allocator()
+    context.allocator = doc_alloc()
     for i := 0; i < len(_retired); {
         if !all && _retired[i].frame == gfx.frame_index {
             i += 1
@@ -282,7 +294,7 @@ _doc_retired_drain :: proc(all: bool) {
 
 @(private="file")
 _asset_doc_free :: proc(doc: ^Asset_Doc) {
-    context.allocator = runtime.default_allocator()
+    context.allocator = doc_alloc()
     delete(doc.path)
     delete(doc.baseline)
     delete(doc.applied)
@@ -297,7 +309,7 @@ _asset_docs_register :: proc "contextless" () {
 }
 
 asset_docs_shutdown :: proc() {
-    context.allocator = runtime.default_allocator()
+    context.allocator = doc_alloc()
     _doc_retired_drain(true)
     for _, doc in _docs do _asset_doc_free(doc)
     delete(_docs)

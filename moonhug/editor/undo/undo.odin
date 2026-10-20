@@ -1,5 +1,6 @@
 package undo
 
+import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
 import "core:slice"
@@ -677,7 +678,9 @@ write_json_value :: proc(ptr: rawptr, tid: typeid, json_bytes: []byte, scene: co
 @(private)
 _cleanup_before_unmarshal :: proc(ptr: rawptr, tid: typeid) {
 	if ptr == nil do return
-	if tid == typeid_of(string) {
+	// A string, or a distinct type over one (a key name): the unmarshal
+	// allocates the new text, so the old one goes first.
+	if _, is_string := runtime.type_info_base(type_info_of(tid)).variant.(runtime.Type_Info_String); is_string {
 		s := cast(^string)ptr
 		if len(s^) > 0 do delete(s^)
 		s^ = ""

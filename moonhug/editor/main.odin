@@ -363,6 +363,8 @@ editor_init :: proc() {
     // Type keys before the phases, the same order as the app and the tests:
     // SerializationInit subscribers look them up.
     registration.register_type_guids()
+    // Documents live on this allocator, the one drawers and undo writes use.
+    inspector.doc_allocator = context.allocator
     inspector.init()
     // Every @(provider_install) proc (providers_generated.odin): they fill the
     // registries inspector.init just created.

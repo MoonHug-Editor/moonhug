@@ -22,7 +22,7 @@ _platform: struct {
 // saved geometry first, then show_window). GPU device setup lives in
 // init() in gfx.odin, which calls this.
 _platform_init :: proc(title: cstring, width, height: i32, show := true) -> bool {
-	if !sdl.Init({.VIDEO}) {
+	if !sdl.Init({.VIDEO, .GAMEPAD}) {
 		return false
 	}
 	// The click that gives the window focus is delivered as a click too, as
