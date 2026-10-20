@@ -37,6 +37,7 @@ COMMANDS := []Command {
 	{"run", "build and launch the editor", cmd_run, true},
 	{"debug", "build with -debug and launch the editor", cmd_debug, true},
 	{"build", "build the editor without launching it (--no-plugins proves the shell builds alone)", cmd_build, true},
+	{"check-noplugins", "check that the editor shell builds with every plugin set aside: one row per stage, PASS or FAIL with the first errors", cmd_check_noplugins, true},
 	{"play", "run a package's run configuration: mh play [pkg[:config]] [--dev|--run-only|--build-only]", cmd_play, true},
 	{"test", "run the test suite (--name=pkg.test runs one)", cmd_test, true},
 	{"prebuild", "run the code generators only", cmd_prebuild, true},

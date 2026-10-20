@@ -477,7 +477,9 @@ docs_write_plugin_mounts :: proc() -> bool {
 		for root in DOCS_SOURCE_ROOTS {
 			if !os.is_dir(root) do continue
 			// The folders match too, or the walk prunes them before any file.
-			fmt.sbprintf(&b, "[[module.mounts]]\nsource = '%s'\ntarget = 'static/source/%s'\nfiles = ['**/', '**.odin', '**.md']\n", root, root)
+			// Generated files are left out: every build rewrites them, and the
+			// server would reload the open page each time.
+			fmt.sbprintf(&b, "[[module.mounts]]\nsource = '%s'\ntarget = 'static/source/%s'\nfiles = ['! **_generated.odin', '**/', '**.odin', '**.md']\n", root, root)
 		}
 	}
 	if !docs_write_home(names[:]) do return false

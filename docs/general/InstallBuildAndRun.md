@@ -62,6 +62,7 @@ shows the exact command it runs. `odin` has to be on the editor's PATH.
 | `run` | build and launch the editor |
 | `debug` | the same with `-debug` |
 | `build` | build the editor without launching it |
+| `check-noplugins` | build the editor with every plugin set aside, one row per stage, PASS or FAIL with the failed stage's output (`make check-noplugins`) |
 | `play` | run a package's run configuration, the editor's Play button from the terminal (`play app:run`, `play` alone when one package ships them) |
 | `test` | run the test suite |
 | `prebuild` | run the code generators only |

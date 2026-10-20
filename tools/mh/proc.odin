@@ -32,8 +32,14 @@ VET :: "-vet-unused"
 // run executes a command to completion with this process's stdio, so compiler
 // diagnostics and program output reach the terminal unbuffered and in order.
 // Returns its exit code, or -1 when it could not start.
+// Where run sends a command's output: the terminal, or the log file of a
+// command that prints only its own summary (mh check-noplugins).
+run_log: ^os.File
+
 run :: proc(command: ..string) -> int {
-	p, err := os.process_start({command = command, stdout = os.stdout, stderr = os.stderr, stdin = os.stdin})
+	out := run_log if run_log != nil else os.stdout
+	errs := run_log if run_log != nil else os.stderr
+	p, err := os.process_start({command = command, stdout = out, stderr = errs, stdin = os.stdin})
 	if err != nil {
 		fmt.eprintfln("mh: cannot start %s: %v", command[0], err)
 		return -1
@@ -97,7 +103,7 @@ run_in :: proc(dir: string, command: ..string) -> int {
 // broken chain names its own broken link.
 step :: proc(what: string, command: ..string) -> bool {
 	if code := run(..command); code != 0 {
-		fmt.eprintfln("mh: %s failed (exit %d)", what, code)
+		fmt.fprintfln(run_log if run_log != nil else os.stderr, "mh: %s failed (exit %d)", what, code)
 		return false
 	}
 	return true

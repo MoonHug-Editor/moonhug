@@ -31,7 +31,7 @@ prebuild :: proc(docs := false) -> bool {
 		code := run(gen, "--docs", fmt.tprintf("--source-url=%s", docs_source_url())) if docs else run(gen)
 		if code == 0 do return true
 		if code == 2 && attempt == 0 do continue
-		fmt.eprintfln("mh: prebuild failed (exit %d)", code)
+		fmt.fprintfln(run_log if run_log != nil else os.stderr, "mh: prebuild failed (exit %d)", code)
 		return false
 	}
 	return false
