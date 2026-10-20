@@ -1,3 +1,11 @@
+## [0.141.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.140.0...v0.141.0) (2026-10-20)
+
+### Features
+
+* explicit Rigidbody.mass (3D) and Rigidbody2D.mass with use_auto_mass (2D) ([ac6b7b0](https://github.com/MoonHug-Editor/moonhug/commit/ac6b7b0b08e800ac4cf7c1f29c935bf9a4949a07))
+* make check-noplugins command to check no plugins build ([130898c](https://github.com/MoonHug-Editor/moonhug/commit/130898cba1eea7e6c024b7e3e83dd6244de6343c))
+* PhysicsMaterial and PhysicsMaterial2D assets ([7be6366](https://github.com/MoonHug-Editor/moonhug/commit/7be6366d6c9834e9c2353804a6c54835d723b4fc))
+
 ## [0.140.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.139.0...v0.140.0) (2026-10-20)
 
 ### Features
