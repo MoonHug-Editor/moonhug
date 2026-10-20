@@ -1470,7 +1470,7 @@
       "inner_spot_angle": 21.7999992399999982,
       "intensity": 1.39999998,
       "range": 10.0,
-      "shadows": true,
+      "shadows": 0,
       "spot_angle": 30.0,
       "type": 0
     },

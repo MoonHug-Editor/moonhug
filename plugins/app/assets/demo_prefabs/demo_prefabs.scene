@@ -1277,7 +1277,7 @@
       "intensity": 1.0,
       "range": 0.0,
       "shadow_caster_mask": 4294967295,
-      "shadows": true,
+      "shadows": 0,
       "spot_angle": 0.0,
       "type": 0
     },

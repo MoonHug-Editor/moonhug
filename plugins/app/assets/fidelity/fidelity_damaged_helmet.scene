@@ -232,7 +232,7 @@
       "spot_angle": 30.0,
       "inner_spot_angle": 21.8,
       "ambient": 0.0,
-      "shadows": false,
+      "shadows": 1,
       "base": {
         "enabled": true,
         "local_id": 103

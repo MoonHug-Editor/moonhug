@@ -179,7 +179,7 @@ shadow_atlas :: proc(ctx: ^Render_Ctx) {
 	for l, _ in pool_next(&it) {
 		if n >= gfx.MAX_LIGHTS do break
 		if !l.enabled || !transform_active_in_hierarchy(l.owner) do continue
-		if l.shadows && l.type != .Directional {
+		if l.shadows == .Shadows && l.type != .Directional {
 			faces := l.type == .Point ? 6 : 1
 			if tiles + faces <= gfx.MAX_SHADOW_TILES {
 				append(&shadowed, Shadowed{n, light_to_gfx(l, transform_world(Transform_Handle(l.owner))), faces, l.shadow_caster_mask})
@@ -301,7 +301,7 @@ _shadow_directional :: proc() -> (index: int, dir: [3]f32, caster_mask: u32, fou
 	for l, _ in pool_next(&it) {
 		if n >= gfx.MAX_LIGHTS do break
 		if !l.enabled || !transform_active_in_hierarchy(l.owner) do continue
-		if l.type == .Directional && l.shadows {
+		if l.type == .Directional && l.shadows == .Shadows {
 			gl := light_to_gfx(l, transform_world(Transform_Handle(l.owner)))
 			dir = linalg.normalize0(gl.direction)
 			return n, dir, l.shadow_caster_mask, dir != {}

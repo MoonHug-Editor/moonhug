@@ -920,7 +920,7 @@
       "inner_spot_angle": 21.79999924,
       "intensity": 1.4,
       "range": 10.0,
-      "shadows": true,
+      "shadows": 0,
       "spot_angle": 30.0,
       "type": 0
     },
@@ -973,7 +973,7 @@
       "inner_spot_angle": 21.79999924,
       "intensity": 3.0,
       "range": 6.0,
-      "shadows": true,
+      "shadows": 0,
       "spot_angle": 30.0,
       "type": 1
     },
@@ -993,7 +993,7 @@
       "inner_spot_angle": 30.0,
       "intensity": 4.0,
       "range": 9.0,
-      "shadows": true,
+      "shadows": 0,
       "spot_angle": 45.0,
       "type": 2
     },

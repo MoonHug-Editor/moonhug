@@ -19,6 +19,14 @@ Light_Type :: enum u8 {
     Spot,
 }
 
+// Whether the light casts shadows (render_shadow.odin): the first enabled
+// directional light's cascades, every spot and point light's atlas tiles.
+// Shadows is the zero value, so a new light casts them.
+Light_Shadows :: enum u8 {
+    Shadows,
+    None,
+}
+
 @(component={max=256, menu="Rendering/Light"})
 @(typ_guid={guid = "9f36ee91-34b6-4636-a360-ee872af0436b"})
 Light :: struct {
@@ -30,7 +38,7 @@ Light :: struct {
     spot_angle:       f32 `decor:min(0)`, // spot: full cone angle, degrees (Unity spotAngle)
     inner_spot_angle: f32 `decor:min(0)`, // spot: full-brightness cone, degrees
     ambient:          f32 `decor:min(0)`, // unlit floor 0..1, first enabled light wins
-    shadows:          bool, // casts shadows (render_shadow.odin): the first enabled directional light's cascades, every spot and point light's atlas tiles
+    shadows:          Light_Shadows,
     // The render layers the light lights: a mesh on none of them gets no
     // light from it (plugins/engine/docs/Layers.md).
     culling_mask:       u32 `decor:layers(domain="render")`,
