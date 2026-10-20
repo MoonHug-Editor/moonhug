@@ -1,3 +1,9 @@
+## [0.140.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.139.0...v0.140.0) (2026-10-20)
+
+### Features
+
+* faster update docs on file saved ([cbdc738](https://github.com/MoonHug-Editor/moonhug/commit/cbdc73894bac320858d54a38213e8db24af79f93))
+
 ## [0.139.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.138.0...v0.139.0) (2026-10-20)
 
 ### Features
