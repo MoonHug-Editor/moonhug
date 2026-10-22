@@ -127,7 +127,7 @@ test_undo_of_an_asset_click_reselects_the_object :: proc(t: ^testing.T) {
 	testing.expect(t, os.write_entire_file(path, bytes) == nil)
 	defer {
 		_remove_tree(src_dir)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 
 	tc := new(TestCtx)
@@ -175,7 +175,7 @@ test_undo_restores_the_inspectors_kept_object :: proc(t: ^testing.T) {
 	testing.expect(t, os.write_entire_file(path, bytes) == nil)
 	defer {
 		_remove_tree(src_dir)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 
 	tc := new(TestCtx)

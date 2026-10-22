@@ -17,12 +17,16 @@ import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
 import "core:path/filepath"
+import "core:fmt"
 import "core:strings"
 import "moonhug:libs/catalog"
 import "moonhug:libs/log"
 import core "moonhug:libs/core"
 
-ASSET_CATALOG_PATH :: "library/catalog.json"
+// The editor's in-place catalog, under the library root. Temp-allocated.
+asset_catalog_path :: proc() -> string {
+	return fmt.tprintf("%s/catalog.json", library_dir())
+}
 
 // Set by the editor: import passes and refreshes rewrite the in-place
 // catalog so it is always current. The app never sets it (a lazily-imported
@@ -38,7 +42,9 @@ _asset_catalog_auto_write :: proc() {
 // Snapshot the live AssetDB + artifact index into `path`: per asset its
 // source path, artifact key, and import settings baked as JSON text (typed
 // instance marshaled — an exported data dir ships no .meta files).
-asset_catalog_write :: proc(path: string = ASSET_CATALOG_PATH) -> bool {
+asset_catalog_write :: proc(path := "") -> bool {
+	path := path
+	if path == "" do path = asset_catalog_path()
 	cf := catalog.File{version = catalog.VERSION}
 	cf.assets = make(map[string]catalog.Entry, len(asset_db.guid_to_path), context.temp_allocator)
 	for guid, asset_path in asset_db.guid_to_path {
@@ -81,7 +87,9 @@ asset_catalog_write :: proc(path: string = ASSET_CATALOG_PATH) -> bool {
 // Catalog pipeline init: fill the AssetDB, the artifact index and the baked settings
 // from the catalog — no scan, no meta reads. The picker indexes (root_info,
 // assets_by_type) stay empty, they serve editor UI only.
-asset_db_init_from_catalog :: proc(catalog_path: string = ASSET_CATALOG_PATH) -> bool {
+asset_db_init_from_catalog :: proc(catalog_path := "") -> bool {
+	catalog_path := catalog_path
+	if catalog_path == "" do catalog_path = asset_catalog_path()
 	data, read_err := os.read_entire_file(catalog_path, context.temp_allocator)
 	if read_err != nil {
 		log.errorf("[Catalog] cannot read %s", catalog_path)

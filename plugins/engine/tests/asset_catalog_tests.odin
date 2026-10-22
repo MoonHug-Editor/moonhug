@@ -30,7 +30,7 @@ test_asset_catalog_round_trip :: proc(t: ^testing.T) {
 		os.remove(png + ".meta")
 		os.remove(cat)
 		os.remove(src_dir)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 
 	// Live mode: scan the fixture dir and import (mints meta + artifact).
@@ -87,7 +87,7 @@ test_asset_catalog_export_is_self_contained :: proc(t: ^testing.T) {
 		os.remove(png + ".meta")
 		os.remove(src_dir)
 		_remove_tree(data_dir)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 
 	asset_pipeline.asset_pipeline_init()
@@ -101,13 +101,13 @@ test_asset_catalog_export_is_self_contained :: proc(t: ^testing.T) {
 	// The editor's auto-maintained catalog, then the config-side export from it.
 	testing.expect(t, engine.asset_catalog_write(), "in-place catalog should write")
 	engine.asset_db_shutdown()
-	testing.expect(t, catalog.export_from("library/catalog.json", data_dir, boot_scene = png),
+	testing.expect(t, catalog.export_from(engine.asset_catalog_path(), data_dir, boot_scene = png),
 		"export from the catalog should succeed")
 
 	// Sever the working tree: source, meta and library all gone.
 	os.remove(png)
 	os.remove(png + ".meta")
-	_remove_tree("library")
+	_remove_tree(engine.library_dir())
 
 	cat := data_dir + "/catalog.json"
 	testing.expect(t, engine.asset_db_init_from_catalog(cat), "catalog pipeline from the export")
@@ -176,7 +176,7 @@ test_asset_catalog_export_ships_dependency_closure :: proc(t: ^testing.T) {
 		_remove_tree(data_dir)
 		_remove_tree(live_data_dir)
 		os.remove(snapshot)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 
 	asset_pipeline.asset_pipeline_init()
@@ -202,13 +202,13 @@ test_asset_catalog_export_ships_dependency_closure :: proc(t: ^testing.T) {
 
 	testing.expect(t, engine.asset_catalog_write(), "in-place catalog should write")
 	engine.asset_db_shutdown()
-	testing.expect(t, catalog.export_from("library/catalog.json", data_dir, boot_scene = scene), "export should succeed")
+	testing.expect(t, catalog.export_from(engine.asset_catalog_path(), data_dir, boot_scene = scene), "export should succeed")
 
 	// The live snapshot is not a catalog entry and references the asset the
 	// boot scene does not.
 	snapshot_text := strings.concatenate({"{\"mesh\": \"", uuid.to_string(unused_guid, context.temp_allocator), "\"}"}, context.temp_allocator)
 	testing.expect(t, os.write_entire_file(snapshot, transmute([]byte)snapshot_text) == nil)
-	testing.expect(t, catalog.export_from("library/catalog.json", live_data_dir, boot_scene = scene, extra_roots = {snapshot}), "export with an extra root should succeed")
+	testing.expect(t, catalog.export_from(engine.asset_catalog_path(), live_data_dir, boot_scene = scene, extra_roots = {snapshot}), "export with an extra root should succeed")
 	live_catalog, lerr := os.read_entire_file(live_data_dir + "/catalog.json", context.temp_allocator)
 	testing.expect(t, lerr == nil)
 	testing.expect(t, strings.contains(string(live_catalog), uuid.to_string(unused_guid, context.temp_allocator)), "an asset the extra root references ships")
@@ -224,10 +224,10 @@ test_asset_catalog_export_ships_dependency_closure :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, boot_of(string(pinned_catalog)) != "", "the pinned export stamps a boot scene")
 	testing.expect_value(t, boot_of(string(live_catalog)), boot_of(string(pinned_catalog)))
-	testing.expect(t, !catalog.export_from("library/catalog.json", live_data_dir, boot_scene = scene, extra_roots = {src_dir + "/missing.scene"}), "an extra root that cannot be read fails the export")
+	testing.expect(t, !catalog.export_from(engine.asset_catalog_path(), live_data_dir, boot_scene = scene, extra_roots = {src_dir + "/missing.scene"}), "an extra root that cannot be read fails the export")
 
 	_remove_tree(src_dir)
-	_remove_tree("library")
+	_remove_tree(engine.library_dir())
 
 	testing.expect(t, engine.asset_db_init_from_catalog(data_dir + "/catalog.json"), "catalog pipeline from the export")
 	defer engine.asset_db_shutdown()
@@ -263,7 +263,7 @@ test_asset_catalog_export_rejects_unknown_boot_scene :: proc(t: ^testing.T) {
 		os.remove(png + ".meta")
 		os.remove(src_dir)
 		_remove_tree(data_dir)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 
 	asset_pipeline.asset_pipeline_init()
@@ -272,7 +272,7 @@ test_asset_catalog_export_rejects_unknown_boot_scene :: proc(t: ^testing.T) {
 	testing.expect(t, engine.asset_catalog_write())
 	engine.asset_db_shutdown()
 
-	testing.expect(t, !catalog.export_from("library/catalog.json", data_dir, boot_scene = "assets/not_in_catalog.scene"),
+	testing.expect(t, !catalog.export_from(engine.asset_catalog_path(), data_dir, boot_scene = "assets/not_in_catalog.scene"),
 		"a boot scene missing from the catalog should fail the export")
 }
 

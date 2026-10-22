@@ -20,6 +20,7 @@ import "core:os"
 import "core:strings"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
+import "moonhug:libs/assets"
 import "moonhug:packages/engine/editor/importers"
 import "moonhug:editor/inspector"
 import "moonhug:registration"
@@ -61,6 +62,9 @@ _register_once :: proc() {
 	// package never imports moonhug:packages).
 	importers.register_builtin_importers()
 	asset_pipeline.import_pipeline_install()
+	// Tests run from the repo root, where the editor's library path would
+	// put the artifact cache: it goes under builds/ instead.
+	assets.library_dir_set("builds/test-library")
 	// Like editor_init: the inspector registries, then every @(provider_install)
 	// proc (providers_generated.odin) fills them and the providers.
 	inspector.init()

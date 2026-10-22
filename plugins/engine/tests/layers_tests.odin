@@ -156,7 +156,7 @@ test_layers_follow_layers_setting :: proc(t: ^testing.T) {
 	os.make_directory(_LAYERS_DIR)
 	defer {
 		_remove_tree(_LAYERS_DIR)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 	engine.layers_sync()
 	render_list := engine.layer_names(engine.LAYER_DOMAIN_RENDER)

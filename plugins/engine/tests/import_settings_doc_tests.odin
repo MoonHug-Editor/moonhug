@@ -44,7 +44,7 @@ _ts :: proc(doc: ^inspector.Asset_Doc) -> ^engine.TextureSettings {
 test_import_settings_edits_undo_and_track_dirty :: proc(t: ^testing.T) {
 	defer {
 		_remove_tree(_DIR)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 	tc := new(TestCtx)
 	defer free(tc)
@@ -127,7 +127,7 @@ test_import_settings_edits_undo_and_track_dirty :: proc(t: ^testing.T) {
 test_import_settings_document_is_shared :: proc(t: ^testing.T) {
 	defer {
 		_remove_tree(_DIR)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 	tc := new(TestCtx)
 	defer free(tc)
@@ -150,7 +150,7 @@ test_import_settings_document_is_shared :: proc(t: ^testing.T) {
 test_deleting_an_asset_drops_its_import_settings_document :: proc(t: ^testing.T) {
 	defer {
 		_remove_tree(_DIR)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 	tc := new(TestCtx)
 	defer free(tc)
@@ -182,7 +182,7 @@ test_deleting_an_asset_drops_its_import_settings_document :: proc(t: ^testing.T)
 test_reimport_reloads_a_clean_import_settings_document :: proc(t: ^testing.T) {
 	defer {
 		_remove_tree(_DIR)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 	tc := new(TestCtx)
 	defer free(tc)
@@ -219,7 +219,7 @@ test_reimport_reloads_a_clean_import_settings_document :: proc(t: ^testing.T) {
 test_import_settings_default_when_meta_has_none :: proc(t: ^testing.T) {
 	defer {
 		_remove_tree(_DIR)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 	tc := new(TestCtx)
 	defer free(tc)

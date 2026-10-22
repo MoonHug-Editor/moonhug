@@ -91,7 +91,7 @@ test_model_clip_resolves_loads_and_exports :: proc(t: ^testing.T) {
 	defer {
 		common.remove_tree(src_dir)
 		common.remove_tree(data_dir)
-		common.remove_tree("library")
+		common.remove_tree(engine.library_dir())
 	}
 
 	asset_pipeline.asset_pipeline_init()
@@ -137,7 +137,7 @@ test_model_clip_resolves_loads_and_exports :: proc(t: ^testing.T) {
 	// Catalog round trip keeps the identity.
 	testing.expect(t, engine.asset_catalog_write(), "catalog writes")
 	engine.asset_db_shutdown()
-	testing.expect(t, engine.asset_db_init_from_catalog("library/catalog.json"), "catalog pipeline restores")
+	testing.expect(t, engine.asset_db_init_from_catalog(engine.asset_catalog_path()), "catalog pipeline restores")
 	sub2, ok2 := engine.asset_db_get_sub(clip_guid)
 	testing.expect(t, ok2 && sub2.owner == model && sub2.id == clips[0].id, "sub-asset survives the catalog")
 	idx, iok := engine.mesh_clip_index(model, clips[0].id)
@@ -145,7 +145,7 @@ test_model_clip_resolves_loads_and_exports :: proc(t: ^testing.T) {
 	engine.asset_db_shutdown()
 
 	// An export whose boot scene names only the clip ships the owner and its clip fan-out.
-	testing.expect(t, catalog.export_from("library/catalog.json", data_dir, boot_scene = scene), "export succeeds")
+	testing.expect(t, catalog.export_from(engine.asset_catalog_path(), data_dir, boot_scene = scene), "export succeeds")
 	shipped := strings.concatenate({data_dir, "/artifacts/", model_key[:2], "/", model_key, "_a0.bin"}, context.temp_allocator)
 	testing.expect(t, os.exists(shipped), "the referenced clip's fan-out ships with its owner")
 	cat_bytes, cerr := os.read_entire_file(data_dir + "/catalog.json", context.temp_allocator)
@@ -173,7 +173,7 @@ test_model_provider_lists_parts_then_clips :: proc(t: ^testing.T) {
 	testing.expect(t, os.write_entire_file(gltf, bytes) == nil)
 	defer {
 		common.remove_tree(src_dir)
-		common.remove_tree("library")
+		common.remove_tree(engine.library_dir())
 	}
 
 	asset_pipeline.asset_pipeline_init()
@@ -214,7 +214,7 @@ test_model_clip_list_refreshes_after_reimport :: proc(t: ^testing.T) {
 	testing.expect(t, os.write_entire_file(gltf, bytes) == nil)
 	defer {
 		common.remove_tree(src_dir)
-		common.remove_tree("library")
+		common.remove_tree(engine.library_dir())
 	}
 
 	engine.mesh_cache_init()
@@ -260,7 +260,7 @@ test_stale_artifact_sweep_keeps_clip_fan_out :: proc(t: ^testing.T) {
 	testing.expect(t, os.write_entire_file(gltf, bytes) == nil)
 	defer {
 		common.remove_tree(src_dir)
-		common.remove_tree("library")
+		common.remove_tree(engine.library_dir())
 	}
 
 	asset_pipeline.asset_pipeline_init()

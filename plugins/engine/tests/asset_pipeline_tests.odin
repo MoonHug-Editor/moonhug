@@ -30,7 +30,7 @@ test_artifact_content_addressing :: proc(t: ^testing.T) {
 		os.remove(png)
 		os.remove(png + ".meta")
 		os.remove(src_dir)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 
 	asset_pipeline.asset_pipeline_init()
@@ -56,8 +56,9 @@ test_artifact_content_addressing :: proc(t: ^testing.T) {
 	testing.expect(t, ok1)
 	if !ok1 do return
 	p1 = strings.clone(p1, context.temp_allocator)
-	testing.expect(t, strings.has_prefix(p1, "library/artifacts/"), "artifact should live under library/artifacts")
-	rest := strings.trim_prefix(p1, "library/artifacts/")
+	artifacts := strings.concatenate({engine.artifacts_dir(), "/"}, context.temp_allocator)
+	testing.expect(t, strings.has_prefix(p1, artifacts), "artifact should live under the library's artifacts")
+	rest := strings.trim_prefix(p1, artifacts)
 	testing.expect(t, len(rest) > 3 && rest[2] == '/', "fan-out folder should be the key's first two hex chars")
 	testing.expect(t, strings.has_prefix(rest[3:], rest[:2]), "file name should start with its fan-out prefix")
 	testing.expect(t, os.exists(p1))
@@ -116,7 +117,7 @@ test_shader_failed_import_keeps_last_good_artifact :: proc(t: ^testing.T) {
 		os.remove(glsl)
 		os.remove(glsl + ".meta")
 		os.remove(src_dir)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 
 	asset_pipeline.asset_pipeline_init()

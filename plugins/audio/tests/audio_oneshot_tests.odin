@@ -34,7 +34,7 @@ test_one_shot_lifecycle :: proc(t: ^testing.T) {
 		os.remove(wav)
 		os.remove(wav + ".meta")
 		os.remove(src_dir)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 
 	asset_pipeline.asset_pipeline_init()

@@ -56,7 +56,7 @@ standalone_prepare :: proc() {
 	for arg in os.args[1:] {
 		switch {
 		case arg == "--catalog":
-			_catalog_path = ASSET_CATALOG_PATH
+			_catalog_path = asset_catalog_path()
 		case strings.has_prefix(arg, "--catalog="):
 			_catalog_path = arg[len("--catalog="):]
 		case strings.has_prefix(arg, "--"):
@@ -74,7 +74,7 @@ standalone_prepare :: proc() {
 			if os.exists(beside) do _catalog_path = beside
 		}
 	}
-	if _catalog_path == "" do _catalog_path = ASSET_CATALOG_PATH
+	if _catalog_path == "" do _catalog_path = asset_catalog_path()
 }
 
 // The window from the Player setting. False when the platform refuses, the

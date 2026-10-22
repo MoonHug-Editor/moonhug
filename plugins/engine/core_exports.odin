@@ -233,9 +233,6 @@ Sub_Asset_Decl                    :: assets.Sub_Asset_Decl
 Sub_Asset_Ref                     :: assets.Sub_Asset_Ref
 
 LIBRARY_DIR                       :: assets.LIBRARY_DIR
-ARTIFACTS_DIR                     :: assets.ARTIFACTS_DIR
-ARTIFACT_DB_PATH                  :: assets.ARTIFACT_DB_PATH
-ASSET_CATALOG_PATH                :: assets.ASSET_CATALOG_PATH
 ASSET_DB_PACKAGES_DIR             :: assets.ASSET_DB_PACKAGES_DIR
 
 // The project root (assets/project_root.odin): every relative path resolves
@@ -268,6 +265,9 @@ asset_db_add_asset_gone_hook      :: assets.asset_db_add_asset_gone_hook
 asset_db_set_refresh_proc         :: assets.asset_db_set_refresh_proc
 asset_db_request_refresh          :: assets.asset_db_request_refresh
 asset_catalog_write               :: assets.asset_catalog_write
+asset_catalog_path                :: assets.asset_catalog_path
+library_dir                       :: assets.library_dir
+artifacts_dir                     :: assets.artifacts_dir
 asset_pipeline_get_settings       :: assets.asset_pipeline_get_settings
 asset_pipeline_artifact_key       :: assets.asset_pipeline_artifact_key
 asset_pipeline_artifact_path      :: assets.asset_pipeline_artifact_path

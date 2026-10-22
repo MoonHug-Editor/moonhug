@@ -72,8 +72,8 @@ _import_requested :: proc(source_path: string, force: bool) -> bool {
 }
 
 asset_pipeline_init :: proc() {
-	os.make_directory(assets.LIBRARY_DIR)
-	os.make_directory(assets.ARTIFACTS_DIR)
+	os.make_directory(assets.library_dir())
+	os.make_directory(assets.artifacts_dir())
 	assets._artifact_index_ensure()
 }
 

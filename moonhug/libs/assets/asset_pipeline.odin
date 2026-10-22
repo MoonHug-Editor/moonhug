@@ -23,9 +23,35 @@ import core "moonhug:libs/core"
 // the old artifact, not a re-import. ArtifactDB.json maps guid -> current
 // artifact key plus the file stamp and settings hash that make the per-scan
 // freshness check cheap (no rehash of unchanged files).
-LIBRARY_DIR      :: "library"
-ARTIFACTS_DIR    :: "library/artifacts" // Artifacts/<first 2 hex>/<32-hex key>.bin
-ARTIFACT_DB_PATH :: "library/artifact_db.json"
+// The library root: "library" under the working directory. The editor's
+// working directory is moonhug/, so that is moonhug/library. Tests run from
+// the repo root and point it elsewhere (library_dir_set), so no cache
+// appears at the root.
+LIBRARY_DIR :: "library"
+@(private = "file") _library_dir := LIBRARY_DIR
+@(private = "file") _library_dir_owned: bool
+
+library_dir_set :: proc(dir: string) {
+    context.allocator = runtime.default_allocator()
+    if _library_dir_owned do delete(_library_dir)
+    _library_dir = strings.clone(dir)
+    _library_dir_owned = true
+}
+
+library_dir :: proc() -> string {
+    return _library_dir
+}
+
+// Temp-allocated. artifacts/<first 2 hex>/<32-hex key>.bin below it.
+artifacts_dir :: proc() -> string {
+    if _artifact_dir != "" do return _artifact_dir
+    return fmt.tprintf("%s/artifacts", _library_dir)
+}
+
+@(private = "file")
+_artifact_db_path :: proc() -> string {
+    return fmt.tprintf("%s/artifact_db.json", _library_dir)
+}
 
 // A meta file's identity + import half. Settings materialize from the
 // settings object's own __type_guid (every written meta carries one), so
@@ -129,7 +155,7 @@ _artifact_index_ensure :: proc() {
     context.allocator = runtime.default_allocator()
     _artifact_index = make(map[uuid.Identifier]_Artifact_Entry)
 
-    data, read_err := os.read_entire_file(ARTIFACT_DB_PATH, context.temp_allocator)
+    data, read_err := os.read_entire_file(_artifact_db_path(), context.temp_allocator)
     if read_err != nil do return
     raw: map[string]_Artifact_Entry
     if json.unmarshal(data, &raw, allocator = context.temp_allocator) != nil do return
@@ -186,8 +212,8 @@ _artifact_index_save :: proc() {
     }
     data, merr := json.marshal(raw, opts, context.temp_allocator)
     if merr != nil do return
-    os.make_directory(LIBRARY_DIR)
-    _ = os.write_entire_file(ARTIFACT_DB_PATH, data)
+    os.make_directory(_library_dir)
+    _ = os.write_entire_file(_artifact_db_path(), data)
 }
 
 // Drops entries whose asset no longer exists, so the artifact sweep below can
@@ -210,11 +236,11 @@ _artifact_index_prune :: proc() {
 }
 
 @(private = "file")
-// Where artifact files live. The default is the working tree's library — a
-// relocatable-catalog boot retargets it at the export's artifacts dir
-// (asset_db_init_from_catalog), and every resolve below follows.
+// Where artifact files live when a relocatable-catalog boot retargets them at
+// the export's artifacts dir (asset_db_init_from_catalog): every resolve below
+// follows. Empty, they live under the library (artifacts_dir).
 // asset_db_shutdown resets it via _catalog_pipeline_reset.
-_artifact_dir := ARTIFACTS_DIR
+_artifact_dir := ""
 @(private = "file") _artifact_dir_owned: bool
 
 _artifact_dir_set :: proc(dir: string) {
@@ -231,7 +257,7 @@ _catalog_pipeline_reset :: proc() {
     context.allocator = runtime.default_allocator()
     if _artifact_dir_owned {
         delete(_artifact_dir)
-        _artifact_dir = ARTIFACTS_DIR
+        _artifact_dir = ""
         _artifact_dir_owned = false
     }
     for _, blob in _catalog_settings do delete(blob)
@@ -241,7 +267,7 @@ _catalog_pipeline_reset :: proc() {
 
 // "library/artifacts/<first 2 hex>/<key>.bin" — Unity's fan-out layout.
 _artifact_key_path :: proc(key: string, allocator := context.allocator) -> string {
-    return fmt.aprintf("%s/%s/%s.bin", _artifact_dir, key[:2], key, allocator = allocator)
+    return fmt.aprintf("%s/%s/%s.bin", artifacts_dir(), key[:2], key, allocator = allocator)
 }
 
 _ensure_artifact_dir :: proc(artifact_path: string) {
@@ -297,7 +323,7 @@ _cleanup_stale_artifacts :: proc() {
             }
         }
     }
-    sweep_dir(ARTIFACTS_DIR, &referenced, &removed, true)
+    sweep_dir(artifacts_dir(), &referenced, &removed, true)
 
     if removed > 0 {
         fmt.printf("[Pipeline] Removed %d stale artifact(s)\n", removed)

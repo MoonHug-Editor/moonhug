@@ -49,7 +49,7 @@ test_deleting_an_asset_drops_its_document_and_undo_steps :: proc(t: ^testing.T) 
 	os.make_directory(_DIR)
 	defer {
 		_remove_tree(_DIR)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 	tc := new(TestCtx)
 	defer free(tc)
@@ -82,7 +82,7 @@ test_saving_a_renamed_asset_writes_its_new_path :: proc(t: ^testing.T) {
 	os.make_directory(_DIR)
 	defer {
 		_remove_tree(_DIR)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 	tc := new(TestCtx)
 	defer free(tc)
@@ -113,7 +113,7 @@ test_saving_an_asset_deleted_on_disk_does_not_write_it_back :: proc(t: ^testing.
 	os.make_directory(_DIR)
 	defer {
 		_remove_tree(_DIR)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 	tc := new(TestCtx)
 	defer free(tc)
@@ -139,7 +139,7 @@ test_revert_restores_the_file_and_undoes :: proc(t: ^testing.T) {
 	os.make_directory(_DIR)
 	defer {
 		_remove_tree(_DIR)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 	tc := new(TestCtx)
 	defer free(tc)
@@ -177,7 +177,7 @@ test_asset_array_add_and_remove_undo :: proc(t: ^testing.T) {
 	os.make_directory(_DIR)
 	defer {
 		_remove_tree(_DIR)
-		_remove_tree("library")
+		_remove_tree(engine.library_dir())
 	}
 	tc := new(TestCtx)
 	defer free(tc)
