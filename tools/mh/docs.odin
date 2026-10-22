@@ -301,18 +301,20 @@ docs_serving: bool
 // tests, every plugin by its real path, and this tool.
 DOCS_SOURCE_ROOTS :: []string{"docs", "moonhug/libs", "moonhug/editor", "moonhug/prebuild", "moonhug/registration", "moonhug/tests", "plugins", "tools/mh"}
 
-// The files the source mount leaves out. The include patterns (.odin and .md)
-// hold at startup only: on a change event the server syncs the changed file
-// and reloads the open page when no negation matches it, whatever the include
-// patterns say. So every asset type under the roots is named here, and a new
-// one that makes the site reload on save belongs on this list.
-DOCS_SOURCE_SKIP :: []string{
-	"**_generated.odin", "**/.DS_Store",
-	"**.meta", "**.scene", "**.prefab", "**.mat", "**.anim", "**.asset", "**.json",
-	"**.renderpipeline", "**.shadergraph", "**.spriteatlas",
-	"**.glsl", "**.spv", "**.msl", "**.hlsl", "**.metal",
-	"**.png", "**.jpg", "**.jpeg", "**.hdr", "**.ttf", "**.otf",
-	"**.glb", "**.gltf", "**.bin", "**.mp3", "**.wav", "**.ogg",
+// The files under the source roots the server ignores, as `ignoreFiles`
+// regexes. The mount's include patterns (.odin and .md) hold at startup only:
+// a change event syncs the changed file and reloads the open page whatever
+// they say, and a mount negation makes that sync an error the served site
+// shows. `ignoreFiles` drops the event itself. So every asset type under the
+// roots is named here, and a new one that makes the site reload on save
+// belongs on this list. The patterns are anchored to the roots: the README's
+// images, the theme's files and the data mount keep their types.
+DOCS_SOURCE_IGNORE :: []string{
+	`_generated\.odin$`,
+	`/\.DS_Store$`,
+	`/(docs|moonhug|plugins|tools/mh)/.*\.(meta|scene|prefab|mat|anim|asset|json|renderpipeline|shadergraph|spriteatlas)$`,
+	`/(docs|moonhug|plugins|tools/mh)/.*\.(glsl|spv|msl|hlsl|metal)$`,
+	`/(docs|moonhug|plugins|tools/mh)/.*\.(png|jpe?g|hdr|ttf|otf|glb|gltf|bin|mp3|wav|ogg)$`,
 }
 
 // The URL template every source location in the reference pages links to,
@@ -473,6 +475,9 @@ docs_write_plugin_mounts :: proc() -> bool {
 	strings.write_string(&b, "# Written by `mh docs`. Not committed, not edited.\n")
 	// The source link template, for the layout's "open this page's file"
 	// link (custom/content-begin.html).
+	strings.write_string(&b, "ignoreFiles = [")
+	for re in DOCS_SOURCE_IGNORE do fmt.sbprintf(&b, "'%s', ", re)
+	strings.write_string(&b, "]\n")
 	fmt.sbprintf(&b, "[params]\nsource_url = '%s'\n", docs_source_url())
 	// Every hand-written page is mounted on its own, where its front matter
 	// puts it (docs_page_mounts). The generated reference is one folder.
@@ -491,9 +496,7 @@ docs_write_plugin_mounts :: proc() -> bool {
 		for root in DOCS_SOURCE_ROOTS {
 			if !os.is_dir(root) do continue
 			// The folders match too, or the walk prunes them before any file.
-			fmt.sbprintf(&b, "[[module.mounts]]\nsource = '%s'\ntarget = 'static/source/%s'\nfiles = [", root, root)
-			for skip in DOCS_SOURCE_SKIP do fmt.sbprintf(&b, "'! %s', ", skip)
-			strings.write_string(&b, "'**/', '**.odin', '**.md']\n")
+			fmt.sbprintf(&b, "[[module.mounts]]\nsource = '%s'\ntarget = 'static/source/%s'\nfiles = ['**/', '**.odin', '**.md']\n", root, root)
 		}
 	}
 	if !docs_write_home(names[:]) do return false
