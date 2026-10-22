@@ -166,8 +166,6 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 
 - multiselection follow-ups: multi-path drag-drop
 
-- decorator generator names its procs by the bare type name (`__decorator__<Type>__<field>`), so two packages declaring a type of the same name with decor tags fail to build (physics2d and physics3d prefix their layer override types to dodge it)
-
 - experiment: `using _:` blank embeds for fields shared by serialized structs. Odin's JSON flattens them into the parent object, so saved keys stay as they are. Check the inspector field walk, the prebuild generators and the prefab override paths before using it in a feature
 
 ### Considered Features

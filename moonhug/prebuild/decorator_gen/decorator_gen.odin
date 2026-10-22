@@ -35,7 +35,7 @@ FieldDecorators :: struct {
 }
 
 TypeDecorators :: struct {
-	pkg_name:  string,
+	pkg_alias: string,
 	pkg_path:  string,
 	type_name: string,
 	fields:    [dynamic]FieldDecorators,
@@ -45,9 +45,22 @@ TypeDecorators :: struct {
 // carries the per-type data the generator needs. The nested [dynamic] arrays
 // are owned by the world for the run and rebuilt into rows by generate.
 Decorator_GenComp :: struct {
-	pkg_name: string,
-	pkg_path: string,
-	fields:   [dynamic]FieldDecorators,
+	pkg_alias: string,
+	pkg_path:  string,
+	fields:    [dynamic]FieldDecorators,
+}
+
+// The name the generated file imports a package under, and the package part of
+// every generated identifier: the package path below `moonhug/` with `_` for
+// `/`, so `moonhug/packages/physics2d` is `packages_physics2d`. Two packages
+// that declare the same package name, or the same type name, stay apart. The
+// editor's own package is the one the generated file cannot import (inspector
+// is below it), so its types stay unqualified.
+_pkg_alias :: proc(pkg_path: string) -> string {
+	if pkg_path == "" || pkg_path == "moonhug/editor" do return ""
+	rel := strings.trim_prefix(pkg_path, "moonhug/")
+	alias, _ := strings.replace_all(rel, "/", "_")
+	return alias
 }
 
 
@@ -92,7 +105,7 @@ _write_call_line :: proc(b: ^strings.Builder, call_with_ctx: string) {
 // (a renamed proc then fails the build there), and default the label to the
 // proc name when the tag doesn't set one. Also extracts `row` so emission can
 // position-sort buttons (row >= 0 above the field, < 0 below).
-_rewrite_button_call :: proc(rest: string, pkg_name: string) -> (call: string, row: int) {
+_rewrite_button_call :: proc(rest: string, pkg_alias: string) -> (call: string, row: int) {
 	// rest is everything after "button(" e.g. `tank_fire, label="Fire", row=0)`
 	end := strings.index_rune(rest, ',')
 	tail: string
@@ -114,8 +127,8 @@ _rewrite_button_call :: proc(rest: string, pkg_name: string) -> (call: string, r
 		if v, rok := strconv.parse_int(rv[:re]); rok do row = v
 	}
 	qualified := proc_name
-	if pkg_name != "" {
-		qualified = fmt.tprintf("%s.%s", pkg_name, proc_name)
+	if pkg_alias != "" {
+		qualified = fmt.tprintf("%s.%s", pkg_alias, proc_name)
 	}
 	if !strings.contains(tail, "label=") {
 		tail = fmt.tprintf(", label=\"%s\"%s", proc_name, tail)
@@ -140,7 +153,7 @@ _unescape_tag_quotes :: proc(s: string) -> string {
 
 // `raw` is every decor: value of the tag as written, joined — what debug tooltips
 // shows as the origin of the field's decorators.
-_parse_decor_calls_from_tag :: proc(tag: string, pkg_name: string) -> (out: [dynamic]DecoratorCall, raw: string) {
+_parse_decor_calls_from_tag :: proc(tag: string, pkg_alias: string) -> (out: [dynamic]DecoratorCall, raw: string) {
 	calls: [dynamic]DecoratorCall
 	defer if len(calls) > 0 do delete(calls)
 	raw_b := strings.builder_make()
@@ -178,7 +191,7 @@ _parse_decor_calls_from_tag :: proc(tag: string, pkg_name: string) -> (out: [dyn
 		// Prepend "decorator_" to proc name; insert "ctx, " after "(" (or just "ctx" if no args)
 		paren := strings.index_rune(val, '(')
 		if paren >= 0 && val[:paren] == "button" {
-			call, row := _rewrite_button_call(val[paren+1:], pkg_name)
+			call, row := _rewrite_button_call(val[paren+1:], pkg_alias)
 			if call != "" do append(&calls, DecoratorCall{call_with_ctx = call, is_button = true, row = row})
 			pos = end
 			continue
@@ -224,7 +237,7 @@ provide :: proc(w: ^db.World) -> bool {
 		has_any := false
 		for sf in struct_fields {
 			if sf.name == "" do continue
-			calls, raw := _parse_decor_calls_from_tag(sf.tag, decl.pkg.name)
+			calls, raw := _parse_decor_calls_from_tag(sf.tag, _pkg_alias(decl.pkg_path))
 			defer delete(calls)
 			for c in calls {
 				// "decorator_min(ctx, 0.5)": the name between the prefix and the paren.
@@ -248,7 +261,7 @@ provide :: proc(w: ^db.World) -> bool {
 			append(&fields, fd)
 		}
 		if has_any {
-			db.set(_decorators, entity, Decorator_GenComp{pkg_name = decl.pkg.name, pkg_path = decl.pkg_path, fields = fields})
+			db.set(_decorators, entity, Decorator_GenComp{pkg_alias = _pkg_alias(decl.pkg_path), pkg_path = decl.pkg_path, fields = fields})
 		} else {
 			for fd in fields do delete(fd.calls)
 			delete(fields)
@@ -274,16 +287,16 @@ generate :: proc(w: ^db.World) -> bool {
 		decl := db.get(decls, entity)
 		deco := db.get(_decorators, entity)
 		append(&entries, TypeDecorators{
-			pkg_name  = deco.pkg_name,
+			pkg_alias = deco.pkg_alias,
 			pkg_path  = deco.pkg_path,
 			type_name = decl.name,
 			fields    = deco.fields,
 		})
 	}
 
-	// Preserve previous collect_finalize ordering: sort by (pkg_name, type_name).
+	// Sorted by (package alias, type name) so the file is reproducible.
 	slice.sort_by(entries[:], proc(a, b: TypeDecorators) -> bool {
-		if a.pkg_name != b.pkg_name do return a.pkg_name < b.pkg_name
+		if a.pkg_alias != b.pkg_alias do return a.pkg_alias < b.pkg_alias
 		return a.type_name < b.type_name
 	})
 
@@ -291,10 +304,10 @@ generate :: proc(w: ^db.World) -> bool {
 	defer strings.builder_destroy(&b)
 
 	strings.write_string(&b, "package inspector\n\n")
-	packages_used: map[string]string // declared name -> pkg_path
+	packages_used: map[string]string // alias -> pkg_path
 	defer delete(packages_used)
 	for e in entries {
-		if e.pkg_name != "" && e.pkg_name != "editor" do packages_used[e.pkg_name] = e.pkg_path
+		if e.pkg_alias != "" do packages_used[e.pkg_alias] = e.pkg_path
 	}
 	import_pkgs: [dynamic]string
 	defer delete(import_pkgs)
@@ -303,24 +316,17 @@ generate :: proc(w: ^db.World) -> bool {
 	}
 	slice.sort(import_pkgs[:])
 	for pkg in import_pkgs {
-		// Every decorated type outside core lives in an installed package (the
-		// engine and app included) reached via the collection, at its pkg_path
-		// (subpackages live below their folder name).
-		if pkg == "core" {
-			fmt.sbprintf(&b, "import core \"moonhug:libs/core\"\n")
-		} else {
-			fmt.sbprintf(&b, "import %s \"moonhug:%s\"\n", pkg, packages_used[pkg][len("moonhug/"):])
-		}
+		// Every decorated type lives in a libs package or an installed package
+		// (the engine and app included) reached via the collection at its
+		// pkg_path, imported under its alias.
+		fmt.sbprintf(&b, "import %s \"moonhug:%s\"\n", pkg, packages_used[pkg][len("moonhug/"):])
 	}
 	if len(import_pkgs) > 0 do strings.write_string(&b, "\n")
 	strings.write_string(&b, "// Code generated by decorator_gen. Do not edit.\n\n")
 
 	for e in entries {
-		type_prefix := fmt.tprintf("__decorator__%s__", e.type_name)
-		type_slice_name := fmt.tprintf("__decorators__%s", e.type_name)
-		pkg_prefix := e.pkg_name
-		if pkg_prefix != "" do pkg_prefix = fmt.tprintf("%s.", pkg_prefix)
-		else do pkg_prefix = ""
+		type_prefix := _type_prefix(e)
+		type_slice_name := _type_slice_name(e)
 
 		for fd in e.fields {
 			if len(fd.calls) == 0 do continue
@@ -369,16 +375,16 @@ generate :: proc(w: ^db.World) -> bool {
 
 		strings.write_string(&b, type_slice_name)
 		strings.write_string(&b, ": []DecoratorProc\n")
-		fmt.sbprintf(&b, "__decorator_origins__%s: []string\n\n", e.type_name)
+		fmt.sbprintf(&b, "%s: []string\n\n", _origin_slice_name(e))
 	}
 
 	strings.write_string(&b, "init_decorators :: proc() {\n")
 	for e in entries {
-		type_slice_name := fmt.tprintf("__decorators__%s", e.type_name)
-		origin_slice_name := fmt.tprintf("__decorator_origins__%s", e.type_name)
-		type_prefix := fmt.tprintf("__decorator__%s__", e.type_name)
+		type_slice_name := _type_slice_name(e)
+		origin_slice_name := _origin_slice_name(e)
+		type_prefix := _type_prefix(e)
 		qual := e.type_name
-		if e.pkg_name != "" do qual = fmt.tprintf("%s.%s", e.pkg_name, e.type_name)
+		if e.pkg_alias != "" do qual = fmt.tprintf("%s.%s", e.pkg_alias, e.type_name)
 		n := len(e.fields)
 		fmt.sbprintf(&b, "\t%s = make([]DecoratorProc, %d)\n", type_slice_name, n)
 		fmt.sbprintf(&b, "\t%s = make([]string, %d)\n", origin_slice_name, n)
@@ -401,4 +407,18 @@ generate :: proc(w: ^db.World) -> bool {
 
 	db.emit(w, "moonhug/editor/inspector/decorators_generated.odin", strings.to_string(b))
 	return true
+}
+
+// The generated identifiers carry the package alias before the type name, so
+// two packages declaring a type of the same name both get their procs.
+_type_prefix :: proc(e: TypeDecorators) -> string {
+	return fmt.tprintf("__decorator__%s__%s__", e.pkg_alias, e.type_name)
+}
+
+_type_slice_name :: proc(e: TypeDecorators) -> string {
+	return fmt.tprintf("__decorators__%s__%s", e.pkg_alias, e.type_name)
+}
+
+_origin_slice_name :: proc(e: TypeDecorators) -> string {
+	return fmt.tprintf("__decorator_origins__%s__%s", e.pkg_alias, e.type_name)
 }
