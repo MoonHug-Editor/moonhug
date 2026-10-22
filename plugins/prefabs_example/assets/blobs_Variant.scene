@@ -5,29 +5,11 @@
       "local_id": 1018,
       "name": "c_Variant",
       "is_active": true,
-      "position": [
-        7.0,
-        0.0,
-        0.0
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
+      "position": [7.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [1.0, 1.0, 1.0],
       "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 15,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
+      "parent": {"pptr": {"local_id": 15, "guid": "00000000-0000-0000-0000-000000000000"}},
       "children": [
 
       ],
@@ -46,10 +28,7 @@
       "sibling_index": 0,
       "overrides": [
         {
-          "target": {
-            "local_id": 14,
-            "guid": "bdb81005-069f-405f-9a4d-fe9fb3f2bcb7"
-          },
+          "target": {"local_id": 14, "guid": "bdb81005-069f-405f-9a4d-fe9fb3f2bcb7"},
           "property_path": "color",
           "value": [
             0.0,
@@ -81,10 +60,7 @@
       "sibling_index": 3,
       "overrides": [
         {
-          "target": {
-            "local_id": 3,
-            "guid": "bdb81005-069f-405f-9a4d-fe9fb3f2bcb7"
-          },
+          "target": {"local_id": 3, "guid": "bdb81005-069f-405f-9a4d-fe9fb3f2bcb7"},
           "property_path": "color",
           "value": [
             0.0,
@@ -94,18 +70,12 @@
           ]
         },
         {
-          "target": {
-            "local_id": 15,
-            "guid": "bdb81005-069f-405f-9a4d-fe9fb3f2bcb7"
-          },
+          "target": {"local_id": 15, "guid": "bdb81005-069f-405f-9a4d-fe9fb3f2bcb7"},
           "property_path": "name",
           "value": "c_Variant"
         },
         {
-          "target": {
-            "local_id": 15,
-            "guid": "bdb81005-069f-405f-9a4d-fe9fb3f2bcb7"
-          },
+          "target": {"local_id": 15, "guid": "bdb81005-069f-405f-9a4d-fe9fb3f2bcb7"},
           "property_path": "position",
           "value": [
             7.0,
@@ -114,10 +84,7 @@
           ]
         },
         {
-          "target": {
-            "local_id": 15,
-            "guid": "bdb81005-069f-405f-9a4d-fe9fb3f2bcb7"
-          },
+          "target": {"local_id": 15, "guid": "bdb81005-069f-405f-9a4d-fe9fb3f2bcb7"},
           "property_path": "scale",
           "value": [
             1.0,
@@ -126,10 +93,7 @@
           ]
         },
         {
-          "target": {
-            "local_id": 16,
-            "guid": "bdb81005-069f-405f-9a4d-fe9fb3f2bcb7"
-          },
+          "target": {"local_id": 16, "guid": "bdb81005-069f-405f-9a4d-fe9fb3f2bcb7"},
           "property_path": "color",
           "value": [
             0.47450981,
@@ -156,10 +120,7 @@
   "breadcrumbs": [
     {
       "local_id": 1020,
-      "scene_source": {
-        "local_id": 1018,
-        "guid": "00000000-0000-0000-0000-000000000000"
-      },
+      "scene_source": {"local_id": 1018, "guid": "00000000-0000-0000-0000-000000000000"},
       "scene_instance": 1019
     }
   ],

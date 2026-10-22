@@ -13,10 +13,7 @@
       "sibling_index": 0,
       "overrides": [
         {
-          "target": {
-            "local_id": 3,
-            "guid": "7c9a0c19-2803-4e37-960a-0cc5538ea0c1"
-          },
+          "target": {"local_id": 3, "guid": "7c9a0c19-2803-4e37-960a-0cc5538ea0c1"},
           "property_path": "color",
           "value": [
             0.77254903,
@@ -26,10 +23,7 @@
           ]
         },
         {
-          "target": {
-            "local_id": 16,
-            "guid": "7c9a0c19-2803-4e37-960a-0cc5538ea0c1"
-          },
+          "target": {"local_id": 16, "guid": "7c9a0c19-2803-4e37-960a-0cc5538ea0c1"},
           "property_path": "color",
           "value": [
             1.0,

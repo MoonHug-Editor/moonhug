@@ -53,6 +53,7 @@ register_component_serializers :: proc() {
 
     json.register_user_marshaler(core.Asset_GUID, asset_guid_marshal)
     json.register_user_unmarshaler(core.Asset_GUID, asset_guid_unmarshal)
+    register_layout_marshalers()
 
     // Pointer typeids needed by nested-scene deep-override application
     // (`_nested_patch_live_field` calls `get_pointer_typeid_by_typeid` to

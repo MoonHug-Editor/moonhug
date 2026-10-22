@@ -5,80 +5,33 @@
       "local_id": 15,
       "name": "Root",
       "is_active": true,
-      "position": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        0.1,
-        0.2,
-        0.1
-      ],
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [0.1, 0.2, 0.1],
       "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 0,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
+      "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}},
       "children": [
-        {
-          "pptr": {
-            "local_id": 2,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        }
+        {"pptr": {"local_id": 2, "guid": "00000000-0000-0000-0000-000000000000"}}
       ],
       "components": [
-        {
-          "local_id": 16
-        },
-        {
-          "local_id": 18
-        }
+        {"local_id": 16},
+        {"local_id": 18}
       ]
     },
     {
       "local_id": 2,
       "name": "Transform",
       "is_active": true,
-      "position": [
-        0.0,
-        0.56452268,
-        -0.01
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        0.5,
-        0.5,
-        0.5
-      ],
+      "position": [0.0, 0.56452268, -0.01],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [0.5, 0.5, 0.5],
       "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 15,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
+      "parent": {"pptr": {"local_id": 15, "guid": "00000000-0000-0000-0000-000000000000"}},
       "children": [
 
       ],
       "components": [
-        {
-          "local_id": 3
-        }
+        {"local_id": 3}
       ]
     }
   ],

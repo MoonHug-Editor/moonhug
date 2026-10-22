@@ -160,6 +160,8 @@ Removed_Component { target: PPtr }                       // the prefab's compone
 Added_Component   { owner: PPtr, local_id, type_guid, json }
 ```
 
+In the file the `json` payload is written inline, as the component record it is, and read back as text. A file that carries it as an escaped string loads the same.
+
 Both are baked into the prefab bytes at resolve, after the field overrides, so a materialized instance simply lacks its removed components and carries its added ones — the edit survives the next resolve, not just the save. Targets use `Override.target`'s encoding, so deep targets project up the chain the same way.
 
 - Removing an ADDED component retracts the addition rather than recording a removal — it was never prefab content.
