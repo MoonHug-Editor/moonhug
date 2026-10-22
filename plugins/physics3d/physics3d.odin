@@ -27,6 +27,7 @@ import "core:math"
 import "core:math/linalg"
 import b3 "vendor:box3d"
 import "moonhug:packages/engine"
+import "moonhug:libs/log"
 
 GRAVITY_DEFAULT :: [3]f32{0, -9.81, 0}
 _SUB_STEPS :: 4
@@ -441,6 +442,73 @@ _sync_colliders :: proc(w: ^engine.World) {
 			_register_shape(c.shape, c.owner)
 		}
 	}
+	_sync_mesh_colliders(w)
+}
+
+// A mesh collider's shape: the hull of the vertices, or the triangles on a
+// static body. The world scale of the owner is applied per axis by box3d,
+// signed, so a mirrored object collides mirrored.
+@(private = "file")
+_sync_mesh_colliders :: proc(w: ^engine.World) {
+	it := engine.pool_iterator(mesh_colliders(w))
+	for c, _ in engine.pool_next(&it) {
+		if b3.Shape_IsValid(c.shape) {
+			_sync_filter(c.shape, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
+			continue
+		}
+		if !c.enabled || c.build_failed do continue
+		if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
+		ref, has := mesh_collider_ref(c)
+		if !has do continue
+		geom, gok := engine.mesh_geometry_of(ref)
+		if !gok {
+			c.build_failed = true
+			log.errorf("[Physics3D] MeshCollider on %q: the mesh cannot be loaded", _owner_name(w, c.owner))
+			continue
+		}
+		scale := engine.transform_world(c.owner).scale
+		target, ok := _shape_target(w, c.owner, {}, &c.static_body)
+		if !ok do continue
+		def := _shape_def(c.density, c.material, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
+		if c.convex {
+			hull := b3.CreateHull(raw_data(geom.positions), i32(len(geom.positions)), b3.MAX_HULL_VERTICES)
+			if hull == nil {
+				c.build_failed = true
+				log.errorf("[Physics3D] MeshCollider on %q: no convex hull, the mesh needs four vertices not on one plane", _owner_name(w, c.owner))
+				continue
+			}
+			c.shape = b3.CreateTransformedHullShape(target.body, def, hull, b3.Transform{p = target.center, q = target.rot}, scale)
+			b3.DestroyHull(hull)
+		} else {
+			if target.body != c.static_body {
+				c.build_failed = true
+				log.errorf("[Physics3D] MeshCollider on %q: a non-convex mesh collides on a static body only, remove the Rigidbody above it or set convex", _owner_name(w, c.owner))
+				continue
+			}
+			indices := make([]i32, len(geom.indices), context.temp_allocator)
+			for idx, i in geom.indices do indices[i] = i32(idx)
+			mdef := b3.MeshDef{
+				vertices      = raw_data(geom.positions),
+				indices       = raw_data(indices),
+				vertexCount   = i32(len(geom.positions)),
+				triangleCount = i32(len(indices) / 3),
+			}
+			c.mesh_data = b3.CreateMesh(mdef, nil, 0)
+			if c.mesh_data == nil {
+				c.build_failed = true
+				log.errorf("[Physics3D] MeshCollider on %q: box3d rejected the triangles", _owner_name(w, c.owner))
+				continue
+			}
+			c.shape = b3.CreateMeshShape(target.body, def, c.mesh_data, scale)
+		}
+		_register_shape(c.shape, c.owner)
+	}
+}
+
+@(private = "file")
+_owner_name :: proc(w: ^engine.World, tH: engine.Transform_Handle) -> string {
+	t := engine.pool_get(&w.transforms, engine.Handle(tH))
+	return t != nil ? t.name : "?"
 }
 
 // --- Write back: box3d -> transforms --------------------------------------------

@@ -12,7 +12,9 @@ package physics3d_editor
 import "moonhug:packages/engine"
 import "moonhug:libs/gizmos"
 import "moonhug:editor/handles"
+import "moonhug:editor/inspector"
 import "moonhug:editor/undo"
+import "moonhug:packages/engine/editor/mesh_editor"
 import physics3d "moonhug:packages/physics3d"
 
 @(comp_on_draw_gizmos={component=BoxCollider})
@@ -31,6 +33,27 @@ comp_on_draw_gizmos_SphereCollider :: proc(c: ^physics3d.SphereCollider, ctx: ha
 comp_on_draw_gizmos_CapsuleCollider :: proc(c: ^physics3d.CapsuleCollider, ctx: handles.Gizmo_Context) {
 	if .In_Selection not_in ctx.state do return
 	physics3d.draw_capsule_collider_wires(c, physics3d.COLLIDER_GIZMO_COLOR)
+}
+
+@(comp_on_draw_gizmos={component=MeshCollider})
+comp_on_draw_gizmos_MeshCollider :: proc(c: ^physics3d.MeshCollider, ctx: handles.Gizmo_Context) {
+	if .In_Selection not_in ctx.state do return
+	physics3d.draw_mesh_collider_wires(c, physics3d.COLLIDER_GIZMO_COLOR)
+}
+
+// The MeshCollider's inspector: the default fields, then the Mesh row the
+// MeshFilter has. Empty, the row reads "None" and the collider takes the
+// MeshFilter's mesh.
+@(provider_install)
+_register_mesh_collider_inspector :: proc() {
+	inspector.add_component_wrapper(typeid_of(physics3d.MeshCollider), _mesh_collider_inspector)
+}
+
+@(private = "file")
+_mesh_collider_inspector :: proc(ctx: ^inspector.Component_Ctx) {
+	inspector.draw(ctx)
+	c := cast(^physics3d.MeshCollider)ctx.ptr
+	mesh_editor.mesh_ref_row(&c.mesh)
 }
 
 // --- Bounds handles --------------------------------------------------------------

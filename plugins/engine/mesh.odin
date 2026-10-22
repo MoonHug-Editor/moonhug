@@ -60,9 +60,21 @@ mesh_cache: map[Mesh_Key]Mesh
 // is ever cached. Mirrors _animation_clip_cache_ready.
 @(private = "file") _mesh_cache_ready: bool
 
+// A mesh's positions and triangle indices on the CPU, for a reader that
+// needs the shape and not the GPU mesh (a mesh collider). Cached per part
+// like mesh_cache and dropped with it by mesh_unload. Loads without a GPU
+// device, so it works headless.
+Mesh_Geometry :: struct {
+    positions: [][3]f32,
+    indices:   []u32,
+}
+
+@(private = "file") _mesh_geometry: map[Mesh_Key]Mesh_Geometry
+
 mesh_cache_init :: proc() {
     mesh_cache = make(map[Mesh_Key]Mesh)
     _mesh_failed = make(map[Mesh_Key]bool)
+    _mesh_geometry = make(map[Mesh_Key]Mesh_Geometry, runtime.default_allocator())
     // Cross-frame caches: never the caller's allocator.
     _mesh_parts = make(map[Asset_GUID][]Mesh_Part, runtime.default_allocator())
     _mesh_clips = make(map[Asset_GUID][]Mesh_Clip, runtime.default_allocator())
@@ -88,6 +100,9 @@ mesh_cache_shutdown :: proc() {
     delete(mesh_cache)
     delete(_mesh_failed)
     _mesh_failed = nil
+    for _, &g in _mesh_geometry do _mesh_geometry_free(&g)
+    delete(_mesh_geometry)
+    _mesh_geometry = nil
     for guid in _mesh_parts do _mesh_parts_free(guid)
     delete(_mesh_parts)
     _mesh_parts = nil
@@ -192,8 +207,13 @@ mesh_clip_index :: proc(guid: Asset_GUID, id: Local_ID) -> (i32, bool) {
 // (part 0), otherwise the id's part. ok=false when the id no longer exists
 // in the model's table — the filter draws nothing, like a missing mesh.
 mesh_filter_part :: proc(mf: ^MeshFilter) -> (part: i32, ok: bool) {
-    if mf.mesh.local_id == 0 do return 0, true
-    idx, found := mesh_part_index(mf.mesh.guid, mf.mesh.local_id)
+    return mesh_ref_part(mf.mesh)
+}
+
+// A mesh reference's part for mesh_load: the same rule as mesh_filter_part.
+mesh_ref_part :: proc(ref: PPtr) -> (part: i32, ok: bool) {
+    if ref.local_id == 0 do return 0, true
+    idx, found := mesh_part_index(ref.guid, ref.local_id)
     if !found do return 0, false
     return idx + 1, true
 }
@@ -215,52 +235,12 @@ mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
     // Headless contexts (tests, scene tooling) have no GPU device.
     if gfx.device() == nil do return nil, false
 
-    whole := _artifact_path(uuid.Identifier(guid))
-    defer delete(whole)
-    artifact := whole
-    if part > 0 {
-        artifact = mesh_part_artifact_path(whole, int(part - 1), context.temp_allocator)
-    }
-
-    header: Mesh_Artifact_Header
-    vertices: []gfx.Vertex
-    indices: []u32
-    submeshes: []Mesh_Submesh
-    parse_ok := false
-    blob, read_err := os.read_entire_file(artifact, context.temp_allocator)
-    if read_err == nil {
-        header, vertices, indices, submeshes, parse_ok = _mesh_artifact_parse(blob)
-    }
-    if !parse_ok {
-        // Artifact missing (fresh clone, cleaned library/) or stale (format
-        // bump): import from source and retry once. Every exit below marks the
-        // key failed — the retry is once per session, not once per frame.
-        source_path, path_ok := asset_db_get_path(uuid.Identifier(guid))
-        if !path_ok {
-            _mesh_failed[key] = true
-            return nil, false
-        }
-        if !asset_pipeline_request_import(source_path, force = true) {
-            _mesh_failed[key] = true
-            return nil, false
-        }
-        blob, read_err = os.read_entire_file(artifact, context.temp_allocator)
-        if read_err != nil {
-            log.errorf("[Mesh] artifact unreadable after re-import: %s (part %d)", artifact, part)
-            _mesh_failed[key] = true
-            return nil, false
-        }
-        header, vertices, indices, submeshes, parse_ok = _mesh_artifact_parse(blob)
-        if !parse_ok {
-            log.errorf("[Mesh] artifact unparseable after re-import: %s (part %d)", artifact, part)
-            _mesh_failed[key] = true
-            return nil, false
-        }
-    }
+    blob, header, vertices, indices, submeshes, parse_ok := _mesh_artifact_read(key)
+    if !parse_ok do return nil, false
 
     gpu := gfx.mesh_create(vertices, indices)
     if gpu.index_count == 0 {
-        log.errorf("[Mesh] GPU upload produced no indices: %s (part %d, %d verts)", artifact, part, len(vertices))
+        log.errorf("[Mesh] GPU upload produced no indices: %v (part %d, %d verts)", guid, part, len(vertices))
         _mesh_failed[key] = true
         return nil, false
     }
@@ -288,6 +268,87 @@ mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
     return &mesh_cache[key], true
 }
 
+// The artifact of one part, read and parsed. The slices point into `blob`,
+// temp-allocated. A missing or stale artifact (fresh clone, cleaned library,
+// format bump) is imported from source and read once more, and every failure
+// marks the key failed: the retry is once per session, not once per frame.
+@(private = "file")
+_mesh_artifact_read :: proc(key: Mesh_Key) -> (blob: []byte, header: Mesh_Artifact_Header, vertices: []gfx.Vertex, indices: []u32, submeshes: []Mesh_Submesh, ok: bool) {
+    whole := _artifact_path(uuid.Identifier(key.guid))
+    defer delete(whole)
+    artifact := whole
+    if key.part > 0 {
+        artifact = mesh_part_artifact_path(whole, int(key.part - 1), context.temp_allocator)
+    }
+
+    read_err: os.Error
+    blob, read_err = os.read_entire_file(artifact, context.temp_allocator)
+    if read_err == nil {
+        header, vertices, indices, submeshes, ok = _mesh_artifact_parse(blob)
+    }
+    if ok do return
+
+    source_path, path_ok := asset_db_get_path(uuid.Identifier(key.guid))
+    if !path_ok {
+        _mesh_failed[key] = true
+        return
+    }
+    if !asset_pipeline_request_import(source_path, force = true) {
+        _mesh_failed[key] = true
+        return
+    }
+    // The import gave the asset its artifact, so its path is known only now.
+    delete(whole)
+    whole = _artifact_path(uuid.Identifier(key.guid))
+    artifact = whole
+    if key.part > 0 {
+        artifact = mesh_part_artifact_path(whole, int(key.part - 1), context.temp_allocator)
+    }
+    blob, read_err = os.read_entire_file(artifact, context.temp_allocator)
+    if read_err != nil {
+        log.errorf("[Mesh] artifact unreadable after re-import: %s (part %d)", artifact, key.part)
+        _mesh_failed[key] = true
+        return
+    }
+    header, vertices, indices, submeshes, ok = _mesh_artifact_parse(blob)
+    if !ok {
+        log.errorf("[Mesh] artifact unparseable after re-import: %s (part %d)", artifact, key.part)
+        _mesh_failed[key] = true
+    }
+    return
+}
+
+// The positions and indices of a model or a part, on the CPU. Owned by the
+// cache: the caller reads and does not free.
+mesh_geometry :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh_Geometry, bool) {
+    key := Mesh_Key{guid, part}
+    if g, ok := &_mesh_geometry[key]; ok do return g, true
+    if key in _mesh_failed do return nil, false
+    _, _, vertices, indices, _, parse_ok := _mesh_artifact_read(key)
+    if !parse_ok do return nil, false
+    context.allocator = runtime.default_allocator()
+    g := Mesh_Geometry{positions = make([][3]f32, len(vertices)), indices = make([]u32, len(indices))}
+    for v, i in vertices do g.positions[i] = v.position
+    copy(g.indices, indices)
+    _mesh_geometry[key] = g
+    return &_mesh_geometry[key], true
+}
+
+// The geometry a mesh reference names: the whole model (local_id 0) or its
+// part. ok=false when the part no longer exists in the model.
+mesh_geometry_of :: proc(ref: PPtr) -> (^Mesh_Geometry, bool) {
+    part, ok := mesh_ref_part(ref)
+    if !ok do return nil, false
+    return mesh_geometry(ref.guid, part)
+}
+
+@(private = "file")
+_mesh_geometry_free :: proc(g: ^Mesh_Geometry) {
+    context.allocator = runtime.default_allocator()
+    delete(g.positions)
+    delete(g.indices)
+}
+
 // Drops every cached part of the asset, and lets failed parts try again — this
 // is the call a re-import makes, and the new artifact deserves a fresh attempt.
 mesh_unload :: proc(guid: Asset_GUID) {
@@ -295,6 +356,14 @@ mesh_unload :: proc(guid: Asset_GUID) {
     delete_key(&_mesh_parts, guid)
     _mesh_clips_free(guid)
     delete_key(&_mesh_clips, guid)
+    geometry_keys := make([dynamic]Mesh_Key, context.temp_allocator)
+    for key in _mesh_geometry {
+        if key.guid == guid do append(&geometry_keys, key)
+    }
+    for key in geometry_keys {
+        _mesh_geometry_free(&_mesh_geometry[key])
+        delete_key(&_mesh_geometry, key)
+    }
     keys := make([dynamic]Mesh_Key, context.temp_allocator)
     for key in mesh_cache {
         if key.guid == guid do append(&keys, key)

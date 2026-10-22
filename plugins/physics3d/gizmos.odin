@@ -41,6 +41,26 @@ draw_capsule_collider_wires :: proc(c: ^CapsuleCollider, color: [4]f32) {
 	gizmos.wire_capsule(o - axis * half, o + axis * half, radius)
 }
 
+// The mesh's triangles as lines, in the owner's space with its scale, the
+// way the shape is built. A convex collider shows the mesh too, not the
+// hull: the hull is built when the shape is, in the step.
+draw_mesh_collider_wires :: proc(c: ^MeshCollider, color: [4]f32) {
+	ref, has := mesh_collider_ref(c)
+	if !has do return
+	geom, ok := engine.mesh_geometry_of(ref)
+	if !ok do return
+	gizmos.with_color(color)
+	gizmos.in_local_space(c.owner)
+	for i := 0; i + 2 < len(geom.indices); i += 3 {
+		a := geom.positions[geom.indices[i]]
+		b := geom.positions[geom.indices[i + 1]]
+		d := geom.positions[geom.indices[i + 2]]
+		gizmos.line(a, b)
+		gizmos.line(b, d)
+		gizmos.line(d, a)
+	}
+}
+
 // Every enabled collider as a wireframe (Unity's Physics Debug view, there is
 // no selection in the app).
 @(phase={key=DebugDraw, mode=App})
@@ -57,5 +77,9 @@ debug_draw :: proc() {
 	it3 := engine.pool_iterator(capsule_colliders(w))
 	for c, _ in engine.pool_next(&it3) {
 		if c.enabled do draw_capsule_collider_wires(c, COLLIDER_GIZMO_COLOR)
+	}
+	it4 := engine.pool_iterator(mesh_colliders(w))
+	for c, _ in engine.pool_next(&it4) {
+		if c.enabled do draw_mesh_collider_wires(c, COLLIDER_GIZMO_COLOR)
 	}
 }

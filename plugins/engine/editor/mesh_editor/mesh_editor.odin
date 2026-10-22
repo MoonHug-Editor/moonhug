@@ -65,32 +65,38 @@ _mesh_display :: proc(ref: engine.PPtr) -> string {
 	return fmt.tprintf("%s/(missing)", base)
 }
 
-// Default fields, then the Mesh object row — the sprites picker's shape: a
-// flat list of every model and its parts. Dropping a model file assigns the
-// whole model, dropping a part row (project window) the exact part.
+// Default fields, then the Mesh object row.
 _mesh_filter_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 	inspector.draw(ctx)
 	mf := cast(^engine.MeshFilter)ctx.ptr
+	mesh_ref_row(&mf.mesh)
+}
 
-	has_value := !engine.asset_guid_is_empty(mf.mesh.guid)
-	display := _mesh_display(mf.mesh)
+// The Mesh object row for any component with a `mesh: PPtr` field, the
+// sprites picker's shape: a flat list of every model and its parts. Dropping
+// a model file assigns the whole model, dropping a part row (project window)
+// the exact part. A change marks the inspector changed and records the
+// instance override, as the default rows do.
+mesh_ref_row :: proc(ref: ^engine.PPtr, label: cstring = "Mesh") {
+	has_value := !engine.asset_guid_is_empty(ref.guid)
+	display := _mesh_display(ref^)
 
 	value_clicked, value_double, cleared: bool
 	dropped: string
 	dropped_ref: engine.PPtr
 	dropped_ref_ok: bool
-	if inspector.picker_field_row("Mesh", display, has_value, &value_clicked, &cleared, &value_double, &dropped, &dropped_ref, &dropped_ref_ok) {
+	if inspector.picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double, &dropped, &dropped_ref, &dropped_ref_ok) {
 		im.OpenPopup("mesh_picker")
 	}
 	if value_clicked && has_value {
-		engine.inspector_request_ping_asset(mf.mesh.guid)
+		engine.inspector_request_ping_asset(ref.guid)
 	}
 	if cleared {
-		_set_mesh(mf, {})
+		_set_mesh(ref, {})
 	}
 	if dropped != "" && _is_model_path(dropped) {
 		if guid, gok := engine.asset_db_get_guid(dropped); gok {
-			_set_mesh(mf, engine.PPtr{guid = engine.Asset_GUID(guid)})
+			_set_mesh(ref, engine.PPtr{guid = engine.Asset_GUID(guid)})
 		}
 	}
 	if dropped_ref_ok {
@@ -98,18 +104,18 @@ _mesh_filter_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 		// model, id 0) is a mesh.
 		_, is_part := engine.mesh_part_index(dropped_ref.guid, dropped_ref.local_id)
 		if path, pok := engine.asset_db_get_path(uuid.Identifier(dropped_ref.guid)); pok && _is_model_path(path) && (dropped_ref.local_id == 0 || is_part) {
-			_set_mesh(mf, dropped_ref)
+			_set_mesh(ref, dropped_ref)
 		}
 	}
 
 	if im.BeginPopup("mesh_picker") {
 		search := inspector.picker_search_bar()
 		if im.Selectable("None") {
-			_set_mesh(mf, {})
+			_set_mesh(ref, {})
 		}
 		im.Separator()
-		if picked, ok := _mesh_picker_rows(search, mf.mesh); ok {
-			_set_mesh(mf, picked)
+		if picked, ok := _mesh_picker_rows(search, ref^); ok {
+			_set_mesh(ref, picked)
 		}
 		im.EndPopup()
 	}
@@ -149,9 +155,9 @@ _mesh_picker_rows :: proc(search: []string, current: engine.PPtr) -> (picked: en
 	return picked, ok
 }
 
-_set_mesh :: proc(mf: ^engine.MeshFilter, ref: engine.PPtr) {
-	if mf.mesh == ref do return
-	mf.mesh = ref
+_set_mesh :: proc(field: ^engine.PPtr, ref: engine.PPtr) {
+	if field^ == ref do return
+	field^ = ref
 	inspector.mark_inspector_changed()
-	inspector.record_nested_override(&mf.mesh, typeid_of(engine.PPtr), "mesh", true)
+	inspector.record_nested_override(field, typeid_of(engine.PPtr), "mesh", true)
 }

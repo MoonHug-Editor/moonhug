@@ -122,3 +122,54 @@ cleanup_CapsuleCollider :: proc(comp: ^CapsuleCollider) {
 	_destroy_shape(&comp.shape, &comp.static_body)
 	engine.comp_zero(comp)
 }
+
+// The mesh's own shape. `mesh` names a model or one of its parts the way a
+// MeshFilter does, and unset means the MeshFilter on the same object.
+// `convex` builds the convex hull of the vertices, reduced to box3d's limit
+// of 128 hull vertices: the shape a Rigidbody can carry. Not convex, the
+// triangles collide as they are, which box3d allows on a static body only,
+// so it needs no Rigidbody above it. Transform scale applies per axis.
+@(component={menu="Physics/MeshCollider"})
+@(typ_guid={guid = "d6e5cf75-88a6-45e3-ac22-93aaa6b21a05"})
+MeshCollider :: struct {
+	using base:  engine.CompData `inspect:"-"`,
+	mesh:        engine.PPtr `inspect:"-"`,
+	convex:      bool,
+	density:     f32,
+	// How the surface slides and bounces (physics_material.odin). Unset is a
+	// new Physics Material's defaults.
+	material:    engine.Asset_GUID `ref:"PhysicsMaterial" expand`,
+	is_trigger:  bool,
+	layers:       u32 `decor:layers(domain="physics3d")`,
+	using layer_overrides: Physics3D_Layer_Overrides `inline:""`,
+
+	shape:       b3.ShapeId `json:"-" inspect:"-"`,
+	static_body: b3.BodyId `json:"-" inspect:"-"`,
+	// The triangles a non-convex shape reads for as long as it lives. Owned.
+	mesh_data:   ^b3.MeshData `json:"-" inspect:"-"`,
+	// The sync logged why the shape cannot be built and stops trying, until
+	// a Reset or an undo write clears the component.
+	build_failed: bool `json:"-" inspect:"-"`,
+}
+
+reset_MeshCollider :: proc(comp: ^MeshCollider) {
+	cleanup_MeshCollider(comp)
+	comp.layers = 1
+	comp.density = 1
+}
+
+cleanup_MeshCollider :: proc(comp: ^MeshCollider) {
+	_destroy_shape(&comp.shape, &comp.static_body)
+	if comp.mesh_data != nil do b3.DestroyMesh(comp.mesh_data)
+	engine.comp_zero(comp)
+}
+
+// The mesh a MeshCollider collides as: its own, else the MeshFilter's on the
+// same object. ok=false when neither names one.
+mesh_collider_ref :: proc(c: ^MeshCollider) -> (engine.PPtr, bool) {
+	if !engine.asset_guid_is_empty(c.mesh.guid) do return c.mesh, true
+	if _, mf := engine.transform_get_comp(c.owner, engine.MeshFilter); mf != nil && !engine.asset_guid_is_empty(mf.mesh.guid) {
+		return mf.mesh, true
+	}
+	return {}, false
+}
