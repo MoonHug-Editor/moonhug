@@ -1,3 +1,13 @@
+## [0.141.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.141.0...v0.141.1) (2026-10-22)
+
+### Bug Fixes
+
+* a component added to a prefab instance's host is saved once, and an addition survives a save of the reloaded scene ([2c68fff](https://github.com/MoonHug-Editor/moonhug/commit/2c68fff724fc635cefa7f8d8c625efe589a195cf))
+* decorator generator qualifies every generated identifier and import with a path-derived package alias, so two packages may declare a type of the same name ([c5f3e97](https://github.com/MoonHug-Editor/moonhug/commit/c5f3e971ef1ff382c26b7556b1df4bf7eed94436))
+* docs server ignores asset saves through ignoreFiles, a mount negation made the change-time sync an error the site showed ([4d5ad0d](https://github.com/MoonHug-Editor/moonhug/commit/4d5ad0d7cc32ff3d617537c61a0afe5a9178df02))
+* docs server ignores asset saves, the source mount negates every asset type since the server honors only negations on change events ([55654aa](https://github.com/MoonHug-Editor/moonhug/commit/55654aa1f41c579f00057824ea5e935bffa65b47))
+* the artifact library root is settable, tests keep their cache under builds/test-library instead of the repo root ([9422851](https://github.com/MoonHug-Editor/moonhug/commit/9422851e3cf9af3a9b0756528c9ba15af0ce15a9))
+
 ## [0.141.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.140.0...v0.141.0) (2026-10-20)
 
 ### Features
