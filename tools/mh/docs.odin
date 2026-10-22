@@ -301,6 +301,20 @@ docs_serving: bool
 // tests, every plugin by its real path, and this tool.
 DOCS_SOURCE_ROOTS :: []string{"docs", "moonhug/libs", "moonhug/editor", "moonhug/prebuild", "moonhug/registration", "moonhug/tests", "plugins", "tools/mh"}
 
+// The files the source mount leaves out. The include patterns (.odin and .md)
+// hold at startup only: on a change event the server syncs the changed file
+// and reloads the open page when no negation matches it, whatever the include
+// patterns say. So every asset type under the roots is named here, and a new
+// one that makes the site reload on save belongs on this list.
+DOCS_SOURCE_SKIP :: []string{
+	"**_generated.odin", "**/.DS_Store",
+	"**.meta", "**.scene", "**.prefab", "**.mat", "**.anim", "**.asset", "**.json",
+	"**.renderpipeline", "**.shadergraph", "**.spriteatlas",
+	"**.glsl", "**.spv", "**.msl", "**.hlsl", "**.metal",
+	"**.png", "**.jpg", "**.jpeg", "**.hdr", "**.ttf", "**.otf",
+	"**.glb", "**.gltf", "**.bin", "**.mp3", "**.wav", "**.ogg",
+}
+
 // The URL template every source location in the reference pages links to,
 // with {file} and {line} to fill in. It is the `source_url` field of the
 // External Tools user setting when set, an editor's URL scheme. Otherwise,
@@ -477,9 +491,9 @@ docs_write_plugin_mounts :: proc() -> bool {
 		for root in DOCS_SOURCE_ROOTS {
 			if !os.is_dir(root) do continue
 			// The folders match too, or the walk prunes them before any file.
-			// Generated files are left out: every build rewrites them, and the
-			// server would reload the open page each time.
-			fmt.sbprintf(&b, "[[module.mounts]]\nsource = '%s'\ntarget = 'static/source/%s'\nfiles = ['! **_generated.odin', '**/', '**.odin', '**.md']\n", root, root)
+			fmt.sbprintf(&b, "[[module.mounts]]\nsource = '%s'\ntarget = 'static/source/%s'\nfiles = [", root, root)
+			for skip in DOCS_SOURCE_SKIP do fmt.sbprintf(&b, "'! %s', ", skip)
+			strings.write_string(&b, "'**/', '**.odin', '**.md']\n")
 		}
 	}
 	if !docs_write_home(names[:]) do return false
