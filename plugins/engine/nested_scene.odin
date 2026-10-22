@@ -1662,26 +1662,41 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
         }
     }
 
+    // Host additions grafted into the bake are instance content but not PREFAB
+    // content — they must stay host-authored so the next save re-captures them
+    // (a component the capture walk cannot see is dropped from the file on the
+    // next write). Their file lids went through the same projection as
+    // everything else.
+    added_live := make(map[Local_ID]bool, 0, context.temp_allocator)
+    for ao in ns.added_objects {
+        added_live[nested_lid_compose(ns.local_id, ao.local_id)] = true
+    }
+    for ac in ns.added_components {
+        added_live[nested_lid_compose(ns.local_id, ac.local_id)] = true
+    }
+
     for &c in nested_root.components {
         if world_pool_valid(w, c.handle) {
             raw_c := world_pool_get(w, c.handle)
             if raw_c != nil {
                 base := cast(^CompData)raw_c
+                // A file written before host additions were kept out of the
+                // host's own record carries the addition twice: as a host
+                // component and as the record just baked in. The host's copy
+                // stays, the baked one goes.
+                if base.local_id in added_live {
+                    if _, dup := transform_find_comp(host_t, c.handle.type_key); dup >= 0 {
+                        world_pool_destroy(w, c.handle)
+                        continue
+                    }
+                }
                 base.owner = host_tH
-                base.nested_owned = true
+                base.nested_owned = !(base.local_id in added_live)
             }
         }
         append(&host_t.components, c)
     }
     clear(&nested_root.components)
-
-    // Host additions grafted into the bake are instance content but not PREFAB
-    // content — they must stay host-authored so the next save re-captures them.
-    // Their file lids went through the same projection as everything else.
-    added_live := make(map[Local_ID]bool, 0, context.temp_allocator)
-    for ao in ns.added_objects {
-        added_live[nested_lid_compose(ns.local_id, ao.local_id)] = true
-    }
 
     for child in nested_root.children {
         ct := pool_get(&w.transforms, child.handle)
@@ -1738,11 +1753,12 @@ transform_mark_subtree_nested_owned :: proc(root_tH: Transform_Handle) {
     _mark_subtree_nested_owned(root_tH)
 }
 
-// `skip` holds the live lids of host-added subtree roots grafted into this
-// instance. They sit inside the materialized tree but are NOT prefab content:
-// marking them owned would hide them from the next save's capture walk, so the
-// addition would vanish from the file on the following write. Their whole
-// subtree is skipped — everything under a host addition is host-authored too.
+// `skip` holds the live lids of host-added subtree roots and host-added
+// components grafted into this instance. They sit inside the materialized
+// tree but are NOT prefab content: marking them owned would hide them from the
+// next save's capture walk, so the addition would vanish from the file on the
+// following write. An added subtree is skipped whole — everything under a host
+// addition is host-authored too.
 _mark_subtree_nested_owned :: proc(root_tH: Transform_Handle, skip: ^map[Local_ID]bool = nil) {
     w := ctx_world()
     t := pool_get(&w.transforms, Handle(root_tH))
@@ -1753,6 +1769,7 @@ _mark_subtree_nested_owned :: proc(root_tH: Transform_Handle, skip: ^map[Local_I
         raw := world_pool_get(w, c.handle)
         if raw == nil do continue
         base := cast(^CompData)raw
+        if skip != nil && base.local_id in skip^ do continue
         base.nested_owned = true
     }
     for child in t.children {

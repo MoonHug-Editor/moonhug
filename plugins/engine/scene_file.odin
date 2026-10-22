@@ -320,9 +320,16 @@ _collect_transform_tree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile)
 		if ct != nil && ct.nested_owned do continue
 		append(&t_copy.children, child)
 	}
+	// An instance host carries the prefab root's components (nested-owned) and
+	// the components added to the root. The additions are the instance's
+	// added_components records (_live_added_components walks the host too),
+	// so they stay out of the host's own record: written both ways, a reload
+	// would carry them twice.
+	is_host := t.scene != nil && scene_find_nested_scene_for_host(t.scene, tH) != nil
 	t_copy.components = make([dynamic]Owned, 0, len(t.components))
 	for c in t.components {
 		if c.handle.type_key == INVALID_TYPE_KEY do continue
+		if is_host do continue
 		raw := world_pool_get(w, c.handle)
 		if raw != nil {
 			base := cast(^CompData)raw
@@ -334,6 +341,7 @@ _collect_transform_tree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile)
 
 	for &c in t.components {
 		if c.handle.type_key == INVALID_TYPE_KEY do continue
+		if is_host do continue
 		raw := world_pool_get(w, c.handle)
 		if raw != nil {
 			base := cast(^CompData)raw
@@ -766,6 +774,10 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 // added — row. This is our equivalent of Unity answering the same question
 // from the object's own m_CorrespondingSourceObject.
 //
+// The lids are the ones the working copy carries: an addition that came back
+// through a reload has a composed live lid, which the copy un-projects through
+// source_of_inst to the file's lid, so the set does the same.
+//
 // Temp-allocated.
 @(private = "file")
 _live_added_components :: proc(s: ^Scene, ns: ^NestedScene) -> map[Local_ID]bool {
@@ -774,7 +786,7 @@ _live_added_components :: proc(s: ^Scene, ns: ^NestedScene) -> map[Local_ID]bool
 	host_tH := nested_scene_resolve_host_handle(s, ns)
 	if host_tH == {} do return added
 
-	_walk :: proc(w: ^World, tH: Transform_Handle, out: ^map[Local_ID]bool, is_root: bool) {
+	_walk :: proc(w: ^World, ns: ^NestedScene, tH: Transform_Handle, out: ^map[Local_ID]bool, is_root: bool) {
 		t := pool_get(&w.transforms, Handle(tH))
 		if t == nil do return
 		if is_root || t.nested_owned {
@@ -783,17 +795,20 @@ _live_added_components :: proc(s: ^Scene, ns: ^NestedScene) -> map[Local_ID]bool
 				raw := world_pool_get(w, comp.handle)
 				if raw == nil do continue
 				base := cast(^CompData)raw
-				if !base.nested_owned do out^[base.local_id] = true
+				if base.nested_owned do continue
+				lid := base.local_id
+				if src, composed := ns.source_of_inst[lid]; composed do lid = src
+				out^[lid] = true
 			}
 		}
 		for child in t.children {
 			ct := pool_get(&w.transforms, child.handle)
 			if ct != nil && ct.nested_owned {
-				_walk(w, Transform_Handle(child.handle), out, false)
+				_walk(w, ns, Transform_Handle(child.handle), out, false)
 			}
 		}
 	}
-	_walk(w, host_tH, &added, true)
+	_walk(w, ns, host_tH, &added, true)
 	return added
 }
 
