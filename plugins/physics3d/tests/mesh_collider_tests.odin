@@ -5,6 +5,8 @@ package physics3d_tests
 // non-convex mesh needs a static body. The mesh is the unit cube fixture,
 // imported into a temporary asset folder so the test is headless.
 
+import "core:math"
+import "core:math/rand"
 import "core:os"
 import "core:testing"
 import "moonhug:packages/engine"
@@ -165,4 +167,22 @@ physics3d_mesh_collider_non_convex_needs_a_static_body :: proc(t: ^testing.T) {
 	mc.mesh = cube
 	physics3d.physics_step(1.0 / 60.0)
 	testing.expect(t, b3.Shape_IsValid(mc.shape), "the hull builds after the reset")
+}
+
+// The hull cap fits a dense mesh: box3d returns no hull above it, so the
+// cap is what makes a real model's collider build.
+@(test)
+physics3d_hull_cap_fits_a_dense_mesh :: proc(t: ^testing.T) {
+	pts := make([][3]f32, 4000, context.temp_allocator)
+	for &p in pts {
+		u := rand.float32() * 2 - 1
+		th := rand.float32() * 2 * math.PI
+		r := math.sqrt(1 - u * u)
+		p = {r * math.cos(th), r * math.sin(th), u}
+	}
+	h := b3.CreateHull(raw_data(pts), i32(len(pts)), physics3d.HULL_MAX_VERTICES)
+	testing.expect(t, h != nil, "a dense sphere cloud builds a hull at the cap")
+	if h == nil do return
+	defer b3.DestroyHull(h)
+	testing.expect(t, h.vertexCount <= physics3d.HULL_MAX_VERTICES, "reduced to the cap")
 }

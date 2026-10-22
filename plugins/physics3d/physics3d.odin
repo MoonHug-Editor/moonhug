@@ -445,6 +445,13 @@ _sync_colliders :: proc(w: ^engine.World) {
 	_sync_mesh_colliders(w)
 }
 
+// The most vertices a MeshCollider's hull keeps. box3d's hull holds at most
+// 128 half-edges (MAX_HULL_EDGES), and a closed hull of V vertices has
+// 3V - 6 edges, so 44 is the largest count whose hull always fits:
+// CreateHull returns nil above it for a dense mesh, whatever
+// MAX_HULL_VERTICES says.
+HULL_MAX_VERTICES :: 44
+
 // A mesh collider's shape: the hull of the vertices, or the triangles on a
 // static body. The world scale of the owner is applied per axis by box3d,
 // signed, so a mirrored object collides mirrored.
@@ -471,10 +478,10 @@ _sync_mesh_colliders :: proc(w: ^engine.World) {
 		if !ok do continue
 		def := _shape_def(c.density, c.material, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 		if c.convex {
-			hull := b3.CreateHull(raw_data(geom.positions), i32(len(geom.positions)), b3.MAX_HULL_VERTICES)
+			hull := b3.CreateHull(raw_data(geom.positions), i32(len(geom.positions)), HULL_MAX_VERTICES)
 			if hull == nil {
 				c.build_failed = true
-				log.errorf("[Physics3D] MeshCollider on %q: no convex hull, the mesh needs four vertices not on one plane", _owner_name(w, c.owner))
+				log.errorf("[Physics3D] MeshCollider on %q: box3d built no hull, the mesh needs four vertices not on one plane", _owner_name(w, c.owner))
 				continue
 			}
 			c.shape = b3.CreateTransformedHullShape(target.body, def, hull, b3.Transform{p = target.center, q = target.rot}, scale)

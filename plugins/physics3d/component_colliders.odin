@@ -125,8 +125,8 @@ cleanup_CapsuleCollider :: proc(comp: ^CapsuleCollider) {
 
 // The mesh's own shape. `mesh` names a model or one of its parts the way a
 // MeshFilter does, and unset means the MeshFilter on the same object.
-// `convex` builds the convex hull of the vertices, reduced to box3d's limit
-// of 128 hull vertices: the shape a Rigidbody can carry. Not convex, the
+// `convex` builds the convex hull of the vertices, reduced to the most box3d
+// holds (HULL_MAX_VERTICES): the shape a Rigidbody can carry. Not convex, the
 // triangles collide as they are, which box3d allows on a static body only,
 // so it needs no Rigidbody above it. Transform scale applies per axis.
 @(component={menu="Physics/MeshCollider"})
