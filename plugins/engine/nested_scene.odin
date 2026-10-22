@@ -1680,16 +1680,6 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
             raw_c := world_pool_get(w, c.handle)
             if raw_c != nil {
                 base := cast(^CompData)raw_c
-                // A file written before host additions were kept out of the
-                // host's own record carries the addition twice: as a host
-                // component and as the record just baked in. The host's copy
-                // stays, the baked one goes.
-                if base.local_id in added_live {
-                    if _, dup := transform_find_comp(host_t, c.handle.type_key); dup >= 0 {
-                        world_pool_destroy(w, c.handle)
-                        continue
-                    }
-                }
                 base.owner = host_tH
                 base.nested_owned = !(base.local_id in added_live)
             }

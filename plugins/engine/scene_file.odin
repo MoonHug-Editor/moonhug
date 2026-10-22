@@ -307,7 +307,23 @@ _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Lo
 	}
 }
 
-_collect_transform_tree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile) {
+// The hosts of a scene's instances, resolved once per write and passed down
+// the collect walk.
+_scene_hosts :: proc(s: ^Scene) -> map[Transform_Handle]bool {
+	hosts := make(map[Transform_Handle]bool, 0, context.temp_allocator)
+	if s == nil do return hosts
+	for &ns in s.nested_scenes {
+		if h := nested_scene_resolve_host_handle(s, &ns); h != {} do hosts[h] = true
+	}
+	return hosts
+}
+
+// `hosts` is _scene_hosts of the scene: an instance host carries the prefab
+// root's components (nested-owned) and the components added to the root. The
+// additions are the instance's added_components records
+// (_live_added_components walks the host too), so a host's components stay
+// out of its own record: written both ways, a reload would carry them twice.
+_collect_transform_tree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile, hosts: map[Transform_Handle]bool) {
 	t := pool_get(&w.transforms, Handle(tH))
 	if t == nil do return
 	if t.nested_owned do return
@@ -320,12 +336,7 @@ _collect_transform_tree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile)
 		if ct != nil && ct.nested_owned do continue
 		append(&t_copy.children, child)
 	}
-	// An instance host carries the prefab root's components (nested-owned) and
-	// the components added to the root. The additions are the instance's
-	// added_components records (_live_added_components walks the host too),
-	// so they stay out of the host's own record: written both ways, a reload
-	// would carry them twice.
-	is_host := t.scene != nil && scene_find_nested_scene_for_host(t.scene, tH) != nil
+	is_host := tH in hosts
 	t_copy.components = make([dynamic]Owned, 0, len(t.components))
 	for c in t.components {
 		if c.handle.type_key == INVALID_TYPE_KEY do continue
@@ -353,7 +364,7 @@ _collect_transform_tree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile)
 	for child in t.children {
 		ct := pool_get(&w.transforms, child.handle)
 		if ct != nil && ct.nested_owned do continue
-		_collect_transform_tree(w, Transform_Handle(child.handle), sf)
+		_collect_transform_tree(w, Transform_Handle(child.handle), sf, hosts)
 	}
 }
 
@@ -365,7 +376,7 @@ _collect_transform_tree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile)
 // `root_subst` remaps the synthesized placeholder root's runtime lid to the
 // base root SOURCE lid that is written as sf.root, so additions parented at the
 // placeholder serialize with a parent lid that reload can graft against.
-_collect_variant_added_subtree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile, root_tH: Transform_Handle, root_subst: Local_ID) {
+_collect_variant_added_subtree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile, root_tH: Transform_Handle, root_subst: Local_ID, hosts: map[Transform_Handle]bool) {
 	t := pool_get(&w.transforms, Handle(tH))
 	if t == nil do return
 	// The parent lid additions should serialize with: the base-namespace source
@@ -376,14 +387,14 @@ _collect_variant_added_subtree :: proc(w: ^World, tH: Transform_Handle, sf: ^Sce
 		if ct == nil do continue
 		if ct.nested_owned {
 			// Stay within the base subtree looking for added (non-owned) content.
-			_collect_variant_added_subtree(w, Transform_Handle(child.handle), sf, root_tH, root_subst)
+			_collect_variant_added_subtree(w, Transform_Handle(child.handle), sf, root_tH, root_subst, hosts)
 			continue
 		}
 		// Non-nested-owned child of a nested-owned ancestor → variant addition.
 		// Collect its (non-owned) subtree, then pin its parent lid to the base
 		// ancestor so the graft is reconstructable on load.
 		before := len(sf.transforms)
-		_collect_transform_tree(w, Transform_Handle(child.handle), sf)
+		_collect_transform_tree(w, Transform_Handle(child.handle), sf, hosts)
 		for i in before..<len(sf.transforms) {
 			if sf.transforms[i].local_id == ct.local_id {
 				sf.transforms[i].parent = Ref{ pptr = PPtr{local_id = parent_lid} }
@@ -905,7 +916,7 @@ _capture_object_edits :: proc(s: ^Scene, ns: ^NestedScene, native_ns: ^NestedSce
 
 		frag := SceneFile{}
 		frag.root = rt.local_id
-		_collect_transform_tree(w, root_tH, &frag)
+		_collect_transform_tree(w, root_tH, &frag, _scene_hosts(s))
 		defer scene_file_destroy_shallow(&frag)
 		bytes, merr := json.marshal(frag, json.Marshal_Options{spec = .JSON, pretty = false}, context.temp_allocator)
 		if merr != nil do continue
@@ -1318,12 +1329,13 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 					break
 				}
 			}
+			hosts := _scene_hosts(s)
 			if root_ns != nil {
 				sf.root = root_ns.source_root_id != 0 ? root_ns.source_root_id : t.local_id
-				_collect_variant_added_subtree(w, Transform_Handle(s.root.handle), &sf, Transform_Handle(s.root.handle), sf.root)
+				_collect_variant_added_subtree(w, Transform_Handle(s.root.handle), &sf, Transform_Handle(s.root.handle), sf.root, hosts)
 			} else {
 				sf.root = t.local_id
-				_collect_transform_tree(w, Transform_Handle(s.root.handle), &sf)
+				_collect_transform_tree(w, Transform_Handle(s.root.handle), &sf, hosts)
 			}
 		}
 	}
@@ -1744,7 +1756,7 @@ scene_copy_subtree :: proc(tH: Transform_Handle, include_nested_owned := false) 
 	if include_nested_owned {
 		_collect_subtree_verbatim(w, tH, &sf)
 	} else {
-		_collect_transform_tree(w, tH, &sf)
+		_collect_transform_tree(w, tH, &sf, _scene_hosts(t.scene))
 	}
 	defer scene_file_destroy_shallow(&sf)
 
