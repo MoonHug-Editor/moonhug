@@ -41,7 +41,7 @@ Verify the whole path end to end with `moonhug_editor --crash-test`, which fault
 Everything on the crash path is async-signal-safe, because the heap may already be corrupt when the handler runs:
 
 - **fixed static storage, zero allocation** — the buffers, the breadcrumb and the output path are all preallocated at init
-- **an alternate signal stack** (`sigaltstack`) — a stack-overflow SIGSEGV has no room to run a handler on the faulting stack
+- **an alternate signal stack** (`sigaltstack`) — a stack-overflow SIGSEGV has no room to run a handler on the faulting stack. A thread that already has one keeps it: a sanitizer or a debugger sets its own and frees it as its own when the thread ends
 - **raw `write(2)` and libc `backtrace_symbols_fd`** — `fmt` allocates and `os` buffers, so neither is legal here. `backtrace_symbols_fd` is the malloc-free symbolizer, which is what makes symbolized frames possible inside a handler at all
 - **a reentrancy guard** — a fault inside the handler restores `SIG_DFL` and re-raises instead of looping
 - **re-raise after writing** — the process still dies the way it would have, so debuggers still break and exit codes still report
@@ -53,5 +53,6 @@ Everything on the crash path is async-signal-safe, because the heap may already 
 ## Limits
 
 - POSIX only (darwin, linux). Windows would use `SetUnhandledExceptionFilter` — `crash_journal_stub.odin` is the no-op.
+- Tests call `crash_journal.init(install = false)`: the journal file without the signal handlers, which would replace the test runner's own and end the whole run at the next crash in any test.
 - `context.assertion_failure_proc` lives on the context, so it is installed in `main` rather than inside `crash_journal.init` — a hook set inside init would be discarded on return.
 - Symbol quality follows the build. Debug builds name Odin procedures precisely, release builds may attribute to the nearest exported symbol.

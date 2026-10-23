@@ -4,7 +4,8 @@ package tests
 // exercised in-process — a real SIGSEGV would take the test runner down —
 // so `moonhug_editor --crash-test` covers that end to end. These cover the
 // journal-writing path and the breadcrumb, which is where the content bugs
-// would be.
+// would be. They set the journal up without its signal handlers, which would
+// replace the test runner's own.
 
 import "core:os"
 import "core:strings"
@@ -13,7 +14,7 @@ import crash_journal "moonhug:libs/crash_journal"
 
 @(test)
 test_crash_journal_writes_reason_and_breadcrumb :: proc(t: ^testing.T) {
-	crash_journal.init("1.2.3-test\n")
+	crash_journal.init("1.2.3-test\n", install = false)
 	path := crash_journal.path()
 	testing.expect(t, path != "", "journal path should be built at init")
 	if path == "" do return
@@ -38,7 +39,7 @@ test_crash_journal_writes_reason_and_breadcrumb :: proc(t: ^testing.T) {
 
 @(test)
 test_crash_journal_breadcrumb_clear_and_overwrite :: proc(t: ^testing.T) {
-	crash_journal.init()
+	crash_journal.init(install = false)
 	path := crash_journal.path()
 	if path == "" do return
 	defer os.remove(path)
@@ -61,7 +62,7 @@ test_crash_journal_breadcrumb_clear_and_overwrite :: proc(t: ^testing.T) {
 
 @(test)
 test_crash_journal_breadcrumb_truncates_long_text :: proc(t: ^testing.T) {
-	crash_journal.init()
+	crash_journal.init(install = false)
 	path := crash_journal.path()
 	if path == "" do return
 	defer os.remove(path)

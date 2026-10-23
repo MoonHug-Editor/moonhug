@@ -55,7 +55,11 @@ foreign libc {
 	version_len:      int,
 }
 
-// Installs signal handlers. Safe to call twice — the second call is a no-op.
+// Sets up the journal file and, with `install`, the signal handlers. Safe to
+// call twice: the handlers install once. Tests pass install = false: they
+// check the journal's writing, and handlers installed in the test runner
+// would replace its own, so a later crash in another test would end the
+// whole run in a journal file instead of being reported for that test.
 //
 // Panics and failed asserts do NOT route here automatically:
 // assertion_failure_proc lives on the CONTEXT, so it must be installed by the
@@ -63,7 +67,7 @@ foreign libc {
 //
 //	engine.init()
 //	context.assertion_failure_proc = engine.assertion_failure
-init :: proc(version := "") {
+init :: proc(version := "", install := true) {
 	// The version updates even on a repeat call — only the handler install
 	// is once-only.
 	v := version
@@ -74,20 +78,27 @@ init :: proc(version := "") {
 	copy(_crash.version[:n], v[:n])
 	_crash.version_len = n
 
-	if _crash.installed do return
+	if _crash.path_len == 0 {
+		os.make_directory(CRASH_DIR)
+		_crash_build_path()
+	}
+
+	if !install || _crash.installed do return
 	_crash.installed = true
 
-	os.make_directory(CRASH_DIR)
-	_crash_build_path()
-
 	// A stack-overflow SIGSEGV leaves no room to run the handler on the
-	// faulting stack, so give it its own.
-	alt := posix.stack_t{
-		ss_sp    = raw_data(_crash.alt_stack[:]),
-		ss_size  = c.size_t(len(_crash.alt_stack)),
-		ss_flags = {},
+	// faulting stack, so give it its own, unless the thread has one: a
+	// sanitizer or a debugger sets its own and frees it as its own when the
+	// thread ends, so replacing it hands them this static buffer to free.
+	current: posix.stack_t
+	if posix.sigaltstack(nil, &current) != .OK || .DISABLE in current.ss_flags || current.ss_sp == nil {
+		alt := posix.stack_t{
+			ss_sp    = raw_data(_crash.alt_stack[:]),
+			ss_size  = c.size_t(len(_crash.alt_stack)),
+			ss_flags = {},
+		}
+		_ = posix.sigaltstack(&alt, nil)
 	}
-	_ = posix.sigaltstack(&alt, nil)
 
 	act: posix.sigaction_t
 	act.sa_sigaction = _crash_signal_handler
