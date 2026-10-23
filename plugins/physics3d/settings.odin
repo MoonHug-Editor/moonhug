@@ -15,10 +15,19 @@ Physics3D_Settings :: struct {
 	// Unset is a new Physics Material's defaults: friction 0.6, bounciness 0,
 	// both combines Average.
 	default_material: engine.Asset_GUID `ref:"PhysicsMaterial" expand`,
+	// How many convex decompositions the editor computes at once
+	// (editor/hull_jobs.odin). The game never reads it.
+	decompositions_at_once: int `decor:range(1, 4) decor:help(text="How many convex decompositions the editor computes at the same time, each in its own process. Each one already uses several cores, and a dense model that is not a closed mesh takes about 2 GB of memory while it runs, so more than 2 or 3 at once mostly slows them all down and can run the machine out of memory.")`,
 }
 
 @(project_settings={name="Physics 3D"})
-physics3d_settings: Physics3D_Settings
+physics3d_settings := Physics3D_Settings{decompositions_at_once = 2}
+
+// The settings' decompositions_at_once, 1 to 4 whatever the file says.
+decompositions_at_once :: proc() -> int {
+	_settings_ensure_loaded()
+	return clamp(physics3d_settings.decompositions_at_once, 1, 4)
+}
 
 @(private = "file")
 _settings_loaded: bool

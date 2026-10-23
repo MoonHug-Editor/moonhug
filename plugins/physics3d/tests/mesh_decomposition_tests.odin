@@ -1,10 +1,16 @@
 package physics3d_tests
 
 // Convex decompositions a model lists in its import settings, on a U: each
-// set is computed after the import by CoACD, a Rigidbody carries the hulls
-// one shape each, a reimport computes only the sets that changed, and a
-// cancelled set waits for its Compute. The fixture is a closed U, 3 x 3 x 1
-// around its origin, two posts on a bar, so CoACD needs no remeshing.
+// set is computed after the import, a Rigidbody carries the hulls one shape
+// each, a reimport computes only the sets that changed, a fresh clone takes
+// them from the meta, a cancelled set waits for its Compute, and sets run
+// side by side. The fixture is a closed U, 3 x 3 x 1 around its origin, two
+// posts on a bar.
+//
+// Only the first test runs the real CoACD tool, which checks its flags and
+// the hulls it makes. The others test the editor's job handling with a
+// stand-in that writes the U's three hulls at once (fake_coacd.sh), so the
+// suite never waits for a decomposition.
 
 import "core:encoding/json"
 import "core:fmt"
@@ -13,6 +19,7 @@ import "core:testing"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
 import common "moonhug:tests/common"
+import "moonhug:editor/tasks"
 import physics3d ".."
 import physics3d_editor "moonhug:packages/physics3d/editor"
 import b3 "vendor:box3d"
@@ -24,6 +31,7 @@ _GUID :: "6b1f3c52-2d0e-4c55-9a43-7b9e8d2f4a10"
 // Set ids are random, as engine.mesh_new_sub_id mints them.
 @(private = "file") _SET_A :: engine.Local_ID(0x3f1d8a2b7c4e5f61)
 @(private = "file") _SET_B :: engine.Local_ID(0x12c0ffee4d5a6b77)
+@(private = "file") _FAKE_COACD :: "plugins/physics3d/tests/fake_coacd.sh"
 
 // The U's meta with these sets, written before the asset db reads it.
 @(private = "file")
@@ -147,6 +155,8 @@ physics3d_decomposition_recomputes_only_changed_sets :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
+	physics3d_editor.coacd_exe = _FAKE_COACD
+	defer physics3d_editor.coacd_exe = physics3d_editor.COACD_EXE
 	guid, ok := _u_setup(t, {{id = _SET_A, part = 0, max_hulls = 8, concavity = 0.05}, {id = _SET_B, part = 0, max_hulls = 3, concavity = 0.05}})
 	defer _u_teardown()
 	if !ok do return
@@ -185,6 +195,8 @@ physics3d_decomposition_fresh_clone_computes_nothing :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
+	physics3d_editor.coacd_exe = _FAKE_COACD
+	defer physics3d_editor.coacd_exe = physics3d_editor.COACD_EXE
 	guid, ok := _u_setup(t, {{id = _SET_A, part = 0, max_hulls = 8, concavity = 0.05}})
 	defer _u_teardown()
 	if !ok do return
@@ -209,6 +221,8 @@ physics3d_decomposition_cancel_and_compute :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
+	physics3d_editor.coacd_exe = _FAKE_COACD
+	defer physics3d_editor.coacd_exe = physics3d_editor.COACD_EXE
 	guid, ok := _u_setup(t, {{id = _SET_A, part = 0, max_hulls = 8, concavity = 0.05}})
 	defer _u_teardown()
 	if !ok do return
@@ -226,4 +240,33 @@ physics3d_decomposition_cancel_and_compute :: proc(t: ^testing.T) {
 	physics3d_editor.hull_jobs_wait()
 	state, _ = physics3d_editor.hull_set_state(guid, _SET_A)
 	testing.expectf(t, state == .Ready, "and it is computed, %v", state)
+}
+
+// With two decompositions allowed at once, two sets run side by side, each
+// with its own line in the status bar.
+@(test)
+physics3d_decomposition_runs_sets_side_by_side :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	physics3d_editor.coacd_exe = _FAKE_COACD
+	defer physics3d_editor.coacd_exe = physics3d_editor.COACD_EXE
+	before := physics3d.physics3d_settings.decompositions_at_once
+	defer physics3d.physics3d_settings.decompositions_at_once = before
+	physics3d.physics3d_settings.decompositions_at_once = 2
+	guid, ok := _u_setup(t, {{id = _SET_A, part = 0, max_hulls = 8, concavity = 0.05}, {id = _SET_B, part = 0, max_hulls = 3, concavity = 0.05}})
+	defer _u_teardown()
+	if !ok do return
+
+	lines := tasks.collect() // the status bar's call, which starts queued jobs
+	a, _ := physics3d_editor.hull_set_state(guid, _SET_A)
+	b, _ := physics3d_editor.hull_set_state(guid, _SET_B)
+	testing.expectf(t, a == .Running && b == .Running, "both sets run, %v and %v", a, b)
+	testing.expectf(t, len(lines) == 2, "one status line each, got %d", len(lines))
+	physics3d_editor.hull_jobs_wait()
+	_, sa := physics3d.mesh_hulls(guid, _SET_A)
+	_, sb := physics3d.mesh_hulls(guid, _SET_B)
+	testing.expect(t, sa == .Ready && sb == .Ready, "and both are computed")
 }

@@ -153,7 +153,6 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 - physics3d follow-ups:
   - MeshCollider
     - convex decompositions:
-      - only one runs at a time
       - CoACD reports stages, not a fraction, so the status bar can't show percent done
       - open meshes are slow (the helmet: about 2 minutes for 8 hulls, 5 for 44). Come up with settings to try for speed
       - a decimation setting for the original mesh, and a list of decimations in the hull set struct, for an extra set of models with fewer polygons

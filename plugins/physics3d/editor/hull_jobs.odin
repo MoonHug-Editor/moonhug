@@ -11,9 +11,10 @@ package physics3d_editor
 //   record a hash of the mesh and settings they came from, so a fresh clone
 //   or a reimport restores every set whose hash matches from the meta, and
 //   only the others queue.
-// - CoACD runs as a child process, one at a time, which `mh setup` builds
-//   into plugins/physics3d/external/bin. The editor never waits for it: the
-//   status bar shows the running decomposition, its stage and a Cancel
+// - CoACD runs as child processes, which `mh setup` builds into
+//   plugins/physics3d/external/bin, at most the Physics 3D settings'
+//   Decompositions At Once at a time. The editor never waits for them: the
+//   status bar shows each running decomposition, its stage and a Cancel
 //   button (editor/tasks), and physics holds still for a collider whose set
 //   is not ready (physics3d.mesh_hulls_pending).
 // - A failed or cancelled set stays without hulls until its Compute button
@@ -38,6 +39,11 @@ import "moonhug:libs/log"
 import physics3d "moonhug:packages/physics3d"
 
 COACD_EXE :: #directory + "/../external/bin/" + ODIN_OS_STRING + "-" + ("arm64" when ODIN_ARCH == .arm64 else "x86_64") + "/coacd"
+
+// The tool a decomposition runs: CoACD, or in tests of the job handling a
+// stand-in that writes fixed hulls at once (tests/fake_coacd.sh), so the
+// suite does not wait for real decompositions.
+coacd_exe := COACD_EXE
 
 // CoACD's random sampling seed. Fixed, so a mesh gives the same hulls on
 // every machine.
@@ -83,8 +89,8 @@ _Outcome :: struct {
 
 @(private = "file")
 _jobs: struct {
-	queue:    [dynamic]^_Job, // the first runs once started
-	running:  ^_Job,
+	queue:    [dynamic]^_Job, // in order: the first starts next
+	running:  [dynamic]^_Job,
 	// The last failure or cancel per set, for the hash it was computed for.
 	outcomes: map[_Key]_Outcome,
 	// Each model's applied sets and their source hashes, as the last
@@ -111,7 +117,7 @@ _Meta_Hulls :: struct {
 _install_hull_jobs :: proc() {
 	physics3d.mesh_hulls_pending = proc(guid: engine.Asset_GUID, set: engine.Local_ID) -> bool {
 		key := _Key{guid, set}
-		if _jobs.running != nil && _jobs.running.key == key do return true
+		for j in _jobs.running do if j.key == key do return true
 		for j in _jobs.queue do if j.key == key do return true
 		return false
 	}
@@ -160,7 +166,10 @@ hull_sets_reconcile :: proc(guid: engine.Asset_GUID) {
 		j := _jobs.queue[i]
 		if j.key.guid == guid && !listed(ms, j.key.set) do _job_drop(i)
 	}
-	if r := _jobs.running; r != nil && r.key.guid == guid && !listed(ms, r.key.set) do _job_cancel_running(record = false)
+	for i := len(_jobs.running) - 1; i >= 0; i -= 1 {
+		r := _jobs.running[i]
+		if r.key.guid == guid && !listed(ms, r.key.set) do _job_cancel_running(i, record = false)
+	}
 	kept := make([dynamic]_Meta_Hulls, context.temp_allocator)
 	for m in saved do if listed(ms, m.set) do append(&kept, m)
 	if len(kept) != len(saved) do _meta_hulls_write(source, kept[:])
@@ -259,8 +268,8 @@ _meta_hulls_put :: proc(source: string, set: engine.Local_ID, data: []byte) {
 // A set's state for the inspector, with a line saying more (temp-allocated).
 hull_set_state :: proc(guid: engine.Asset_GUID, set: engine.Local_ID) -> (state: Hull_Set_State, detail: string) {
 	key := _Key{guid, set}
-	if r := _jobs.running; r != nil && r.key == key do return .Running, _running_detail(r)
-	for j, i in _jobs.queue do if j.key == key do return .Queued, fmt.tprintf("queued, %d ahead", i + (1 if _jobs.running != nil else 0))
+	for r in _jobs.running do if r.key == key do return .Running, _running_detail(r)
+	for j, i in _jobs.queue do if j.key == key do return .Queued, fmt.tprintf("queued, %d ahead", i)
 	model, known := _jobs.known[guid]
 	if !known do return .Unavailable, "not imported yet"
 	h, hashed := model.hashes[set]
@@ -296,16 +305,16 @@ hull_set_cancel :: proc(guid: engine.Asset_GUID, set: engine.Local_ID) {
 // Blocks until no decomposition is queued or running. For tests and tools:
 // the editor polls from its status bar instead.
 hull_jobs_wait :: proc() {
-	for _jobs.running != nil || len(_jobs.queue) > 0 {
+	for len(_jobs.running) > 0 || len(_jobs.queue) > 0 {
 		_poll()
 		time.sleep(10 * time.Millisecond)
 	}
 }
 
-// Kills a running decomposition when the editor quits.
+// Kills the running decompositions when the editor quits.
 @(phase={key=engine.Phase.EditorShutdown, mode=Editor})
 hull_jobs_shutdown :: proc() {
-	if _jobs.running != nil do _job_cancel_running(record = false)
+	for len(_jobs.running) > 0 do _job_cancel_running(len(_jobs.running) - 1, record = false)
 }
 
 // --- Jobs ------------------------------------------------------------------------
@@ -320,7 +329,7 @@ _job_enqueue :: proc(key: _Key, set: engine.Mesh_Hull_Set, source_hash: u64, sou
 
 @(private = "file")
 _job_index :: proc(key: _Key, source_hash: u64) -> int {
-	if r := _jobs.running; r != nil && r.key == key && r.source_hash == source_hash do return 0
+	for r, i in _jobs.running do if r.key == key && r.source_hash == source_hash do return i
 	for j, i in _jobs.queue do if j.key == key && j.source_hash == source_hash do return i
 	return -1
 }
@@ -344,8 +353,8 @@ _job_drop :: proc(i: int) {
 
 @(private = "file")
 _job_cancel_key :: proc(key: _Key, record := false) {
-	if r := _jobs.running; r != nil && r.key == key {
-		_job_cancel_running(record)
+	for r, i in _jobs.running do if r.key == key {
+		_job_cancel_running(i, record)
 		return
 	}
 	for j, i in _jobs.queue do if j.key == key {
@@ -356,9 +365,9 @@ _job_cancel_key :: proc(key: _Key, record := false) {
 }
 
 @(private = "file")
-_job_cancel_running :: proc(record: bool) {
-	j := _jobs.running
-	_jobs.running = nil
+_job_cancel_running :: proc(i: int, record: bool) {
+	j := _jobs.running[i]
+	ordered_remove(&_jobs.running, i)
 	_ = os.process_kill(j.process)
 	_, _ = os.process_wait(j.process)
 	if record {
@@ -375,25 +384,29 @@ _outcome_set :: proc(key: _Key, source_hash: u64, state: Hull_Set_State, error: 
 	_jobs.outcomes[key] = {source_hash, state, strings.clone(error)}
 }
 
-// Starts the next queued job, takes in a finished one and reads the running
-// one's stage. Called every frame from the status bar.
+// Takes in the finished jobs, reads the running ones' stages and starts
+// queued ones up to the settings' limit. Called every frame from the status
+// bar.
 @(private = "file")
 _poll :: proc() {
-	if j := _jobs.running; j != nil {
+	context.allocator = runtime.default_allocator()
+	for i := len(_jobs.running) - 1; i >= 0; i -= 1 {
+		j := _jobs.running[i]
 		state, werr := os.process_wait(j.process, 0)
 		if werr == nil && state.exited {
-			_jobs.running = nil
+			ordered_remove(&_jobs.running, i)
 			_job_finish(j, state.exit_code)
 			_job_free(j)
 		} else {
 			_read_stage(j)
 		}
 	}
-	for _jobs.running == nil && len(_jobs.queue) > 0 {
+	limit := physics3d.decompositions_at_once()
+	for len(_jobs.running) < limit && len(_jobs.queue) > 0 {
 		j := _jobs.queue[0]
 		ordered_remove(&_jobs.queue, 0)
 		if _job_start(j) {
-			_jobs.running = j
+			append(&_jobs.running, j)
 		} else {
 			_job_free(j)
 		}
@@ -413,9 +426,9 @@ _job_start :: proc(j: ^_Job) -> bool {
 	// The mesh changed since the job queued: the reimport's reconcile queues
 	// the current one.
 	if physics3d.mesh_hulls_source_hash(geom.positions, geom.indices, j.set) != j.source_hash do return false
-	if !os.exists(COACD_EXE) {
+	if !os.exists(coacd_exe) {
 		_outcome_set(j.key, j.source_hash, .Failed, "CoACD is not built, run mh setup")
-		log.errorf("[Physics3D] the convex decomposition needs CoACD, which mh setup builds: %s is missing", COACD_EXE)
+		log.errorf("[Physics3D] the convex decomposition needs CoACD, which mh setup builds: %s is missing", coacd_exe)
 		return false
 	}
 
@@ -438,7 +451,7 @@ _job_start :: proc(j: ^_Job) -> bool {
 		return false
 	}
 	defer os.close(log_file)
-	exe, _ := filepath.abs(COACD_EXE, context.temp_allocator)
+	exe, _ := filepath.abs(coacd_exe, context.temp_allocator)
 	command := []string{
 		exe,
 		"-i", "in.obj",
@@ -564,20 +577,28 @@ _running_detail :: proc(j: ^_Job) -> string {
 	return fmt.tprintf("%s, %.0f s", j.stage, time.duration_seconds(time.tick_since(j.started)))
 }
 
-// The status bar's line: polls the jobs, then shows the running one.
+// The status bar's lines: polls the jobs, then one line per running job,
+// whose Cancel cancels that job.
 @(private = "file")
 _task_source :: proc() -> []tasks.Status {
 	_poll()
-	j := _jobs.running
-	if j == nil do return nil
-	out := make([]tasks.Status, 1, context.temp_allocator)
-	detail := fmt.tprintf("%s, %d hulls, %s", j.name, j.set.max_hulls, _running_detail(j))
-	if len(_jobs.queue) > 0 do detail = fmt.tprintf("%s (%d queued)", detail, len(_jobs.queue))
-	out[0] = {
-		title    = "Convex decomposition",
-		detail   = detail,
-		fraction = -1,
-		cancel   = proc(_: rawptr) { _job_cancel_running(record = true) },
+	if len(_jobs.running) == 0 do return nil
+	out := make([]tasks.Status, len(_jobs.running), context.temp_allocator)
+	for j, i in _jobs.running {
+		detail := fmt.tprintf("%s, %d hulls, %s", j.name, j.set.max_hulls, _running_detail(j))
+		if i == 0 && len(_jobs.queue) > 0 do detail = fmt.tprintf("%s (%d queued)", detail, len(_jobs.queue))
+		out[i] = {
+			title    = "Convex decomposition",
+			detail   = detail,
+			fraction = -1,
+			cancel   = proc(data: rawptr) {
+				for r, k in _jobs.running do if rawptr(r) == data {
+					_job_cancel_running(k, record = true)
+					return
+				}
+			},
+			data     = j,
+		}
 	}
 	return out
 }
