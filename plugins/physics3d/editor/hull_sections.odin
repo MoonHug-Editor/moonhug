@@ -70,6 +70,8 @@ _model_hull_section :: proc(ctx: ^inspector.Asset_Ctx) {
 		widgets.tooltip("The most hulls the mesh is split into.")
 		if im.DragFloat(inspector.field_row("Concavity"), &s.concavity, 0.002, 0.01, 1, "%.3f") do inspector.mark_inspector_changed()
 		widgets.tooltip("How far, as a fraction of the mesh's size, a hull may stray from the surface before it is cut. Lower is closer and slower.")
+		if im.DragInt(inspector.field_row("Remesh Resolution"), &s.remesh_resolution, 0.2, engine.MESH_HULL_REMESH_MIN, engine.MESH_HULL_REMESH_MAX) do inspector.mark_inspector_changed()
+		widgets.tooltip("For a mesh that is not closed, which most game meshes are: it is first rebuilt as a closed surface on a grid of this many cells along its longest side. Finer keeps thin parts and costs time, coarser is faster and may close up thin parts. A closed mesh skips this.")
 
 		// The state of what is applied for this set.
 		applied_same := false
@@ -103,7 +105,7 @@ _model_hull_section :: proc(ctx: ^inspector.Asset_Ctx) {
 		taken := make([dynamic]engine.Local_ID, context.temp_allocator)
 		for s in ms.hull_sets do append(&taken, s.id)
 		id := engine.mesh_new_sub_id(ctx.guid, taken[:])
-		append(&ms.hull_sets, engine.Mesh_Hull_Set{id = id, part = 0, max_hulls = 8, concavity = 0.05})
+		append(&ms.hull_sets, engine.Mesh_Hull_Set{id = id, part = 0, max_hulls = 8, concavity = 0.05, remesh_resolution = engine.MESH_HULL_REMESH_DEFAULT})
 		inspector.mark_inspector_changed()
 	}
 }

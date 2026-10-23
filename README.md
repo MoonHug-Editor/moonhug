@@ -148,9 +148,16 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 
 - physics2d follow-ups:
   - effectors/polygon colliders
+  - EdgeCollider2D: it collides on one side only. A `two_sided` option is still to do.
 
 - physics3d follow-ups:
-  - mesh colliders
+  - MeshCollider
+    - convex decompositions:
+      - only one runs at a time
+      - CoACD reports stages, not a fraction, so the status bar can't show percent done
+      - open meshes are slow (the helmet: about 2 minutes for 8 hulls, 5 for 44). Come up with settings to try for speed
+      - a decimation setting for the original mesh, and a list of decimations in the hull set struct, for an extra set of models with fewer polygons
+      - a material edit in the inspector doesn't reach it while the simulation runs, unlike the other colliders
 
 - bulk entity tier for mass simulation (100k-scale sprite battles): SoA arrays + fixed-tick sim + GPU instancing, see [Components](plugins/engine/docs/Components.md) "Two data regimes"
 

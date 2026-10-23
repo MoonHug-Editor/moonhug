@@ -56,10 +56,12 @@ _model_sub_assets :: proc(path: string, allocator: runtime.Allocator) -> []subas
 	return out[:]
 }
 
-// A convex decomposition's name, from what it is: "Hulls 8, 0.050", with the
-// part's name first when it decomposes a part. Temp-allocated.
+// A convex decomposition's name, from what it is: "Hulls 8, 0.050", the
+// remesh resolution when it is not the default, and the part's name first
+// when it decomposes a part. Temp-allocated.
 hull_set_name :: proc(guid: engine.Asset_GUID, s: engine.Mesh_Hull_Set) -> string {
 	name := fmt.tprintf("Hulls %d, %.3f", s.max_hulls, s.concavity)
+	if s.remesh_resolution != engine.MESH_HULL_REMESH_DEFAULT do name = fmt.tprintf("%s, remesh %d", name, s.remesh_resolution)
 	if s.part == 0 do return name
 	for p in engine.mesh_parts(guid) do if p.id == s.part do return fmt.tprintf("%s %s", p.name, name)
 	return fmt.tprintf("(missing part) %s", name)

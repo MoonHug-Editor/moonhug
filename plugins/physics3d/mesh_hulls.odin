@@ -77,14 +77,15 @@ mesh_hulls_path_of :: proc(artifact: string, set: engine.Local_ID) -> string {
 }
 
 // What a set's hulls are computed from: the mesh's positions and triangles,
-// the set's settings and MESH_HULLS_VERSION. Equal hashes mean equal hulls.
-mesh_hulls_source_hash :: proc(positions: [][3]f32, indices: []u32, max_hulls: i32, concavity: f32) -> u64 {
+// the set's settings (not its id or part) and MESH_HULLS_VERSION. Equal hashes mean equal hulls.
+mesh_hulls_source_hash :: proc(positions: [][3]f32, indices: []u32, set: engine.Mesh_Hull_Set) -> u64 {
 	state, _ := xxhash.XXH3_create_state(context.temp_allocator)
 	settings := struct {
-		version:   i32,
-		max_hulls: i32,
-		concavity: f32,
-	}{MESH_HULLS_VERSION, max_hulls, concavity}
+		version:           i32,
+		max_hulls:         i32,
+		concavity:         f32,
+		remesh_resolution: i32,
+	}{MESH_HULLS_VERSION, set.max_hulls, set.concavity, set.remesh_resolution}
 	xxhash.XXH3_64_update(state, ([^]byte)(&settings)[:size_of(settings)])
 	xxhash.XXH3_64_update(state, ([^]byte)(raw_data(positions))[:len(positions) * size_of([3]f32)])
 	xxhash.XXH3_64_update(state, ([^]byte)(raw_data(indices))[:len(indices) * size_of(u32)])

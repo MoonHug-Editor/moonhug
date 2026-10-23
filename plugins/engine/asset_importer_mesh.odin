@@ -55,7 +55,10 @@ Mesh_Clip :: struct {
 // One convex decomposition the model keeps for its colliders: the hulls of
 // one mesh of the model (`part` 0 is the whole model, else a part's id), up
 // to `max_hulls`, cut where the mesh strays more than `concavity` (a
-// fraction of its size) from a hull. A sub-asset of the model: a
+// fraction of its size) from a hull. A mesh that is not closed (most game
+// meshes, split at uv seams) is first rebuilt as a closed surface on a grid
+// of `remesh_resolution` cells along its longest side: the finer the grid,
+// the more triangles and the longer the decomposition. A sub-asset of the model: a
 // MeshCollider names it as PPtr{model guid, id}. The id is random
 // (mesh_new_sub_id), since the user adds sets, so editing or removing others
 // never repoints a collider. The physics3d package computes the hulls in the
@@ -65,7 +68,13 @@ Mesh_Hull_Set :: struct {
     part:      Local_ID,
     max_hulls: i32,
     concavity: f32,
+    remesh_resolution: i32,
 }
+
+// CoACD's default and range for Mesh_Hull_Set.remesh_resolution.
+MESH_HULL_REMESH_DEFAULT :: 50
+MESH_HULL_REMESH_MIN :: 20
+MESH_HULL_REMESH_MAX :: 100
 
 @(typ_guid={guid="fadd5659-ad40-4e00-95c7-908efc8e8631"})
 MeshSettings :: struct {
@@ -86,9 +95,12 @@ default_mesh_settings :: proc() -> MeshSettings {
     return MeshSettings{scale = 1}
 }
 
-// A zero scale is no value (a meta predating the field): the default.
+// A zero scale or remesh resolution is no value (a meta predating the
+// field): the default.
 on_validate_MeshSettings :: proc(s: ^MeshSettings) {
     if s.scale == 0 do s.scale = 1
+    // A set written before the field: CoACD's default.
+    for &h in s.hull_sets do if h.remesh_resolution == 0 do h.remesh_resolution = MESH_HULL_REMESH_DEFAULT
 }
 
 cleanup_MeshSettings :: proc(s: ^MeshSettings) {

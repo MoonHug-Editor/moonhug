@@ -180,7 +180,7 @@ hull_sets_reconcile :: proc(guid: engine.Asset_GUID) {
 		}
 		geom, ok := engine.mesh_geometry_of(engine.PPtr{guid = guid, local_id = s.part})
 		if !ok do continue
-		h := physics3d.mesh_hulls_source_hash(geom.positions, geom.indices, s.max_hulls, s.concavity)
+		h := physics3d.mesh_hulls_source_hash(geom.positions, geom.indices, s)
 		model.hashes[s.id] = h
 		key := _Key{guid, s.id}
 		target, _ := physics3d.mesh_hulls_path(guid, s.id)
@@ -412,7 +412,7 @@ _job_start :: proc(j: ^_Job) -> bool {
 	}
 	// The mesh changed since the job queued: the reimport's reconcile queues
 	// the current one.
-	if physics3d.mesh_hulls_source_hash(geom.positions, geom.indices, j.set.max_hulls, j.set.concavity) != j.source_hash do return false
+	if physics3d.mesh_hulls_source_hash(geom.positions, geom.indices, j.set) != j.source_hash do return false
 	if !os.exists(COACD_EXE) {
 		_outcome_set(j.key, j.source_hash, .Failed, "CoACD is not built, run mh setup")
 		log.errorf("[Physics3D] the convex decomposition needs CoACD, which mh setup builds: %s is missing", COACD_EXE)
@@ -446,6 +446,7 @@ _job_start :: proc(j: ^_Job) -> bool {
 		"-ro", "remesh.obj",
 		"-c", fmt.tprintf("%d", j.set.max_hulls),
 		"-t", fmt.tprintf("%v", j.set.concavity),
+		"-pr", fmt.tprintf("%d", j.set.remesh_resolution),
 		"-d", "--max-ch-vertex", fmt.tprintf("%d", physics3d.HULL_MAX_VERTICES),
 		"--seed", _SEED,
 	}
