@@ -378,7 +378,6 @@ editor_init :: proc() {
     inspector.selected_sub = sel_proj_active_sub
     init_project_view()
     progress.report("Scanning assets")
-    assets.asset_catalog_auto = true // editor maintains library/catalog.json
     asset_pipeline.asset_pipeline_init()
     assets.asset_db_init("assets")
     asset_pipeline.asset_pipeline_import_all()

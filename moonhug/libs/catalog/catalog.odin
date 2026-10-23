@@ -4,15 +4,21 @@ package catalog
 // source path, artifact key, and baked import settings (Unity's Addressables
 // catalog idea, reduced to what the app under the catalog pipeline needs).
 //
-// This is a leaf package on purpose: run configs stage build data with
-// export_from, and a config binary must not pull the whole engine (SDL, GPU)
-// just to copy files. The engine's live halves — writing the catalog from
-// the AssetDB, running the catalog pipeline from it — live in libs/assets/asset_catalog.odin.
+// This is a leaf package on purpose: run configs build the catalog from the
+// project's files (build) and stage build data from it (export), and a
+// config binary must not pull the whole engine (SDL, GPU) just to copy files.
+// Nothing needs the type registry: the .meta files hold the settings as the
+// JSON the game parses, and library/artifact_db.json holds the artifact keys,
+// so the catalog is a projection of what the editor's last import left on
+// disk and is never stale on its own. The engine's half, running the catalog
+// pipeline from a file, lives in libs/assets/asset_catalog.odin.
 
+import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
+import "core:slice"
 import "core:strings"
 
 VERSION :: 1
@@ -110,13 +116,17 @@ export_from :: proc(src_catalog: string, data_dir: string, boot_scene := "", roo
 		fmt.eprintfln("[Catalog] export: %s is already an export", src_catalog)
 		return false
 	}
-
 	src_dir: string
 	{
 		context.allocator = context.temp_allocator
 		src_dir = filepath.dir(src_catalog)
 	}
+	return export(&src, src_dir, data_dir, boot_scene, root, extra_roots)
+}
 
+// The same from a catalog in memory (build), with `src_dir` the library
+// folder its artifact keys resolve in (its artifacts/ fan-out).
+export :: proc(src: ^File, src_dir: string, data_dir: string, boot_scene := "", root := "", extra_roots: []string = nil) -> bool {
 	boot_guid: string
 	if boot_scene != "" {
 		for guid_str, entry in src.assets do if entry.path == boot_scene do boot_guid = guid_str
@@ -126,7 +136,7 @@ export_from :: proc(src_catalog: string, data_dir: string, boot_scene := "", roo
 		}
 	}
 
-	ship, cok := _closure(&src, boot_guid, root, extra_roots)
+	ship, cok := _closure(src, boot_guid, root, extra_roots)
 	if !cok do return false
 
 	// Stage into an EMPTY dir, so the export is exactly the closure and not
@@ -202,6 +212,144 @@ export_from :: proc(src_catalog: string, data_dir: string, boot_scene := "", roo
 	catalog_path := strings.concatenate({data_dir, "/catalog.json"}, context.temp_allocator)
 	if !save(&out, catalog_path) do return false
 	fmt.printfln("[Catalog] exported %s (%d of %d assets, %d files)", data_dir, len(out.assets), len(src.assets), copied)
+	return true
+}
+
+// --- The catalog from the project's files -------------------------------------
+
+// Every asset with a .meta under `asset_dirs`: its guid, its import settings
+// as the meta holds them, its sub-assets (the meta's "subs"), and its
+// artifact key from `library_dir`/artifact_db.json. `root` ("moonhug" from
+// the repository root, "" from inside it) prefixes the dirs and the library
+// and is no part of the entry paths, which are the asset database's own
+// ("assets/x.png", "packages/app/assets/x.png"). A run config builds the
+// catalog this way when it needs it. Parsed into `allocator`.
+build :: proc(root: string, asset_dirs: []string, library_dir: string, allocator := context.temp_allocator) -> (cf: File, ok: bool) {
+	cf = File{version = VERSION}
+	cf.assets = make(map[string]Entry, allocator)
+	index := _artifact_index_read(_rooted(root, strings.concatenate({library_dir, "/artifact_db.json"}, context.temp_allocator)))
+	for dir in asset_dirs {
+		if !_build_dir(&cf, root, dir, &index, allocator) do return cf, false
+	}
+	return cf, true
+}
+
+// build, saved to `path`.
+build_to_file :: proc(root: string, asset_dirs: []string, library_dir: string, path: string) -> bool {
+	cf, ok := build(root, asset_dirs, library_dir)
+	if !ok do return false
+	return save(&cf, path)
+}
+
+// The asset roots of a project under `root`: "assets" and every installed
+// package's "packages/<name>/assets" (a symlinked package included), the
+// folders the editor's asset database scans. Temp-allocated.
+project_asset_dirs :: proc(root: string) -> []string {
+	dirs := make([dynamic]string, context.temp_allocator)
+	append(&dirs, "assets")
+	packages := _rooted(root, "packages")
+	handle, err := os.open(packages)
+	if err != nil do return dirs[:]
+	defer os.close(handle)
+	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+	if rerr != nil do return dirs[:]
+	names := make([dynamic]string, context.temp_allocator)
+	for e in entries {
+		if strings.has_prefix(e.name, ".") do continue
+		if !os.is_dir(strings.concatenate({packages, "/", e.name, "/assets"}, context.temp_allocator)) do continue
+		append(&names, e.name)
+	}
+	slice.sort(names[:])
+	for n in names do append(&dirs, strings.concatenate({"packages/", n, "/assets"}, context.temp_allocator))
+	return dirs[:]
+}
+
+// guid -> artifact key of library/artifact_db.json. Empty when there is no
+// index yet: every asset then counts as source-read, and an export that
+// needs an artifact says so.
+@(private = "file")
+_artifact_index_read :: proc(path: string) -> map[string]string {
+	index := make(map[string]string, context.temp_allocator)
+	data, err := os.read_entire_file(path, context.temp_allocator)
+	if err != nil do return index
+	root, perr := json.parse(data, .JSON, true, context.temp_allocator)
+	if perr != nil do return index
+	obj, is_obj := root.(json.Object)
+	if !is_obj do return index
+	for guid, v in obj {
+		entry, eok := v.(json.Object)
+		if !eok do continue
+		if key, kok := entry["artifact"].(json.String); kok do index[guid] = string(key)
+	}
+	return index
+}
+
+// One folder's entries, folders included, then its subfolders. A file or
+// folder without a .meta is not an asset.
+@(private = "file")
+_build_dir :: proc(cf: ^File, root: string, dir: string, index: ^map[string]string, allocator: runtime.Allocator) -> bool {
+	abs_dir := _rooted(root, dir)
+	handle, err := os.open(abs_dir)
+	if err != nil {
+		fmt.eprintfln("[Catalog] build: cannot read %s", abs_dir)
+		return false
+	}
+	defer os.close(handle)
+	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+	if rerr != nil {
+		fmt.eprintfln("[Catalog] build: cannot read %s", abs_dir)
+		return false
+	}
+	for e in entries {
+		if strings.has_prefix(e.name, ".") || strings.has_suffix(e.name, ".meta") do continue
+		path := strings.concatenate({dir, "/", e.name}, context.temp_allocator)
+		abs := _rooted(root, path)
+		if meta, merr := os.read_entire_file(strings.concatenate({abs, ".meta"}, context.temp_allocator), context.temp_allocator); merr == nil {
+			if !_build_entry(cf, path, meta, index, allocator) do return false
+		}
+		if os.is_dir(abs) {
+			if !_build_dir(cf, root, path, index, allocator) do return false
+		}
+	}
+	return true
+}
+
+// The entry of one .meta: its guid, its settings object as compact JSON,
+// and a sub entry per item of its "subs" ([{"guid", "id"}]).
+@(private = "file")
+_build_entry :: proc(cf: ^File, path: string, meta: []byte, index: ^map[string]string, allocator: runtime.Allocator) -> bool {
+	root, perr := json.parse(meta, .JSON, true, context.temp_allocator)
+	if perr != nil {
+		fmt.eprintfln("[Catalog] build: cannot parse %s.meta", path)
+		return false
+	}
+	obj, is_obj := root.(json.Object)
+	guid, gok := obj["guid"].(json.String)
+	if !is_obj || !gok || len(guid) == 0 {
+		fmt.eprintfln("[Catalog] build: %s.meta names no guid", path)
+		return false
+	}
+	entry := Entry{path = strings.clone(path, allocator)}
+	if key, has := index[string(guid)]; has do entry.artifact = strings.clone(key, allocator)
+	if settings, sok := obj["settings"].(json.Object); sok {
+		text, merr := json.marshal(json.Value(settings), {spec = .JSON, sort_maps_by_key = true}, allocator)
+		if merr != nil {
+			fmt.eprintfln("[Catalog] build: cannot marshal the settings of %s", path)
+			return false
+		}
+		entry.settings = string(text)
+	}
+	cf.assets[strings.clone(string(guid), allocator)] = entry
+	if subs, has := obj["subs"].(json.Array); has {
+		for item in subs {
+			sub, iok := item.(json.Object)
+			if !iok do continue
+			sub_guid, sgok := sub["guid"].(json.String)
+			id, idok := sub["id"].(json.Integer)
+			if !sgok || !idok || id == 0 do continue
+			cf.assets[strings.clone(string(sub_guid), allocator)] = Entry{path = entry.path, sub = id}
+		}
+	}
 	return true
 }
 

@@ -1,10 +1,10 @@
 package engine_tests
 
 // The asset catalog round trip (docs/core/AssetPipeline.md "Asset catalog"):
-// the auto-written catalog restores the AssetDB + artifact index under the
-// catalog pipeline, catalog.export_from stages a self-contained relocatable data dir
-// (boot scene stamped), and under the catalog pipeline refresh no-ops and runtime
-// imports are refused.
+// a catalog built from the project's files (catalog.build) restores the
+// AssetDB + artifact index under the catalog pipeline, catalog.export stages
+// a self-contained relocatable data dir (boot scene stamped), and under the
+// catalog pipeline refresh no-ops and runtime imports are refused.
 
 import "core:encoding/json"
 import "core:encoding/uuid"
@@ -46,7 +46,7 @@ test_asset_catalog_round_trip :: proc(t: ^testing.T) {
 	testing.expect(t, aok, "import should index an artifact")
 	live_artifact = strings.clone(live_artifact, context.temp_allocator)
 
-	testing.expect(t, engine.asset_catalog_write(cat), "write should snapshot the db")
+	testing.expect(t, catalog.build_to_file("", {src_dir}, engine.library_dir(), cat), "the catalog builds from the files")
 	engine.asset_db_shutdown()
 
 	// Catalog pipeline: everything resolves from the catalog file alone.
@@ -99,7 +99,7 @@ test_asset_catalog_export_is_self_contained :: proc(t: ^testing.T) {
 	guid := engine.Asset_GUID(raw_guid)
 
 	// The editor's auto-maintained catalog, then the config-side export from it.
-	testing.expect(t, engine.asset_catalog_write(), "in-place catalog should write")
+	testing.expect(t, catalog.build_to_file("", {src_dir}, engine.library_dir(), engine.asset_catalog_path()), "the catalog builds from the files")
 	engine.asset_db_shutdown()
 	testing.expect(t, catalog.export_from(engine.asset_catalog_path(), data_dir, boot_scene = png),
 		"export from the catalog should succeed")
@@ -200,7 +200,7 @@ test_asset_catalog_export_ships_dependency_closure :: proc(t: ^testing.T) {
 	testing.expect(t, ukok)
 	unused_key = strings.clone(unused_key, context.temp_allocator)
 
-	testing.expect(t, engine.asset_catalog_write(), "in-place catalog should write")
+	testing.expect(t, catalog.build_to_file("", {src_dir}, engine.library_dir(), engine.asset_catalog_path()), "the catalog builds from the files")
 	engine.asset_db_shutdown()
 	testing.expect(t, catalog.export_from(engine.asset_catalog_path(), data_dir, boot_scene = scene), "export should succeed")
 
@@ -269,7 +269,7 @@ test_asset_catalog_export_rejects_unknown_boot_scene :: proc(t: ^testing.T) {
 	asset_pipeline.asset_pipeline_init()
 	engine.asset_db_init(src_dir)
 	_ = asset_pipeline.asset_pipeline_import_asset(png)
-	testing.expect(t, engine.asset_catalog_write())
+	testing.expect(t, catalog.build_to_file("", {src_dir}, engine.library_dir(), engine.asset_catalog_path()))
 	engine.asset_db_shutdown()
 
 	testing.expect(t, !catalog.export_from(engine.asset_catalog_path(), data_dir, boot_scene = "assets/not_in_catalog.scene"),
@@ -292,4 +292,54 @@ test_asset_catalog_version_mismatch_rejected :: proc(t: ^testing.T) {
 	testing.expect(t, os.write_entire_file(cat, data) == nil)
 
 	testing.expect(t, !engine.asset_db_init_from_catalog(cat), "future catalog version should be rejected")
+}
+
+// A catalog built from the files after an Apply names the new artifact and
+// settings: nothing is cached between an import and a build.
+@(test)
+test_asset_catalog_built_from_files_follows_an_apply :: proc(t: ^testing.T) {
+	src_dir :: "moonhug/tests/fixtures/_catalog_apply_tmp"
+	png :: src_dir + "/probe.png"
+	os.make_directory(src_dir)
+	data, rerr := os.read_entire_file("moonhug/tests/fixtures/textures/circle-256.png", context.temp_allocator)
+	testing.expect(t, rerr == nil)
+	if rerr != nil do return
+	testing.expect(t, os.write_entire_file(png, data) == nil)
+	defer {
+		os.remove(png)
+		os.remove(png + ".meta")
+		os.remove(src_dir)
+		_remove_tree(engine.library_dir())
+	}
+	asset_pipeline.asset_pipeline_init()
+	engine.asset_db_init(src_dir)
+	defer engine.asset_db_shutdown()
+	_ = asset_pipeline.asset_pipeline_import_asset(png)
+	raw_guid, gok := engine.asset_db_get_guid(png)
+	testing.expect(t, gok)
+	if !gok do return
+	guid := engine.Asset_GUID(raw_guid)
+	guid_str := uuid.to_string(raw_guid, context.temp_allocator)
+
+	built_entry :: proc(guid_str: string) -> catalog.Entry {
+		cf, ok := catalog.build("", {src_dir}, engine.library_dir())
+		if !ok do return {}
+		return cf.assets[guid_str]
+	}
+	old_key, _ := engine.asset_pipeline_artifact_key(guid)
+	testing.expect(t, built_entry(guid_str).artifact == old_key, "the catalog names the imported artifact")
+
+	// An Apply: new settings, then the reimport.
+	settings, sok := engine.asset_pipeline_get_settings(png, context.temp_allocator)
+	testing.expect(t, sok)
+	if !sok do return
+	ts := cast(^engine.TextureSettings)settings.data
+	ts.filter = .Nearest if ts.filter == .Linear else .Linear
+	testing.expect(t, asset_pipeline.asset_pipeline_save_settings(png, settings))
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(png), "the new settings reimport")
+	new_key, _ := engine.asset_pipeline_artifact_key(guid)
+	testing.expect(t, new_key != old_key, "the reimport has a new artifact")
+	entry := built_entry(guid_str)
+	testing.expect(t, entry.artifact == new_key, "the next build names the new artifact")
+	testing.expect(t, strings.contains(entry.settings, "__type_guid"), "and carries the settings the game parses")
 }

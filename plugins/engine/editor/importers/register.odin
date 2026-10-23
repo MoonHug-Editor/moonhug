@@ -53,7 +53,7 @@ register_builtin_importers :: proc() {
 	})
 	asset_pipeline.importer_register({
 		name         = "mesh",
-		version      = 6, // 2: artifacts carry skin data. 3: clips baked to the _a<i> fan-out. 4: re-bake the clips the startup sweep deleted. 5: vertex tangents. 6: a second uv set
+		version      = 7, // 2: artifacts carry skin data. 3: clips baked to the _a<i> fan-out. 4: re-bake the clips the startup sweep deleted. 5: vertex tangents. 6: a second uv set. 7: the clips listed as subs in the meta
 		extensions   = _MESH_EXTS,
 		settings_tid = typeid_of(engine.MeshSettings),
 		run          = _import_mesh,

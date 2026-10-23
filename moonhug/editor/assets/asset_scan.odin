@@ -102,9 +102,6 @@ asset_db_refresh :: proc() {
 		// Through the log package: visible in the editor console/status bar,
 		// not just the terminal.
 		log.infof("[AssetDB] Refreshed: +%d ~%d -%d (%d assets)", created, modified, deleted, len(assets.asset_db.path_to_guid))
-		// Keep the in-place catalog current (asset_catalog_auto): every app
-		// run and every run config stages from it.
-		assets._asset_catalog_auto_write()
 	}
 }
 

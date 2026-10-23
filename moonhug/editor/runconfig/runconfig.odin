@@ -119,11 +119,12 @@ scene_arg :: proc() -> string {
 // return.
 play :: proc(cfg: Config, scene := "") {
 	if dev_run() {
-		// No export: the game reads the editor's in-place catalog, the way it
-		// does under Simulate. --catalog alone names that catalog: without it
-		// the game boots the export beside its binary (<out>_data) when an
-		// earlier run left one, however stale. The pinned scene applies when
-		// no invoker scene was passed.
+		// No export: the game reads the project's files through
+		// library/catalog.json, built here from them. --catalog alone names
+		// that catalog: without it the game boots the export beside its
+		// binary (<out>_data) when an earlier run left one, however stale.
+		// The pinned scene applies when no invoker scene was passed.
+		if !write_dev_catalog() do exit_build_failed(strings.concatenate({cfg.out, " catalog"}, context.temp_allocator))
 		if scene != "" && scene_arg() == "" {
 			build_and_run(cfg, "--catalog", scene)
 		} else {
@@ -147,9 +148,27 @@ build_and_run :: proc(cfg: Config, extra: ..string) {
 	os.exit(run(exe, ..extra))
 }
 
+// The project's catalog built from its files (catalog.build): every asset's
+// guid, settings and sub-assets from its .meta, every artifact key from
+// library/artifact_db.json, as the editor's last import left them.
+project_catalog :: proc() -> (catalog.File, bool) {
+	if !chdir_repo_root() do return {}, false
+	cf, ok := catalog.build("moonhug", catalog.project_asset_dirs("moonhug"), "library")
+	if !ok do fmt.eprintf("run config: cannot build the catalog from the project's files\n")
+	return cf, ok
+}
+
+// The catalog a dev run reads, library/catalog.json, written from the
+// project's files now.
+write_dev_catalog :: proc() -> bool {
+	cf, ok := project_catalog()
+	if !ok do return false
+	return catalog.save(&cf, "moonhug/library/catalog.json")
+}
+
 // Stage the build's data dir: <out>_data beside the binary (Unity's
-// Game + Game_Data layout), copied from the editor-maintained
-// library/catalog.json with a relocatable catalog written beside it. `scene`
+// Game + Game_Data layout), copied from the project's files through a
+// catalog built from them, with a relocatable catalog written beside it. `scene`
 // is the config's pinned boot scene (moonhug-relative asset path), stamped
 // as the export's boot scene, so a bare launch boots it. An invoker scene
 // (scene_arg, the editor's live snapshot, which the run procs forward)
@@ -169,8 +188,10 @@ export_data :: proc(out: string, scene := "") -> bool {
 	// The array outlives the `if`: a slice literal lives in its block.
 	live := [1]string{scene_arg()}
 	extra := live[:] if live[0] != "" else nil
-	if !catalog.export_from("moonhug/library/catalog.json", data_dir, scene, root = "moonhug", extra_roots = extra) {
-		fmt.eprintf("run config: data export failed for %s (is the editor's catalog current?)\n", out)
+	cf, cok := project_catalog()
+	if !cok do return false
+	if !catalog.export(&cf, "moonhug/library", data_dir, scene, root = "moonhug", extra_roots = extra) {
+		fmt.eprintf("run config: data export failed for %s\n", out)
 		return false
 	}
 	return true

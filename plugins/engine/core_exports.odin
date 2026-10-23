@@ -263,8 +263,8 @@ asset_db_run_evict_hooks          :: assets.asset_db_run_evict_hooks
 asset_db_add_path_changed_hook    :: assets.asset_db_add_path_changed_hook
 asset_db_add_asset_gone_hook      :: assets.asset_db_add_asset_gone_hook
 asset_db_set_refresh_proc         :: assets.asset_db_set_refresh_proc
+asset_db_subs_of                  :: assets.asset_db_subs_of
 asset_db_request_refresh          :: assets.asset_db_request_refresh
-asset_catalog_write               :: assets.asset_catalog_write
 asset_catalog_path                :: assets.asset_catalog_path
 library_dir                       :: assets.library_dir
 artifacts_dir                     :: assets.artifacts_dir
@@ -299,4 +299,3 @@ _cleanup_stale_artifacts          :: assets._cleanup_stale_artifacts
 _notify_reimported                :: assets._notify_reimported
 _catalog_settings_set             :: assets._catalog_settings_set
 _catalog_pipeline_reset           :: assets._catalog_pipeline_reset
-_asset_catalog_auto_write         :: assets._asset_catalog_auto_write

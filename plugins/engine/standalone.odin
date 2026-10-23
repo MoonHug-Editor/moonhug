@@ -36,8 +36,8 @@ import "moonhug:libs/log"
 
 // The catalog to boot from (docs/core/AssetPipeline.md "Asset catalog and
 // builds"): --catalog[=path] overrides, the export's own beside the binary
-// next, the editor-maintained in-place catalog last. The player has no scan
-// mode.
+// next, the in-place catalog a dev run config builds last. The player has no
+// scan mode.
 @(private = "file") _catalog_path: string
 // The scene the first non-flag program argument names: the editor's Play
 // passes its active scene.
@@ -98,7 +98,7 @@ standalone_window_close :: proc() {
 @(phase={key=EngineInit, order=5, mode=App})
 standalone_catalog_init :: proc() {
 	if !asset_db_init_from_catalog(_catalog_path) {
-		log.errorf("no catalog at %s — run the editor once (it maintains library/catalog.json) or pass --catalog=<path>", _catalog_path)
+		log.errorf("no catalog at %s — run through a run config (it builds library/catalog.json from the project) or pass --catalog=<path>", _catalog_path)
 	}
 }
 

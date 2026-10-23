@@ -135,7 +135,7 @@ test_model_clip_resolves_loads_and_exports :: proc(t: ^testing.T) {
 	model_key = strings.clone(model_key, context.temp_allocator)
 
 	// Catalog round trip keeps the identity.
-	testing.expect(t, engine.asset_catalog_write(), "catalog writes")
+	testing.expect(t, catalog.build_to_file("", {src_dir}, engine.library_dir(), engine.asset_catalog_path()), "the catalog builds from the files, the clip from the meta's subs")
 	engine.asset_db_shutdown()
 	testing.expect(t, engine.asset_db_init_from_catalog(engine.asset_catalog_path()), "catalog pipeline restores")
 	sub2, ok2 := engine.asset_db_get_sub(clip_guid)

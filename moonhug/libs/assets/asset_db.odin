@@ -292,6 +292,14 @@ _register_sub :: proc(owner_path: string, owner: core.Asset_GUID, sub: core.Asse
     asset_db.subs[key] = Sub_Asset_Ref{owner = owner, id = id, kind = kind}
 }
 
+// The sub-assets registered under an owner, by id. Temp-allocated.
+asset_db_subs_of :: proc(owner: core.Asset_GUID) -> []Sub_Asset_Decl {
+    out := make([dynamic]Sub_Asset_Decl, context.temp_allocator)
+    for guid, ref in asset_db.subs do if ref.owner == owner do append(&out, Sub_Asset_Decl{guid = core.Asset_GUID(guid), id = ref.id})
+    slice.sort_by(out[:], proc(a, b: Sub_Asset_Decl) -> bool { return a.id < b.id })
+    return out[:]
+}
+
 _unregister_subs_of :: proc(owner: core.Asset_GUID) {
     gone := make([dynamic]uuid.Identifier, context.temp_allocator)
     for guid, ref in asset_db.subs do if ref.owner == owner do append(&gone, guid)

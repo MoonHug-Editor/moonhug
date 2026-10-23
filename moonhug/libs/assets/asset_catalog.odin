@@ -1,19 +1,14 @@
 package assets
 
-// The engine's live halves of the asset catalog (format + export live in
-// moonhug:libs/catalog, a leaf package run configs can import):
-//
-// - the editor maintains library/catalog.json AUTOMATICALLY: with
-//   asset_catalog_auto set (editor init), every import pass and refresh
-//   rewrites it. Nothing user-facing — it is a byproduct like
-//   artifact_db.json. Run configs stage build data from it
-//   (catalog.export_from) without a live AssetDB.
-// - the catalog pipeline (the app run with --catalog=<path>) loads a catalog
-//   INSTEAD of scanning assets/: the guid<->path maps, the artifact index
-//   and baked import settings come from the file, refresh no-ops, runtime
-//   imports are refused, and the exported boot scene is the default scene.
+// The engine's half of the asset catalog (format, build and export live in
+// moonhug:libs/catalog, a leaf package run configs import): the catalog
+// pipeline. The app run with --catalog=<path> loads a catalog INSTEAD of
+// scanning assets/: the guid<->path maps, the artifact index and baked import
+// settings come from the file, refresh no-ops, runtime imports are refused,
+// and the exported boot scene is the default scene. A run config builds the
+// catalog from the project's files right before it runs or exports the game
+// (catalog.build), so there is no editor-written copy to go stale.
 
-import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
 import "core:path/filepath"
@@ -26,62 +21,6 @@ import core "moonhug:libs/core"
 // The editor's in-place catalog, under the library root. Temp-allocated.
 asset_catalog_path :: proc() -> string {
 	return fmt.tprintf("%s/catalog.json", library_dir())
-}
-
-// Set by the editor: import passes and refreshes rewrite the in-place
-// catalog so it is always current. The app never sets it (a lazily-imported
-// dev run would overwrite the editor's complete catalog with a partial one).
-asset_catalog_auto: bool
-
-_asset_catalog_auto_write :: proc() {
-	if asset_catalog_auto && asset_db.pipeline == .Import {
-		asset_catalog_write()
-	}
-}
-
-// Snapshot the live AssetDB + artifact index into `path`: per asset its
-// source path, artifact key, and import settings baked as JSON text (typed
-// instance marshaled — an exported data dir ships no .meta files).
-asset_catalog_write :: proc(path := "") -> bool {
-	path := path
-	if path == "" do path = asset_catalog_path()
-	cf := catalog.File{version = catalog.VERSION}
-	cf.assets = make(map[string]catalog.Entry, len(asset_db.guid_to_path), context.temp_allocator)
-	for guid, asset_path in asset_db.guid_to_path {
-		entry := catalog.Entry{path = asset_path}
-		// A sub-asset guid: identity only. Its artifact and settings are the
-		// owner's, looked up by path, and must not be written under it.
-		if ref, is_sub := asset_db.subs[guid]; is_sub {
-			entry.sub = i64(ref.id)
-			cf.assets[uuid.to_string(guid, context.temp_allocator)] = entry
-			continue
-		}
-		if key, has := asset_pipeline_artifact_key(core.Asset_GUID(guid)); has {
-			entry.artifact = key
-		}
-		if settings, sok := asset_pipeline_get_settings(asset_path, context.temp_allocator); sok {
-			// Tagged with the type guid — that is how the reader materializes
-			// the typed instance (_settings_from_value), registry-free.
-			if blob, merr := json.marshal(settings, {spec = .JSON}, context.temp_allocator); merr == nil {
-				prev := context.allocator
-				context.allocator = context.temp_allocator
-				v, perr := json.parse(blob, .JSON, true)
-				context.allocator = prev
-				if perr == nil {
-					if obj, is_obj := v.(json.Object); is_obj {
-						obj["__type_guid"] = json.String(uuid.to_string(core.get_guid_by_typeid(settings.id), context.temp_allocator))
-						if tagged, terr := json.marshal(json.Value(obj), {spec = .JSON}, context.temp_allocator); terr == nil {
-							entry.settings = string(tagged)
-						}
-					}
-				}
-			}
-		}
-		cf.assets[uuid.to_string(guid, context.temp_allocator)] = entry
-	}
-	if !catalog.save(&cf, path) do return false
-	log.infof("[Catalog] wrote %s (%d assets)", path, len(cf.assets))
-	return true
 }
 
 // Catalog pipeline init: fill the AssetDB, the artifact index and the baked settings
