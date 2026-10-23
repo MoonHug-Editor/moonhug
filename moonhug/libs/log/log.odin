@@ -7,6 +7,7 @@ import "core:fmt"
 import "core:strings"
 import "core:sync"
 import "core:time"
+import core "moonhug:libs/core"
 
 Level :: enum {
 	Info,
@@ -22,6 +23,17 @@ Entry :: struct {
 	time:     time.Time,
 	owns_loc: bool,     // remote (app-process) entries own their loc strings
 	stack:    []string, // call stack, captured in debug builds only; owned lines
+	// What the message is about, for the console to ping (owned).
+	items:    []Item,
+}
+
+// Something a log entry is about: a transform in the world, or an asset.
+// The console shows a badge with the count, and picking one pings it, the
+// way a reference field's click does. One of the two is set.
+Item :: struct {
+	label:  string,
+	object: core.Transform_Handle,
+	asset:  core.Asset_GUID,
 }
 
 MAX_ENTRIES :: 100
@@ -48,36 +60,56 @@ _next_id: u64
 _pending: [dynamic]Entry
 _pending_mutex: sync.Mutex
 
-info :: proc(msg: string, loc := #caller_location) {
-	_log(.Info, msg, loc)
+// Each level takes a message, then what it is about: nothing, one item, or
+// the items: log.error("...", item). The formatted forms take them by name
+// after the format's arguments, which are variadic:
+// log.errorf("... %d", n, item = x) or items = xs. Labels are copied, so
+// temp strings are fine.
+info    :: proc{_info, _info_item, _info_items}
+warning :: proc{_warning, _warning_item, _warning_items}
+error   :: proc{_error, _error_item, _error_items}
+
+_info    :: proc(msg: string, loc := #caller_location) { _log(.Info, msg, loc) }
+_warning :: proc(msg: string, loc := #caller_location) { _log(.Warning, msg, loc) }
+_error   :: proc(msg: string, loc := #caller_location) { _log(.Error, msg, loc) }
+
+_info_item    :: proc(msg: string, item: Item, loc := #caller_location) { one := [1]Item{item}; _log(.Info, msg, loc, one[:]) }
+_warning_item :: proc(msg: string, item: Item, loc := #caller_location) { one := [1]Item{item}; _log(.Warning, msg, loc, one[:]) }
+_error_item   :: proc(msg: string, item: Item, loc := #caller_location) { one := [1]Item{item}; _log(.Error, msg, loc, one[:]) }
+
+_info_items    :: proc(msg: string, items: []Item, loc := #caller_location) { _log(.Info, msg, loc, items) }
+_warning_items :: proc(msg: string, items: []Item, loc := #caller_location) { _log(.Warning, msg, loc, items) }
+_error_items   :: proc(msg: string, items: []Item, loc := #caller_location) { _log(.Error, msg, loc, items) }
+
+infof :: proc(fmt_str: string, args: ..any, item := Item{}, items: []Item = nil, loc := #caller_location) {
+	_log(.Info, fmt.tprintf(fmt_str, ..args), loc, _one_or_more(item, items))
 }
 
-warning :: proc(msg: string, loc := #caller_location) {
-	_log(.Warning, msg, loc)
+warningf :: proc(fmt_str: string, args: ..any, item := Item{}, items: []Item = nil, loc := #caller_location) {
+	_log(.Warning, fmt.tprintf(fmt_str, ..args), loc, _one_or_more(item, items))
 }
 
-error :: proc(msg: string, loc := #caller_location) {
-	_log(.Error, msg, loc)
+errorf :: proc(fmt_str: string, args: ..any, item := Item{}, items: []Item = nil, loc := #caller_location) {
+	_log(.Error, fmt.tprintf(fmt_str, ..args), loc, _one_or_more(item, items))
+}
+
+// `items` when given, else the one `item` when it names anything, else none.
+// Temp-allocated for the call.
+@(private = "file")
+_one_or_more :: proc(item: Item, items: []Item) -> []Item {
+	if items != nil do return items
+	if item == {} do return nil
+	one := make([]Item, 1, context.temp_allocator)
+	one[0] = item
+	return one
 }
 
 // One capture serves both sinks: stdout (read-only, joined into the tagged
 // line) and the entry (takes ownership).
-_log :: proc(level: Level, msg: string, loc: runtime.Source_Code_Location) {
+_log :: proc(level: Level, msg: string, loc: runtime.Source_Code_Location, items: []Item = nil) {
 	stack := _capture_stack(_log_alloc())
 	_emit_stdout(level, msg, loc, stack)
-	append_entry(level, msg, loc, stack)
-}
-
-infof :: proc(fmt_str: string, args: ..any, loc := #caller_location) {
-	info(fmt.tprintf(fmt_str, ..args), loc)
-}
-
-warningf :: proc(fmt_str: string, args: ..any, loc := #caller_location) {
-	warning(fmt.tprintf(fmt_str, ..args), loc)
-}
-
-errorf :: proc(fmt_str: string, args: ..any, loc := #caller_location) {
-	error(fmt.tprintf(fmt_str, ..args), loc)
+	append_entry(level, msg, loc, stack, items)
 }
 
 _emit_stdout :: proc(level: Level, msg: string, loc: runtime.Source_Code_Location, stack: []string) {
@@ -131,8 +163,8 @@ _ensure_init :: proc() {
 }
 
 // `stack` (if given) must be allocated with _log_alloc(); the entry owns it.
-// nil = capture here.
-append_entry :: proc(level: Level, msg: string, loc := #caller_location, stack: []string = nil) {
+// nil = capture here. `items` are copied, labels included.
+append_entry :: proc(level: Level, msg: string, loc := #caller_location, stack: []string = nil, items: []Item = nil) {
 	_ensure_init()
 	_make_room()
 	_next_id += 1
@@ -141,6 +173,11 @@ append_entry :: proc(level: Level, msg: string, loc := #caller_location, stack: 
 	if s == nil {
 		s = _capture_stack(a)
 	}
+	owned_items: []Item
+	if len(items) > 0 {
+		owned_items = make([]Item, len(items), a)
+		for it, i in items do owned_items[i] = {label = strings.clone(it.label, a), object = it.object, asset = it.asset}
+	}
 	append(&entries, Entry{
 		id      = _next_id,
 		level   = level,
@@ -148,6 +185,7 @@ append_entry :: proc(level: Level, msg: string, loc := #caller_location, stack: 
 		loc     = loc,
 		time    = time.now(),
 		stack   = s,
+		items   = owned_items,
 	})
 }
 
@@ -212,6 +250,8 @@ _entry_destroy :: proc(e: Entry) {
 		delete(s, a)
 	}
 	delete(e.stack, a)
+	for it in e.items do delete(it.label, a)
+	delete(e.items, a)
 }
 
 // Call-stack capture via the EH-ABI unwinder + dladdr (both in libSystem).

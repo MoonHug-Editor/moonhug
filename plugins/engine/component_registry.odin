@@ -184,10 +184,11 @@ _ext_desc_for_value :: proc(v: json.Value) -> (Component_Desc, bool) {
 // type's reset default while the Serialization setting is on, and on_validate
 // makes the result consistent (plugins/engine/docs/Components.md, "Missing
 // fields and reset defaults").
-_ext_value_into :: proc(desc: Component_Desc, v: json.Value, ptr: rawptr) -> bool {
-	if unmarshal_value_over_reset(v, ptr, desc.tid) != nil do return false
+// nil when the record parsed, else what the parser objected to.
+_ext_value_into :: proc(desc: Component_Desc, v: json.Value, ptr: rawptr) -> json.Unmarshal_Error {
+	if err := unmarshal_value_over_reset(v, ptr, desc.tid); err != nil do return err
 	type_on_validate(desc.type_key, ptr)
-	return true
+	return nil
 }
 
 // typed component memory -> fresh json.Value.
@@ -224,7 +225,9 @@ _ext_value_stamp_type :: proc(v: ^json.Value, desc: Component_Desc) {
 // (Unity's missing-script behavior). Nested-prefab
 // loads pass s == nil here: their records live in the prefab FILE, which host
 // saves never rewrite.
-_scene_load_ext_components :: proc(sf: ^SceneFile, s: ^Scene = nil) -> map[Local_ID]Handle {
+// `transforms` maps the file's transform lids to the handles just created,
+// so a record that cannot be read names its object.
+_scene_load_ext_components :: proc(sf: ^SceneFile, s: ^Scene = nil, transforms: map[Local_ID]Handle = nil) -> map[Local_ID]Handle {
 	w := ctx_world()
 	out := make(map[Local_ID]Handle, context.temp_allocator)
 	for &v in sf.components {
@@ -236,15 +239,17 @@ _scene_load_ext_components :: proc(sf: ^SceneFile, s: ^Scene = nil) -> map[Local
 		_world_ensure_ext_pool(w, desc)
 		handle, ptr := world_pool_create(w, desc.type_key)
 		if ptr == nil do continue
-		if !_ext_value_into(desc, v, ptr) {
+		if err := _ext_value_into(desc, v, ptr); err != nil {
 			// The type IS registered but the record won't parse into it
 			// (corrupt/incompatible field). Dropping it silently loses data on
 			// the next save — preserve it verbatim exactly like an unknown type.
-			guid_str := "?"
-			if tv, has := v.(json.Object); has {
-				if gs, ok := tv[EXT_TYPE_KEY].(json.String); ok do guid_str = string(gs)
-			}
-			log.errorf("[Scene] Component %s failed to parse into its registered type — preserved verbatim, not loaded", guid_str)
+			// Named so it can be found: the type, the object and the file.
+			owner, owner_lid, lid := _ext_record_owner(sf, v)
+			file := s != nil ? s.path : "a nested prefab"
+			items := make([dynamic]log.Item, context.temp_allocator)
+			if h, has := transforms[owner_lid]; has do append(&items, log.Item{label = owner, object = Transform_Handle(h)})
+			if s != nil && !asset_guid_is_empty(s.asset_guid) do append(&items, log.Item{label = file, asset = s.asset_guid})
+			log.errorf("[Scene] %v on %q (component lid %d) in %s cannot be read: %v. The record is kept as it is and not loaded, so fix the file or the type", desc.tid, owner, lid, file, err, items = items[:])
 			world_pool_destroy(w, handle)
 			_stash_unknown_component(sf, s, v)
 			continue
@@ -253,6 +258,22 @@ _scene_load_ext_components :: proc(sf: ^SceneFile, s: ^Scene = nil) -> map[Local
 		out[base.local_id] = handle
 	}
 	return out
+}
+
+// The transform whose components list holds the record's lid: its name and
+// lid, and the record's lid. "?" and 0 for a record no transform lists.
+@(private = "file")
+_ext_record_owner :: proc(sf: ^SceneFile, v: json.Value) -> (owner: string, owner_lid, lid: Local_ID) {
+	owner = "?"
+	obj, is_obj := v.(json.Object)
+	if !is_obj do return
+	lid_ok: bool
+	lid, lid_ok = _json_local_id_of(obj)
+	if !lid_ok do return
+	for &tr in sf.transforms {
+		for c in tr.components do if c.local_id == lid do return tr.name, tr.local_id, lid
+	}
+	return
 }
 
 // Preserve an unresolvable record: clone it plus the lid of the transform
@@ -314,7 +335,7 @@ _scene_file_remap_ext_begin :: proc(sf: ^SceneFile, s: ^Scene, remap: ^map[Local
 		ti := type_info_of(desc.tid)
 		ptr, aerr := mem.alloc(ti.size, ti.align) // zero-initialized
 		if aerr != nil do continue
-		if !_ext_value_into(desc, v, ptr) {
+		if _ext_value_into(desc, v, ptr) != nil {
 			mem.free(ptr)
 			continue
 		}
@@ -387,7 +408,7 @@ _normalize_component_records :: proc(raw: []byte, allocator := context.temp_allo
 		// Match the LOAD path exactly (world_pool_create yields a zeroed slot,
 		// then _ext_value_into fills absent keys with reset defaults), so a
 		// field absent from the file compares equal to the live struct's.
-		if !_ext_value_into(desc, rec, ptr) do continue // corrupt: leave verbatim
+		if _ext_value_into(desc, rec, ptr) != nil do continue // corrupt: leave verbatim
 		nv, nok := _ext_value_from(desc, ptr)
 		if !nok do continue
 		_ext_value_stamp_type(&nv, desc)

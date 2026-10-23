@@ -9,6 +9,7 @@ import "menu"
 import "moonhug:editor/widgets"
 import "moonhug:libs/log"
 import "moonhug:editor/icons"
+import core "moonhug:libs/core"
 
 _console_last_count: int
 _console_show_info:    bool = true
@@ -49,6 +50,57 @@ _console_loc_line :: proc(entry: log.Entry) -> cstring {
 	name := entry.loc.procedure
 	if name == "" do name = filepath.base(entry.loc.file_path)
 	return fmt.ctprintf("%s (at %s:%d)", name, entry.loc.file_path, entry.loc.line)
+}
+
+// The badge of an entry about several items: an empty button at the row's
+// right end, the count in its tooltip. A click opens a menu of them, and
+// picking one pings it: the hierarchy reveals a transform, the project view
+// an asset, the way a reference field's click does. With Shift held, the
+// pick selects the item instead.
+@(private = "file")
+_console_items_badge :: proc(entry: log.Entry, row_start: im.Vec2, row_w, row_h: f32) {
+	style := im.GetStyle()
+	label := fmt.ctprintf("##items_%d", entry.id)
+	h := im.GetTextLineHeight() + style.FramePadding.y
+	w := h
+	im.SetCursorScreenPos(im.Vec2{row_start.x + row_w - w - style.ItemSpacing.x, row_start.y + (row_h - h) * 0.5})
+	popup := fmt.ctprintf("console_items_%d", entry.id)
+	if im.Button(label, im.Vec2{w, h}) do im.OpenPopup(popup)
+	widgets.tooltip(fmt.ctprintf("%d items\nClick: ping\nShift+click: select", len(entry.items)))
+	if im.BeginPopup(popup) {
+		for it in entry.items {
+			if im.Selectable(strings.clone_to_cstring(it.label, context.temp_allocator)) do _console_ping_or_select(it)
+		}
+		im.EndPopup()
+	}
+}
+
+// Shift selects, a plain click pings.
+@(private = "file")
+_console_ping_or_select :: proc(it: log.Item) {
+	if im.GetIO().KeyShift {
+		_console_select(it)
+	} else {
+		_console_ping(it)
+	}
+}
+
+@(private = "file")
+_console_select :: proc(it: log.Item) {
+	if it.object != {} {
+		core.inspector_request_select(it.object)
+	} else if it.asset != {} {
+		core.inspector_request_select_asset(it.asset)
+	}
+}
+
+@(private = "file")
+_console_ping :: proc(it: log.Item) {
+	if it.object != {} {
+		core.inspector_request_ping(it.object)
+	} else if it.asset != {} {
+		core.inspector_request_ping_asset(it.asset)
+	}
 }
 
 // Local wall-clock "[hh:mm:ss]" prefix for a log entry.
@@ -185,10 +237,26 @@ draw_console_view :: proc() {
 
 			// Reserve exactly row_h of vertical space (regardless of text height)
 			// via a real item — an invisible button, so the whole row is also the
-			// click target selecting the entry for the detail pane.
+			// click target selecting the entry for the detail pane. The items
+			// badge draws after it, on top, at the row's right end.
 			im.SetCursorScreenPos(row_start)
+			// The badge sits on top of the row: without this the row takes
+			// its hover and clicks, since imgui gives them to the first item.
+			if len(entry.items) > 1 do im.SetNextItemAllowOverlap()
 			if im.InvisibleButton(fmt.ctprintf("##crow_%d", entry.id), im.Vec2{max(row_w, 1), row_h}) {
 				_console_selected_id = entry.id
+				// What the message is about: a click pings it, a double click
+				// selects it. The first item when there are several.
+				if len(entry.items) > 0 do _console_ping(entry.items[0])
+			}
+			if len(entry.items) > 0 && im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
+				_console_select(entry.items[0])
+			}
+			// One item needs no badge: the row's click and double click
+			// cover it.
+			if len(entry.items) > 1 {
+				_console_items_badge(entry, row_start, row_w, row_h)
+				im.SetCursorScreenPos(im.Vec2{row_start.x, row_start.y + row_h})
 			}
 			if is_row_selected && _console_scroll_to_sel {
 				im.SetScrollHereY()

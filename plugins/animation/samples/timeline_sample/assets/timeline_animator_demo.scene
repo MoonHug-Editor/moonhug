@@ -1367,10 +1367,7 @@
         "enabled": true,
         "local_id": 1346027346606025
       },
-      "clip": {
-        "guid": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
-        "local_id": 0
-      }
+      "clip": "958c3f32-b6ed-4c0e-8c18-58433bca60fa"
     },
     {
       "__type": "6f7fb020-d764-4ce1-bc09-d8088356bd22",
@@ -1378,10 +1375,7 @@
         "enabled": true,
         "local_id": 2715653696262579
       },
-      "clip": {
-        "guid": "00000000-0000-0000-0000-000000000000",
-        "local_id": 0
-      },
+      "clip": "00000000-0000-0000-0000-000000000000",
       "loop": false,
       "max_distance": 500.0,
       "min_distance": 1.0,

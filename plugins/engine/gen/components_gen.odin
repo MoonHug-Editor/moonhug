@@ -767,7 +767,7 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\t\t\tappend(&s.nested_scenes, ns_copy)\n")
 	strings.write_string(&b, "\t\t}\n")
 	strings.write_string(&b, "\t}\n\n")
-	strings.write_string(&b, "\t// Own-file loads stash unknown records on the scene; nested-prefab\n\t// materializations (scoped guid) never do — their file owns them.\n\tid_to_ext_handle := _scene_load_ext_components(sf, asset_guid_is_empty(transform_scope_guid) ? s : nil)\n\n")
+	strings.write_string(&b, "\t// Own-file loads stash unknown records on the scene; nested-prefab\n\t// materializations (scoped guid) never do — their file owns them.\n\tid_to_ext_handle := _scene_load_ext_components(sf, asset_guid_is_empty(transform_scope_guid) ? s : nil, id_to_transform_handle)\n\n")
 	strings.write_string(&b, "\tfor &t_data in sf.transforms {\n")
 	strings.write_string(&b, "\t\thandle, t := pool_create(&w.transforms)\n")
 	strings.write_string(&b, "\t\thandle.type_key = .Transform\n")

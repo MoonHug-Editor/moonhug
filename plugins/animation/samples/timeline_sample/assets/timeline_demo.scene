@@ -1798,10 +1798,7 @@
         "enabled": true,
         "local_id": 881202600000034
       },
-      "clip": {
-        "guid": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
-        "local_id": 0
-      }
+      "clip": "958c3f32-b6ed-4c0e-8c18-58433bca60fa"
     },
     {
       "__type": "6f7fb020-d764-4ce1-bc09-d8088356bd22",
@@ -1809,10 +1806,7 @@
         "enabled": true,
         "local_id": 2396538970747311
       },
-      "clip": {
-        "guid": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
-        "local_id": 0
-      },
+      "clip": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
       "loop": false,
       "max_distance": 500.0,
       "min_distance": 1.0,
@@ -1858,10 +1852,7 @@
         "enabled": true,
         "local_id": 4412896662392672
       },
-      "clip": {
-        "guid": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
-        "local_id": 0
-      },
+      "clip": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
       "loop": false,
       "max_distance": 500.0,
       "min_distance": 1.0,
@@ -1889,10 +1880,7 @@
         "enabled": true,
         "local_id": 3243029236982451
       },
-      "clip": {
-        "guid": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
-        "local_id": 0
-      }
+      "clip": "958c3f32-b6ed-4c0e-8c18-58433bca60fa"
     },
     {
       "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",

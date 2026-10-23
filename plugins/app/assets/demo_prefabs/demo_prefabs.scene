@@ -1079,10 +1079,7 @@
         "enabled": true,
         "local_id": 2262422533977326
       },
-      "clip": {
-        "guid": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
-        "local_id": 0
-      },
+      "clip": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
       "loop": false,
       "max_distance": 500.0,
       "min_distance": 1.0,

@@ -587,7 +587,7 @@ nested_override_baseline :: proc(
         // instead of leaking (nobody runs cleanup on a baseline scratch).
         prev_alloc := context.allocator
         context.allocator = context.temp_allocator
-        into_ok := _ext_value_into(desc, rec, block)
+        into_ok := _ext_value_into(desc, rec, block) == nil
         context.allocator = prev_alloc
         if !into_ok do return {}
         return {

@@ -3,9 +3,12 @@ package app
 // Inspector action-button showcase. Add via Component menu:
 // Examples/Buttons Example. Every press logs a [btn] line to the console, so
 // placement, ordering, weights, arity dispatch and undo are all observable.
+// Ping Top and Log State log with ITEMS, the object, its target and its
+// scene, and Ping Self with the one object, so the console's badge, its
+// menu and its ping are observable too.
 //
 // Expected inspector layout, top to bottom:
-//   Ping Top                       (component row 1)
+//   Ping Top | Ping Self           (component row 1)
 //   Count++ | Reset Count          (component row 0, weights 2:1)
 //   counter field
 //   [ Row 2 ]                      (field row 2)
@@ -92,7 +95,16 @@ be_clear_target :: proc(b: ^ButtonsExample, target: ^engine.Ref_Local) {
 
 @(inspector_button={label="Ping Top", row=1})
 be_ping :: proc(b: ^ButtonsExample) {
-    log.infof("[btn] Ping Top: component row=1, lid=%d", b.local_id)
+    log.infof("[btn] Ping Top: component row=1, lid=%d", b.local_id, items = _be_items(b))
+}
+
+// One item, the plain form: log.info(msg, item).
+@(inspector_button={label="Ping Self", row=1})
+be_ping_self :: proc(b: ^ButtonsExample) {
+    w := engine.ctx_world()
+    name := "?"
+    if t := engine.pool_get(&w.transforms, engine.Handle(b.owner)); t != nil do name = t.name
+    log.info("[btn] Ping Self: one item, this object", log.Item{label = name, object = b.owner})
 }
 
 @(inspector_button={label="Count++", row=0, weight=2})
@@ -110,7 +122,27 @@ be_count_reset :: proc(b: ^ButtonsExample) {
 @(inspector_button={label="Log State", row=-1})
 be_log_state :: proc(b: ^ButtonsExample) {
     log.infof("[btn] Log State: bottom block, counter=%d target=%d items=%d",
-        b.counter, b.target.local_id, len(b.items))
+        b.counter, b.target.local_id, len(b.items), items = _be_items(b))
+}
+
+// What a press is about, for the console's badge: this object, its target
+// when one is set, and the scene it lives in. Temp-allocated.
+@(private = "file")
+_be_items :: proc(b: ^ButtonsExample) -> []log.Item {
+    w := engine.ctx_world()
+    items := make([dynamic]log.Item, context.temp_allocator)
+    if t := engine.pool_get(&w.transforms, engine.Handle(b.owner)); t != nil {
+        append(&items, log.Item{label = t.name, object = b.owner})
+    }
+    if target := engine.Transform_Handle(b.target.handle); target != {} {
+        if t := engine.pool_get(&w.transforms, engine.Handle(target)); t != nil {
+            append(&items, log.Item{label = t.name, object = target})
+        }
+    }
+    if s := engine.sm_get_root_scene_of_transform(b.owner); s != nil && !engine.asset_guid_is_empty(s.asset_guid) {
+        append(&items, log.Item{label = s.path, asset = s.asset_guid})
+    }
+    return items[:]
 }
 
 // --- array-element buttons (@(inspector_button) on the element type) -------
