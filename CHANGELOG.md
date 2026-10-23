@@ -1,3 +1,13 @@
+## [0.143.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.142.0...v0.143.0) (2026-10-23)
+
+### Features
+
+* log entries carry the items,  audio clips serialized fix ([e424229](https://github.com/MoonHug-Editor/moonhug/commit/e424229590d1206b6ade5aa28f037996cefc42d5))
+
+### Bug Fixes
+
+* the mesh import tests write their artifacts into a temp folder they remove, so part files no longer pile up beside the fixtures ([48582ae](https://github.com/MoonHug-Editor/moonhug/commit/48582ae958da1eaa598538bcc705d4697a3ef889))
+
 ## [0.142.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.141.1...v0.142.0) (2026-10-23)
 
 ### Features
