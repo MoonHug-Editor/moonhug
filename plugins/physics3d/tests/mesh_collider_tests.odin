@@ -5,6 +5,7 @@ package physics3d_tests
 // non-convex mesh needs a static body. The mesh is the unit cube fixture,
 // imported into a temporary asset folder so the test is headless.
 
+import "core:encoding/uuid"
 import "core:math"
 import "core:math/rand"
 import "core:os"
@@ -226,4 +227,56 @@ physics3d_mesh_collider_dense_mesh_holds_a_box :: proc(t: ^testing.T) {
 		engine.transform_destroy(body)
 	}
 	testing.expect(t, b3.Shape_GetType(mc.shape) == .compoundShape, "a dense mesh is a compound of chunks")
+}
+
+// A material edit while the simulation runs reaches a MeshCollider on the
+// next step: a hull takes it in place, a compound of mesh chunks is built
+// again with it.
+@(test)
+physics3d_mesh_collider_material_edit :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	asset_pipeline.asset_pipeline_init()
+	engine.asset_db_init("moonhug/packages/app/assets/meshes/DamagedHelmet")
+	defer { engine.asset_db_shutdown(); common.remove_tree(engine.library_dir()) }
+	guid, gok := engine.asset_db_get_guid("moonhug/packages/app/assets/meshes/DamagedHelmet/DamagedHelmet.gltf")
+	testing.expect(t, gok, "the helmet is in the asset db")
+	if !gok do return
+
+	material := engine.Asset_GUID(uuid.read("3d9a6f12-5b0e-4c71-8a2d-6e4f1b7c0a95") or_else uuid.Identifier{})
+	physics3d.material_preview(material, {friction = 0.2})
+
+	add :: proc(name: string, mesh: engine.Asset_GUID, convex: bool, material: engine.Asset_GUID) -> ^physics3d.MeshCollider {
+		h := engine.transform_new(name)
+		_, mc_ptr := engine.transform_add_comp(h, .MeshCollider)
+		mc := cast(^physics3d.MeshCollider)mc_ptr
+		mc.mesh = engine.PPtr{guid = mesh}
+		mc.convex = convex
+		mc.material = material
+		return mc
+	}
+	hull := add("Hull", engine.Asset_GUID(guid), true, material)
+	shell := add("Shell", engine.Asset_GUID(guid), false, material)
+
+	physics3d.physics_step(1.0 / 60.0)
+	testing.expect_value(t, b3.Shape_GetSurfaceMaterial(hull.shape).friction, f32(0.2))
+	testing.expect(t, shell.compound != nil, "a dense mesh is a compound of chunks")
+	testing.expect_value(t, shell.compound_material.friction, f32(0.2))
+
+	physics3d.material_preview(material, {friction = 0.9})
+	physics3d.physics_step(1.0 / 60.0)
+	testing.expect_value(t, b3.Shape_GetSurfaceMaterial(hull.shape).friction, f32(0.9))
+	testing.expect(t, b3.Shape_IsValid(shell.shape), "the compound is built again in the same step")
+	testing.expect_value(t, shell.compound_material.friction, f32(0.9))
+
+	// An edit of another material leaves this surface as it is and keeps the
+	// compound.
+	kept := shell.compound
+	other := engine.Asset_GUID(uuid.read("7b21c4e8-90d3-4f5a-b6c1-2e8d4a9f3c07") or_else uuid.Identifier{})
+	physics3d.material_preview(other, {friction = 0.5})
+	physics3d.physics_step(1.0 / 60.0)
+	testing.expect(t, shell.compound == kept, "an unchanged surface keeps the compound")
 }

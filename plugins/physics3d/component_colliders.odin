@@ -156,6 +156,9 @@ MeshCollider :: struct {
 	// one mesh, or a compound of mesh chunks (MESH_CHUNK_TRIANGLES).
 	mesh_data:   ^b3.MeshData `json:"-" inspect:"-"`,
 	compound:    ^b3.CompoundData `json:"-" inspect:"-"`,
+	// The surface the compound's chunks were built with: box3d keeps it in
+	// each child, where it cannot change, so a material edit rebuilds them.
+	compound_material: b3.SurfaceMaterial `json:"-" inspect:"-"`,
 	// The sync logged why the shape cannot be built and stops trying, until
 	// a Reset or an undo write clears the component.
 	build_failed: bool `json:"-" inspect:"-"`,

@@ -176,6 +176,26 @@ _push_materials :: proc(w: ^engine.World) {
 	{ it := engine.pool_iterator(box_colliders(w)); for c, _ in engine.pool_next(&it) do push(c.shape, c.material) }
 	{ it := engine.pool_iterator(sphere_colliders(w)); for c, _ in engine.pool_next(&it) do push(c.shape, c.material) }
 	{ it := engine.pool_iterator(capsule_colliders(w)); for c, _ in engine.pool_next(&it) do push(c.shape, c.material) }
+	// A MeshCollider's hull, mesh or decomposition takes the edit in place. A
+	// compound of mesh chunks keeps the surface in each child, which box3d
+	// cannot change, so one whose surface changed is taken down here and the
+	// mesh collider sync, later in this same step, builds it again.
+	{
+		it := engine.pool_iterator(mesh_colliders(w))
+		for c, _ in engine.pool_next(&it) {
+			for sh in c.shapes do push(sh, c.material)
+			if c.compound == nil {
+				push(c.shape, c.material)
+				continue
+			}
+			want := c.compound_material
+			material_apply(&want, material_of(c.material))
+			if want == c.compound_material do continue
+			_destroy_shape(&c.shape, &c.static_body)
+			b3.DestroyCompound(c.compound)
+			c.compound = nil
+		}
+	}
 }
 
 _world_quat :: proc(rotation: [4]f32) -> b3.Quat {
@@ -592,6 +612,7 @@ _sync_mesh_colliders :: proc(w: ^engine.World) {
 				if built {
 					cdef := b3.CompoundDef{meshes = raw_data(meshes), meshCount = len(meshes)}
 					c.compound = b3.CreateCompound(cdef)
+					c.compound_material = material
 				}
 				// The compound clones every mesh, so the chunks go now.
 				for d in datas do if d != nil do b3.DestroyMesh(d)
