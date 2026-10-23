@@ -73,10 +73,12 @@ Mesh_Geometry :: struct {
 @(private = "file") _mesh_geometry: map[Mesh_Key]Mesh_Geometry
 
 mesh_cache_init :: proc() {
-    mesh_cache = make(map[Mesh_Key]Mesh)
-    _mesh_failed = make(map[Mesh_Key]bool)
+    // Cross-frame caches: never the caller's allocator. A test's tracking
+    // allocator frees what the test leaves when it ends, which left the global
+    // map pointing at freed memory for the next test.
+    mesh_cache = make(map[Mesh_Key]Mesh, runtime.default_allocator())
+    _mesh_failed = make(map[Mesh_Key]bool, runtime.default_allocator())
     _mesh_geometry = make(map[Mesh_Key]Mesh_Geometry, runtime.default_allocator())
-    // Cross-frame caches: never the caller's allocator.
     _mesh_parts = make(map[Asset_GUID][]Mesh_Part, runtime.default_allocator())
     _mesh_clips = make(map[Asset_GUID][]Mesh_Clip, runtime.default_allocator())
     _mesh_hull_sets = make(map[Asset_GUID][]Mesh_Hull_Set, runtime.default_allocator())
@@ -100,6 +102,7 @@ mesh_cache_shutdown :: proc() {
         delete(mesh.joint_names)
     }
     delete(mesh_cache)
+    mesh_cache = nil
     delete(_mesh_failed)
     _mesh_failed = nil
     for _, &g in _mesh_geometry do _mesh_geometry_free(&g)

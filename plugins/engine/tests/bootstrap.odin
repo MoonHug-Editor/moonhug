@@ -4,6 +4,8 @@ package engine_tests
 // plugin's tests/ folder (docs/core/Plugins.md). The shared world bootstrap
 // lives in moonhug:tests/common. These aliases keep the short names.
 
+import "base:runtime"
+import "moonhug:packages/engine"
 import common "moonhug:tests/common"
 
 TestCtx :: common.TestCtx
@@ -13,6 +15,20 @@ setup_undo :: common.setup_undo
 teardown_undo :: common.teardown_undo
 find_transform_named :: common.find_transform_named
 _remove_tree :: common.remove_tree
+
+// A mesh in the engine's global mesh cache for a test, and its removal. The
+// cache outlives the test, so the entry goes in under the default allocator:
+// inserted under the test's tracking allocator, a cache created or grown by
+// the insert lives in memory the runner frees when the test ends, and the
+// next test that touches the cache writes into freed memory.
+_mesh_cache_put :: proc(key: engine.Mesh_Key, mesh: engine.Mesh) {
+	context.allocator = runtime.default_allocator()
+	engine.mesh_cache[key] = mesh
+}
+
+_mesh_cache_drop :: proc(key: engine.Mesh_Key) {
+	delete_key(&engine.mesh_cache, key)
+}
 
 // The field-row harness (common/field_row_harness.odin) lives there for the
 // same reason: a package's custom rows are tested with the package.

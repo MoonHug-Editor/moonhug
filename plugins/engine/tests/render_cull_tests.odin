@@ -59,8 +59,8 @@ test_mesh_collector_culls_outside_view :: proc(t: ^testing.T) {
 	// A unit box mesh in the cache: bounds are all the collector reads.
 	guid := engine.Asset_GUID{7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7}
 	key := engine.Mesh_Key{guid, 0}
-	engine.mesh_cache[key] = engine.Mesh{guid = guid, aabb_min = {-0.5, -0.5, -0.5}, aabb_max = {0.5, 0.5, 0.5}}
-	defer delete_key(&engine.mesh_cache, key)
+	_mesh_cache_put(key, engine.Mesh{guid = guid, aabb_min = {-0.5, -0.5, -0.5}, aabb_max = {0.5, 0.5, 0.5}})
+	defer _mesh_cache_drop(key)
 
 	root := engine.Transform_Handle(tc_mem.scene.root.handle)
 	place :: proc(tc: ^TestCtx, root: engine.Transform_Handle, name: string, pos: [3]f32, guid: engine.Asset_GUID) -> engine.Transform_Handle {

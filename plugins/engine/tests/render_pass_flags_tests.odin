@@ -19,8 +19,8 @@ test_mesh_collector_honours_pass_flags :: proc(t: ^testing.T) {
 
 	guid := engine.Asset_GUID{9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9}
 	key := engine.Mesh_Key{guid, 0}
-	engine.mesh_cache[key] = engine.Mesh{guid = guid, aabb_min = {-0.5, -0.5, -0.5}, aabb_max = {0.5, 0.5, 0.5}}
-	defer delete_key(&engine.mesh_cache, key)
+	_mesh_cache_put(key, engine.Mesh{guid = guid, aabb_min = {-0.5, -0.5, -0.5}, aabb_max = {0.5, 0.5, 0.5}})
+	defer _mesh_cache_drop(key)
 
 	root := engine.Transform_Handle(tc_mem.scene.root.handle)
 	place :: proc(tc: ^TestCtx, root: engine.Transform_Handle, name: string, guid: engine.Asset_GUID, casting: engine.Shadow_Casting, refl: engine.Reflection_Visibility, layer: u32 = 1) -> engine.Transform_Handle {
