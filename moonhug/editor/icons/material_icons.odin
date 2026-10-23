@@ -99,6 +99,7 @@ ICON_MD_LANDSCAPE      :: "\ue564" // landscape (Scene)
 ICON_MD_SPORTS_ESPORTS :: "\uea28" // sports_esports (Game)
 ICON_MD_TUNE           :: "\ue429" // tune (Inspector)
 ICON_MD_LIST_ALT       :: "\ue677" // list_alt (Console: a log list)
+ICON_MD_HOURGLASS_EMPTY :: "\ue88b" // hourglass_empty (Background Tasks)
 ICON_MD_RECEIPT_LONG   :: "\uef6e" // receipt_long (Output)
 ICON_MD_HISTORY        :: "\ue8b3" // history (History)
 ICON_MD_ANIMATION      :: "\ue71c" // animation (Animation)
@@ -124,6 +125,7 @@ TITLE_PROJECT           :: ICON_MD_FOLDER + " Project###Project"
 TITLE_PROJECT_INSPECTOR :: ICON_MD_DESCRIPTION + " Project Inspector###Project Inspector"
 TITLE_CONSOLE           :: ICON_MD_LIST_ALT + " Console###Console"
 TITLE_OUTPUT            :: ICON_MD_RECEIPT_LONG + " Output###Output"
+TITLE_BACKGROUND_TASKS  :: ICON_MD_HOURGLASS_EMPTY + " Background Tasks###Background Tasks"
 TITLE_HISTORY           :: ICON_MD_HISTORY + " History###History"
 TITLE_ANIMATION         :: ICON_MD_ANIMATION + " Animation###Animation"
 TITLE_PLAYABLE_GRAPH    :: ICON_MD_HUB + " Playable Graph###Playable Graph"

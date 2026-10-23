@@ -306,6 +306,9 @@ main :: proc() {
         if menu.show_output {
             draw_output_view()
         }
+        if menu.show_background_tasks {
+            draw_background_tasks_view()
+        }
 
         // Plugin-opened windows (editor/window, docs/core/Plugins.md).
         wnd.draw_all()

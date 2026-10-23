@@ -8,6 +8,7 @@ package editor
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/icons"
+import "menu"
 import "moonhug:editor/tasks"
 import "moonhug:editor/widgets"
 import "moonhug:libs/log"
@@ -36,10 +37,10 @@ draw_status_bar :: proc() {
 }
 
 // The first running task, right-aligned: an indeterminate or filled bar, its
-// title and detail, and a cancel button when it can be cancelled. Hovering
-// the text lists every task. Returns the window-local x where the tasks
-// start, the right end of the log line's room, and leaves the cursor at the
-// row's start.
+// title and detail, and a cancel button when it can be cancelled. A click on
+// the bar or the text opens the Background Tasks window, which lists every
+// task. Returns the window-local x where the tasks start, the right end of
+// the log line's room, and leaves the cursor at the row's start.
 @(private = "file")
 _draw_status_bar_tasks :: proc() -> f32 {
 	style := im.GetStyle()
@@ -59,13 +60,12 @@ _draw_status_bar_tasks :: proc() -> f32 {
 	im.SetCursorPos(im.Vec2{x, row_y + (im.GetFrameHeight() - im.GetTextLineHeight()) * 0.5})
 	fraction := t.fraction if t.fraction >= 0 else -1 * f32(im.GetTime())
 	im.ProgressBar(fraction, im.Vec2{bar_w, im.GetTextLineHeight()}, "")
+	if im.IsItemClicked() do menu.open_background_tasks()
+	widgets.tooltip("Show every background task")
 	im.SameLine()
 	im.TextUnformatted(label)
-	if len(running) > 1 && im.IsItemHovered() {
-		im.BeginTooltip()
-		for r in running do im.Text("%s: %s", fmt.ctprintf("%s", r.title), fmt.ctprintf("%s", r.detail))
-		im.EndTooltip()
-	}
+	if im.IsItemClicked() do menu.open_background_tasks()
+	widgets.tooltip("Show every background task")
 	if t.cancel != nil {
 		im.SameLine()
 		im.SetCursorPosY(row_y)
