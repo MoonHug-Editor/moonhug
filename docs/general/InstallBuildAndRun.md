@@ -111,6 +111,7 @@ the editor just to wait on it.
   harmless), box3d (physics3d package, clang only). Odin ships these as source
   and expects them built once per installation. `setup` skips ones already
   built, so it is safe to re-run.
+- **CoACD** (MIT, the git submodule `plugins/physics3d/external/CoACD`), built by `setup` into `plugins/physics3d/external/bin` with cmake: the command line tool the editor runs for the convex decompositions of models. The first build downloads its dependencies (OpenVDB, TBB, Boost, zlib, spdlog) into `builds/coacd`, about 1 GB, and takes a few minutes. The editor builds and runs without it, and a game never needs it.
 - **glslc + spirv-cross** (`brew install shaderc spirv-cross`) — OPTIONAL.
   Compiled shaders are committed, so this is needed only to CHANGE a shader.
   Builds skip the step when it is absent.

@@ -45,6 +45,11 @@ _state: struct {
 	contact_end:   [dynamic]Contact,
 	sensor_begin:  [dynamic]Contact,
 	sensor_end:    [dynamic]Contact,
+	// A MeshCollider waits for its convex decomposition this step, and the
+	// world waited last step (physics_step).
+	hulls_pending:      bool,
+	hulls_pending_name: string,
+	hulls_waiting:      bool,
 }
 
 // --- Public API ---------------------------------------------------------------
@@ -92,7 +97,20 @@ physics_step :: proc(fixed_dt: f32) {
 	_ensure_world()
 	w := engine.ctx_world()
 	_sync_bodies(w, fixed_dt)
+	_state.hulls_pending = false
 	_sync_colliders(w)
+	// A MeshCollider whose decomposition the editor still computes holds the
+	// whole world still until it can build: one body falling through the
+	// others would be worse than a pause. The editor keeps running.
+	if _state.hulls_pending != _state.hulls_waiting {
+		_state.hulls_waiting = _state.hulls_pending
+		if _state.hulls_waiting {
+			log.infof("[Physics3D] physics waits for the convex decomposition of %q, see the status bar", _state.hulls_pending_name)
+		} else {
+			log.info("[Physics3D] physics resumes, the convex decompositions are ready")
+		}
+	}
+	if _state.hulls_waiting do return
 	_sync_mass(w)
 	b3.World_Step(_state.world, fixed_dt, _SUB_STEPS)
 	_write_back(w)
@@ -459,24 +477,82 @@ HULL_MAX_VERTICES :: 44
 _sync_mesh_colliders :: proc(w: ^engine.World) {
 	it := engine.pool_iterator(mesh_colliders(w))
 	for c, _ in engine.pool_next(&it) {
-		if b3.Shape_IsValid(c.shape) {
-			_sync_filter(c.shape, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
+		if b3.Shape_IsValid(c.shape) || len(c.shapes) > 0 {
+			mask := _collider_mask(w, c.owner, c.layers, c.layer_overrides)
+			if b3.Shape_IsValid(c.shape) do _sync_filter(c.shape, c.layers, mask)
+			for sh in c.shapes do _sync_filter(sh, c.layers, mask)
 			continue
 		}
 		if !c.enabled || c.build_failed do continue
 		if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
 		ref, has := mesh_collider_ref(c)
 		if !has do continue
-		geom, gok := engine.mesh_geometry_of(ref)
-		if !gok {
-			c.build_failed = true
-			log.errorf("[Physics3D] MeshCollider on %q: the mesh cannot be loaded", _owner_name(w, c.owner))
-			continue
+		// A convex decomposition has its hulls and needs no geometry. It must
+		// be of the collider's mesh: the hulls are in that mesh's space.
+		is_set := c.convex && c.hull_set != 0
+		if is_set {
+			set, found := engine.mesh_hull_set_of(engine.PPtr{guid = ref.guid, local_id = c.hull_set})
+			if !found {
+				c.build_failed = true
+				log.errorf("[Physics3D] MeshCollider on %q: its model has no convex decomposition %d any more, pick another in Hulls", _owner_name(w, c.owner), c.hull_set)
+				continue
+			}
+			if set.part != ref.local_id {
+				c.build_failed = true
+				log.errorf("[Physics3D] MeshCollider on %q: its convex decomposition is of another mesh of the model, pick one in Hulls", _owner_name(w, c.owner))
+				continue
+			}
+		}
+		geom: ^engine.Mesh_Geometry
+		if !is_set {
+			gok: bool
+			geom, gok = engine.mesh_geometry_of(ref)
+			if !gok {
+				c.build_failed = true
+				log.errorf("[Physics3D] MeshCollider on %q: the mesh cannot be loaded", _owner_name(w, c.owner))
+				continue
+			}
 		}
 		scale := engine.transform_world(c.owner).scale
 		target, ok := _shape_target(w, c.owner, {}, &c.static_body)
 		if !ok do continue
 		def := _shape_def(c.density, c.material, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
+		if is_set {
+			hulls, state := mesh_hulls(ref.guid, c.hull_set)
+			if state == .Pending {
+				// The editor is still computing it: the world waits, so the
+				// body never falls without its collider.
+				_state.hulls_pending = true
+				_state.hulls_pending_name = _owner_name(w, c.owner)
+				continue
+			}
+			if state == .Missing {
+				c.build_failed = true
+				log.errorf("[Physics3D] MeshCollider on %q: its convex decomposition has no hulls, see the model's import settings", _owner_name(w, c.owner))
+				continue
+			}
+			if c.shapes == nil do c.shapes = make([dynamic]b3.ShapeId, runtime.default_allocator())
+			flat := 0
+			for points in hulls {
+				hull := b3.CreateHull(raw_data(points), i32(len(points)), HULL_MAX_VERTICES)
+				if hull == nil {
+					flat += 1
+					continue
+				}
+				shape := b3.CreateTransformedHullShape(target.body, def, hull, b3.Transform{p = target.center, q = target.rot}, scale)
+				b3.DestroyHull(hull)
+				append(&c.shapes, shape)
+				_register_shape(shape, c.owner)
+			}
+			// A hull with every point on one plane has no volume to collide
+			// with, and its neighbours cover the surface it lies on.
+			if flat > 0 do log.warningf("[Physics3D] MeshCollider on %q: %d of %d hulls are flat and left out", _owner_name(w, c.owner), flat, len(hulls))
+			if len(c.shapes) == 0 {
+				c.build_failed = true
+				log.errorf("[Physics3D] MeshCollider on %q: box3d built no hull from the decomposition", _owner_name(w, c.owner))
+			}
+			continue
+		}
 		if c.convex {
 			hull := b3.CreateHull(raw_data(geom.positions), i32(len(geom.positions)), HULL_MAX_VERTICES)
 			if hull == nil {

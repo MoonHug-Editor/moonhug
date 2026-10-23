@@ -44,14 +44,19 @@ draw_capsule_collider_wires :: proc(c: ^CapsuleCollider, color: [4]f32) {
 }
 
 // A mesh collider in the owner's space with its scale, the way the shape is
-// built: the hull's edges when convex, the mesh's triangles otherwise.
+// built: the edges of its hull or of each piece of its decomposition when
+// convex, the mesh's triangles otherwise.
 draw_mesh_collider_wires :: proc(c: ^MeshCollider, color: [4]f32) {
 	ref, has := mesh_collider_ref(c)
 	if !has do return
-	geom, ok := engine.mesh_geometry_of(ref)
-	if !ok do return
 	gizmos.with_color(color)
 	gizmos.in_local_space(c.owner)
+	if c.convex && c.hull_set != 0 {
+		for e in _hull_wire(engine.PPtr{guid = ref.guid, local_id = c.hull_set}, nil) do gizmos.line(e[0], e[1])
+		return
+	}
+	geom, ok := engine.mesh_geometry_of(ref)
+	if !ok do return
 	if c.convex {
 		for e in _hull_wire(ref, geom) do gizmos.line(e[0], e[1])
 		return
@@ -66,8 +71,9 @@ draw_mesh_collider_wires :: proc(c: ^MeshCollider, color: [4]f32) {
 	}
 }
 
-// The edges of a mesh's hull, built once per mesh the way the shape builds
-// it and kept until the model is reimported. Mesh space, unscaled.
+// The edges of a mesh's hull, or of the hulls of a convex decomposition
+// (a reference to the set, with no geometry), built once per reference the way the shapes build them
+// and kept until the model is reimported. Mesh space, unscaled.
 @(private = "file") _hull_wires: map[engine.PPtr][][2][3]f32
 
 @(private = "file")
@@ -80,23 +86,36 @@ _hull_wire :: proc(ref: engine.PPtr, geom: ^engine.Mesh_Geometry) -> [][2][3]f32
 		_hull_wires = make(map[engine.PPtr][][2][3]f32)
 		engine.asset_pipeline_add_reimport_hook(_hull_wires_drop)
 	}
-	edges: [][2][3]f32
-	hull := b3.CreateHull(raw_data(geom.positions), i32(len(geom.positions)), HULL_MAX_VERTICES)
-	if hull != nil {
-		defer b3.DestroyHull(hull)
-		base := uintptr(hull)
-		points := ([^][3]f32)(base + uintptr(hull.pointOffset))
-		half_edges := ([^]b3.HullHalfEdge)(base + uintptr(hull.edgeOffset))
-		list := make([dynamic][2][3]f32, 0, hull.edgeCount / 2)
-		for i in 0 ..< hull.edgeCount {
-			e := half_edges[i]
-			if int(e.twin) < int(i) do continue // each edge once
-			append(&list, [2][3]f32{points[e.origin], points[half_edges[e.twin].origin]})
+	list := make([dynamic][2][3]f32)
+	if geom == nil {
+		// Nothing to draw until the editor has computed the set, and nothing
+		// for a missing one, which builds no shape either.
+		hulls, state := mesh_hulls(ref.guid, ref.local_id)
+		if state != .Ready {
+			delete(list)
+			return nil
 		}
-		edges = list[:]
+		for points in hulls do _append_hull_edges(&list, points)
+	} else {
+		_append_hull_edges(&list, geom.positions)
 	}
-	_hull_wires[ref] = edges
-	return edges
+	_hull_wires[ref] = list[:]
+	return list[:]
+}
+
+@(private = "file")
+_append_hull_edges :: proc(list: ^[dynamic][2][3]f32, points: [][3]f32) {
+	hull := b3.CreateHull(raw_data(points), i32(len(points)), HULL_MAX_VERTICES)
+	if hull == nil do return
+	defer b3.DestroyHull(hull)
+	base := uintptr(hull)
+	verts := ([^][3]f32)(base + uintptr(hull.pointOffset))
+	half_edges := ([^]b3.HullHalfEdge)(base + uintptr(hull.edgeOffset))
+	for i in 0 ..< hull.edgeCount {
+		e := half_edges[i]
+		if int(e.twin) < int(i) do continue // each edge once
+		append(list, [2][3]f32{verts[e.origin], verts[half_edges[e.twin].origin]})
+	}
 }
 
 // A reimport rewrites the model, so its hulls go with the mesh cache.
@@ -104,10 +123,10 @@ _hull_wire :: proc(ref: engine.PPtr, geom: ^engine.Mesh_Geometry) -> [][2][3]f32
 _hull_wires_drop :: proc(guid: engine.Asset_GUID) {
 	context.allocator = runtime.default_allocator()
 	keys := make([dynamic]engine.PPtr, context.temp_allocator)
-	for ref in _hull_wires do if ref.guid == guid do append(&keys, ref)
-	for ref in keys {
-		delete(_hull_wires[ref])
-		delete_key(&_hull_wires, ref)
+	for key in _hull_wires do if key.guid == guid do append(&keys, key)
+	for key in keys {
+		delete(_hull_wires[key])
+		delete_key(&_hull_wires, key)
 	}
 }
 

@@ -1,8 +1,8 @@
 package mesh_editor
 
 // Editor half of the engine's mesh components: the MeshFilter mesh/part
-// picker and the model files' sub-asset provider (parts, then clips, in the
-// project window). This is the ONE provider for model files: the registry
+// picker and the model files' sub-asset provider (parts, then clips, then
+// convex decompositions, in the project window). This is the ONE provider for model files: the registry
 // keeps the last registration per extension, so a second provider for .glb
 // silently replaces whichever ran first. Compiled into the editor binary only.
 
@@ -36,21 +36,33 @@ mesh_editor_install :: proc() {
 }
 
 // Parts first, then the clips baked from the model's animations
-// (engine.Mesh_Clip). An orphan clip, gone from the model but still
-// referenced, stays listed so its section can remap it.
+// (engine.Mesh_Clip), then its convex decompositions (engine.Mesh_Hull_Set).
+// An orphan clip, gone from the model but still referenced, stays listed so
+// its section can remap it.
 _model_sub_assets :: proc(path: string, allocator: runtime.Allocator) -> []subassets.Sub_Asset {
 	guid, ok := engine.asset_db_get_guid(path)
 	if !ok do return nil
 	parts := engine.mesh_parts(engine.Asset_GUID(guid))
 	clips := engine.mesh_clips(engine.Asset_GUID(guid))
-	if len(parts) + len(clips) == 0 do return nil
-	out := make([dynamic]subassets.Sub_Asset, 0, len(parts) + len(clips), allocator)
+	sets := engine.mesh_hull_sets(engine.Asset_GUID(guid))
+	if len(parts) + len(clips) + len(sets) == 0 do return nil
+	out := make([dynamic]subassets.Sub_Asset, 0, len(parts) + len(clips) + len(sets), allocator)
 	for p in parts do append(&out, subassets.Sub_Asset{id = p.id, name = p.name})
 	for c in clips {
 		name := c.orphan ? fmt.aprintf("%s (missing)", c.name, allocator = allocator) : c.name
 		append(&out, subassets.Sub_Asset{id = c.id, name = name})
 	}
+	for st in sets do append(&out, subassets.Sub_Asset{id = st.id, name = strings.clone(hull_set_name(engine.Asset_GUID(guid), st), allocator)})
 	return out[:]
+}
+
+// A convex decomposition's name, from what it is: "Hulls 8, 0.050", with the
+// part's name first when it decomposes a part. Temp-allocated.
+hull_set_name :: proc(guid: engine.Asset_GUID, s: engine.Mesh_Hull_Set) -> string {
+	name := fmt.tprintf("Hulls %d, %.3f", s.max_hulls, s.concavity)
+	if s.part == 0 do return name
+	for p in engine.mesh_parts(guid) do if p.id == s.part do return fmt.tprintf("%s %s", p.name, name)
+	return fmt.tprintf("(missing part) %s", name)
 }
 
 _mesh_display :: proc(ref: engine.PPtr) -> string {
@@ -76,8 +88,8 @@ _mesh_filter_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 // sprites picker's shape: a flat list of every model and its parts. Dropping
 // a model file assigns the whole model, dropping a part row (project window)
 // the exact part. A change marks the inspector changed and records the
-// instance override, as the default rows do.
-mesh_ref_row :: proc(ref: ^engine.PPtr, label: cstring = "Mesh") {
+// instance override, as the default rows do. `tooltip` explains the row.
+mesh_ref_row :: proc(ref: ^engine.PPtr, label: cstring = "Mesh", tooltip: cstring = "") {
 	has_value := !engine.asset_guid_is_empty(ref.guid)
 	display := _mesh_display(ref^)
 
@@ -88,6 +100,7 @@ mesh_ref_row :: proc(ref: ^engine.PPtr, label: cstring = "Mesh") {
 	if inspector.picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double, &dropped, &dropped_ref, &dropped_ref_ok) {
 		im.OpenPopup("mesh_picker")
 	}
+	if tooltip != "" do widgets.tooltip(tooltip)
 	if value_clicked && has_value {
 		engine.inspector_request_ping_asset(ref.guid)
 	}
@@ -150,6 +163,7 @@ _mesh_picker_rows :: proc(search: []string, current: engine.PPtr) -> (picked: en
 			label := fmt.tprintf("%s/%s", base, p.name)
 			row(label, engine.PPtr{guid = engine.Asset_GUID(guid), local_id = p.id}, current, search, &shown, &picked, &ok)
 		}
+
 	}
 	if shown == 0 do im.TextDisabled("(no matches)")
 	return picked, ok

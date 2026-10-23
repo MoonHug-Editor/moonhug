@@ -12,6 +12,7 @@ import "moonhug:libs/log"
 import "base:runtime"
 import "core:encoding/uuid"
 import "core:os"
+import "core:math/rand"
 import "core:strings"
 
 Mesh :: struct {
@@ -78,6 +79,7 @@ mesh_cache_init :: proc() {
     // Cross-frame caches: never the caller's allocator.
     _mesh_parts = make(map[Asset_GUID][]Mesh_Part, runtime.default_allocator())
     _mesh_clips = make(map[Asset_GUID][]Mesh_Clip, runtime.default_allocator())
+    _mesh_hull_sets = make(map[Asset_GUID][]Mesh_Hull_Set, runtime.default_allocator())
     _mesh_cache_ready = true
     // A reimport rewrites the model's artifact and the parts and clips lists
     // in its meta, so both cached lists and every loaded part go with it.
@@ -109,6 +111,9 @@ mesh_cache_shutdown :: proc() {
     for guid in _mesh_clips do _mesh_clips_free(guid)
     delete(_mesh_clips)
     _mesh_clips = nil
+    for _, sets in _mesh_hull_sets do delete(sets, runtime.default_allocator())
+    delete(_mesh_hull_sets)
+    _mesh_hull_sets = nil
     _mesh_cache_ready = false
 }
 
@@ -192,6 +197,55 @@ mesh_clips :: proc(guid: Asset_GUID) -> []Mesh_Clip {
     }
     if cached do _mesh_clips[guid] = out
     return out
+}
+
+// The model's convex decompositions (Mesh_Hull_Set), from its settings,
+// cached the same way as parts. A set is a sub-asset of the model like a
+// part or a clip: PPtr{model guid, set id} names it, and its id shares the
+// model's id space.
+@(private = "file") _mesh_hull_sets: map[Asset_GUID][]Mesh_Hull_Set
+
+mesh_hull_sets :: proc(guid: Asset_GUID) -> []Mesh_Hull_Set {
+    if _mesh_cache_ready {
+        if sets, ok := _mesh_hull_sets[guid]; ok do return sets
+    }
+    cached := _mesh_cache_ready
+    alloc := cached ? runtime.default_allocator() : context.temp_allocator
+
+    out: []Mesh_Hull_Set
+    if path, pok := asset_db_get_path(uuid.Identifier(guid)); pok {
+        if settings, sok := asset_pipeline_get_settings(path, context.temp_allocator); sok {
+            if ms, is_mesh := settings.(MeshSettings); is_mesh && len(ms.hull_sets) > 0 {
+                out = make([]Mesh_Hull_Set, len(ms.hull_sets), alloc)
+                copy(out, ms.hull_sets[:])
+            }
+        }
+    }
+    if cached do _mesh_hull_sets[guid] = out
+    return out
+}
+
+// The convex decomposition a reference names, when it names one.
+mesh_hull_set_of :: proc(ref: PPtr) -> (Mesh_Hull_Set, bool) {
+    if ref.local_id == 0 do return {}, false
+    for s in mesh_hull_sets(ref.guid) do if s.id == ref.local_id do return s, true
+    return {}, false
+}
+
+// A new sub-asset id for content the user adds to a model (a convex
+// decomposition): random, positive, and unused by the model's parts, clips
+// and sets, so ids from two people's edits never meet and no id is reused.
+mesh_new_sub_id :: proc(guid: Asset_GUID, taken: []Local_ID = nil) -> Local_ID {
+    for {
+        id := Local_ID(rand.int63())
+        if id == 0 do continue
+        used := false
+        for p in mesh_parts(guid) do if p.id == id { used = true; break }
+        for c in mesh_clips(guid) do if c.id == id { used = true; break }
+        for s in mesh_hull_sets(guid) do if s.id == id { used = true; break }
+        for t in taken do if t == id { used = true; break }
+        if !used do return id
+    }
 }
 
 // Resolves a clip id to its FILE-ORDER index (the _a<i>.bin artifact). Orphans
@@ -356,6 +410,8 @@ mesh_unload :: proc(guid: Asset_GUID) {
     delete_key(&_mesh_parts, guid)
     _mesh_clips_free(guid)
     delete_key(&_mesh_clips, guid)
+    if sets, ok := _mesh_hull_sets[guid]; ok do delete(sets, runtime.default_allocator())
+    delete_key(&_mesh_hull_sets, guid)
     geometry_keys := make([dynamic]Mesh_Key, context.temp_allocator)
     for key in _mesh_geometry {
         if key.guid == guid do append(&geometry_keys, key)

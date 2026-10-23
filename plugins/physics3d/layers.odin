@@ -36,8 +36,8 @@ Physics3D_Layers :: struct {
 // matrix says (exclude). A collider's own lists add to its rigidbody's
 // (collision_mask).
 Physics3D_Layer_Overrides :: struct {
-	include: u32 `decor:layers(domain="physics3d")`,
-	exclude: u32 `decor:layers(domain="physics3d")`,
+	include: u32 `decor:layers(domain="physics3d") decor:tooltip(desc="Layers to collide with even where the layer matrix says not to.")`,
+	exclude: u32 `decor:layers(domain="physics3d") decor:tooltip(desc="Layers never to collide with, whatever the layer matrix says.")`,
 }
 
 // A new Physics 3D Layers asset, and the layers without one: layer 0

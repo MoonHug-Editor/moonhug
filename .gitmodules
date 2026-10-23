@@ -4,3 +4,6 @@
 [submodule "tools/docs/themes/hextra"]
 	path = tools/docs/themes/hextra
 	url = https://github.com/imfing/hextra.git
+[submodule "plugins/physics3d/external/CoACD"]
+	path = plugins/physics3d/external/CoACD
+	url = https://github.com/SarahWeiii/CoACD.git

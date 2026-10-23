@@ -52,6 +52,21 @@ Mesh_Clip :: struct {
     orphan: bool,
 }
 
+// One convex decomposition the model keeps for its colliders: the hulls of
+// one mesh of the model (`part` 0 is the whole model, else a part's id), up
+// to `max_hulls`, cut where the mesh strays more than `concavity` (a
+// fraction of its size) from a hull. A sub-asset of the model: a
+// MeshCollider names it as PPtr{model guid, id}. The id is random
+// (mesh_new_sub_id), since the user adds sets, so editing or removing others
+// never repoints a collider. The physics3d package computes the hulls in the
+// editor after an import and keeps them beside the model's artifact.
+Mesh_Hull_Set :: struct {
+    id:        Local_ID,
+    part:      Local_ID,
+    max_hulls: i32,
+    concavity: f32,
+}
+
 @(typ_guid={guid="fadd5659-ad40-4e00-95c7-908efc8e8631"})
 MeshSettings :: struct {
     scale: f32, // uniform import scale
@@ -63,6 +78,8 @@ MeshSettings :: struct {
     // The reflected drawer must not walk it, since each entry's settings is a
     // raw JSON value.
     clips: [dynamic]Mesh_Clip `inspect:"-"`,
+    // Drawn by the physics3d package's section (Convex Decompositions).
+    hull_sets: [dynamic]Mesh_Hull_Set `inspect:"-"`,
 }
 
 default_mesh_settings :: proc() -> MeshSettings {
@@ -82,6 +99,7 @@ cleanup_MeshSettings :: proc(s: ^MeshSettings) {
         if c.settings != nil do json.destroy_value(c.settings)
     }
     delete(s.clips)
+    delete(s.hull_sets)
     s^ = {}
 }
 

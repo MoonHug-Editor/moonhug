@@ -16,6 +16,10 @@ app runs.
   a local `center` offset. Transform scale affects the shape size. `material`
   names a Physics Material ("Physics materials").
 - **MeshCollider** — a mesh's own shape. `mesh` names a model or one of its parts, and left empty it is the MeshFilter's mesh on the same object. `convex` collides as the convex hull of the vertices, reduced to the 44 the box3d hull holds (`HULL_MAX_VERTICES`), the only form a Rigidbody can carry. Not convex, the triangles collide as they are, on a static body only: a non-convex MeshCollider under a Rigidbody builds nothing and says so in the log. A mesh of more than 128 triangles is split into compact chunks of at most 128, one child of a compound shape each, because box3d keeps at most 256 triangles per contact and drops the rest without a word (erincatto/box3d#184), which lets bodies fall through a dense mesh. Transform scale applies per axis, mirrored scale included. The gizmo draws the hull's edges when convex and the mesh's triangles otherwise.
+- **Convex decompositions** — a model lists them in its import settings, in the Convex Decompositions section: each set names a mesh of the model (the whole model or a part), the most hulls to split it into, and a concavity, how far as a fraction of the mesh's size a hull may stray from the surface before it is cut. A set is a sub-asset of the model, like a part or a clip, with a random id, and the project window lists it under the model as "Hulls 8, 0.050". A convex MeshCollider picks it in its Hulls dropdown, which lists the single Convex Hull and the sets of the collider's mesh, and becomes one hull shape per hull, so a Rigidbody carries a concave mesh.
+- After Apply, the editor computes each set with CoACD in a separate process, one at a time, and saves the hulls beside the model's artifact. The status bar shows the running set, its stage and the elapsed time, with a Cancel button, and the model's section shows each set's state with Cancel or Compute. A closed mesh takes under a second, a dense open one minutes (the DamagedHelmet: about two), since CoACD first remeshes it.
+- The computed hulls are saved twice: in the library beside the model's artifact, for the game, and in the model's `.meta` (key `hulls`, base64, a few KB per set, 23 KB for 44 hulls), which is committed. Both record a hash of the mesh and settings they came from, so a fresh clone or a reimport restores every set whose hash matches from the meta, and only sets whose mesh or values changed are computed. A cancelled or failed set stays without hulls until its Compute.
+- While a set a collider uses is still being computed, physics holds the whole world still and says so in the console, so no body falls without its collider. The editor keeps running. A game only reads the saved hulls, which the export ships with the model.
 
 ## How bodies form
 
@@ -71,4 +75,4 @@ and anything else box3d offers can be used directly from game code.
 ## Current limitations
 
 - Moving or rescaling a child collider after creation doesn't re-bake its shape, and runtime component field edits other than `layers` and `layer_overrides` don't re-sync (use `body_of`).
-- No mesh colliders yet.
+- One decomposition runs at a time, and CoACD reports stages, not a fraction, so the status bar shows the stage and elapsed time.

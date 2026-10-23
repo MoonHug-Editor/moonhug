@@ -57,28 +57,6 @@ _console_time_str :: proc(t: time.Time) -> string {
 	return fmt.tprintf("[%02d:%02d:%02d]", h, m, s)
 }
 
-draw_status_bar :: proc() {
-	// Publish app-process log entries queued by the play pipe reader. The
-	// status bar draws every frame (the console window may be hidden), so
-	// this is the reliable once-per-frame drain point.
-	log.drain()
-
-	style := im.GetStyle()
-	height := im.GetFrameHeight() + style.WindowPadding.y
-	if !im.BeginViewportSideBar("##StatusBar", im.GetMainViewport(), .Down, height, {.NoScrollbar, .NoSavedSettings, .NoScrollWithMouse}) {
-		im.End()
-		return
-	}
-	defer im.End()
-
-	n := len(log.entries)
-	if n == 0 do return
-
-	last := log.entries[n - 1]
-	cmsg := fmt.ctprintf("%s %s  %s", _console_level_icon(last.level), _console_time_str(last.time), last.message)
-	im.TextColored(_console_level_color(last.level), cmsg)
-}
-
 draw_console_view :: proc() {
 	if im.Begin(icons.TITLE_CONSOLE, &menu.show_console, {.NoCollapse}) {
 		if im.Button("Clear") {

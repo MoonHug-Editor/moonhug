@@ -170,9 +170,9 @@ export_from :: proc(src_catalog: string, data_dir: string, boot_scene := "", roo
 			copied += 1
 		}
 
-		// The whole-key artifact plus any mesh part files (<key>_m<i>.bin, the
-		// naming asset_importer_mesh.odin owns). A missing artifact fails the
-		// export instead of shipping a hole.
+		// The whole-key artifact plus every fan-out file beside it
+		// (<key>_<suffix>.bin: mesh parts, baked clips, mesh collider hulls).
+		// A missing artifact fails the export instead of shipping a hole.
 		if entry.artifact != "" {
 			rel := strings.concatenate({"artifacts/", entry.artifact[:2], "/", entry.artifact, ".bin"}, context.temp_allocator)
 			asrc := strings.concatenate({src_dir, "/", rel}, context.temp_allocator)
@@ -182,15 +182,15 @@ export_from :: proc(src_catalog: string, data_dir: string, boot_scene := "", roo
 				return false
 			}
 			copied += 1
-			base_src := strings.trim_suffix(asrc, ".bin")
-			base_dst := strings.trim_suffix(adst, ".bin")
-			// Mesh parts and baked clips, the two fan-outs asset_importer_mesh
-			// names (_m<i>, _a<i>).
-			for suffix in ([2]string{"_m", "_a"}) {
-				for i := 0; ; i += 1 {
-					part_src := fmt.tprintf("%s%s%d.bin", base_src, suffix, i)
-					if !os.exists(part_src) do break
-					if !_copy_file(part_src, fmt.tprintf("%s%s%d.bin", base_dst, suffix, i)) do return false
+			fan_dir := strings.concatenate({src_dir, "/artifacts/", entry.artifact[:2]}, context.temp_allocator)
+			prefix := strings.concatenate({entry.artifact, "_"}, context.temp_allocator)
+			if handle, oerr := os.open(fan_dir); oerr == nil {
+				defer os.close(handle)
+				files, _ := os.read_dir(handle, -1, context.temp_allocator)
+				for f in files {
+					if !strings.has_prefix(f.name, prefix) || !strings.has_suffix(f.name, ".bin") do continue
+					frel := strings.concatenate({"artifacts/", entry.artifact[:2], "/", f.name}, context.temp_allocator)
+					if !_copy_file(strings.concatenate({src_dir, "/", frel}, context.temp_allocator), strings.concatenate({data_dir, "/", frel}, context.temp_allocator)) do return false
 					copied += 1
 				}
 			}

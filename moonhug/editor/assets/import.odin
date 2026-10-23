@@ -287,7 +287,8 @@ _write_import_meta :: proc(meta_path: string, meta: assets.ImportMeta) -> bool {
 	context.allocator = context.temp_allocator
 	defer context.allocator = prev
 
-	obj := make(json.Object)
+	// Keys the pipeline does not own stay as they are (asset_meta_set_value).
+	obj := _meta_foreign_keys(meta_path)
 	obj["guid"] = json.String(meta.guid)
 	obj["importer"] = json.String(meta.importer)
 	if meta.settings.data != nil {
@@ -303,6 +304,34 @@ _write_import_meta :: proc(meta_path: string, meta: assets.ImportMeta) -> bool {
 		}
 	}
 
+	return _meta_write_object(meta_path, obj)
+}
+
+// The keys the import pipeline writes itself. Every other top-level key of a
+// .meta belongs to a package and survives every write of the meta.
+@(private = "file")
+_META_OWN_KEYS :: [?]string{"guid", "importer", "settings"}
+
+// The .meta's top-level keys the pipeline does not own, temp-allocated. An
+// empty object when there is no meta yet.
+@(private = "file")
+_meta_foreign_keys :: proc(meta_path: string) -> json.Object {
+	obj := make(json.Object, context.temp_allocator)
+	data, rerr := os.read_entire_file(meta_path, context.temp_allocator)
+	if rerr != nil do return obj
+	root, perr := json.parse(data, .JSON, true, context.temp_allocator)
+	if perr != nil do return obj
+	old, is_obj := root.(json.Object)
+	if !is_obj do return obj
+	outer: for k, v in old {
+		for own in _META_OWN_KEYS do if k == own do continue outer
+		obj[k] = v
+	}
+	return obj
+}
+
+@(private = "file")
+_meta_write_object :: proc(meta_path: string, obj: json.Object) -> bool {
 	opts := json.Marshal_Options{
 		spec       = .JSON,
 		pretty     = true,
@@ -310,10 +339,47 @@ _write_import_meta :: proc(meta_path: string, meta: assets.ImportMeta) -> bool {
 		spaces     = 2,
 		sort_maps_by_key = true, // json.Object is a map — deterministic files
 	}
-	data, err := json.marshal(json.Value(obj), opts)
+	data, err := json.marshal(json.Value(obj), opts, context.temp_allocator)
 	if err != nil do return false
-
 	return os.write_entire_file(meta_path, data) == nil
+}
+
+// A package's own top-level key in an asset's .meta: data that travels with
+// the asset (moves, renames, duplicates and commits with it) and is no
+// import setting, so changing it never reimports the asset. The physics3d
+// package keeps the computed hulls of a model's convex decompositions there,
+// so a fresh clone does not compute them again. Allocated on `allocator`.
+asset_meta_value :: proc(source_path, key: string, allocator := context.allocator) -> (json.Value, bool) {
+	meta_path := strings.concatenate({source_path, ".meta"}, context.temp_allocator)
+	data, rerr := os.read_entire_file(meta_path, context.temp_allocator)
+	if rerr != nil do return nil, false
+	root, perr := json.parse(data, .JSON, true, context.temp_allocator)
+	if perr != nil do return nil, false
+	obj, is_obj := root.(json.Object)
+	if !is_obj do return nil, false
+	v, has := obj[key]
+	if !has do return nil, false
+	return json.clone_value(v, allocator), true
+}
+
+// Sets a package's key in an asset's .meta, or removes it for a nil value.
+// The meta must exist. The pipeline's own keys cannot be set this way.
+asset_meta_set_value :: proc(source_path, key: string, value: json.Value) -> bool {
+	for own in _META_OWN_KEYS do assert(key != own, "asset_meta_set_value: the import pipeline owns this key")
+	meta_path := strings.concatenate({source_path, ".meta"}, context.temp_allocator)
+	data, rerr := os.read_entire_file(meta_path, context.temp_allocator)
+	if rerr != nil do return false
+	root, perr := json.parse(data, .JSON, true, context.temp_allocator)
+	if perr != nil do return false
+	obj, is_obj := root.(json.Object)
+	if !is_obj do return false
+	if value == nil {
+		if key not_in obj do return true
+		delete_key(&obj, key)
+	} else {
+		obj[key] = value
+	}
+	return _meta_write_object(meta_path, obj)
 }
 
 // --- Content keys -------------------------------------------------------------

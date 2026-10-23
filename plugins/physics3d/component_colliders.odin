@@ -126,25 +126,32 @@ cleanup_CapsuleCollider :: proc(comp: ^CapsuleCollider) {
 // The mesh's own shape. `mesh` names a model or one of its parts the way a
 // MeshFilter does, and unset means the MeshFilter on the same object.
 // `convex` builds the convex hull of the vertices, reduced to the most box3d
-// holds (HULL_MAX_VERTICES): the shape a Rigidbody can carry. Not convex, the
+// holds (HULL_MAX_VERTICES): the shape a Rigidbody can carry. A convex
+// collider can take one of its model's convex decompositions for that mesh
+// instead (`hull_set`, an engine.Mesh_Hull_Set id, mesh_hulls.odin): several
+// hulls that follow a concave shape, one hull shape each. Not convex, the
 // triangles collide as they are, which box3d allows on a static body only,
 // so it needs no Rigidbody above it. Transform scale applies per axis.
 @(component={menu="Physics/MeshCollider"})
 @(typ_guid={guid = "d6e5cf75-88a6-45e3-ac22-93aaa6b21a05"})
 MeshCollider :: struct {
 	using base:  engine.CompData `inspect:"-"`,
+	// Drawn by the editor as the Mesh row and the Hulls dropdown.
 	mesh:        engine.PPtr `inspect:"-"`,
-	convex:      bool,
-	density:     f32,
+	hull_set:    engine.Local_ID `inspect:"-"`,
+	convex:      bool `decor:tooltip(desc="Collide as a convex shape, the only kind a Rigidbody can carry: the convex hull of the mesh, or one of its model's convex decompositions picked in Hulls. Off, the triangles collide as they are, on a collider without a Rigidbody only.")`,
+	density:     f32 `decor:tooltip(desc="Weight of this collider against the others on the same Rigidbody, in kilograms per cubic metre. The Rigidbody's Mass is the total: density shares it among its colliders, which places the center of mass and sets how the body turns. No effect with one collider or without a Rigidbody.")`,
 	// How the surface slides and bounces (physics_material.odin). Unset is a
 	// new Physics Material's defaults.
-	material:    engine.Asset_GUID `ref:"PhysicsMaterial" expand`,
-	is_trigger:  bool,
-	layers:       u32 `decor:layers(domain="physics3d")`,
+	material:    engine.Asset_GUID `ref:"PhysicsMaterial" expand decor:tooltip(desc="How the surface slides and bounces. None uses the Default Material of the Physics 3D settings.")`,
+	is_trigger:  bool `decor:tooltip(desc="Report overlaps instead of colliding: bodies pass through, and the trigger events fire.")`,
+	layers:       u32 `decor:layers(domain="physics3d") decor:tooltip(desc="The physics layers this collider is on. The Physics 3D layer matrix says which layers collide.")`,
 	using layer_overrides: Physics3D_Layer_Overrides `inline:""`,
 
 	shape:       b3.ShapeId `json:"-" inspect:"-"`,
 	static_body: b3.BodyId `json:"-" inspect:"-"`,
+	// One hull shape per hull of the decomposition, `shape` unused.
+	shapes:      [dynamic]b3.ShapeId `json:"-" inspect:"-"`,
 	// The triangles a non-convex shape reads for as long as it lives, owned:
 	// one mesh, or a compound of mesh chunks (MESH_CHUNK_TRIANGLES).
 	mesh_data:   ^b3.MeshData `json:"-" inspect:"-"`,
@@ -161,6 +168,11 @@ reset_MeshCollider :: proc(comp: ^MeshCollider) {
 }
 
 cleanup_MeshCollider :: proc(comp: ^MeshCollider) {
+	for &s in comp.shapes {
+		no_body: b3.BodyId // the static body goes once, with `shape` below
+		_destroy_shape(&s, &no_body)
+	}
+	delete(comp.shapes)
 	_destroy_shape(&comp.shape, &comp.static_body)
 	if comp.mesh_data != nil do b3.DestroyMesh(comp.mesh_data)
 	if comp.compound != nil do b3.DestroyCompound(comp.compound)

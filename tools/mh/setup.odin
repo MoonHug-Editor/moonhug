@@ -6,7 +6,8 @@ package mh
 // Odin's own vendor folders carry a build_*.sh and a build.bat per library —
 // which is exactly the split this tool exists to avoid, so setup picks the one
 // that matches the host. stb and cgltf are plain makefiles; box2d needs cmake;
-// box3d needs clang.
+// box3d needs clang. A plugin's own native library (CoACD for physics3d)
+// builds into the plugin's folder instead.
 //
 // Already-built libraries are skipped, so this is safe to re-run.
 
@@ -16,8 +17,10 @@ import "core:os"
 
 Vendor_Lib :: struct {
 	name:     string,
-	// Existing file that means "already built".
+	// Existing file that means "already built", in Odin's vendor folder, or
+	// in the repository when `in_repo` is set.
 	artifact: string,
+	in_repo:  bool,
 	// Directory the build runs in.
 	dir:      string,
 	// Command, host-specific.
@@ -74,6 +77,14 @@ vendor_libs :: proc() -> []Vendor_Lib {
 			win_cmd = _cmd("cmd", "/C", "build.bat"),
 			note = "physics3d package, clang only",
 		},
+		Vendor_Lib {
+			name = "coacd",
+			artifact = fmt.tprintf("plugins/physics3d/external/bin/%s-%s/coacd", lib_dir, "arm64" when ODIN_ARCH == .arm64 else "x86_64"),
+			in_repo = true,
+			dir = "plugins/physics3d/external",
+			unix_cmd = _cmd("sh", "build_coacd.sh"),
+			note = "physics3d convex decomposition in the editor, needs cmake, downloads about 1 GB into builds/coacd the first time",
+		},
 	)
 	return libs[:]
 }
@@ -89,7 +100,7 @@ cmd_setup :: proc(args: []string) -> int {
 
 	fmt.printfln("mh: vendored libraries under %s", odin_vendor())
 	for lib in vendor_libs() {
-		artifact := odin_vendor(lib.artifact)
+		artifact := lib.artifact if lib.in_repo else odin_vendor(lib.artifact)
 		if !force && os.exists(artifact) {
 			fmt.printfln("  %-7s already built", lib.name)
 			continue
@@ -101,6 +112,10 @@ cmd_setup :: proc(args: []string) -> int {
 		fmt.printfln("  %-7s building (%s)", lib.name, lib.note)
 		cmd := lib.unix_cmd
 		when ODIN_OS == .Windows do cmd = lib.win_cmd
+		if len(cmd) == 0 {
+			fmt.eprintfln("  %-7s SKIPPED — no build for this platform yet", lib.name)
+			continue
+		}
 		if code := run_in(lib.dir, ..cmd); code != 0 {
 			// Odin's scripts also build a WASM variant last, under `set -e`, and
 			// Apple's clang has no WASM target. The native library is what the

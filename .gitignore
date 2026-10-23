@@ -8,6 +8,8 @@ bin/**
 
 *.o
 *.a
+# Native tools mh setup builds into a plugin (CoACD for physics3d).
+plugins/*/external/bin/
 imgui.ini
 editor_window.json
 /editor
