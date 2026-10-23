@@ -32,6 +32,16 @@ DrawContext :: struct {
     owner_type: typeid,
 }
 
+// Whether the field shows in the inspector: drawn by the inspector's own
+// drawer (is_visible), or by a decorator that draws it in its place, which
+// clears is_visible so the drawer skips it and sets handled_draw. Only
+// decor:hide clears both. A decorator that adds to the row (a help box, a
+// tooltip, a header) checks this, so it stays on a field another decorator
+// draws, a decor:range slider for one.
+field_shown :: proc(ctx: ^DrawContext) -> bool {
+    return ctx.is_visible || ctx.handled_draw
+}
+
 // inspector should run decorators in regular order for pre stage and in reverse order for post stage
 // between pre and post stages if ctx.is_visible inspector should draw field itself
 run_field_decorators :: proc(tid: typeid, field_index: int, ctx: ^DrawContext) {

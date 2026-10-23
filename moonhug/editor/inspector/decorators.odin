@@ -13,7 +13,7 @@ Min_Value :: union { int, f64 }
 
 // Holds an int, f32 or f64 field at `min_value` or above.
 decorator_min :: proc(ctx: ^DrawContext, min_value: Min_Value) {
-	if !ctx.is_visible || ctx.is_pre do return
+	if !field_shown(ctx) || ctx.is_pre do return
 	if ctx.field_ptr == nil do return
 	switch ctx.field_type {
 	case typeid_of(int):
@@ -82,7 +82,7 @@ decorator_range :: proc(ctx: ^DrawContext, min_value: Min_Value, max_value: Min_
 
 // Draws `text` as a heading with a separator above the field.
 decorator_header :: proc(ctx: ^DrawContext, text:cstring = "") {
-	if !ctx.is_visible || !ctx.is_pre do return
+	if !field_shown(ctx) || !ctx.is_pre do return
 
 	im.Spacing()
     im.TextColored({0.7, 0.7, 1.0, 1.0}, text) // Light blue tint for visibility
@@ -91,7 +91,7 @@ decorator_header :: proc(ctx: ^DrawContext, text:cstring = "") {
 
 // Shows `desc` as the field's tooltip.
 decorator_tooltip :: proc(ctx: ^DrawContext, desc:cstring) {
-	if !ctx.is_visible || ctx.is_pre do return
+	if !field_shown(ctx) || ctx.is_pre do return
 
 	// Through the shared tooltip so debug tooltips can add the tag that put this
 	// decorator on the field.
@@ -101,7 +101,7 @@ decorator_tooltip :: proc(ctx: ^DrawContext, desc:cstring) {
 // Draws `text` in a help box under the field (widgets.help_box). `kind` is
 // "info" (the default), "warning" or "error" and picks the icon and color.
 decorator_help :: proc(ctx: ^DrawContext, text: cstring, kind: cstring = "info") {
-	if !ctx.is_visible || ctx.is_pre do return
+	if !field_shown(ctx) || ctx.is_pre do return
 	k: widgets.Message_Kind
 	switch string(kind) {
 	case "info":    k = .Info
@@ -115,7 +115,7 @@ decorator_help :: proc(ctx: ^DrawContext, text: cstring, kind: cstring = "info")
 // Draws a separator line above the field.
 decorator_separator :: proc(ctx: ^DrawContext) {
 	if ctx == nil do return
-	if ctx.is_visible && ctx.is_pre do im.Separator()
+	if field_shown(ctx) && ctx.is_pre do im.Separator()
 }
 
 // Hides the field from the inspector.
@@ -282,7 +282,7 @@ _button_id :: proc(label: cstring, row, n: int) -> cstring {
 // sized by `weight` (see the comment above _Button_Row_State).
 decorator_button :: proc(ctx: ^DrawContext, action: $P, label := cstring(""), row := 0, weight := f32(1))
 	where intrinsics.type_is_proc(P) {
-	if !ctx.is_visible do return
+	if !field_shown(ctx) do return
 	// Above-field rows draw in the pre pass, below-field rows in post.
 	if ctx.is_pre != (row >= 0) do return
 	if ctx.owner_ptr == nil do return
