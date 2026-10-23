@@ -84,6 +84,9 @@ _layers: struct {
 @(init)
 _layers_register :: proc "contextless" () {
 	context = runtime.default_context()
+	// Undo writes a polygon's or an edge's point list back from JSON through
+	// its pointer type (the handles' drags, inserts and deletes).
+	engine.register_pointer_type([dynamic][2]f32)
 	l: Physics2D_Layers
 	reset_Physics2D_Layers(&l)
 	defer cleanup_Physics2D_Layers(&l)

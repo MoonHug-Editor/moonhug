@@ -686,6 +686,15 @@ _cleanup_before_unmarshal :: proc(ptr: rawptr, tid: typeid) {
 		s^ = ""
 		return
 	}
+	// A dynamic array of plain values (a collider's points): the unmarshal
+	// allocates a new buffer, so the old one goes first. Elements that own
+	// memory are a registered type's cleanup to free.
+	if _, is_dynamic := runtime.type_info_base(type_info_of(tid)).variant.(runtime.Type_Info_Dynamic_Array); is_dynamic {
+		raw := cast(^runtime.Raw_Dynamic_Array)ptr
+		if raw.data != nil do runtime.mem_free(raw.data, raw.allocator)
+		raw^ = {}
+		return
+	}
 	if key, ok := core.get_type_key_by_typeid(tid); ok {
 		core.type_cleanup(key, ptr)
 	}

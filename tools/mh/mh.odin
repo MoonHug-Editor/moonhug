@@ -18,6 +18,7 @@ package mh
 
 import "core:fmt"
 import "core:os"
+import "core:sys/posix"
 import "core:strings"
 
 VERSION :: "1.0.0"
@@ -50,6 +51,7 @@ COMMANDS := []Command {
 }
 
 main :: proc() {
+	raise_file_limit()
 	refresh_odin_stamp()
 	args := os.args[1:]
 	if len(args) == 0 {
@@ -96,4 +98,26 @@ flag_value :: proc(args: []string, name: string) -> string {
 		if strings.has_prefix(a, prefix) do return a[len(prefix):]
 	}
 	return ""
+}
+
+// The compiler opens an object file per package and more while it links, and
+// the editor's relaunch starts mh from a process with macOS's default soft
+// limit of 256 open files, which the child inherits: "LLVM Error: Too many
+// open files", or a `#load` that cannot open a file that is there. The soft
+// limit goes up to the hard one, capped at what the kernel allows a process.
+raise_file_limit :: proc() {
+	when ODIN_OS == .Darwin || ODIN_OS == .Linux {
+		limit: posix.rlimit
+		if posix.getrlimit(.NOFILE, &limit) != .OK do return
+		want := posix.rlim_t(65536)
+		if limit.rlim_max < want do want = limit.rlim_max
+		if limit.rlim_cur >= want do return
+		limit.rlim_cur = want
+		if posix.setrlimit(.NOFILE, &limit) != .OK {
+			// macOS refuses a soft limit above kern.maxfilesperproc even when
+			// the hard limit says unlimited: OPEN_MAX is what it always takes.
+			limit.rlim_cur = 10240
+			_ = posix.setrlimit(.NOFILE, &limit)
+		}
+	}
 }

@@ -138,3 +138,95 @@ comp_on_scene_handles_CircleCollider2D :: proc(c: ^physics2d.CircleCollider2D, c
 	}
 	if d.released do undo.edit_session_end(&_edit)
 }
+
+// --- Path handles ----------------------------------------------------------------
+// A polygon's or an edge's points in the Handles tool: a dot per point to
+// drag, a press on an edge that inserts a point there and drags it, and
+// Alt+click on a point that deletes it, down to the three a polygon or the
+// two an edge keeps. Each drag, insert or delete is one undo step of the
+// point list. The handles work in the collider's space with scaled points,
+// as the outlines do, and write the unscaled points back.
+
+// The point a press on an edge inserted, dragged for as long as the press
+// lasts. -1 between inserts.
+@(private = "file")
+_inserted: int = -1
+
+@(private = "file")
+_path_handles :: proc(base: ^engine.CompData, points: ^[dynamic][2]f32, offset: [2]f32, closed: bool, min_points: int, label: string) {
+	h, ok := engine.comp_handle_of(base)
+	if !ok do return
+	s := physics2d.collider_scale(base.owner)
+	gizmos.with_matrix(physics2d.collider_space(base.owner))
+	normal := [3]f32{0, 0, 1}
+	scaled := proc(p, offset, s: [2]f32) -> [3]f32 {
+		q := (offset + p) * s
+		return {q.x, q.y, 0}
+	}
+	unscaled := proc(q: [3]f32, offset, s: [2]f32) -> [2]f32 {
+		out := [2]f32{q.x, q.y}
+		for i in 0 ..< 2 do out[i] = s[i] > 1e-6 ? q[i] / s[i] - offset[i] : 0
+		return out
+	}
+	target := [?]undo.Edit_Target{undo.edit_target_pooled(h, points, typeid_of([dynamic][2]f32))}
+
+	// The edges first: their hit area is a line, and the dots on their ends
+	// win the pointer at the same spot.
+	n := len(points)
+	edges := closed ? n : n - 1
+	for i in 0 ..< edges {
+		a := scaled(points[i], offset, s)
+		b := scaled(points[(i + 1) % n], offset, s)
+		d := handles.segment(handles.id_of(h, u64(1000 + i)), a, b, normal, prio = 0)
+		if d.hot do gizmos.with_color(handles.COLOR_HOT)
+		if d.hot do gizmos.line(a, b)
+		// Alt is the delete key on the dots: an Alt press on an edge does
+		// nothing, so a miss by a few pixels inserts no point.
+		if d.started && !handles.frame().input.alt {
+			_edit_begin(target[:], label)
+			_inserted = i + 1
+			inject_at(points, _inserted, unscaled(d.point, offset, s))
+		}
+		if (d.dragging || d.released) && _inserted >= 0 && _inserted < len(points) {
+			points[_inserted] = unscaled(d.point, offset, s)
+		}
+		if d.released {
+			_inserted = -1
+			undo.edit_session_end(&_edit)
+		}
+	}
+
+	for i := 0; i < len(points); i += 1 {
+		p := scaled(points[i], offset, s)
+		d := handles.dot(handles.id_of(h, u64(1 + i)), p, normal, color = physics2d.COLLIDER_GIZMO_COLOR)
+		if d.started && handles.frame().input.alt {
+			// A click, not a drag: the point goes in its own step.
+			if len(points) > min_points {
+				sess := undo.edit_session_begin(target[:], label)
+				ordered_remove(points, i)
+				undo.edit_session_end(&sess)
+			}
+			// The press stays active on this dot's id until the mouse comes
+			// up, and the next point now has that id: drop the press, and
+			// draw no more dots this frame, or the next point takes the
+			// click as its own and goes too. They are back next frame.
+			handles.end_drag()
+			break
+		}
+		if d.started do _edit_begin(target[:], label)
+		if d.dragging || d.released do points[i] = unscaled(d.point, offset, s)
+		if d.released do undo.edit_session_end(&_edit)
+	}
+}
+
+@(comp_on_scene_handles={component=PolygonCollider2D})
+comp_on_scene_handles_PolygonCollider2D :: proc(c: ^physics2d.PolygonCollider2D, ctx: handles.Gizmo_Context) {
+	if ctx.tool != .Handles do return
+	_path_handles(&c.base, &c.points, c.offset, true, 3, "Edit Polygon Collider 2D")
+}
+
+@(comp_on_scene_handles={component=EdgeCollider2D})
+comp_on_scene_handles_EdgeCollider2D :: proc(c: ^physics2d.EdgeCollider2D, ctx: handles.Gizmo_Context) {
+	if ctx.tool != .Handles do return
+	_path_handles(&c.base, &c.points, c.offset, false, 2, "Edit Edge Collider 2D")
+}
