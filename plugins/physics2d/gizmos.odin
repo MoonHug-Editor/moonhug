@@ -66,6 +66,29 @@ draw_capsule_collider_wires :: proc(c: ^CapsuleCollider2D, color: [4]f32) {
 	gizmos.line(v3(c1 - side * radius), v3(c2 - side * radius))
 }
 
+// The polygon's path as a closed outline, scaled, around the offset.
+draw_polygon_collider_wires :: proc(c: ^PolygonCollider2D, color: [4]f32) {
+	gizmos.with_color(color)
+	gizmos.with_matrix(collider_space(c.owner))
+	s := collider_scale(c.owner)
+	for p, i in c.points {
+		q := c.points[(i + 1) % len(c.points)]
+		a, b := (c.offset + p) * s, (c.offset + q) * s
+		gizmos.line({a.x, a.y, 0}, {b.x, b.y, 0})
+	}
+}
+
+// The edge's path as an open line, scaled, around the offset.
+draw_edge_collider_wires :: proc(c: ^EdgeCollider2D, color: [4]f32) {
+	gizmos.with_color(color)
+	gizmos.with_matrix(collider_space(c.owner))
+	s := collider_scale(c.owner)
+	for i in 0 ..< len(c.points) - 1 {
+		a, b := (c.offset + c.points[i]) * s, (c.offset + c.points[i + 1]) * s
+		gizmos.line({a.x, a.y, 0}, {b.x, b.y, 0})
+	}
+}
+
 // Every enabled collider as an outline (Unity's Physics Debug view, there is
 // no selection in the app).
 @(phase={key=DebugDraw, mode=App})
@@ -82,5 +105,13 @@ debug_draw :: proc() {
 	it3 := engine.pool_iterator(capsule_collider2_ds(w))
 	for c, _ in engine.pool_next(&it3) {
 		if c.enabled do draw_capsule_collider_wires(c, COLLIDER_GIZMO_COLOR)
+	}
+	it4 := engine.pool_iterator(polygon_collider2_ds(w))
+	for c, _ in engine.pool_next(&it4) {
+		if c.enabled do draw_polygon_collider_wires(c, COLLIDER_GIZMO_COLOR)
+	}
+	it5 := engine.pool_iterator(edge_collider2_ds(w))
+	for c, _ in engine.pool_next(&it5) {
+		if c.enabled do draw_edge_collider_wires(c, COLLIDER_GIZMO_COLOR)
 	}
 }

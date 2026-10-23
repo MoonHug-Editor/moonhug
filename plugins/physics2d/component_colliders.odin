@@ -117,3 +117,78 @@ cleanup_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {
 	_destroy_shape(&comp.shape, &comp.static_body)
 	engine.comp_zero(comp)
 }
+
+// Any simple polygon as a solid shape: a closed path of `points` in the
+// collider's space, around `offset`. box2d collides convex polygons of at
+// most 8 vertices, so the path is partitioned into such pieces
+// (polygon.odin), one shape each on the body. A path that is not a simple
+// polygon (self-intersecting, all on a line) builds nothing and says so in
+// the log, until it is edited. Transform scale applies per axis.
+@(component={menu="Physics2D/PolygonCollider2D"})
+@(typ_guid={guid = "2db4c7a5-5189-4f3f-a96f-36f1b3c13b20"})
+PolygonCollider2D :: struct {
+	using base:  engine.CompData `inspect:"-"`,
+	points:      [dynamic][2]f32,
+	offset:      [2]f32,
+	density:     f32,
+	// How the surface slides and bounces (physics_material.odin). Unset is
+	// the Rigidbody2D's material, then a new Physics Material 2D's defaults.
+	material:    engine.Asset_GUID `ref:"PhysicsMaterial2D" expand`,
+	is_trigger:  bool,
+	layers:       u32 `decor:layers(domain="physics2d")`,
+	using layer_overrides: Physics2D_Layer_Overrides `inline:""`,
+
+	shapes:      [dynamic]b2.ShapeId `json:"-" inspect:"-"`, // one per convex piece
+	static_body: b2.BodyId `json:"-" inspect:"-"`,
+	// The sync logged why the shapes cannot be built and stops trying, until
+	// a Reset or an undo write clears the component.
+	build_failed: bool `json:"-" inspect:"-"`,
+}
+
+reset_PolygonCollider2D :: proc(comp: ^PolygonCollider2D) {
+	cleanup_PolygonCollider2D(comp)
+	comp.layers = 1
+	comp.density = 1
+	polygon_regular(&comp.points, 5, 0.5)
+}
+
+cleanup_PolygonCollider2D :: proc(comp: ^PolygonCollider2D) {
+	_destroy_shapes(&comp.shapes, &comp.static_body)
+	if comp.points != nil do delete(comp.points)
+	engine.comp_zero(comp)
+}
+
+// An open line of `points` in the collider's space, around `offset`: ground
+// outlines, as box2d's chain, smooth across its corners and one-sided. The
+// solid side is to the right of the path's direction, so a floor's points
+// run from right to left, and a body behind the line passes through it.
+// The ends continue straight for a body sliding off them.
+@(component={menu="Physics2D/EdgeCollider2D"})
+@(typ_guid={guid = "d3835978-f15b-4a58-b33a-774f6a83daf4"})
+EdgeCollider2D :: struct {
+	using base:  engine.CompData `inspect:"-"`,
+	points:      [dynamic][2]f32,
+	offset:      [2]f32,
+	// How the surface slides and bounces (physics_material.odin). Unset is
+	// the Rigidbody2D's material, then a new Physics Material 2D's defaults.
+	material:    engine.Asset_GUID `ref:"PhysicsMaterial2D" expand`,
+	layers:       u32 `decor:layers(domain="physics2d")`,
+	using layer_overrides: Physics2D_Layer_Overrides `inline:""`,
+
+	chain:       b2.ChainId `json:"-" inspect:"-"`,
+	segments:    [dynamic]b2.ShapeId `json:"-" inspect:"-"`, // the chain's segment shapes
+	static_body: b2.BodyId `json:"-" inspect:"-"`,
+}
+
+reset_EdgeCollider2D :: proc(comp: ^EdgeCollider2D) {
+	cleanup_EdgeCollider2D(comp)
+	comp.layers = 1
+	clear(&comp.points)
+	append(&comp.points, [2]f32{-0.5, 0}, [2]f32{0.5, 0})
+}
+
+cleanup_EdgeCollider2D :: proc(comp: ^EdgeCollider2D) {
+	_destroy_chain(&comp.chain, &comp.segments, &comp.static_body)
+	if comp.points != nil do delete(comp.points)
+	engine.comp_zero(comp)
+}

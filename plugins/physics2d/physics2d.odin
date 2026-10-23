@@ -26,6 +26,7 @@ import "base:runtime"
 import "core:math"
 import b2 "vendor:box2d"
 import "moonhug:packages/engine"
+import "moonhug:libs/log"
 
 GRAVITY_DEFAULT :: [2]f32{0, -9.81}
 _SUB_STEPS :: 4
@@ -334,6 +335,8 @@ _push_materials :: proc(w: ^engine.World) {
 	{ it := engine.pool_iterator(box_collider2_ds(w)); for c, _ in engine.pool_next(&it) do push(w, c.shape, c.owner, c.material) }
 	{ it := engine.pool_iterator(circle_collider2_ds(w)); for c, _ in engine.pool_next(&it) do push(w, c.shape, c.owner, c.material) }
 	{ it := engine.pool_iterator(capsule_collider2_ds(w)); for c, _ in engine.pool_next(&it) do push(w, c.shape, c.owner, c.material) }
+	{ it := engine.pool_iterator(polygon_collider2_ds(w)); for c, _ in engine.pool_next(&it) do for sh in c.shapes do push(w, sh, c.owner, c.material) }
+	{ it := engine.pool_iterator(edge_collider2_ds(w)); for c, _ in engine.pool_next(&it) do for sh in c.segments do push(w, sh, c.owner, c.material) }
 }
 
 _shape_def :: proc(density: f32, material: engine.Asset_GUID, is_trigger: bool, layer, mask: u32) -> b2.ShapeDef {
@@ -449,6 +452,93 @@ _sync_colliders :: proc(w: ^engine.World) {
 			_register_shape(c.shape, c.owner)
 		}
 	}
+	_sync_polygon_colliders(w)
+	_sync_edge_colliders(w)
+}
+
+// A polygon collider's shapes: the convex pieces of its scaled path, placed
+// in the body's space.
+@(private = "file")
+_sync_polygon_colliders :: proc(w: ^engine.World) {
+	it := engine.pool_iterator(polygon_collider2_ds(w))
+	for c, _ in engine.pool_next(&it) {
+		if len(c.shapes) > 0 {
+			mask := _collider_mask(w, c.owner, c.layers, c.layer_overrides)
+			for sh in c.shapes do _sync_filter(sh, c.layers, mask)
+			continue
+		}
+		if !c.enabled || c.build_failed do continue
+		if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
+		scale := collider_scale(c.owner)
+		scaled := make([][2]f32, len(c.points), context.temp_allocator)
+		for p, i in c.points do scaled[i] = p * scale
+		pieces, pok := polygon_partition(scaled, context.temp_allocator)
+		if !pok {
+			c.build_failed = true
+			log.errorf("[Physics2D] PolygonCollider2D on %q: the path is not a simple polygon, it needs three points not on a line and no crossing edges", _owner_name(w, c.owner))
+			continue
+		}
+		target, ok := _shape_target(w, c.owner, c.offset * scale, &c.static_body)
+		if !ok do continue
+		def := _shape_def(c.density, _collider_material(w, c.owner, c.material), c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
+		if c.shapes == nil do c.shapes = make([dynamic]b2.ShapeId, runtime.default_allocator())
+		for piece in pieces {
+			local := make([][2]f32, len(piece), context.temp_allocator)
+			for p, i in piece do local[i] = target.center + _rotate2(p, target.angle)
+			hull := b2.ComputeHull(local)
+			if hull.count < 3 do continue // a sliver with no area
+			polygon := b2.MakePolygon(hull, 0)
+			shape := b2.CreatePolygonShape(target.body, def, &polygon)
+			append(&c.shapes, shape)
+			_register_shape(shape, c.owner)
+		}
+	}
+}
+
+// An edge collider's chain: the scaled path in the body's space, with a
+// ghost point past each end on the end segment's line, the way box2d wants
+// an open chain.
+@(private = "file")
+_sync_edge_colliders :: proc(w: ^engine.World) {
+	it := engine.pool_iterator(edge_collider2_ds(w))
+	for c, _ in engine.pool_next(&it) {
+		if b2.Chain_IsValid(c.chain) {
+			mask := _collider_mask(w, c.owner, c.layers, c.layer_overrides)
+			for sh in c.segments do _sync_filter(sh, c.layers, mask)
+			continue
+		}
+		if !c.enabled || len(c.points) < 2 do continue
+		if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
+		scale := collider_scale(c.owner)
+		target, ok := _shape_target(w, c.owner, c.offset * scale, &c.static_body)
+		if !ok do continue
+		n := len(c.points)
+		local := make([][2]f32, n + 2, context.temp_allocator)
+		for p, i in c.points do local[i + 1] = target.center + _rotate2(p * scale, target.angle)
+		local[0] = local[1] + (local[1] - local[2])
+		local[n + 1] = local[n] + (local[n] - local[n - 1])
+		def := _shape_def(1, _collider_material(w, c.owner, c.material), false, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
+		material := def.material
+		cdef := b2.DefaultChainDef()
+		cdef.points = raw_data(local)
+		cdef.count = i32(len(local))
+		cdef.materials = &material
+		cdef.materialCount = 1
+		cdef.filter = def.filter
+		cdef.enableSensorEvents = true
+		c.chain = b2.CreateChain(target.body, cdef)
+		if c.segments == nil do c.segments = make([dynamic]b2.ShapeId, runtime.default_allocator())
+		resize(&c.segments, int(b2.Chain_GetSegmentCount(c.chain)))
+		got := b2.Chain_GetSegments(c.chain, raw_data(c.segments), i32(len(c.segments)))
+		resize(&c.segments, int(got))
+		for sh in c.segments do _register_shape(sh, c.owner)
+	}
+}
+
+@(private = "file")
+_owner_name :: proc(w: ^engine.World, tH: engine.Transform_Handle) -> string {
+	t := engine.pool_get(&w.transforms, engine.Handle(tH))
+	return t != nil ? t.name : "?"
 }
 
 // --- Write back: box2d -> transforms --------------------------------------------
@@ -512,6 +602,31 @@ _destroy_body :: proc(body: ^b2.BodyId) {
 		b2.DestroyBody(body^)
 	}
 	body^ = {}
+}
+
+// A polygon collider's pieces go together, with the implicit static body.
+_destroy_shapes :: proc(shapes: ^[dynamic]b2.ShapeId, static_body: ^b2.BodyId) {
+	for &sh in shapes {
+		if _state.world_ready && b2.Shape_IsValid(sh) {
+			delete_key(&_state.shape_owner, _shape_key(sh))
+			b2.DestroyShape(sh, true)
+		}
+	}
+	if shapes^ != nil do delete(shapes^)
+	shapes^ = nil
+	_destroy_body(static_body)
+}
+
+// An edge collider's chain and its segments' owner entries.
+_destroy_chain :: proc(chain: ^b2.ChainId, segments: ^[dynamic]b2.ShapeId, static_body: ^b2.BodyId) {
+	if _state.world_ready && b2.Chain_IsValid(chain^) {
+		for sh in segments do delete_key(&_state.shape_owner, _shape_key(sh))
+		b2.DestroyChain(chain^)
+	}
+	chain^ = {}
+	if segments^ != nil do delete(segments^)
+	segments^ = nil
+	_destroy_body(static_body)
 }
 
 _destroy_shape :: proc(shape: ^b2.ShapeId, static_body: ^b2.BodyId) {

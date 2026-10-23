@@ -33,6 +33,18 @@ comp_on_draw_gizmos_CapsuleCollider2D :: proc(c: ^physics2d.CapsuleCollider2D, c
 	physics2d.draw_capsule_collider_wires(c, physics2d.COLLIDER_GIZMO_COLOR)
 }
 
+@(comp_on_draw_gizmos={component=PolygonCollider2D})
+comp_on_draw_gizmos_PolygonCollider2D :: proc(c: ^physics2d.PolygonCollider2D, ctx: handles.Gizmo_Context) {
+	if .In_Selection not_in ctx.state do return
+	physics2d.draw_polygon_collider_wires(c, physics2d.COLLIDER_GIZMO_COLOR)
+}
+
+@(comp_on_draw_gizmos={component=EdgeCollider2D})
+comp_on_draw_gizmos_EdgeCollider2D :: proc(c: ^physics2d.EdgeCollider2D, ctx: handles.Gizmo_Context) {
+	if .In_Selection not_in ctx.state do return
+	physics2d.draw_edge_collider_wires(c, physics2d.COLLIDER_GIZMO_COLOR)
+}
+
 // --- Bounds handles --------------------------------------------------------------
 // The handles work in the collider's space (collider_space) with scaled
 // sizes, as the outlines do, on the X and Y axes only. A field changes only
