@@ -1,3 +1,23 @@
+## [0.142.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.141.1...v0.142.0) (2026-10-23)
+
+### Features
+
+* a PolygonCollider2D added to a sprite starts as the outline of its opaque pixels, through the physics2d/sprites integration subpackage ([9cc93b3](https://github.com/MoonHug-Editor/moonhug/commit/9cc93b302bfdf44b024519d23a6dbed56d9b665d))
+* Background Tasks window ([e863215](https://github.com/MoonHug-Editor/moonhug/commit/e863215428f022a618fcd3b90d0d6319e953d912))
+* convex decompositions as model import settings, computed by the CoACD tool in a child process after Apply, with status bar progress and cancel, only changed sets recomputed, and a MeshCollider Hulls dropdown so a Rigidbody carries a concave mesh ([ffcdc83](https://github.com/MoonHug-Editor/moonhug/commit/ffcdc831f26e14efc470463836d04e8327f4b7a7))
+* MeshCollider, the convex hull of a mesh on any body or its triangles on a static body, with the mesh's geometry cached on the CPU ([816a428](https://github.com/MoonHug-Editor/moonhug/commit/816a4287db173ba20c71946366d762cf86fc4685))
+* N convex decompositions run at once ([a15c355](https://github.com/MoonHug-Editor/moonhug/commit/a15c3558207f6affd1c7ec704d7820952260ab4f))
+* point handles for PolygonCollider2D and EdgeCollider2D, drag, insert on an edge, Alt+click delete, one undo step each ([cf96ff9](https://github.com/MoonHug-Editor/moonhug/commit/cf96ff9040fec2f8014cfccbb348ab5152ee70f7))
+* PolygonCollider2D, any simple polygon partitioned into convex pieces for box2d, and EdgeCollider2D as a one-sided chain ([50c56ca](https://github.com/MoonHug-Editor/moonhug/commit/50c56ca7d15a6bb586590bc3a3a94a2a1790c550))
+* Remesh Resolution per convex decomposition, the grid CoACD rebuilds an open mesh on, part of the set's hash so a change recomputes only that set ([f4c00cf](https://github.com/MoonHug-Editor/moonhug/commit/f4c00cf305f1fb6f9093af9fa76da48a71f6143e))
+* scene files write vectors and references on one line and instance records with their payload inline, through json marshaler hooks ([bc7b8ee](https://github.com/MoonHug-Editor/moonhug/commit/bc7b8ee54d7cd1d0cd46eac4723cf523ad91d36f))
+
+### Bug Fixes
+
+* a dense MeshCollider is a compound of mesh chunks of at most 128 triangles, since box3d keeps 256 triangles per contact and drops the rest ([4cee68b](https://github.com/MoonHug-Editor/moonhug/commit/4cee68bdf8f2448e358b70886a68762b14f36bb2))
+* decorators which hid by clearing is_visible ([ffa051f](https://github.com/MoonHug-Editor/moonhug/commit/ffa051fd9c59ca57071e9a4dd7c0f5713757cb2b))
+* MeshCollider hulls keep 44 vertices, the most box3d's edge limit holds, so a dense mesh builds a hull ([25d108e](https://github.com/MoonHug-Editor/moonhug/commit/25d108e9a1aaed1d952fd61a184b4eb9027514fb))
+
 ## [0.141.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.141.0...v0.141.1) (2026-10-22)
 
 ### Bug Fixes
