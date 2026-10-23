@@ -495,14 +495,15 @@ _sync_polygon_colliders :: proc(w: ^engine.World) {
 	}
 }
 
-// An edge collider's chain: the scaled path in the body's space, with a
+// An edge collider's segment shapes when two-sided, else its chain: the
+// scaled path in the body's space, with a
 // ghost point past each end on the end segment's line, the way box2d wants
 // an open chain.
 @(private = "file")
 _sync_edge_colliders :: proc(w: ^engine.World) {
 	it := engine.pool_iterator(edge_collider2_ds(w))
 	for c, _ in engine.pool_next(&it) {
-		if b2.Chain_IsValid(c.chain) {
+		if b2.Chain_IsValid(c.chain) || len(c.segments) > 0 {
 			mask := _collider_mask(w, c.owner, c.layers, c.layer_overrides)
 			for sh in c.segments do _sync_filter(sh, c.layers, mask)
 			continue
@@ -512,12 +513,25 @@ _sync_edge_colliders :: proc(w: ^engine.World) {
 		scale := collider_scale(c.owner)
 		target, ok := _shape_target(w, c.owner, c.offset * scale, &c.static_body)
 		if !ok do continue
+		def := _shape_def(1, _collider_material(w, c.owner, c.material), false, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
+		if c.segments == nil do c.segments = make([dynamic]b2.ShapeId, runtime.default_allocator())
+		if c.two_sided {
+			for i in 0 ..< len(c.points) - 1 {
+				seg := b2.Segment{
+					point1 = target.center + _rotate2(c.points[i] * scale, target.angle),
+					point2 = target.center + _rotate2(c.points[i + 1] * scale, target.angle),
+				}
+				sh := b2.CreateSegmentShape(target.body, def, &seg)
+				append(&c.segments, sh)
+				_register_shape(sh, c.owner)
+			}
+			continue
+		}
 		n := len(c.points)
 		local := make([][2]f32, n + 2, context.temp_allocator)
 		for p, i in c.points do local[i + 1] = target.center + _rotate2(p * scale, target.angle)
 		local[0] = local[1] + (local[1] - local[2])
 		local[n + 1] = local[n] + (local[n] - local[n - 1])
-		def := _shape_def(1, _collider_material(w, c.owner, c.material), false, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 		material := def.material
 		cdef := b2.DefaultChainDef()
 		cdef.points = raw_data(local)
@@ -527,7 +541,6 @@ _sync_edge_colliders :: proc(w: ^engine.World) {
 		cdef.filter = def.filter
 		cdef.enableSensorEvents = true
 		c.chain = b2.CreateChain(target.body, cdef)
-		if c.segments == nil do c.segments = make([dynamic]b2.ShapeId, runtime.default_allocator())
 		resize(&c.segments, int(b2.Chain_GetSegmentCount(c.chain)))
 		got := b2.Chain_GetSegments(c.chain, raw_data(c.segments), i32(len(c.segments)))
 		resize(&c.segments, int(got))
@@ -617,11 +630,18 @@ _destroy_shapes :: proc(shapes: ^[dynamic]b2.ShapeId, static_body: ^b2.BodyId) {
 	_destroy_body(static_body)
 }
 
-// An edge collider's chain and its segments' owner entries.
+// An edge collider's chain, or its two-sided segment shapes, and their owner
+// entries.
 _destroy_chain :: proc(chain: ^b2.ChainId, segments: ^[dynamic]b2.ShapeId, static_body: ^b2.BodyId) {
 	if _state.world_ready && b2.Chain_IsValid(chain^) {
 		for sh in segments do delete_key(&_state.shape_owner, _shape_key(sh))
 		b2.DestroyChain(chain^)
+	} else if _state.world_ready {
+		// Two-sided: segment shapes of their own.
+		for sh in segments do if b2.Shape_IsValid(sh) {
+			delete_key(&_state.shape_owner, _shape_key(sh))
+			b2.DestroyShape(sh, true)
+		}
 	}
 	chain^ = {}
 	if segments^ != nil do delete(segments^)

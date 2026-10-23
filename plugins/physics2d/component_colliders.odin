@@ -166,16 +166,19 @@ cleanup_PolygonCollider2D :: proc(comp: ^PolygonCollider2D) {
 }
 
 // An open line of `points` in the collider's space, around `offset`: ground
-// outlines, as box2d's chain, smooth across its corners and one-sided. The
-// solid side is to the right of the path's direction, so a floor's points
-// run from right to left, and a body behind the line passes through it.
-// The ends continue straight for a body sliding off them.
+// outlines. Two-sided (the default), each edge is a segment shape that
+// stops a body from either side. Not two-sided, the line is box2d's chain,
+// smooth across its corners so a body sliding along never catches on one,
+// and one-sided: the solid side is to the right of the path's direction, so
+// a floor's points run from right to left, and a body behind the line passes
+// through it. The chain's ends continue straight for a body sliding off them.
 @(component={menu="Physics2D/EdgeCollider2D"})
 @(typ_guid={guid = "d3835978-f15b-4a58-b33a-774f6a83daf4"})
 EdgeCollider2D :: struct {
 	using base:  engine.CompData `inspect:"-"`,
 	points:      [dynamic][2]f32,
 	offset:      [2]f32,
+	two_sided:   bool `decor:tooltip(desc="Collide from both sides. Off, the line is one-sided and smooth across its corners, so a body sliding along it never catches on one: the solid side is to the right of the path's direction.")`,
 	// How the surface slides and bounces (physics_material.odin). Unset is
 	// the Rigidbody2D's material, then a new Physics Material 2D's defaults.
 	material:    engine.Asset_GUID `ref:"PhysicsMaterial2D" expand`,
@@ -183,13 +186,15 @@ EdgeCollider2D :: struct {
 	using layer_overrides: Physics2D_Layer_Overrides `inline:""`,
 
 	chain:       b2.ChainId `json:"-" inspect:"-"`,
-	segments:    [dynamic]b2.ShapeId `json:"-" inspect:"-"`, // the chain's segment shapes
+	// The segment shapes: the chain's, or one per edge when two-sided.
+	segments:    [dynamic]b2.ShapeId `json:"-" inspect:"-"`,
 	static_body: b2.BodyId `json:"-" inspect:"-"`,
 }
 
 reset_EdgeCollider2D :: proc(comp: ^EdgeCollider2D) {
 	cleanup_EdgeCollider2D(comp)
 	comp.layers = 1
+	comp.two_sided = true
 	clear(&comp.points)
 	append(&comp.points, [2]f32{-0.5, 0}, [2]f32{0.5, 0})
 }

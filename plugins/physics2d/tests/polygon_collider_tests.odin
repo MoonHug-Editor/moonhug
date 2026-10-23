@@ -149,6 +149,7 @@ physics2d_edge_collider_catches_a_ball :: proc(t: ^testing.T) {
 	v := engine.transform_new("V")
 	_, ec_ptr := engine.transform_add_comp(v, .EdgeCollider2D)
 	ec := cast(^physics2d.EdgeCollider2D)ec_ptr
+	ec.two_sided = false
 	clear(&ec.points)
 	append(&ec.points, [2]f32{3, 3}, [2]f32{0, 0}, [2]f32{-3, 3})
 	ball := _ball(&tc.world, -1.5, 3, 0.25)
@@ -166,4 +167,37 @@ physics2d_edge_collider_catches_a_ball :: proc(t: ^testing.T) {
 	through := _ball(&tc.world, -1.5, 3, 0.25)
 	for _ in 0 ..< 200 do physics2d.physics_step(1.0 / 60.0)
 	testing.expect(t, engine.pool_get(&tc.world.transforms, engine.Handle(through)).position.y < -5, "the back of the chain lets a ball through")
+}
+
+// Two-sided, the default: one segment shape per edge and no chain, and the V
+// wound either way holds the ball.
+@(test)
+physics2d_edge_collider_two_sided :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	v := engine.transform_new("V")
+	_, ec_ptr := engine.transform_add_comp(v, .EdgeCollider2D)
+	ec := cast(^physics2d.EdgeCollider2D)ec_ptr
+	testing.expect(t, ec.two_sided, "a new edge collider is two-sided")
+	for winding in 0 ..< 2 {
+		physics2d.cleanup_EdgeCollider2D(ec)
+		ec.enabled = true
+		ec.layers = 1
+		ec.two_sided = true
+		if winding == 0 {
+			append(&ec.points, [2]f32{3, 3}, [2]f32{0, 0}, [2]f32{-3, 3})
+		} else {
+			append(&ec.points, [2]f32{-3, 3}, [2]f32{0, 0}, [2]f32{3, 3})
+		}
+		ball := _ball(&tc.world, -1.5, 3, 0.25)
+		for _ in 0 ..< 400 do physics2d.physics_step(1.0 / 60.0)
+		testing.expect(t, !b2.Chain_IsValid(ec.chain) && len(ec.segments) == 2, "one segment shape per edge, no chain")
+		p := engine.pool_get(&tc.world.transforms, engine.Handle(ball)).position
+		testing.expectf(t, abs(p.x) < 0.2 && p.y > 0.2 && p.y < 0.5, "winding %d: the ball settles in the V, at %v", winding, p)
+		engine.transform_destroy(ball)
+	}
 }

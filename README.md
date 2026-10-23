@@ -148,7 +148,6 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 
 - physics2d follow-ups:
   - effectors/polygon colliders
-  - EdgeCollider2D: it collides on one side only. A `two_sided` option is still to do.
 
 - physics3d follow-ups:
   - MeshCollider
