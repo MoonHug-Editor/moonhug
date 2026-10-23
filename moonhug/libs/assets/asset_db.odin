@@ -59,9 +59,14 @@ Asset_Root_Info :: struct {
     base_prefab:   core.Asset_GUID, // is_variant only: the Base Prefab it inherits from
 }
 
+// A source file's stamp, its .meta's included: a meta changed outside the
+// editor (a git checkout, a pull) is a change to the asset, since the meta
+// holds its import settings.
 Asset_File_Stamp :: struct {
-    mtime: time.Time,
-    size:  i64,
+    mtime:      time.Time,
+    size:       i64,
+    meta_mtime: time.Time,
+    meta_size:  i64,
 }
 
 asset_db: AssetDB

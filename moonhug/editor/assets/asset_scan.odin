@@ -20,6 +20,11 @@ import "moonhug:libs/log"
 // registration, changed scene assets re-index, deleted assets unregister and
 // their orphaned metas are removed. Renames arrive as delete+create; the meta
 // travels with the file (project view moves it), so the guid stays stable.
+// A changed asset, its source or its .meta, is reimported here when it has an
+// importer, so the editor matches the files after a git checkout or an edit
+// in another program. The import's freshness check (mtime, size, settings
+// hash) makes that a no-op when nothing an import reads changed. New assets
+// import when first needed, as at startup.
 asset_db_refresh :: proc() {
 	if assets.asset_db.pipeline == .Catalog do return
 	walk: _Db_Walk
@@ -33,6 +38,9 @@ asset_db_refresh :: proc() {
 	}
 
 	created, modified, deleted: int
+	// The stamps as they were, to tell a modified asset from a created one.
+	before := make(map[string]assets.Asset_File_Stamp, len(assets.asset_db.file_state), context.temp_allocator)
+	for path, stamp in assets.asset_db.file_state do before[path] = stamp
 
 	// Deletions. Collect first — removing while iterating is unsafe.
 	removed := make([dynamic]string, context.temp_allocator)
@@ -67,12 +75,12 @@ asset_db_refresh :: proc() {
 		old, existed := assets.asset_db.file_state[path]
 		if !existed {
 			_ensure_meta(path)
-			assets.asset_db.file_state[strings.clone(path)] = stamp
+			assets.asset_db.file_state[strings.clone(path)] = _with_meta_stamp(path, stamp)
 			append(&changed, path)
 			created += 1
 		} else if old != stamp {
 			_ensure_meta(path) // re-reads the meta; guid stays stable
-			assets.asset_db.file_state[path] = stamp // key exists; stored key is reused
+			assets.asset_db.file_state[path] = _with_meta_stamp(path, stamp) // key exists; stored key is reused
 			append(&changed, path)
 			modified += 1
 		}
@@ -83,6 +91,17 @@ asset_db_refresh :: proc() {
 		// the path-changed hooks (the shader hook below reimports).
 		assets.asset_db_run_evict_hooks(path)
 		for hook in assets._path_changed_hooks do hook(path)
+	}
+	// Changed assets reimport, one index write for the lot. Created ones are
+	// in `changed` too and are left to import when first needed.
+	if modified > 0 {
+		assets._artifact_index_batch_set(true)
+		for path in changed {
+			if old, existed := before[path]; !existed || old == assets.asset_db.file_state[path] do continue
+			if is_importable_extension(filepath.ext(path)) do _ = asset_pipeline_import_asset(path)
+		}
+		assets._artifact_index_batch_set(false)
+		assets._artifact_index_save()
 	}
 	for r in gone {
 		if uuid.Identifier(r.guid) in assets.asset_db.guid_to_path do continue // renamed or moved
@@ -119,6 +138,11 @@ _db_walk :: proc(dir_path: string, walk: ^_Db_Walk) {
 	if read_err != nil do return
 	defer os.file_info_slice_delete(entries, context.temp_allocator)
 
+	// The folder's metas first, so each file's stamp carries its meta's.
+	metas := make(map[string]os.File_Info, context.temp_allocator)
+	for entry in entries {
+		if strings.has_suffix(entry.name, ".meta") do metas[entry.name] = entry
+	}
 	for entry in entries {
 		if strings.has_prefix(entry.name, ".") do continue
 		full_path, _ := filepath.join({dir_path, entry.name}, context.temp_allocator)
@@ -128,9 +152,25 @@ _db_walk :: proc(dir_path: string, walk: ^_Db_Walk) {
 		} else if strings.has_suffix(entry.name, ".meta") {
 			append(&walk.metas, full_path)
 		} else {
-			walk.files[full_path] = {mtime = entry.modification_time, size = entry.size}
+			stamp := assets.Asset_File_Stamp{mtime = entry.modification_time, size = entry.size}
+			if meta, has := metas[strings.concatenate({entry.name, ".meta"}, context.temp_allocator)]; has {
+				stamp.meta_mtime, stamp.meta_size = meta.modification_time, meta.size
+			}
+			walk.files[full_path] = stamp
 		}
 	}
+}
+
+// The stamp with its .meta's as it is now: _ensure_meta may just have written
+// or upgraded it, and a stamp taken before that would read as a change on the
+// next refresh.
+@(private = "file")
+_with_meta_stamp :: proc(path: string, stamp: assets.Asset_File_Stamp) -> assets.Asset_File_Stamp {
+	out := stamp
+	if info, err := os.stat(strings.concatenate({path, ".meta"}, context.temp_allocator), context.temp_allocator); err == nil {
+		out.meta_mtime, out.meta_size = info.modification_time, info.size
+	}
+	return out
 }
 
 @(private = "file")
