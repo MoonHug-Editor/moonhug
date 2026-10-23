@@ -48,13 +48,13 @@ test_clip_cache_does_not_borrow_caller_allocator :: proc(t: ^testing.T) {
 		// The caller's allocator, standing in for the temp arena the editor's
 		// draw paths are running under when they reach the cache.
 		context.allocator = mem.tracking_allocator(&track)
-		anim.animation_clip_preview(guid, doc)
+		anim.animation_clip_preview({guid = guid}, doc)
 	}
 
 	testing.expect_value(t, len(track.allocation_map), 0)
 
 	// And the entry is intact and independent of the source.
-	cached, ok := anim.animation_clip_load(guid)
+	cached, ok := anim.animation_clip_load({guid = guid})
 	testing.expect(t, ok, "the preview entry is cached")
 	if !ok do return
 	testing.expect(t, abs(cached.length - 2) < 0.001, "cached length survives")

@@ -19,7 +19,8 @@
         {"pptr": {"local_id": 188, "guid": "00000000-0000-0000-0000-000000000000"}},
         {"pptr": {"local_id": 196, "guid": "00000000-0000-0000-0000-000000000000"}},
         {"pptr": {"local_id": 204, "guid": "00000000-0000-0000-0000-000000000000"}},
-        {"pptr": {"local_id": 208, "guid": "00000000-0000-0000-0000-000000000000"}}
+        {"pptr": {"local_id": 208, "guid": "00000000-0000-0000-0000-000000000000"}},
+        {"pptr": {"local_id": 3137213821012142, "guid": "00000000-0000-0000-0000-000000000000"}}
       ],
       "components": [
 
@@ -273,7 +274,9 @@
       ],
       "components": [
         {"local_id": 189},
-        {"local_id": 190}
+        {"local_id": 190},
+        {"local_id": 1135510027299392},
+        {"local_id": 3066869339402366}
       ]
     },
     {
@@ -281,7 +284,7 @@
       "name": "DamagedHelmet",
       "is_active": true,
       "position": [1.85281181, 3.85916615, -7.14628696],
-      "rotation": [0.0, -0.2894198, 0.0, 0.95720232],
+      "rotation": [0.8647117, -0.12411873, -0.26145431, 0.41049966],
       "scale": [1.0, 1.0, 1.0],
       "render_layer": 1,
       "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
@@ -290,16 +293,18 @@
       ],
       "components": [
         {"local_id": 197},
-        {"local_id": 198}
+        {"local_id": 198},
+        {"local_id": 2728380503649951},
+        {"local_id": 312436593232011}
       ]
     },
     {
       "local_id": 204,
       "name": "Avocado",
       "is_active": true,
-      "position": [-2.82728958, 2.5426631, -7.68504953],
+      "position": [2.11899185, 5.34205246, -7.29146576],
       "rotation": [0.0, 0.0, 0.0, 1.0],
-      "scale": [20.0, 20.0, 20.0],
+      "scale": [10.0, 10.0, 10.0],
       "render_layer": 1,
       "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
       "children": [
@@ -307,7 +312,9 @@
       ],
       "components": [
         {"local_id": 205},
-        {"local_id": 206}
+        {"local_id": 206},
+        {"local_id": 3389779286881599},
+        {"local_id": 2023872296362687}
       ]
     },
     {
@@ -324,6 +331,25 @@
       ],
       "components": [
 
+      ]
+    },
+    {
+      "local_id": 3137213821012142,
+      "name": "Cube",
+      "is_active": true,
+      "position": [2.17727184, 7.97949314, -6.91834068],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [1.0, 1.0, 1.0],
+      "render_layer": 1,
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [
+
+      ],
+      "components": [
+        {"local_id": 3431665503543005},
+        {"local_id": 4472179191565251},
+        {"local_id": 879559815359941},
+        {"local_id": 1779972094477092}
       ]
     }
   ],
@@ -1053,7 +1079,10 @@
         "enabled": true,
         "local_id": 2262422533977326
       },
-      "clip": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
+      "clip": {
+        "guid": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
+        "local_id": 0
+      },
       "loop": false,
       "max_distance": 500.0,
       "min_distance": 1.0,
@@ -1111,6 +1140,58 @@
       "reflections": 0
     },
     {
+      "__type": "82976d39-c450-4464-87e2-c260c430c157",
+      "angular_damping": 0.0,
+      "base": {
+        "enabled": true,
+        "local_id": 1135510027299392
+      },
+      "continuous": false,
+      "freeze_position": [
+        false,
+        false,
+        false
+      ],
+      "freeze_rotation": [
+        false,
+        false,
+        false
+      ],
+      "is_kinematic": true,
+      "layer_overrides": {
+        "exclude": 0,
+        "include": 0
+      },
+      "linear_damping": 0.0,
+      "mass": 1.0,
+      "use_gravity": true
+    },
+    {
+      "__type": "13101cd5-e0a6-49d4-a310-953001ebae6b",
+      "base": {
+        "enabled": true,
+        "local_id": 3066869339402366
+      },
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "density": 1.0,
+      "is_trigger": false,
+      "layer_overrides": {
+        "exclude": 0,
+        "include": 0
+      },
+      "layers": 1,
+      "material": "00000000-0000-0000-0000-000000000000",
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
@@ -1134,6 +1215,54 @@
       "reflections": 0
     },
     {
+      "__type": "d6e5cf75-88a6-45e3-ac22-93aaa6b21a05",
+      "base": {
+        "enabled": true,
+        "local_id": 2728380503649951
+      },
+      "convex": true,
+      "density": 3.8299999200000001,
+      "hull_set": 3758974518040437223,
+      "is_trigger": false,
+      "layer_overrides": {
+        "exclude": 0,
+        "include": 0
+      },
+      "layers": 1,
+      "material": "00000000-0000-0000-0000-000000000000",
+      "mesh": {
+        "guid": "eb28d9ed-803a-446b-bc76-1ff01e138527",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "82976d39-c450-4464-87e2-c260c430c157",
+      "angular_damping": 0.0,
+      "base": {
+        "enabled": true,
+        "local_id": 312436593232011
+      },
+      "continuous": false,
+      "freeze_position": [
+        false,
+        false,
+        false
+      ],
+      "freeze_rotation": [
+        false,
+        false,
+        false
+      ],
+      "is_kinematic": false,
+      "layer_overrides": {
+        "exclude": 0,
+        "include": 0
+      },
+      "linear_damping": 0.0,
+      "mass": 1.0,
+      "use_gravity": true
+    },
+    {
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
@@ -1155,6 +1284,129 @@
         "32583acf-be2f-4fb3-bef6-1993e9c5a137"
       ],
       "reflections": 0
+    },
+    {
+      "__type": "d6e5cf75-88a6-45e3-ac22-93aaa6b21a05",
+      "base": {
+        "enabled": true,
+        "local_id": 3389779286881599
+      },
+      "convex": true,
+      "density": 4.0999999000000003,
+      "hull_set": 0,
+      "is_trigger": false,
+      "layer_overrides": {
+        "exclude": 0,
+        "include": 0
+      },
+      "layers": 1,
+      "material": "00000000-0000-0000-0000-000000000000",
+      "mesh": {
+        "guid": "00000000-0000-0000-0000-000000000000",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "82976d39-c450-4464-87e2-c260c430c157",
+      "angular_damping": 0.0,
+      "base": {
+        "enabled": true,
+        "local_id": 2023872296362687
+      },
+      "continuous": false,
+      "freeze_position": [
+        false,
+        false,
+        false
+      ],
+      "freeze_rotation": [
+        false,
+        false,
+        false
+      ],
+      "is_kinematic": false,
+      "layer_overrides": {
+        "exclude": 0,
+        "include": 0
+      },
+      "linear_damping": 0.0,
+      "mass": 1.0,
+      "use_gravity": true
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 3431665503543005
+      },
+      "mesh": {
+        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 4472179191565251
+      },
+      "cast_shadows": 0,
+      "materials": [
+        "86518465-b823-4eb9-b3f5-c0deef450fc6"
+      ],
+      "reflections": 0
+    },
+    {
+      "__type": "82976d39-c450-4464-87e2-c260c430c157",
+      "angular_damping": 0.0,
+      "base": {
+        "enabled": true,
+        "local_id": 879559815359941
+      },
+      "continuous": false,
+      "freeze_position": [
+        false,
+        false,
+        false
+      ],
+      "freeze_rotation": [
+        false,
+        false,
+        false
+      ],
+      "is_kinematic": false,
+      "layer_overrides": {
+        "exclude": 0,
+        "include": 0
+      },
+      "linear_damping": 0.0,
+      "mass": 1.0,
+      "use_gravity": true
+    },
+    {
+      "__type": "13101cd5-e0a6-49d4-a310-953001ebae6b",
+      "base": {
+        "enabled": true,
+        "local_id": 1779972094477092
+      },
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "density": 1.0,
+      "is_trigger": false,
+      "layer_overrides": {
+        "exclude": 0,
+        "include": 0
+      },
+      "layers": 1,
+      "material": "00000000-0000-0000-0000-000000000000",
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ]
     }
   ]
 }

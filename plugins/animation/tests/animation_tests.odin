@@ -68,7 +68,7 @@ test_animation_component_tick :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 
 	guid_id, _ := uuid.read("aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb")
-	guid := engine.Asset_GUID(guid_id)
+	guid := engine.PPtr{guid = engine.Asset_GUID(guid_id)}
 	anim.animation_clip_cache[guid] = _make_test_clip()
 
 	owner := engine.transform_new("Robot")
@@ -160,7 +160,7 @@ test_scene_from_gltf :: proc(t: ^testing.T) {
 	mesh_id, _ := uuid.read("11111111-2222-3333-4444-555555555555")
 	clip_id, _ := uuid.read("66666666-7777-8888-9999-aaaaaaaaaaaa")
 	mesh_guid := engine.Asset_GUID(mesh_id)
-	clip_guid := engine.Asset_GUID(clip_id)
+	clip_guid := engine.PPtr{guid = engine.Asset_GUID(clip_id)}
 
 	out :: "moonhug/tests/fixtures/_test_extracted_model.scene"
 	defer os.remove(out)
@@ -169,7 +169,7 @@ test_scene_from_gltf :: proc(t: ^testing.T) {
 	add_animation := proc(root: engine.Transform_Handle, user: rawptr) {
 		_, a_raw := engine.transform_add_comp(root, .Animation)
 		a := cast(^anim.Animation)a_raw
-		a.clip = (cast(^engine.Asset_GUID)user)^
+		a.clip = (cast(^engine.PPtr)user)^
 	}
 	ok := engine.scene_from_gltf(data, "AnimatedCube", mesh_guid, {}, out, add_animation, &clip_guid)
 	testing.expect(t, ok, "scene_from_gltf should save")

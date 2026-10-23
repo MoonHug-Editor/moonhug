@@ -73,7 +73,7 @@ _set_anim_clip :: proc(track_node: engine.Transform_Handle, index: int, guid: en
 	t := engine.pool_get(&w.transforms, engine.Handle(track_node))
 	if t == nil || index >= len(t.children) do return
 	cn := engine.Transform_Handle(t.children[index].handle)
-	if _, cr := anim.get_comp(cn, anim_seq.ClipAnimation); cr != nil do cr.clip = guid
+	if _, cr := anim.get_comp(cn, anim_seq.ClipAnimation); cr != nil do cr.clip = engine.PPtr{guid = guid}
 }
 
 @(test)
@@ -90,8 +90,8 @@ test_director_playback :: proc(t: ^testing.T) {
 
 	// Clips: a ramp x 0->10 over 1s, and a constant x=4.
 	ramp_guid, const_guid := _clip_guid(10), _clip_guid(11)
-	anim.animation_clip_cache[ramp_guid] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
-	anim.animation_clip_cache[const_guid] = _const_clip(.Position, {4, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = ramp_guid}] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = const_guid}] = _const_clip(.Position, {4, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -139,7 +139,7 @@ test_director_control_and_scrub :: proc(t: ^testing.T) {
 	anim_seq.animation_track_init()
 
 	ramp_guid := _clip_guid(12)
-	anim.animation_clip_cache[ramp_guid] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = ramp_guid}] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -189,7 +189,7 @@ test_control_track_drives_nested_director :: proc(t: ^testing.T) {
 	anim_seq.animation_track_init()
 
 	ramp_guid := _clip_guid(13)
-	anim.animation_clip_cache[ramp_guid] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = ramp_guid}] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
 
 	root := engine.transform_new("Host")
 	engine.scene_set_root(tc.scene, root)
@@ -256,7 +256,7 @@ test_animation_track_target :: proc(t: ^testing.T) {
 	anim_seq.animation_track_init()
 
 	ramp_guid := _clip_guid(20)
-	anim.animation_clip_cache[ramp_guid] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = ramp_guid}] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -286,7 +286,7 @@ test_animation_track_target :: proc(t: ^testing.T) {
 	acomp := cast(^anim.Animation)a_comp
 	acomp.enabled = true
 	acomp.play_automatically = true
-	acomp.clip = ramp_guid
+	acomp.clip = engine.PPtr{guid = ramp_guid}
 	if _, atc := anim.get_comp(at, anim_seq.TrackAnimation); atc != nil {
 		atc.target = {handle = a_owned.handle}
 	}
@@ -327,8 +327,8 @@ test_two_animation_tracks_blend_on_one_object :: proc(t: ^testing.T) {
 	anim_seq.animation_track_init()
 
 	ramp_guid, hi_guid := _clip_guid(21), _clip_guid(22)
-	anim.animation_clip_cache[ramp_guid] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
-	anim.animation_clip_cache[hi_guid] = _ramp_clip(.Position, {20, 0, 0, 0}, {20, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = ramp_guid}] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = hi_guid}] = _ramp_clip(.Position, {20, 0, 0, 0}, {20, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)

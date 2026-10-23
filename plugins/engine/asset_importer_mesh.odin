@@ -31,16 +31,15 @@ Mesh_Part :: struct {
 }
 
 // A clip inside a model: one glTF animation, baked to its own artifact
-// (mesh_clip_artifact_path) and addressable by its OWN guid, so a
-// `clip: Asset_GUID` field names it exactly the way it names a standalone
-// .anim. The guid lives in the model's .meta and is committed with it, the
-// data stays in library/. Ids share the model's sub-asset id space with parts
-// and, like parts, are matched by name across reimports, so a clip added in
-// the DCC tool never renumbers the rest (plugins/animation/docs/AnimationComponent.md).
+// (mesh_clip_artifact_path). A sub-asset of the model: a `clip: PPtr` field
+// names it as {model guid, clip id}, the way it names a standalone .anim as
+// {its guid, 0}. Ids share the model's sub-asset id space with parts and
+// hull sets and, like parts, are matched by name across reimports, so a clip
+// added in the DCC tool never renumbers the rest
+// (plugins/animation/docs/AnimationComponent.md).
 Mesh_Clip :: struct {
     id:   Local_ID,
     name: string,
-    guid: Asset_GUID,
     // The clip's import settings (the animation package's
     // Animation_Clip_Settings), kept as a JSON value because that type is the
     // package's, not the engine's. The baker reads it zero → JSON →
@@ -193,22 +192,6 @@ mesh_artifacts :: proc(artifact_path: string, allocator := context.allocator) ->
         append(&out, clip)
     }
     return out[:]
-}
-
-// Registers every clip guid a model's settings list, and drops the ones no
-// longer there. The mesh importer's sub-asset hook: the import driver calls it
-// after the model imports (the importer refines the list) and when the scan
-// first sees the model, so a fresh clone resolves clip references before any
-// import has run.
-asset_db_register_model_subs :: proc(path: string) {
-    if _, gok := asset_db_get_guid(path); !gok do return
-    settings, sok := asset_pipeline_get_settings(path, context.temp_allocator)
-    if !sok do return
-    ms, is_mesh := settings.(MeshSettings)
-    if !is_mesh do return
-    subs := make([dynamic]Sub_Asset_Decl, 0, len(ms.clips), context.temp_allocator)
-    for c in ms.clips do append(&subs, Sub_Asset_Decl{guid = c.guid, id = c.id})
-    asset_db_set_subs(path, "anim", subs[:])
 }
 
 // Validates an artifact blob and returns views into it (no copies) — shared

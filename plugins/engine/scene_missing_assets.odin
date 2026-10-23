@@ -23,11 +23,9 @@ Missing_Asset_Ref :: struct {
 	field:     string, // the field it sits under: "materials", "source_prefab"
 }
 
-// Whether `guid` names an asset or a sub-asset (a model's clip) the asset
-// database knows.
+// Whether `guid` names an asset the asset database knows.
 scene_asset_resolves :: proc(guid: uuid.Identifier) -> bool {
-	if _, ok := assets.asset_db_get_path(guid); ok do return true
-	_, ok := assets.asset_db_get_sub(core.Asset_GUID(guid))
+	_, ok := assets.asset_db_get_path(guid)
 	return ok
 }
 

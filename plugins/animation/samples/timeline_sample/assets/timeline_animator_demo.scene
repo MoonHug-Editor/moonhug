@@ -1055,7 +1055,10 @@
         "enabled": true,
         "local_id": 8010
       },
-      "clip": "00000000-0000-0000-0000-000000000000",
+      "clip": {
+        "guid": "00000000-0000-0000-0000-000000000000",
+        "local_id": 0
+      },
       "layers": [
 
       ],
@@ -1152,7 +1155,10 @@
         "enabled": true,
         "local_id": 8024
       },
-      "clip": "00000000-0000-0000-0000-000000000000",
+      "clip": {
+        "guid": "00000000-0000-0000-0000-000000000000",
+        "local_id": 0
+      },
       "layers": [
 
       ],
@@ -1227,7 +1233,10 @@
         "enabled": true,
         "local_id": 8035
       },
-      "clip": "d6d7f204-10f5-402d-abd6-a2bc88b2719b"
+      "clip": {
+        "guid": "d6d7f204-10f5-402d-abd6-a2bc88b2719b",
+        "local_id": 0
+      }
     },
     {
       "__type": "b7aaabb5-aaee-4aa9-af14-fdc8e2254d6c",
@@ -1276,7 +1285,10 @@
         "enabled": true,
         "local_id": 8043
       },
-      "clip": "c35ce969-2079-457d-9e12-f4c6c08e089a"
+      "clip": {
+        "guid": "c35ce969-2079-457d-9e12-f4c6c08e089a",
+        "local_id": 0
+      }
     },
     {
       "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
@@ -1314,7 +1326,10 @@
         "enabled": true,
         "local_id": 8049
       },
-      "clip": "d75b906f-0e99-41d5-b615-a2bf8c973106"
+      "clip": {
+        "guid": "d75b906f-0e99-41d5-b615-a2bf8c973106",
+        "local_id": 0
+      }
     },
     {
       "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
@@ -1352,7 +1367,10 @@
         "enabled": true,
         "local_id": 1346027346606025
       },
-      "clip": "958c3f32-b6ed-4c0e-8c18-58433bca60fa"
+      "clip": {
+        "guid": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
+        "local_id": 0
+      }
     },
     {
       "__type": "6f7fb020-d764-4ce1-bc09-d8088356bd22",
@@ -1360,7 +1378,10 @@
         "enabled": true,
         "local_id": 2715653696262579
       },
-      "clip": "00000000-0000-0000-0000-000000000000",
+      "clip": {
+        "guid": "00000000-0000-0000-0000-000000000000",
+        "local_id": 0
+      },
       "loop": false,
       "max_distance": 500.0,
       "min_distance": 1.0,

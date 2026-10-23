@@ -71,13 +71,13 @@ test_property_channel_f32_mix :: proc(t: ^testing.T) {
 
 	cam := _camera_guid_str()
 	a_guid, b_guid := _clip_guid(0x61), _clip_guid(0x62)
-	anim.animation_clip_cache[a_guid] = _prop_clip(cam, "fov", {30, 0, 0, 0})
-	anim.animation_clip_cache[b_guid] = _prop_clip(cam, "fov", {90, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = a_guid}] = _prop_clip(cam, "fov", {30, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = b_guid}] = _prop_clip(cam, "fov", {90, 0, 0, 0})
 
 	mixer := anim.playable_add(&pt.g, anim.Playable_Mixer{})
 	groot := mixer
-	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Playable_Clip{clip = a_guid}), 0.5)
-	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Playable_Clip{clip = b_guid}), 0.5)
+	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Playable_Clip{clip = engine.PPtr{guid = a_guid}}), 0.5)
+	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Playable_Clip{clip = engine.PPtr{guid = b_guid}}), 0.5)
 
 	pose := anim.playable_graph_evaluate(&pt.g, groot, &pt.b)
 	anim.animation_pose_apply(&pt.b, pose)
@@ -92,8 +92,8 @@ test_property_channel_vec4_full :: proc(t: ^testing.T) {
 	defer _prop_teardown(&pt)
 
 	guid := _clip_guid(0x63)
-	anim.animation_clip_cache[guid] = _prop_clip(_camera_guid_str(), "clear_color", {1, 0, 0, 1})
-	groot := anim.playable_add(&pt.g, anim.Playable_Clip{clip = guid})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _prop_clip(_camera_guid_str(), "clear_color", {1, 0, 0, 1})
+	groot := anim.playable_add(&pt.g, anim.Playable_Clip{clip = engine.PPtr{guid = guid}})
 
 	pose := anim.playable_graph_evaluate(&pt.g, groot, &pt.b)
 	anim.animation_pose_apply(&pt.b, pose)
@@ -109,14 +109,14 @@ test_property_channel_discrete_dominant :: proc(t: ^testing.T) {
 
 	cam := _camera_guid_str()
 	a_guid, b_guid := _clip_guid(0x64), _clip_guid(0x65)
-	anim.animation_clip_cache[a_guid] = _prop_clip(cam, "order", {5, 0, 0, 0})
-	anim.animation_clip_cache[b_guid] = _prop_clip(cam, "order", {9, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = a_guid}] = _prop_clip(cam, "order", {5, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = b_guid}] = _prop_clip(cam, "order", {9, 0, 0, 0})
 
 	mixer := anim.playable_add(&pt.g, anim.Playable_Mixer{})
 	groot := mixer
-	a_node := anim.playable_add(&pt.g, anim.Playable_Clip{clip = a_guid})
+	a_node := anim.playable_add(&pt.g, anim.Playable_Clip{clip = engine.PPtr{guid = a_guid}})
 	anim.playable_connect(&pt.g, mixer, a_node, 0.3)
-	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Playable_Clip{clip = b_guid}), 0.7)
+	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Playable_Clip{clip = engine.PPtr{guid = b_guid}}), 0.7)
 
 	pose := anim.playable_graph_evaluate(&pt.g, groot, &pt.b)
 	anim.animation_pose_apply(&pt.b, pose)
@@ -140,10 +140,10 @@ test_property_channel_partial_weight_blends_default :: proc(t: ^testing.T) {
 	defer _prop_teardown(&pt)
 
 	guid := _clip_guid(0x66)
-	anim.animation_clip_cache[guid] = _prop_clip(_camera_guid_str(), "fov", {100, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _prop_clip(_camera_guid_str(), "fov", {100, 0, 0, 0})
 	mixer := anim.playable_add(&pt.g, anim.Playable_Mixer{})
 	groot := mixer
-	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Playable_Clip{clip = guid}), 0.25)
+	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Playable_Clip{clip = engine.PPtr{guid = guid}}), 0.25)
 
 	// Bind-time default fov is 60 (reset_Camera): 0.25*100 + 0.75*60 = 70.
 	pose := anim.playable_graph_evaluate(&pt.g, groot, &pt.b)
@@ -159,12 +159,12 @@ test_property_channel_unresolved_skips :: proc(t: ^testing.T) {
 	defer _prop_teardown(&pt)
 
 	a_guid, b_guid := _clip_guid(0x67), _clip_guid(0x68)
-	anim.animation_clip_cache[a_guid] = _prop_clip(_camera_guid_str(), "no_such_field", {1, 0, 0, 0})
-	anim.animation_clip_cache[b_guid] = _prop_clip("not-a-guid", "fov", {1, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = a_guid}] = _prop_clip(_camera_guid_str(), "no_such_field", {1, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = b_guid}] = _prop_clip("not-a-guid", "fov", {1, 0, 0, 0})
 	mixer := anim.playable_add(&pt.g, anim.Playable_Mixer{})
 	groot := mixer
-	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Playable_Clip{clip = a_guid}), 1)
-	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Playable_Clip{clip = b_guid}), 1)
+	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Playable_Clip{clip = engine.PPtr{guid = a_guid}}), 1)
+	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Playable_Clip{clip = engine.PPtr{guid = b_guid}}), 1)
 
 	before := pt.camera^
 	pose := anim.playable_graph_evaluate(&pt.g, groot, &pt.b)
@@ -180,8 +180,8 @@ test_property_channel_write_defaults_restores :: proc(t: ^testing.T) {
 	defer _prop_teardown(&pt)
 
 	guid := _clip_guid(0x69)
-	anim.animation_clip_cache[guid] = _prop_clip(_camera_guid_str(), "fov", {100, 0, 0, 0})
-	groot := anim.playable_add(&pt.g, anim.Playable_Clip{clip = guid})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _prop_clip(_camera_guid_str(), "fov", {100, 0, 0, 0})
+	groot := anim.playable_add(&pt.g, anim.Playable_Clip{clip = engine.PPtr{guid = guid}})
 
 	original := pt.camera.fov
 	pose := anim.playable_graph_evaluate(&pt.g, groot, &pt.b)

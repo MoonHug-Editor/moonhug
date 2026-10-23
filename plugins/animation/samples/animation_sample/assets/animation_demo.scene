@@ -1501,7 +1501,10 @@
         "enabled": true,
         "local_id": 2543910810195009
       },
-      "clip": "5de156d5-15c4-4934-be74-b8cc41fec86b",
+      "clip": {
+        "guid": "5de156d5-15c4-4934-be74-b8cc41fec86b",
+        "local_id": 0
+      },
       "layers": [
         {
           "entries": [
@@ -1523,7 +1526,10 @@
               "id": 2,
               "kind": {
                 "__type_guid": "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630",
-                "clip": "d1cd9780-a8f2-4ab6-9fcf-ce77583c2812"
+                "clip": {
+                  "guid": "d1cd9780-a8f2-4ab6-9fcf-ce77583c2812",
+                  "local_id": 0
+                }
               },
               "name": "Walk",
               "parent": 1,
@@ -1537,7 +1543,10 @@
               "id": 3,
               "kind": {
                 "__type_guid": "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630",
-                "clip": "c60585bf-dae8-4c4d-a808-4d6368f8b16f"
+                "clip": {
+                  "guid": "c60585bf-dae8-4c4d-a808-4d6368f8b16f",
+                  "local_id": 0
+                }
               },
               "name": "Run",
               "parent": 1,
@@ -1551,7 +1560,10 @@
               "id": 4,
               "kind": {
                 "__type_guid": "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630",
-                "clip": "5de156d5-15c4-4934-be74-b8cc41fec86b"
+                "clip": {
+                  "guid": "5de156d5-15c4-4934-be74-b8cc41fec86b",
+                  "local_id": 0
+                }
               },
               "name": "Idle",
               "parent": 0,
@@ -1565,7 +1577,10 @@
               "id": 5,
               "kind": {
                 "__type_guid": "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630",
-                "clip": "37f0c3bd-e9a1-44dd-a634-aad5d0a34404"
+                "clip": {
+                  "guid": "37f0c3bd-e9a1-44dd-a634-aad5d0a34404",
+                  "local_id": 0
+                }
               },
               "name": "Jump",
               "parent": 0,
@@ -1579,7 +1594,10 @@
               "id": 6,
               "kind": {
                 "__type_guid": "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630",
-                "clip": "1002bc62-5880-465a-8e26-cc362abc22d9"
+                "clip": {
+                  "guid": "1002bc62-5880-465a-8e26-cc362abc22d9",
+                  "local_id": 0
+                }
               },
               "name": "Death",
               "parent": 0,

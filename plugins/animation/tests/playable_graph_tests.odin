@@ -44,8 +44,8 @@ test_playable_mixer_blend :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 
 	a_guid, b_guid := _clip_guid(1), _clip_guid(2)
-	anim.animation_clip_cache[a_guid] = _const_clip(.Position, {0, 0, 0, 0})
-	anim.animation_clip_cache[b_guid] = _const_clip(.Position, {4, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = a_guid}] = _const_clip(.Position, {0, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = b_guid}] = _const_clip(.Position, {4, 0, 0, 0})
 
 	owner := engine.transform_new("Rig")
 
@@ -58,8 +58,8 @@ test_playable_mixer_blend :: proc(t: ^testing.T) {
 
 	mixer := anim.playable_add(&g, anim.Playable_Mixer{})
 	groot := mixer
-	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Playable_Clip{clip = a_guid}), 0.5)
-	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Playable_Clip{clip = b_guid}), 0.5)
+	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Playable_Clip{clip = engine.PPtr{guid = a_guid}}), 0.5)
+	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Playable_Clip{clip = engine.PPtr{guid = b_guid}}), 0.5)
 
 	pose := anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose)
@@ -79,7 +79,7 @@ test_playable_partial_weight_blends_default :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 
 	guid := _clip_guid(3)
-	anim.animation_clip_cache[guid] = _const_clip(.Position, {10, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _const_clip(.Position, {10, 0, 0, 0})
 
 	owner := engine.transform_new("Rig")
 	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))
@@ -94,7 +94,7 @@ test_playable_partial_weight_blends_default :: proc(t: ^testing.T) {
 
 	mixer := anim.playable_add(&g, anim.Playable_Mixer{})
 	groot := mixer
-	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Playable_Clip{clip = guid}), 0.3)
+	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Playable_Clip{clip = engine.PPtr{guid = guid}}), 0.3)
 
 	pose := anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose)
@@ -123,8 +123,8 @@ test_playable_layer_override :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 
 	lo_guid, hi_guid := _clip_guid(4), _clip_guid(5)
-	anim.animation_clip_cache[lo_guid] = _const_clip(.Position, {1, 0, 0, 0})
-	anim.animation_clip_cache[hi_guid] = _const_clip(.Position, {9, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = lo_guid}] = _const_clip(.Position, {1, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = hi_guid}] = _const_clip(.Position, {9, 0, 0, 0})
 
 	owner := engine.transform_new("Rig")
 
@@ -141,8 +141,8 @@ test_playable_layer_override :: proc(t: ^testing.T) {
 	l1 := anim.playable_add(&g, anim.Playable_Mixer{})
 	anim.playable_connect(&g, root, l0, 1)
 	anim.playable_connect(&g, root, l1, 1)
-	anim.playable_connect(&g, l0, anim.playable_add(&g, anim.Playable_Clip{clip = lo_guid}), 1)
-	anim.playable_connect(&g, l1, anim.playable_add(&g, anim.Playable_Clip{clip = hi_guid}), 1)
+	anim.playable_connect(&g, l0, anim.playable_add(&g, anim.Playable_Clip{clip = engine.PPtr{guid = lo_guid}}), 1)
+	anim.playable_connect(&g, l1, anim.playable_add(&g, anim.Playable_Clip{clip = engine.PPtr{guid = hi_guid}}), 1)
 
 	pose := anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose)
@@ -168,8 +168,8 @@ test_playable_rotation_blend :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 
 	a_guid, b_guid := _clip_guid(6), _clip_guid(7)
-	anim.animation_clip_cache[a_guid] = _const_clip(.Rotation, {0, 0, 0, 1})            // identity
-	anim.animation_clip_cache[b_guid] = _const_clip(.Rotation, {0, 0, 0.70711, 0.70711}) // 90 deg about z
+	anim.animation_clip_cache[engine.PPtr{guid = a_guid}] = _const_clip(.Rotation, {0, 0, 0, 1})            // identity
+	anim.animation_clip_cache[engine.PPtr{guid = b_guid}] = _const_clip(.Rotation, {0, 0, 0.70711, 0.70711}) // 90 deg about z
 
 	owner := engine.transform_new("Rig")
 
@@ -182,8 +182,8 @@ test_playable_rotation_blend :: proc(t: ^testing.T) {
 
 	mixer := anim.playable_add(&g, anim.Playable_Mixer{})
 	groot := mixer
-	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Playable_Clip{clip = a_guid}), 0.5)
-	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Playable_Clip{clip = b_guid}), 0.5)
+	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Playable_Clip{clip = engine.PPtr{guid = a_guid}}), 0.5)
+	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Playable_Clip{clip = engine.PPtr{guid = b_guid}}), 0.5)
 
 	pose := anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose)
@@ -248,9 +248,9 @@ test_playable_script_collection :: proc(t: ^testing.T) {
 @(private = "file")
 _milestone_setup :: proc(tc: ^common.TestCtx) -> (owner: engine.Transform_Handle, a: ^anim.Animation, a_guid, b_guid, c_guid: engine.Asset_GUID) {
 	a_guid, b_guid, c_guid = _clip_guid(10), _clip_guid(11), _clip_guid(12)
-	anim.animation_clip_cache[a_guid] = _const_clip(.Position, {0, 0, 0, 0}, 1, .Once)
-	anim.animation_clip_cache[b_guid] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
-	anim.animation_clip_cache[c_guid] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = a_guid}] = _const_clip(.Position, {0, 0, 0, 0}, 1, .Once)
+	anim.animation_clip_cache[engine.PPtr{guid = b_guid}] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = c_guid}] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
 
 	owner = engine.transform_new("Rig")
 	_, a_ptr := engine.transform_add_comp(owner, .Animation)
@@ -274,12 +274,12 @@ test_animation_cross_fade :: proc(t: ^testing.T) {
 
 	owner, a, a_guid, b_guid, _ := _milestone_setup(tc)
 
-	anim.animation_play_clip(a, a_guid)
+	anim.animation_play_clip(a, engine.PPtr{guid = a_guid})
 	anim.animation_tick(0.1)
 	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	testing.expect(t, abs(ot.position.x) < 0.001, "clip A alone should hold x=0")
 
-	anim.animation_cross_fade(a, b_guid, 1.0)
+	anim.animation_cross_fade(a, engine.PPtr{guid = b_guid}, 1.0)
 	anim.animation_tick(0.5)
 	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	testing.expect(t, abs(ot.position.x - 5) < 0.01, "halfway through the fade x should be 5 (weights 0.5/0.5)")
@@ -303,14 +303,14 @@ test_animation_cross_fade_interrupt :: proc(t: ^testing.T) {
 
 	owner, a, a_guid, b_guid, c_guid := _milestone_setup(tc)
 
-	anim.animation_play_clip(a, a_guid)
+	anim.animation_play_clip(a, engine.PPtr{guid = a_guid})
 	anim.animation_tick(0.1)
-	anim.animation_cross_fade(a, b_guid, 1.0)
+	anim.animation_cross_fade(a, engine.PPtr{guid = b_guid}, 1.0)
 	anim.animation_tick(0.5) // mid-fade: A 0.5, B 0.5, x = 5
 
 	// Interrupt: everything fades from its CURRENT weight, so the pose is
 	// continuous — one tiny tick later x must still be ~5, no snap.
-	anim.animation_cross_fade(a, c_guid, 1.0)
+	anim.animation_cross_fade(a, engine.PPtr{guid = c_guid}, 1.0)
 	anim.animation_tick(0.01)
 	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	testing.expect(t, abs(ot.position.x - 5) < 0.3, "interruption must not snap the pose")
@@ -339,8 +339,8 @@ test_animation_queued :: proc(t: ^testing.T) {
 
 	owner, a, a_guid, b_guid, _ := _milestone_setup(tc)
 
-	anim.animation_play_clip(a, a_guid) // Once, length 1
-	anim.animation_cross_fade_queued(a, b_guid, 0.5)
+	anim.animation_play_clip(a, engine.PPtr{guid = a_guid}) // Once, length 1
+	anim.animation_cross_fade_queued(a, engine.PPtr{guid = b_guid}, 0.5)
 	anim.animation_tick(0.5)
 	testing.expect(t, len(a.rt_layers[0].states) == 1, "queue must not fire while the clip plays")
 
@@ -370,10 +370,10 @@ test_animation_layers_stack :: proc(t: ^testing.T) {
 	owner, a, _, b_guid, c_guid := _milestone_setup(tc)
 	// A scale clip on layer 0 plus a position clip on layer 1: both apply.
 	s_guid := _clip_guid(13)
-	anim.animation_clip_cache[s_guid] = _const_clip(.Scale, {3, 3, 3, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = s_guid}] = _const_clip(.Scale, {3, 3, 3, 0}, 1, .Loop)
 
-	anim.animation_play_clip(a, s_guid, 0)
-	anim.animation_play_clip(a, b_guid, 1)
+	anim.animation_play_clip(a, engine.PPtr{guid = s_guid}, 0)
+	anim.animation_play_clip(a, engine.PPtr{guid = b_guid}, 1)
 	anim.animation_tick(0.1)
 	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	testing.expect(t, abs(ot.scale.x - 3) < 0.001, "layer 0 scale clip should apply")
@@ -384,8 +384,8 @@ test_animation_layers_stack :: proc(t: ^testing.T) {
 	// Layer 0 must stay untouched.
 	append(&a.layers, anim.Animation_Layer{}, anim.Animation_Layer{})
 	a.layers[1].entries = make([dynamic]anim.Animation_Entry)
-	append(&a.layers[1].entries, anim.Animation_Entry{id = 1, kind = anim.Animation_Entry_Clip{clip = c_guid}})
-	anim.animation_cross_fade(a, c_guid, 1.0)
+	append(&a.layers[1].entries, anim.Animation_Entry{id = 1, kind = anim.Animation_Entry_Clip{clip = engine.PPtr{guid = c_guid}}})
+	anim.animation_cross_fade(a, engine.PPtr{guid = c_guid}, 1.0)
 	anim.animation_tick(0.5)
 	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	testing.expect(t, abs(ot.scale.x - 3) < 0.001, "layer 0 should be untouched by a layer 1 fade")
@@ -419,7 +419,7 @@ test_playable_scrub_preview_cycle :: proc(t: ^testing.T) {
 	append(&ch.times, 1)
 	append(&ch.values, [4]f32{8, 0, 0, 0})
 	append(&clip.channels, ch)
-	anim.animation_clip_cache[guid] = clip
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = clip
 
 	owner := engine.transform_new("Rig")
 	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))
@@ -431,7 +431,7 @@ test_playable_scrub_preview_cycle :: proc(t: ^testing.T) {
 	b: anim.Animation_Binding
 	anim.animation_binding_init(&b, owner)
 	defer anim.animation_binding_destroy(&b)
-	groot := anim.playable_add(&g, anim.Playable_Clip{clip = guid})
+	groot := anim.playable_add(&g, anim.Playable_Clip{clip = engine.PPtr{guid = guid}})
 
 	// Frame 1: scrub to t=0.5 — the pose renders, the restore puts the
 	// authored values back.
@@ -474,20 +474,20 @@ test_animation_clip_preview_replaces_cache :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 
 	guid := _clip_guid(41)
-	anim.animation_clip_cache[guid] = _const_clip(.Position, {1, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _const_clip(.Position, {1, 0, 0, 0})
 
 	doc := _const_clip(.Position, {7, 0, 0, 0}, length = 2)
 	defer anim.cleanup_AnimationClip(&doc)
-	anim.animation_clip_preview(guid, doc)
+	anim.animation_clip_preview(engine.PPtr{guid = guid}, doc)
 
-	cached, ok := anim.animation_clip_load(guid)
+	cached, ok := anim.animation_clip_load(engine.PPtr{guid = guid})
 	testing.expect(t, ok, "cache entry survives the preview swap")
 	testing.expect(t, abs(cached.length - 2) < 0.001, "preview replaced the cached length")
 	testing.expect(t, abs(cached.channels[0].values[0].x - 7) < 0.001, "preview replaced the cached values")
 
 	// Independence: mutating the source must not reach the cache.
 	doc.channels[0].values[0].x = 9
-	cached2, _ := anim.animation_clip_load(guid)
+	cached2, _ := anim.animation_clip_load(engine.PPtr{guid = guid})
 	testing.expect(t, abs(cached2.channels[0].values[0].x - 7) < 0.001, "cache copy is deep")
 }
 
@@ -515,7 +515,7 @@ test_playable_speed_and_done :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 
 	guid := _clip_guid(3)
-	anim.animation_clip_cache[guid] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
 
 	owner := engine.transform_new("Rig")
 	o: anim.Playable_Output
@@ -523,7 +523,7 @@ test_playable_speed_and_done :: proc(t: ^testing.T) {
 	defer anim.playable_output_destroy(&o)
 
 	// speed 2: local time 0.25 samples the clip at 0.5.
-	node := anim.playable_add(&o.graph, anim.Playable_Clip{clip = guid}, speed = 2)
+	node := anim.playable_add(&o.graph, anim.Playable_Clip{clip = engine.PPtr{guid = guid}}, speed = 2)
 	anim.playable_output_root(&o)^ = node
 	anim.playable_node(&o.graph, node).time = 0.25
 	anim.playable_output_tick(&o)
@@ -551,8 +551,8 @@ test_graph_two_outputs_pose_separate_targets :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 
 	a_guid, b_guid := _clip_guid(11), _clip_guid(12)
-	anim.animation_clip_cache[a_guid] = _const_clip(.Position, {3, 0, 0, 0})
-	anim.animation_clip_cache[b_guid] = _const_clip(.Position, {7, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = a_guid}] = _const_clip(.Position, {3, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = b_guid}] = _const_clip(.Position, {7, 0, 0, 0})
 
 	rig_a := engine.transform_new("RigA")
 	rig_b := engine.transform_new("RigB")
@@ -563,8 +563,8 @@ test_graph_two_outputs_pose_separate_targets :: proc(t: ^testing.T) {
 
 	oa := anim.graph_output_add(&g, rig_a)
 	ob := anim.graph_output_add(&g, rig_b)
-	anim.graph_output(&g, oa).root = anim.playable_add(&g, anim.Playable_Clip{clip = a_guid})
-	anim.graph_output(&g, ob).root = anim.playable_add(&g, anim.Playable_Clip{clip = b_guid})
+	anim.graph_output(&g, oa).root = anim.playable_add(&g, anim.Playable_Clip{clip = engine.PPtr{guid = a_guid}})
+	anim.graph_output(&g, ob).root = anim.playable_add(&g, anim.Playable_Clip{clip = engine.PPtr{guid = b_guid}})
 
 	// One tick poses both targets, each from its own subtree.
 	anim.playable_graph_tick(&g)
@@ -586,8 +586,8 @@ test_graph_output_binds_only_its_subtree :: proc(t: ^testing.T) {
 
 	// Both clips animate a child named "Bone", but each rig has its own.
 	pos_guid, scl_guid := _clip_guid(13), _clip_guid(14)
-	anim.animation_clip_cache[pos_guid] = _const_clip(.Position, {5, 0, 0, 0}, target = "Bone")
-	anim.animation_clip_cache[scl_guid] = _const_clip(.Scale, {2, 2, 2, 0}, target = "Bone")
+	anim.animation_clip_cache[engine.PPtr{guid = pos_guid}] = _const_clip(.Position, {5, 0, 0, 0}, target = "Bone")
+	anim.animation_clip_cache[engine.PPtr{guid = scl_guid}] = _const_clip(.Scale, {2, 2, 2, 0}, target = "Bone")
 
 	rig_a := engine.transform_new("RigA")
 	rig_b := engine.transform_new("RigB")
@@ -600,8 +600,8 @@ test_graph_output_binds_only_its_subtree :: proc(t: ^testing.T) {
 
 	oa := anim.graph_output_add(&g, rig_a)
 	ob := anim.graph_output_add(&g, rig_b)
-	anim.graph_output(&g, oa).root = anim.playable_add(&g, anim.Playable_Clip{clip = pos_guid})
-	anim.graph_output(&g, ob).root = anim.playable_add(&g, anim.Playable_Clip{clip = scl_guid})
+	anim.graph_output(&g, oa).root = anim.playable_add(&g, anim.Playable_Clip{clip = engine.PPtr{guid = pos_guid}})
+	anim.graph_output(&g, ob).root = anim.playable_add(&g, anim.Playable_Clip{clip = engine.PPtr{guid = scl_guid}})
 	anim.playable_graph_tick(&g)
 
 	// The claim under test: a binding covers only the clips REACHABLE from its

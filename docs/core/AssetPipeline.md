@@ -132,7 +132,7 @@ asset_load :: proc(uuid: u128, $T: typeid) -> (^T, bool) {
 
 A catalog is one dictionary file mapping asset guids to their source path, artifact key and baked import settings, the content catalog idea of addressable-asset systems, reduced to what the catalog pipeline needs. Assets read straight from source (scenes, materials, clips) carry an empty artifact key. Nothing about it is user-facing:
 
-- a run config BUILDS it from the project's files when it needs one (`catalog.build`, moonhug:libs/catalog): every `.meta` gives an asset's guid, its settings as the JSON the game parses, and its sub-assets (the meta's `subs`, which the import writes), and `library/artifact_db.json` gives the artifact keys. It is a projection of what the editor's last import left on disk, so there is no editor-written copy that can lag behind an Apply. A dev run writes it to `library/catalog.json`, an export writes a relocatable one beside the data
+- a run config BUILDS it from the project's files when it needs one (`catalog.build`, moonhug:libs/catalog): every `.meta` gives an asset's guid and its settings as the JSON the game parses, and `library/artifact_db.json` gives the artifact keys. It is a projection of what the editor's last import left on disk, so there is no editor-written copy that can lag behind an Apply. A dev run writes it to `library/catalog.json`, an export writes a relocatable one beside the data
 - the app loads one with `--catalog[=path]` (`asset_db_init_from_catalog`): the guid↔path maps, artifact index and import settings come from the file — nothing scans `assets/`, no `.meta` is read
 - under the catalog pipeline the catalog is authoritative: refresh no-ops and runtime imports are refused with an error — a missing artifact surfaces instead of being repaired by importing
 
@@ -163,7 +163,6 @@ The READ half is the libs package `moonhug:libs/assets`, which the game and the 
 
 - `asset_db_add_indexer(ext, proc)`: fills the root-info index from a file's bytes through `asset_db_index_set`. The engine registers `.scene` (`plugins/engine/scene_asset_index.odin`). `asset_db_reindex` reads a changed file only when an indexer matches its extension.
 - `asset_db_add_evict_hook(proc)`: drops a cache entry for a changed or removed path. The material and shader caches register here.
-- `asset_db_set_subs(path, kind, subs)`: the sub-asset guids an asset declares. An importer calls it through its `Importer_Desc.sub_assets` hook (the mesh importer registers model clips).
 - `Importer_Desc.artifacts`: every artifact file an importer wrote for one source, so the pipeline moves fan-out files (mesh parts and clips) with the main artifact.
 
 The project view opens assets through `asset_pipeline.Asset_Actions` (`open`, `open_additive`, `create_variant`), which `plugins/engine/editor/importers` installs at EditorInit: a scene loads and becomes active. A package opens its own asset type in its own editor with `asset_open_handler_add(ext, proc)`, which a double click or Enter on the asset runs before the installed `open` (the shadergraph plugin opens `.shadergraph` this way).

@@ -21,16 +21,12 @@ import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 
-VERSION :: 1
+VERSION :: 2
 
 Entry :: struct {
 	path:     string,
 	artifact: string, // content-address key; "" = source-read asset (no artifact)
 	settings: string, // import settings baked as JSON text; "" = defaults / none
-	// Non-zero: a sub-asset with its own guid (a clip inside a model). `path`
-	// is then the OWNER's path and this is the sub-asset id. It ships nothing
-	// of its own, the owner's entry carries the files.
-	sub: i64,
 }
 
 File :: struct {
@@ -161,11 +157,6 @@ export :: proc(src: ^File, src_dir: string, data_dir: string, boot_scene := "", 
 	copied := 0
 	for guid_str in ship {
 		entry := src.assets[guid_str]
-		if entry.sub != 0 {
-			// Identity only. _closure put the owner in `ship` as well.
-			out.assets[guid_str] = entry
-			continue
-		}
 		src_path := _rooted(root, entry.path)
 		dst := strings.concatenate({data_dir, "/", entry.path}, context.temp_allocator)
 		if os.is_dir(src_path) {
@@ -218,8 +209,7 @@ export :: proc(src: ^File, src_dir: string, data_dir: string, boot_scene := "", 
 // --- The catalog from the project's files -------------------------------------
 
 // Every asset with a .meta under `asset_dirs`: its guid, its import settings
-// as the meta holds them, its sub-assets (the meta's "subs"), and its
-// artifact key from `library_dir`/artifact_db.json. `root` ("moonhug" from
+// as the meta holds them, and its artifact key from `library_dir`/artifact_db.json. `root` ("moonhug" from
 // the repository root, "" from inside it) prefixes the dirs and the library
 // and is no part of the entry paths, which are the asset database's own
 // ("assets/x.png", "packages/app/assets/x.png"). A run config builds the
@@ -314,8 +304,7 @@ _build_dir :: proc(cf: ^File, root: string, dir: string, index: ^map[string]stri
 	return true
 }
 
-// The entry of one .meta: its guid, its settings object as compact JSON,
-// and a sub entry per item of its "subs" ([{"guid", "id"}]).
+// The entry of one .meta: its guid and its settings object as compact JSON.
 @(private = "file")
 _build_entry :: proc(cf: ^File, path: string, meta: []byte, index: ^map[string]string, allocator: runtime.Allocator) -> bool {
 	root, perr := json.parse(meta, .JSON, true, context.temp_allocator)
@@ -340,16 +329,6 @@ _build_entry :: proc(cf: ^File, path: string, meta: []byte, index: ^map[string]s
 		entry.settings = string(text)
 	}
 	cf.assets[strings.clone(string(guid), allocator)] = entry
-	if subs, has := obj["subs"].(json.Array); has {
-		for item in subs {
-			sub, iok := item.(json.Object)
-			if !iok do continue
-			sub_guid, sgok := sub["guid"].(json.String)
-			id, idok := sub["id"].(json.Integer)
-			if !sgok || !idok || id == 0 do continue
-			cf.assets[strings.clone(string(sub_guid), allocator)] = Entry{path = entry.path, sub = id}
-		}
-	}
 	return true
 }
 
@@ -391,7 +370,7 @@ _closure :: proc(src: ^File, boot_guid: string, root: string, extra_roots: []str
 	}
 
 	path_to_guid := make(map[string]string, len(src.assets), context.temp_allocator)
-	for guid_str, entry in src.assets do if entry.sub == 0 do path_to_guid[entry.path] = guid_str
+	for guid_str, entry in src.assets do path_to_guid[entry.path] = guid_str
 
 	push(&ship, &seen, boot_guid)
 	for guid_str, entry in src.assets {
@@ -410,11 +389,6 @@ _closure :: proc(src: ^File, boot_guid: string, root: string, extra_roots: []str
 	// Breadth-first over `ship` itself: it grows while it is walked.
 	for i := 0; i < len(ship); i += 1 {
 		entry := src.assets[ship[i]]
-		if entry.sub != 0 {
-			// A referenced clip ships its owner, whose files hold the data.
-			if g, has := path_to_guid[entry.path]; has do push(&ship, &seen, g)
-			continue
-		}
 		src_path := _rooted(root, entry.path)
 		if !os.is_dir(src_path) {
 			data, read_err := os.read_entire_file(src_path, context.temp_allocator)

@@ -22,9 +22,6 @@ package asset_pipeline
 // - `artifacts` is optional: every artifact file the importer wrote for one
 //   source, the main one first. The pipeline moves them together when the
 //   importer refines its settings. nil = the main artifact only.
-// - `sub_assets` is optional: registers the sub-asset guids the source
-//   declares (assets.asset_db_set_subs). The pipeline calls it when the scan
-//   first sees the source and after every import.
 
 import "base:runtime"
 
@@ -35,7 +32,6 @@ Importer_Desc :: struct {
 	settings_tid: typeid,
 	run:          proc(source_path, artifact_path: string, settings: rawptr) -> bool,
 	artifacts:    proc(artifact_path: string, allocator: runtime.Allocator) -> []string,
-	sub_assets:   proc(source_path: string),
 }
 
 Phase_Extra :: enum {
@@ -66,14 +62,5 @@ importer_register :: proc(desc: Importer_Desc) {
 	_importers[desc.name] = desc
 	for ext in desc.extensions {
 		_importer_by_ext[ext] = desc.name
-	}
-}
-
-// Runs the importer's sub-asset hook for `source_path`, when its extension has
-// an importer that declares one.
-_register_sub_assets :: proc(source_path: string, ext: string) {
-	name := _importer_by_ext[ext] or_else ""
-	if desc, ok := _importers[name]; ok && desc.sub_assets != nil {
-		desc.sub_assets(source_path)
 	}
 }

@@ -186,9 +186,6 @@ _import_asset :: proc(source_path: string, force: bool) -> bool {
 
 	assets._artifact_index_set(guid, key, mtime, size, settings_hex)
 	assets._artifact_index_save()
-	// The settings may now list clips that did not exist before this import.
-	_register_sub_assets(source_path, ext)
-	_write_meta_subs(source_path, core.Asset_GUID(guid))
 	assets._notify_reimported(guid)
 	return true
 }
@@ -305,32 +302,6 @@ _write_import_meta :: proc(meta_path: string, meta: assets.ImportMeta) -> bool {
 	}
 
 	return _meta_write_object(meta_path, obj)
-}
-
-// The asset's sub-assets into its .meta ("subs": [{"guid", "id"}]), so a
-// catalog built from the files (moonhug:libs/catalog) lists them without the
-// importer that declares them. Written only when the list changed.
-@(private = "file")
-_write_meta_subs :: proc(source_path: string, owner: core.Asset_GUID) {
-	subs := assets.asset_db_subs_of(owner)
-	current, has := asset_meta_value(source_path, "subs", context.temp_allocator)
-	if len(subs) == 0 {
-		if has do asset_meta_set_value(source_path, "subs", nil)
-		return
-	}
-	arr := make(json.Array, 0, len(subs), context.temp_allocator)
-	for sub in subs {
-		obj := make(json.Object, context.temp_allocator)
-		obj["guid"] = json.String(uuid.to_string(uuid.Identifier(sub.guid), context.temp_allocator))
-		obj["id"] = json.Integer(sub.id)
-		append(&arr, obj)
-	}
-	if has {
-		old_text, _ := json.marshal(current, {spec = .JSON, sort_maps_by_key = true}, context.temp_allocator)
-		new_text, _ := json.marshal(json.Value(arr), {spec = .JSON, sort_maps_by_key = true}, context.temp_allocator)
-		if string(old_text) == string(new_text) do return
-	}
-	asset_meta_set_value(source_path, "subs", arr)
 }
 
 // The keys the import pipeline writes itself. Every other top-level key of a

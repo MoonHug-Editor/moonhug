@@ -50,7 +50,7 @@ _model_sub_assets :: proc(path: string, allocator: runtime.Allocator) -> []subas
 	for p in parts do append(&out, subassets.Sub_Asset{id = p.id, name = p.name})
 	for c in clips {
 		name := c.orphan ? fmt.aprintf("%s (missing)", c.name, allocator = allocator) : c.name
-		append(&out, subassets.Sub_Asset{id = c.id, name = name})
+		append(&out, subassets.Sub_Asset{id = c.id, name = name, kind = "anim"})
 	}
 	for st in sets do append(&out, subassets.Sub_Asset{id = st.id, name = strings.clone(hull_set_name(engine.Asset_GUID(guid), st), allocator)})
 	return out[:]

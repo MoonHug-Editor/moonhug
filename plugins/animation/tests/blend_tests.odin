@@ -27,7 +27,7 @@ _blend_layer :: proc(a: ^anim.Animation, children: []engine.Asset_GUID, value: f
 			id      = i32(i) + 2,
 			parent  = 1,
 			pos     = {f32(i), 0},
-			kind = anim.Animation_Entry_Clip{clip = g},
+			kind = anim.Animation_Entry_Clip{clip = engine.PPtr{guid = g}},
 		})
 	}
 	a.layers = make([dynamic]anim.Animation_Layer)
@@ -50,8 +50,8 @@ test_blend1d_interpolates_between_neighbours :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 
 	walk, run := _clip_guid(40), _clip_guid(41)
-	anim.animation_clip_cache[walk] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
-	anim.animation_clip_cache[run] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = walk}] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = run}] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
 
 	owner := engine.transform_new("Rig")
 	_, ptr := engine.transform_add_comp(owner, .Animation)
@@ -99,8 +99,8 @@ test_blend1d_children_share_one_phase :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 
 	walk, run := _clip_guid(42), _clip_guid(43)
-	anim.animation_clip_cache[walk] = _ramp_clip(.Position, {0, 0, 0, 0}, {1, 0, 0, 0}, 1.0, .Loop)
-	anim.animation_clip_cache[run] = _ramp_clip(.Position, {0, 0, 0, 0}, {1, 0, 0, 0}, 0.5, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = walk}] = _ramp_clip(.Position, {0, 0, 0, 0}, {1, 0, 0, 0}, 1.0, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = run}] = _ramp_clip(.Position, {0, 0, 0, 0}, {1, 0, 0, 0}, 0.5, .Loop)
 
 	owner := engine.transform_new("Rig")
 	_, ptr := engine.transform_add_comp(owner, .Animation)
@@ -132,8 +132,8 @@ test_entry_ids_are_stable_and_named :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 
 	walk, run := _clip_guid(44), _clip_guid(45)
-	anim.animation_clip_cache[walk] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
-	anim.animation_clip_cache[run] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = walk}] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = run}] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
 
 	owner := engine.transform_new("Rig")
 	_, ptr := engine.transform_add_comp(owner, .Animation)
@@ -147,7 +147,7 @@ test_entry_ids_are_stable_and_named :: proc(t: ^testing.T) {
 	append(&a.layers[0].entries, anim.Animation_Entry{
 		id      = anim.animation_entry_next_id(a),
 		name    = strings.clone("Idle"),
-		kind = anim.Animation_Entry_Clip{clip = walk},
+		kind = anim.Animation_Entry_Clip{clip = engine.PPtr{guid = walk}},
 	})
 
 	blend_id, blend_ok := anim.animation_find(a, "Locomotion")
@@ -179,8 +179,8 @@ test_blend_and_clip_states_replace_each_other :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 
 	walk, run := _clip_guid(46), _clip_guid(47)
-	anim.animation_clip_cache[walk] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
-	anim.animation_clip_cache[run] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = walk}] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = run}] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
 
 	owner := engine.transform_new("Rig")
 	_, ptr := engine.transform_add_comp(owner, .Animation)
@@ -197,7 +197,7 @@ test_blend_and_clip_states_replace_each_other :: proc(t: ^testing.T) {
 
 	// A guid play on the same layer cuts the blend out, taking its children's
 	// nodes with it.
-	anim.animation_play_clip(a, walk, 0)
+	anim.animation_play_clip(a, engine.PPtr{guid = walk}, 0)
 	anim.animation_tick(0.016)
 	testing.expect_value(t, len(a.rt_layers[0].states), 1)
 	_, still_clip := a.rt_layers[0].states[0].kind.(anim.Animation_State_Clip)
@@ -221,8 +221,8 @@ test_entry_tree_round_trips :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 
 	walk, run := _clip_guid(48), _clip_guid(49)
-	anim.animation_clip_cache[walk] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
-	anim.animation_clip_cache[run] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = walk}] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = run}] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -261,7 +261,7 @@ test_entry_tree_round_trips :: proc(t: ^testing.T) {
 	testing.expectf(t, abs(child.pos.x - 1) < 0.0001, "the second child keeps its axis position, got %v", child.pos.x)
 	c, is_clip := child.kind.(anim.Animation_Entry_Clip)
 	testing.expect(t, is_clip, "children are still clip entries")
-	if is_clip do testing.expect_value(t, c.clip, run)
+	if is_clip do testing.expect_value(t, c.clip, engine.PPtr{guid = run})
 }
 
 // The shipped sample scene is hand-generated JSON, and its entry tree carries
@@ -366,9 +366,9 @@ test_authored_graph_matches_the_tree :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 
 	walk, run, idle := _clip_guid(50), _clip_guid(51), _clip_guid(52)
-	anim.animation_clip_cache[walk] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
-	anim.animation_clip_cache[run] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
-	anim.animation_clip_cache[idle] = _const_clip(.Position, {0, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = walk}] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = run}] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = idle}] = _const_clip(.Position, {0, 0, 0, 0}, 1, .Loop)
 
 	owner := engine.transform_new("Rig")
 	_, ptr := engine.transform_add_comp(owner, .Animation)
@@ -381,11 +381,11 @@ test_authored_graph_matches_the_tree :: proc(t: ^testing.T) {
 	append(&a.layers[0].entries, anim.Animation_Entry{
 		id      = anim.animation_entry_next_id(a),
 		name    = strings.clone("Idle"),
-		kind = anim.Animation_Entry_Clip{clip = idle},
+		kind = anim.Animation_Entry_Clip{clip = engine.PPtr{guid = idle}},
 	})
 	// The default clip names a clip an entry already holds: it must not become
 	// a second leaf.
-	a.clip = idle
+	a.clip = engine.PPtr{guid = idle}
 
 	g: anim.Playable_Graph
 	leaves := make([dynamic]anim.Animation_Authored_Leaf)
@@ -401,7 +401,7 @@ test_authored_graph_matches_the_tree :: proc(t: ^testing.T) {
 
 	blend_top: anim.Playable_Handle
 	for l in leaves {
-		if l.clip == idle {
+		if l.clip == (engine.PPtr{guid = idle}) {
 			testing.expect(t, l.under == l.layer && l.top == l.node, "a top-level clip hangs from the layer mixer")
 			continue
 		}
@@ -441,8 +441,8 @@ test_authored_graph_poses_a_blend_without_a_playing_state :: proc(t: ^testing.T)
 	defer anim.animation_clip_cache_shutdown()
 
 	walk, run := _clip_guid(60), _clip_guid(61)
-	anim.animation_clip_cache[walk] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
-	anim.animation_clip_cache[run] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = walk}] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = run}] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
 
 	owner := engine.transform_new("Rig")
 	_, ptr := engine.transform_add_comp(owner, .Animation)
@@ -548,5 +548,5 @@ _load_sample_clip :: proc(path: string) {
 	if derr != nil do return
 	clip: anim.AnimationClip
 	if json.unmarshal(data, &clip, .JSON, context.allocator) != nil do return
-	anim.animation_clip_cache[engine.Asset_GUID(id)] = clip
+	anim.animation_clip_cache[engine.PPtr{guid = engine.Asset_GUID(id)}] = clip
 }

@@ -149,7 +149,4 @@ _ensure_meta :: proc(asset_path: string) {
 	// Upgrade to an importer meta (guid + importer + settings) — the import
 	// driver is this same package now.
 	asset_pipeline_ensure_import_meta(asset_path)
-	// A model's clip guids come from its meta, so a fresh clone resolves clip
-	// references from the scan alone, before any import runs.
-	_register_sub_assets(asset_path, filepath.ext(asset_path))
 }

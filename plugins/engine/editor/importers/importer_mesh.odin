@@ -148,7 +148,7 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
             }
             append(&ms.parts, engine.Mesh_Part{id = id, name = strings.clone(name, context.temp_allocator)})
         }
-        // Clips keep id, guid AND settings by name: the guid is what scenes
+        // Clips keep id AND settings by name: the id is what scenes
         // reference, and it must survive every reimport. Real clips first, in
         // file order (mesh_clip_index relies on it), orphans after.
         matched := make([]bool, len(old_clips), context.temp_allocator)
@@ -156,7 +156,7 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
             name := an.name != nil ? string(an.name) : fmt.tprintf("anim_%d", ai)
             entry := engine.Mesh_Clip{name = strings.clone(name, context.temp_allocator)}
             for c, ci in old_clips do if c.name == name {
-                entry.id, entry.guid, entry.settings = c.id, c.guid, c.settings
+                entry.id, entry.settings = c.id, c.settings
                 matched[ci] = true
                 break
             }
@@ -164,7 +164,6 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
                 max_id += 1
                 entry.id = max_id
             }
-            if entry.guid == {} do entry.guid = engine.asset_db_new_guid()
             append(&ms.clips, entry)
         }
         // A clip the model lost keeps its entry as an orphan, so references

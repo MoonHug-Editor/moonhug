@@ -500,7 +500,10 @@
         "enabled": true,
         "local_id": 102285531326815
       },
-      "clip": "85d77042-c10c-46aa-8b4b-2e04c0b823c0",
+      "clip": {
+        "guid": "85d77042-c10c-46aa-8b4b-2e04c0b823c0",
+        "local_id": 0
+      },
       "layers": [
 
       ],

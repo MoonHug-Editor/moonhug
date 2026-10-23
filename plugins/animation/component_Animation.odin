@@ -47,7 +47,7 @@ Animation_Wrap_Mode :: enum u8 {
 // Plays one clip.
 @(typ_guid={guid = "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630"})
 Animation_Entry_Clip :: struct {
-	clip: engine.Asset_GUID `ext:"anim"`,
+	clip: engine.PPtr `ext:"anim"`,
 }
 
 // Blends its children along one axis. `value` is the position on that axis:
@@ -97,7 +97,7 @@ Animation_Layer :: struct {
 // One child of a playing blend. `length` and `wrap` are cached at build time:
 // the blended cycle rate reads one and the phase wrap the other every frame.
 Animation_Blend_Child :: struct {
-	clip:   engine.Asset_GUID,
+	clip:   engine.PPtr,
 	node:   Playable_Handle,
 	pos:    f32,
 	length: f32,
@@ -106,7 +106,7 @@ Animation_Blend_Child :: struct {
 
 // A playing clip: its own clock, in seconds.
 Animation_State_Clip :: struct {
-	clip: engine.Asset_GUID,
+	clip: engine.PPtr,
 	time: f32,
 }
 
@@ -144,10 +144,10 @@ Animation_State_Runtime :: struct {
 	done:        bool,
 }
 
-// The clip a CLIP state plays. A blend has no clip of its own, so guid-keyed
+// The clip a CLIP state plays. A blend has no clip of its own, so clip-keyed
 // calls (play, cross_fade) never match one.
 @(private = "file")
-_anim_state_clip :: proc(st: ^Animation_State_Runtime) -> (engine.Asset_GUID, bool) {
+_anim_state_clip :: proc(st: ^Animation_State_Runtime) -> (engine.PPtr, bool) {
 	if c, is := &st.kind.(Animation_State_Clip); is do return c.clip, true
 	return {}, false
 }
@@ -165,7 +165,7 @@ _anim_state_rewind :: proc(st: ^Animation_State_Runtime) {
 Animation_Layer_Runtime :: struct {
 	mixer:      Playable_Handle,
 	states:     [dynamic]Animation_State_Runtime,
-	queue_clip: engine.Asset_GUID,
+	queue_clip: engine.PPtr,
 	queue_fade: f32,
 	queued:     bool,
 }
@@ -176,7 +176,7 @@ Animation_Layer_Runtime :: struct {
 @(typ_guid={guid = "5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13"})
 Animation :: struct {
 	using base:         engine.CompData `inspect:"-"`,
-	clip:               engine.Asset_GUID `ext:"anim"`,
+	clip:               engine.PPtr `ext:"anim"`,
 	play_automatically: bool,
 	speed:              f32,
 	// Authored layers, each a tree of states. play/cross_fade called without a
@@ -293,7 +293,7 @@ animation_entry_next_id :: proc(a: ^Animation) -> i32 {
 // The layer a clip is authored on, for calls that do not pass one explicitly.
 // Clips inside a blend count: the blend is what plays, but the layer is the same.
 @(private = "file")
-_anim_layer_of :: proc(a: ^Animation, clip: engine.Asset_GUID, layer: int) -> int {
+_anim_layer_of :: proc(a: ^Animation, clip: engine.PPtr, layer: int) -> int {
 	if layer >= 0 do return layer
 	for &l, li in a.layers {
 		for &e in l.entries {
@@ -330,7 +330,7 @@ _anim_layer :: proc(a: ^Animation, idx: int) -> ^Animation_Layer_Runtime {
 // the SAME state: matching on both keys keeps a Play(guid) from stacking a
 // second copy beside a running entry.
 @(private = "file")
-_anim_state_find :: proc(l: ^Animation_Layer_Runtime, clip: engine.Asset_GUID) -> int {
+_anim_state_find :: proc(l: ^Animation_Layer_Runtime, clip: engine.PPtr) -> int {
 	for &st, i in l.states {
 		if c, is := _anim_state_clip(&st); is && c == clip do return i
 	}
@@ -346,7 +346,7 @@ _anim_state_find_entry :: proc(l: ^Animation_Layer_Runtime, entry: i32) -> int {
 }
 
 @(private = "file")
-_anim_state_add :: proc(a: ^Animation, l: ^Animation_Layer_Runtime, clip: engine.Asset_GUID, weight: f32) -> ^Animation_State_Runtime {
+_anim_state_add :: proc(a: ^Animation, l: ^Animation_Layer_Runtime, clip: engine.PPtr, weight: f32) -> ^Animation_State_Runtime {
 	node := playable_add(&a.graph, Playable_Clip{clip = clip})
 	playable_connect(&a.graph, l.mixer, node, weight)
 	append(&l.states, Animation_State_Runtime{kind = Animation_State_Clip{clip = clip}, node = node, weight = weight})
@@ -415,7 +415,7 @@ animation_entry_build :: proc(
 
 // What a blend child needs from its clip, read once at build.
 @(private = "file")
-_anim_clip_info :: proc(clip: engine.Asset_GUID) -> (length: f32, wrap: Animation_Wrap) {
+_anim_clip_info :: proc(clip: engine.PPtr) -> (length: f32, wrap: Animation_Wrap) {
 	if c, ok := animation_clip_load(clip); ok do return max(c.length, PLAYABLE_WEIGHT_EPS), c.wrap
 	return 1, .Loop
 }
@@ -482,7 +482,7 @@ animation_graph_build_authored :: proc(a: ^Animation, g: ^Playable_Graph, owner:
 
 // Whether a top-level clip entry on layer `li` names `clip`.
 @(private = "file")
-_anim_layer_names_clip :: proc(a: ^Animation, li: int, clip: engine.Asset_GUID) -> bool {
+_anim_layer_names_clip :: proc(a: ^Animation, li: int, clip: engine.PPtr) -> bool {
 	if li >= len(a.layers) do return false
 	for &e in a.layers[li].entries {
 		if e.parent != 0 do continue
@@ -545,7 +545,7 @@ animation_play :: proc(a: ^Animation) {
 
 // Play a clip immediately at full weight, stopping everything else on the
 // layer.
-animation_play_clip :: proc(a: ^Animation, clip: engine.Asset_GUID, layer := -1) {
+animation_play_clip :: proc(a: ^Animation, clip: engine.PPtr, layer := -1) {
 	if clip == {} do return
 	_anim_ensure_graph(a)
 	l := _anim_layer(a, _anim_layer_of(a, clip, layer))
@@ -618,7 +618,7 @@ animation_blend_get :: proc(a: ^Animation, id: i32) -> f32 {
 // Fade `clip` in over `duration` while everything else on the layer fades out
 // from its CURRENT weight. Calling this mid-fade
 // is the interruption case and is smooth by construction.
-animation_cross_fade :: proc(a: ^Animation, clip: engine.Asset_GUID, duration: f32 = 0.3, layer := -1) {
+animation_cross_fade :: proc(a: ^Animation, clip: engine.PPtr, duration: f32 = 0.3, layer := -1) {
 	if clip == {} do return
 	if duration <= 0 {
 		animation_play_clip(a, clip, layer)
@@ -646,7 +646,7 @@ animation_cross_fade :: proc(a: ^Animation, clip: engine.Asset_GUID, duration: f
 // Cross-fade to `clip` when the layer's current clips finish. With nothing playing it fades in now.
 // A looping current clip never finishes, so the queue never fires. One pending
 // entry per layer, the newest wins.
-animation_cross_fade_queued :: proc(a: ^Animation, clip: engine.Asset_GUID, duration: f32 = 0.3, layer := -1) {
+animation_cross_fade_queued :: proc(a: ^Animation, clip: engine.PPtr, duration: f32 = 0.3, layer := -1) {
 	if clip == {} do return
 	_anim_ensure_graph(a)
 	li := _anim_layer_of(a, clip, layer)

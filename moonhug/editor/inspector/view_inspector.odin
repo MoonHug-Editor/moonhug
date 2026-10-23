@@ -662,6 +662,7 @@ is_changed_flag_set :: proc() -> bool {
 // asset and reference pickers, and enum combos.
 _is_picker_type :: proc(tid: typeid) -> bool {
     return tid == typeid_of(core.Asset_GUID) ||
+           tid == typeid_of(core.PPtr) ||
            tid == typeid_of(core.Ref) ||
            tid == typeid_of(core.Ref_Local) ||
            is_enum_type(tid)

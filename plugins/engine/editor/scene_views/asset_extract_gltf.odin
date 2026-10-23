@@ -240,17 +240,17 @@ extract_gltf_assets :: proc(model_path: string) {
 		// The engine authors the scene. The component that plays the first
 		// clip comes from the animation package, wired onto the root here
 		// (scene_from_gltf's decorate_root seam).
-		clip_guid: engine.Asset_GUID
+		clip_ref: engine.PPtr
 		if len(data.animations) > 0 && clips.decorate != nil {
-			clip_guid = path_guid(_gltf_anim_out_path(dir, stem, &data.animations[0], 0))
+			clip_ref.guid = path_guid(_gltf_anim_out_path(dir, stem, &data.animations[0], 0))
 		}
 		play_first_clip := proc(root: engine.Transform_Handle, user: rawptr) {
-			clip := (cast(^engine.Asset_GUID)user)^
+			clip := (cast(^engine.PPtr)user)^
 			if clip == {} do return
 			importers.gltf_clip_extractor.decorate(root, clip)
 		}
 
-		if engine.scene_from_gltf(data, stem, mesh_guid, mats[:], scene_out, play_first_clip, &clip_guid) {
+		if engine.scene_from_gltf(data, stem, mesh_guid, mats[:], scene_out, play_first_clip, &clip_ref) {
 			scenes_written += 1
 		} else {
 			fmt.printf("[Editor] Extract: failed to write %s\n", scene_out)

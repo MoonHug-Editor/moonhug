@@ -36,7 +36,7 @@ Playable_Input :: struct {
 
 // Leaf: samples an AnimationClip at the node's local time.
 Playable_Clip :: struct {
-	clip: engine.Asset_GUID,
+	clip: engine.PPtr,
 }
 
 // Blends its inputs by weight. Input weights sum to 1 in normal play — a sum

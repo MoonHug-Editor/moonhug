@@ -46,12 +46,12 @@ TrackAnimation :: struct {
 ClipAnimation :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
-	clip: engine.Asset_GUID `ext:"anim"`,
+	clip: engine.PPtr `ext:"anim"`,
 }
 
-// The .anim a timeline clip plays, or the empty guid.
+// The clip a timeline clip plays, or the empty reference.
 @(private = "file")
-_anim_clip_asset :: proc(c: ^seq.Clip_View) -> engine.Asset_GUID {
+_anim_clip_asset :: proc(c: ^seq.Clip_View) -> engine.PPtr {
 	if _, cr := get_comp(c.node, ClipAnimation); cr != nil do return cr.clip
 	return {}
 }

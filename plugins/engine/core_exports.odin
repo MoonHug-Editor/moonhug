@@ -229,8 +229,6 @@ ImportMeta                        :: assets.ImportMeta
 MetaFile                          :: assets.MetaFile
 Path_Changed_Hook                 :: assets.Path_Changed_Hook
 Reimport_Hook                     :: assets.Reimport_Hook
-Sub_Asset_Decl                    :: assets.Sub_Asset_Decl
-Sub_Asset_Ref                     :: assets.Sub_Asset_Ref
 
 LIBRARY_DIR                       :: assets.LIBRARY_DIR
 ASSET_DB_PACKAGES_DIR             :: assets.ASSET_DB_PACKAGES_DIR
@@ -249,10 +247,7 @@ asset_db_get_path                 :: assets.asset_db_get_path
 asset_db_get_guid                 :: assets.asset_db_get_guid
 asset_db_get_root_info            :: assets.asset_db_get_root_info
 asset_db_get_stamp                :: assets.asset_db_get_stamp
-asset_db_get_sub                  :: assets.asset_db_get_sub
-asset_db_sub_guid                 :: assets.asset_db_sub_guid
 asset_db_new_guid                 :: assets.asset_db_new_guid
-asset_db_set_subs                 :: assets.asset_db_set_subs
 asset_db_assets_with_root_type    :: assets.asset_db_assets_with_root_type
 asset_db_add_indexer              :: assets.asset_db_add_indexer
 asset_db_index_set                :: assets.asset_db_index_set
@@ -263,7 +258,6 @@ asset_db_run_evict_hooks          :: assets.asset_db_run_evict_hooks
 asset_db_add_path_changed_hook    :: assets.asset_db_add_path_changed_hook
 asset_db_add_asset_gone_hook      :: assets.asset_db_add_asset_gone_hook
 asset_db_set_refresh_proc         :: assets.asset_db_set_refresh_proc
-asset_db_subs_of                  :: assets.asset_db_subs_of
 asset_db_request_refresh          :: assets.asset_db_request_refresh
 asset_catalog_path                :: assets.asset_catalog_path
 library_dir                       :: assets.library_dir
@@ -276,8 +270,6 @@ asset_pipeline_set_import_request :: assets.asset_pipeline_set_import_request
 asset_pipeline_request_import     :: assets.asset_pipeline_request_import
 
 _register_asset                   :: assets._register_asset
-_register_sub                     :: assets._register_sub
-_unregister_subs_of               :: assets._unregister_subs_of
 _asset_removed                    :: assets._asset_removed
 _read_meta                        :: assets._read_meta
 _write_meta                       :: assets._write_meta

@@ -32,12 +32,12 @@ model_clips_install :: proc() {
 	inspector.add_asset_wrapper("mesh", _model_clip_section)
 	subassets.clip_sampler = _sample_clip
 	inspector.doc_preview_register(typeid_of(anim.AnimationClip), proc(guid: engine.Asset_GUID, doc: any) {
-		anim.animation_clip_preview(guid, doc.(anim.AnimationClip))
+		anim.animation_clip_preview(engine.PPtr{guid = guid}, doc.(anim.AnimationClip))
 	})
 }
 
 @(private = "file")
-_sample_clip :: proc(root: engine.Transform_Handle, clip: engine.Asset_GUID, t: f32) -> (length: f32, ok: bool) {
+_sample_clip :: proc(root: engine.Transform_Handle, clip: engine.PPtr, t: f32) -> (length: f32, ok: bool) {
 	c, lok := anim.animation_clip_load(clip)
 	if !lok do return 0, false
 	anim.animation_clip_apply(c, root, t)
@@ -114,10 +114,11 @@ _model_clip_section :: proc(ctx: ^inspector.Asset_Ctx) {
 			for &c in ms.clips {
 				if c.orphan do continue
 				if im.Selectable(strings.clone_to_cstring(c.name, context.temp_allocator)) {
-					// The orphan's guid is the one scenes hold, so it moves to
-					// the chosen clip. That clip's own guid, minted at import
-					// and referenced by nothing yet, goes.
-					c.guid = clip.guid
+					// The orphan's id is the one scenes hold, so it moves to
+					// the chosen clip. That clip's own id, minted at import
+					// and referenced by nothing yet, goes. Reimports match
+					// clips by name, so the chosen clip keeps the id.
+					c.id = clip.id
 					if c.settings == nil {
 						c.settings = clip.settings
 						clip.settings = nil
@@ -133,7 +134,7 @@ _model_clip_section :: proc(ctx: ^inspector.Asset_Ctx) {
 			}
 			im.EndCombo()
 		}
-		widgets.tooltip("Apply above to bake. The chosen clip takes this entry's guid.")
+		widgets.tooltip("Apply above to bake. The chosen clip takes this entry's id.")
 		return
 	}
 

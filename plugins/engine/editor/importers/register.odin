@@ -28,7 +28,7 @@ gltf_clip_baker: Gltf_Clip_Baker
 //   the scene extraction writes.
 Gltf_Clip_Extractor :: struct {
 	write:    proc(data: ^cgltf.data, an: ^cgltf.animation, out_path: string) -> bool,
-	decorate: proc(root: engine.Transform_Handle, clip: engine.Asset_GUID),
+	decorate: proc(root: engine.Transform_Handle, clip: engine.PPtr),
 }
 gltf_clip_extractor: Gltf_Clip_Extractor
 
@@ -58,7 +58,6 @@ register_builtin_importers :: proc() {
 		settings_tid = typeid_of(engine.MeshSettings),
 		run          = _import_mesh,
 		artifacts    = _mesh_artifacts,
-		sub_assets   = engine.asset_db_register_model_subs,
 	})
 	// The surface template is an input of every surface shader, so its text
 	// is part of the importer version: a template edit reimports them all.

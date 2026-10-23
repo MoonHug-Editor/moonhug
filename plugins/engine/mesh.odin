@@ -190,7 +190,7 @@ mesh_clips :: proc(guid: Asset_GUID) -> []Mesh_Clip {
                 out = make([]Mesh_Clip, len(ms.clips), alloc)
                 for c, i in ms.clips {
                     // Settings stay in the meta. The cache carries identity only.
-                    out[i] = Mesh_Clip{id = c.id, name = strings.clone(c.name, alloc), guid = c.guid, orphan = c.orphan}
+                    out[i] = Mesh_Clip{id = c.id, name = strings.clone(c.name, alloc), orphan = c.orphan}
                 }
             }
         }

@@ -32,7 +32,7 @@ test_timeline_animator_graph_skeleton :: proc(t: ^testing.T) {
 	anim.animation_clip_cache_init()
 	defer anim.animation_clip_cache_shutdown()
 	guid := _clip_guid(11)
-	anim.animation_clip_cache[guid] = _const_clip(.Position, {1, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _const_clip(.Position, {1, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -93,7 +93,7 @@ test_unset_track_target_falls_back_to_director :: proc(t: ^testing.T) {
 	anim.animation_clip_cache_init()
 	defer anim.animation_clip_cache_shutdown()
 	guid := _clip_guid(12)
-	anim.animation_clip_cache[guid] = _const_clip(.Position, {1, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _const_clip(.Position, {1, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -179,7 +179,7 @@ _mk_local_timeline :: proc(parent: engine.Transform_Handle, target: engine.Handl
 	cc.start = 0
 	cc.duration = length
 	_, ca := engine.transform_add_comp(cn, .ClipAnimation)
-	(cast(^anim_seq.ClipAnimation)ca).clip = clip
+	(cast(^anim_seq.ClipAnimation)ca).clip = engine.PPtr{guid = clip}
 	return tl
 }
 
@@ -261,7 +261,7 @@ test_state_play_poses_track_target :: proc(t: ^testing.T) {
 	anim_seq.animation_track_init()
 
 	guid := _clip_guid(41)
-	anim.animation_clip_cache[guid] = _const_clip(.Position, {7, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _const_clip(.Position, {7, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -313,8 +313,8 @@ test_state_cross_fade_blends :: proc(t: ^testing.T) {
 	anim_seq.animation_track_init()
 
 	lo, hi := _clip_guid(42), _clip_guid(43)
-	anim.animation_clip_cache[lo] = _const_clip(.Position, {0, 0, 0, 0})
-	anim.animation_clip_cache[hi] = _const_clip(.Position, {10, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = lo}] = _const_clip(.Position, {0, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = hi}] = _const_clip(.Position, {10, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -374,9 +374,9 @@ test_state_fade_interrupted_by_third :: proc(t: ^testing.T) {
 	anim_seq.animation_track_init()
 
 	ga, gb, gc := _clip_guid(51), _clip_guid(52), _clip_guid(53)
-	anim.animation_clip_cache[ga] = _const_clip(.Position, {0, 0, 0, 0})
-	anim.animation_clip_cache[gb] = _const_clip(.Position, {10, 0, 0, 0})
-	anim.animation_clip_cache[gc] = _const_clip(.Position, {20, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = ga}] = _const_clip(.Position, {0, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = gb}] = _const_clip(.Position, {10, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = gc}] = _const_clip(.Position, {20, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -433,7 +433,7 @@ test_state_speed_scales_its_playhead :: proc(t: ^testing.T) {
 	anim_seq.animation_track_init()
 
 	guid := _clip_guid(54)
-	anim.animation_clip_cache[guid] = _const_clip(.Position, {1, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _const_clip(.Position, {1, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -476,7 +476,7 @@ test_animator_reports_authoring_problems :: proc(t: ^testing.T) {
 	anim_seq.animation_track_init()
 
 	guid := _clip_guid(55)
-	anim.animation_clip_cache[guid] = _const_clip(.Position, {1, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _const_clip(.Position, {1, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -605,7 +605,7 @@ _load_sample_clip :: proc(path: string) {
 	if derr != nil do return
 	clip: anim.AnimationClip
 	if json.unmarshal(data, &clip, .JSON, context.allocator) != nil do return
-	anim.animation_clip_cache[engine.Asset_GUID(id)] = clip
+	anim.animation_clip_cache[engine.PPtr{guid = engine.Asset_GUID(id)}] = clip
 }
 
 // A viewer asks which graph belongs to an object rather than naming owners.
@@ -624,7 +624,7 @@ test_graph_provider_prefers_the_concrete_driver :: proc(t: ^testing.T) {
 	anim.playable_graph_providers_init()
 
 	guid := _clip_guid(61)
-	anim.animation_clip_cache[guid] = _const_clip(.Position, {1, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _const_clip(.Position, {1, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -637,7 +637,7 @@ test_graph_provider_prefers_the_concrete_driver :: proc(t: ^testing.T) {
 	testing.expect(t, !found, "an object with no built graph is not claimed")
 
 	// The Animation builds one when it plays.
-	anim.animation_play_clip(a_comp, guid)
+	anim.animation_play_clip(a_comp, engine.PPtr{guid = guid})
 	src, ok := anim.playable_graph_for_object(root)
 	testing.expect(t, ok, "a playing Animation is claimed")
 	testing.expect(t, src.graph == &a_comp.graph, "and it reports that component's graph")
@@ -672,7 +672,7 @@ test_graph_provider_reports_director_arena :: proc(t: ^testing.T) {
 	anim.playable_graph_providers_init()
 
 	guid := _clip_guid(62)
-	anim.animation_clip_cache[guid] = _const_clip(.Position, {2, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _const_clip(.Position, {2, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -719,7 +719,7 @@ test_once_state_reports_done :: proc(t: ^testing.T) {
 	anim_seq.animation_track_init()
 
 	guid := _clip_guid(71)
-	anim.animation_clip_cache[guid] = _const_clip(.Position, {5, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _const_clip(.Position, {5, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -781,7 +781,7 @@ test_replaying_a_finished_once_state_rewinds :: proc(t: ^testing.T) {
 	anim_seq.animation_track_init()
 
 	guid := _clip_guid(72)
-	anim.animation_clip_cache[guid] = _const_clip(.Position, {5, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _const_clip(.Position, {5, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -853,7 +853,7 @@ test_state_id_survives_deleting_an_earlier_state :: proc(t: ^testing.T) {
 	body := engine.transform_new("Body", root)
 	b_owned, _ := engine.transform_add_comp(body, .Animation)
 	guid := _clip_guid(90)
-	anim.animation_clip_cache[guid] = _const_clip(.Position, {5, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _const_clip(.Position, {5, 0, 0, 0}, 1, .Loop)
 
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim_seq.TimelineAnimator)raw
@@ -947,7 +947,7 @@ test_preview_step_poses_then_restores :: proc(t: ^testing.T) {
 	anim_seq.animation_track_init()
 
 	guid := _clip_guid(77)
-	anim.animation_clip_cache[guid] = _const_clip(.Position, {7, 0, 0, 0})
+	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _const_clip(.Position, {7, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)

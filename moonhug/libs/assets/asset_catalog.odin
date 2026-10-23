@@ -48,7 +48,6 @@ asset_db_init_from_catalog :: proc(catalog_path := "") -> bool {
 	asset_db.pipeline = .Catalog
 	asset_db.guid_to_path = make(map[uuid.Identifier]string)
 	asset_db.path_to_guid = make(map[string]uuid.Identifier)
-	asset_db.subs = make(map[uuid.Identifier]Sub_Asset_Ref)
 	asset_db.root_info = make(map[core.Asset_GUID]Asset_Root_Info)
 	asset_db.assets_by_type = make(map[core.TypeKey][dynamic]core.PPtr)
 	asset_db.file_state = make(map[string]Asset_File_Stamp)
@@ -72,7 +71,6 @@ asset_db_init_from_catalog :: proc(catalog_path := "") -> bool {
 	}
 
 	for guid_str, entry in cf.assets {
-		if entry.sub != 0 do continue // second pass, once every owner is in
 		guid, perr := uuid.read(guid_str)
 		if perr != nil {
 			log.errorf("[Catalog] bad guid %q — skipped", guid_str)
@@ -87,19 +85,6 @@ asset_db_init_from_catalog :: proc(catalog_path := "") -> bool {
 		if entry.settings != "" {
 			_catalog_settings_set(guid, entry.settings)
 		}
-	}
-	for guid_str, entry in cf.assets {
-		if entry.sub == 0 do continue
-		guid, perr := uuid.read(guid_str)
-		if perr != nil do continue
-		p := base == "" ? entry.path : strings.concatenate({base, "/", entry.path}, context.temp_allocator)
-		owner, has := asset_db.path_to_guid[p]
-		if !has {
-			log.errorf("[Catalog] sub-asset %s names owner %q, which is not in the catalog — skipped", guid_str, entry.path)
-			continue
-		}
-		// `kind` serves the editor's picker only, and a game has no picker.
-		_register_sub(p, core.Asset_GUID(owner), core.Asset_GUID(guid), core.Local_ID(entry.sub), "")
 	}
 	log.infof("[Catalog] catalog pipeline from %s (%d assets)", catalog_path, len(cf.assets))
 	return true

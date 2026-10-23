@@ -408,7 +408,7 @@ _clip_field :: proc(a: ^anim.Animation, e: ^anim.Animation_Entry, label: cstring
 	// A picker: the value lands from inside a popup with no gesture to observe,
 	// so the row is the thing that brackets it, after the fact, with the value
 	// it snapshotted before the draw.
-	_tree_row(a, &c.clip, typeid_of(engine.Asset_GUID), "Clip", inspector.draw_asset_guid_property, label)
+	_tree_row(a, &c.clip, typeid_of(engine.PPtr), "Clip", inspector.draw_pptr_property, label)
 }
 
 // The axis range a blend's slider spans: its children's positions, widened to

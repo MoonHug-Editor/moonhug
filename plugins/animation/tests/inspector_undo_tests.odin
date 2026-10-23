@@ -76,7 +76,7 @@ _write_blend_value :: proc(field_ptr: rawptr) {
 
 @(private = "file")
 _write_clip :: proc(field_ptr: rawptr) {
-	g := cast(^engine.Asset_GUID)field_ptr
+	g := &(cast(^engine.PPtr)field_ptr).guid
 	g[0], g[1] = 0xAB, 0xCD
 }
 
@@ -150,7 +150,7 @@ test_clip_assign_records_undo_step :: proc(t: ^testing.T) {
 	before := s.top
 	harness := common.Row_Harness{
 		field_ptr = &_child_clip(a).clip,
-		field_tid = typeid_of(engine.Asset_GUID),
+		field_tid = typeid_of(engine.PPtr),
 		label     = "Clip",
 	}
 	common.row_replay(&harness, []common.Frame{
@@ -159,10 +159,10 @@ test_clip_assign_records_undo_step :: proc(t: ^testing.T) {
 	})
 
 	testing.expect_value(t, s.top, before + 1)
-	testing.expect(t, _child_clip(a).clip != engine.Asset_GUID{}, "clip assigned")
+	testing.expect(t, _child_clip(a).clip != engine.PPtr{}, "clip assigned")
 
 	testing.expect(t, undo.apply_undo(s), "undo applies")
-	testing.expect_value(t, _child_clip(a).clip, engine.Asset_GUID{})
+	testing.expect_value(t, _child_clip(a).clip, engine.PPtr{})
 }
 
 // Merely drawing the tree is not an edit. Rows redraw every frame, so a row
@@ -194,7 +194,7 @@ test_drawing_rows_records_nothing :: proc(t: ^testing.T) {
 	}
 	clip_row := common.Row_Harness{
 		field_ptr = &_child_clip(a).clip,
-		field_tid = typeid_of(engine.Asset_GUID),
+		field_tid = typeid_of(engine.PPtr),
 		label     = "Clip",
 	}
 	idle := []common.Frame{common.frame_idle(), common.frame_idle(), common.frame_idle()}

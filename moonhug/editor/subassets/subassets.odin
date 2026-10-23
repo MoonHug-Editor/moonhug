@@ -15,6 +15,10 @@ import core "moonhug:libs/core"
 Sub_Asset :: struct {
 	id:   core.Local_ID,
 	name: string, // borrowed from the provider's cache — use within the frame
+	// What a reference field's `ext:` tag matches, spelled like a file
+	// extension without the dot: "anim" for a model's clip. "" for a
+	// sub-asset no field takes (a part, a convex decomposition).
+	kind: string,
 	// Optional grid-cell preview: an imgui texture id plus this sub-asset's
 	// uv rect within it, and its pixel size for aspect-fit. nil image = the
 	// project view draws the type glyph.
@@ -60,6 +64,6 @@ find :: proc(ext: string) -> (Provider, bool) {
 // of a clip inside a model pose the model's rig with it. The animation
 // package installs it at EditorInit. nil: a model's clips have no preview and
 // no thumbnail.
-Clip_Sampler :: proc(root: core.Transform_Handle, clip: core.Asset_GUID, t: f32) -> (length: f32, ok: bool)
+Clip_Sampler :: proc(root: core.Transform_Handle, clip: core.PPtr, t: f32) -> (length: f32, ok: bool)
 
 clip_sampler: Clip_Sampler

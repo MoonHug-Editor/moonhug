@@ -18,15 +18,14 @@ import "moonhug:editor/subassets"
 // node gets. Materials stay empty, the default draws.
 Model_Clip_Rig :: struct {
 	root:   engine.Transform_Handle,
-	clip:   engine.Asset_GUID,
+	clip:   engine.PPtr, // {owner, clip id}
 	length: f32,
 }
 
 // ok=false without a clip sampler (no animation package installed).
 model_clip_rig_build :: proc(path: string, owner: engine.Asset_GUID, clip_id: engine.Local_ID, parent: engine.Transform_Handle) -> (rig: Model_Clip_Rig, ok: bool) {
 	if subassets.clip_sampler == nil do return
-	clip_guid, cok := engine.asset_db_sub_guid(owner, clip_id)
-	if !cok do return
+	clip := engine.PPtr{guid = owner, local_id = clip_id}
 	path_c := strings.clone_to_cstring(path, context.temp_allocator)
 	data, res := cgltf.parse_file(cgltf.options{}, path_c)
 	if res != .success do return
@@ -34,9 +33,9 @@ model_clip_rig_build :: proc(path: string, owner: engine.Asset_GUID, clip_id: en
 
 	rig.root = engine.transform_new(filepath.stem(path), parent)
 	engine.scene_gltf_populate(data, rig.root, owner, nil)
-	rig.clip = clip_guid
+	rig.clip = clip
 	rig.length = 1
-	if length, sok := subassets.clip_sampler(rig.root, clip_guid, 0); sok && length > 0 do rig.length = length
+	if length, sok := subassets.clip_sampler(rig.root, clip, 0); sok && length > 0 do rig.length = length
 	return rig, true
 }
 

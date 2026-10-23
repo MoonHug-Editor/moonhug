@@ -1270,7 +1270,10 @@
         "enabled": true,
         "local_id": 2543910810195009
       },
-      "clip": "1002bc62-5880-465a-8e26-cc362abc22d9",
+      "clip": {
+        "guid": "1002bc62-5880-465a-8e26-cc362abc22d9",
+        "local_id": 0
+      },
       "layers": [
 
       ],

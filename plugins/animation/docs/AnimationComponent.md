@@ -340,12 +340,12 @@ A glTF file's animations play without being extracted. The mesh importer bakes e
 
 ```json
 "clips": [
-  { "id": 2, "name": "Walk_Loop", "guid": "3f0c…" },
-  { "id": 3, "name": "Idle_Loop", "guid": "9a41…" }
+  { "id": 2, "name": "Walk_Loop" },
+  { "id": 3, "name": "Idle_Loop" }
 ]
 ```
 
-Each clip carries its OWN guid, minted at first import and kept across reimports by matching the clip's name, the way part ids are. That guid is what a `clip: Asset_GUID` field stores, so a component cannot tell a clip inside a model from a standalone `.anim`. The AssetDB resolves it to the owner's path plus the clip id, the runtime reads the owner's fan-out, and the catalog carries it as a `sub` entry so a build and an export resolve it the same way. An export that references a clip ships its owner. Parts and clips share one id space, since a sub-asset id must be unique within its model.
+A clip is a sub-asset of its model, named as `{model guid, clip id}`: that is what a `clip: PPtr` field stores, and a standalone `.anim` is `{its guid, 0}`, so one field takes both. The id is minted at first import and kept across reimports by matching the clip's name, the way part ids are. The runtime reads the model's `_a<i>.bin` fan-out at the clip's file order (`mesh_clip_index`), from the clip list the model's settings carry, so a build and an export resolve it the same way. An export that references a clip harvests the model's guid and ships the model with its fan-outs. Parts, clips and convex decompositions share one id space, since a sub-asset id must be unique within its model.
 
 What lands in the repository is the model and a few lines of its `.meta`. The curve data stays in `library/`, rebuilt from the model on any machine.
 

@@ -81,7 +81,7 @@ _pv: struct {
 	active:  bool, // preview on: the world renders the scrubbed pose
 	applied: bool, // pose applied this frame, restore pending
 	owner:   engine.Transform_Handle, // the Animation component's transform
-	clip:    engine.Asset_GUID,
+	clip:    engine.PPtr,
 	time:    f32,
 	graph:     anim.Playable_Graph, // the component's FULL authored graph
 	node:      anim.Playable_Handle, // the scrubbed clip's node (weight 1)
@@ -358,8 +358,8 @@ _pv_target :: proc() -> (owner: engine.Transform_Handle, a: ^anim.Animation) {
 // entry on every layer, blend children included — a clip inside a blend is
 // still a clip you edit here. Deduplicated, temp-allocated.
 @(private = "file")
-_pv_clips :: proc(a: ^anim.Animation) -> []engine.Asset_GUID {
-	clips := make([dynamic]engine.Asset_GUID, context.temp_allocator)
+_pv_clips :: proc(a: ^anim.Animation) -> []engine.PPtr {
+	clips := make([dynamic]engine.PPtr, context.temp_allocator)
 	_pv_clips_add(&clips, a.clip)
 	for &l in a.layers {
 		for &e in l.entries {
@@ -370,7 +370,7 @@ _pv_clips :: proc(a: ^anim.Animation) -> []engine.Asset_GUID {
 }
 
 @(private = "file")
-_pv_clips_add :: proc(clips: ^[dynamic]engine.Asset_GUID, g: engine.Asset_GUID) {
+_pv_clips_add :: proc(clips: ^[dynamic]engine.PPtr, g: engine.PPtr) {
 	if g == {} do return
 	for c in clips^ {
 		if c == g do return
@@ -380,9 +380,10 @@ _pv_clips_add :: proc(clips: ^[dynamic]engine.Asset_GUID, g: engine.Asset_GUID) 
 
 // Shared with the Playable Graph visualizer's clip node labels.
 @(private)
-_pv_clip_name :: proc(g: engine.Asset_GUID) -> string {
-	if path, ok := engine.asset_db_get_path(uuid.Identifier(g)); ok {
-		return filepath.stem(path)
+_pv_clip_name :: proc(g: engine.PPtr) -> string {
+	if path, ok := engine.asset_db_get_path(uuid.Identifier(g.guid)); ok {
+		if g.local_id == 0 do return filepath.stem(path)
+		for c in engine.mesh_clips(g.guid) do if c.id == g.local_id do return fmt.tprintf("%s / %s", filepath.stem(path), c.name)
 	}
 	return "(missing clip)"
 }
@@ -393,8 +394,9 @@ _pv_clip_name :: proc(g: engine.Asset_GUID) -> string {
 // undo/redo swaps the document payload, so pointers never survive a frame.
 @(private = "file")
 _pv_doc :: proc() -> (doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
-	if _pv.clip == {} do return nil, nil
-	path, ok := engine.asset_db_get_path(uuid.Identifier(_pv.clip))
+	// A clip inside a model is baked from the model: it has no document.
+	if _pv.clip == {} || _pv.clip.local_id != 0 do return nil, nil
+	path, ok := engine.asset_db_get_path(uuid.Identifier(_pv.clip.guid))
 	if !ok do return nil, nil
 	d := inspector.asset_doc_get(path)
 	if d == nil || d.data.id != typeid_of(anim.AnimationClip) do return nil, nil
@@ -825,7 +827,7 @@ draw_animation_view :: proc() {
 	if _pv.sync {
 		_pv.sync = false
 		if d2, c2 := _pv_doc(); c2 != nil {
-			anim.animation_clip_preview(d2.guid, c2^)
+			anim.animation_clip_preview(engine.PPtr{guid = d2.guid}, c2^)
 		}
 	}
 }
@@ -938,7 +940,7 @@ _pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, l
 // width, and the key button beside it. Both act on the track list below them
 // rather than on the transport, so they sit at its head.
 @(private = "file")
-_pv_draw_sheet_header :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, clips: []engine.Asset_GUID, left_w: f32) {
+_pv_draw_sheet_header :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, clips: []engine.PPtr, left_w: f32) {
 	key_w := im.GetFrameHeight()
 	combo_w := max(left_w - key_w - im.GetStyle().ItemSpacing.x, 1)
 
@@ -1122,7 +1124,7 @@ _pv_live_value :: proc(ch: ^anim.Animation_Channel) -> (v: [4]f32, ok: bool) {
 // The sheet: property rows on the left, the time canvas (ruler + dopesheet
 // keys or curves) on the right, one interaction surface each.
 @(private = "file")
-_pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, clips: []engine.Asset_GUID) {
+_pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, clips: []engine.PPtr) {
 	dl := im.GetWindowDrawList()
 	origin := im.GetCursorScreenPos()
 	avail := im.GetContentRegionAvail()
@@ -1699,11 +1701,12 @@ _pv_authored_sig :: proc(a: ^anim.Animation) -> u64 {
 }
 
 @(private = "file")
-_pv_sig_mix :: proc(sig: ^u64, g: engine.Asset_GUID) {
+_pv_sig_mix :: proc(sig: ^u64, g: engine.PPtr) {
 	// Asset_GUID is a distinct [16]u8: transmute, not cast — an array type
 	// conversion is not a cast in Odin.
-	bytes := transmute([16]u8)g
+	bytes := transmute([16]u8)g.guid
 	for b in bytes do sig^ = (sig^ ~ u64(b)) * 0x100000001b3
+	sig^ = (sig^ ~ u64(g.local_id)) * 0x100000001b3
 }
 
 // The scrub preview evaluates the component's FULL authored graph — every

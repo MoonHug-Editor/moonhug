@@ -122,7 +122,7 @@ reset_AnimationClip :: proc(c: ^AnimationClip) {
 
 // --- Cache (mirrors material.odin) ------------------------------------------------
 
-animation_clip_cache: map[engine.Asset_GUID]AnimationClip
+animation_clip_cache: map[engine.PPtr]AnimationClip
 _animation_clip_cache_ready: bool
 
 // ImportersInit is the asset-layer init phase both binaries run (the editor
@@ -135,7 +135,7 @@ animation_package_init :: proc() {
 }
 
 animation_clip_cache_init :: proc() {
-	animation_clip_cache = make(map[engine.Asset_GUID]AnimationClip)
+	animation_clip_cache = make(map[engine.PPtr]AnimationClip)
 	_animation_clip_cache_ready = true
 }
 
@@ -150,8 +150,10 @@ animation_clip_cache_shutdown :: proc() {
 
 // Clips hold no GPU resources — loads work headless in contexts that
 // initialized the cache.
-animation_clip_load :: proc(guid: engine.Asset_GUID) -> (^AnimationClip, bool) {
-	if clip, ok := &animation_clip_cache[guid]; ok {
+// `ref` names a standalone .anim ({guid, 0}) or a clip inside a model
+// ({model guid, clip id}).
+animation_clip_load :: proc(ref: engine.PPtr) -> (^AnimationClip, bool) {
+	if clip, ok := &animation_clip_cache[ref]; ok {
 		return clip, true
 	}
 	if !_animation_clip_cache_ready do return nil, false
@@ -169,34 +171,22 @@ animation_clip_load :: proc(guid: engine.Asset_GUID) -> (^AnimationClip, bool) {
 	// into it, so the runtime never opens a meta.
 	//
 	// A clip inside a model (engine.Mesh_Clip) has no artifact of its own:
-	// its bytes are the OWNER's _a<i>.bin fan-out, indexed by the clip's file
+	// its bytes are the model's _a<i>.bin fan-out, indexed by the clip's file
 	// order. Either way a missing artifact asks for an import, which is
 	// editor-only (asset_pipeline_request_import is nil in a game binary, so
 	// a missing artifact there is a load error).
-	path: string
-	path_ok: bool
-	if sub, is_sub := engine.asset_db_get_sub(guid); is_sub {
-		whole, wok := engine.asset_pipeline_artifact_path(sub.owner)
-		if !wok {
-			src, src_ok := engine.asset_db_get_path(uuid.Identifier(sub.owner))
-			if !src_ok do return nil, false
-			_ = engine.asset_pipeline_request_import(src, force = false)
-			whole, wok = engine.asset_pipeline_artifact_path(sub.owner)
-			if !wok do return nil, false
-		}
-		idx, iok := engine.mesh_clip_index(sub.owner, sub.id)
+	path, path_ok := engine.asset_pipeline_artifact_path(ref.guid)
+	if !path_ok {
+		src, src_ok := engine.asset_db_get_path(uuid.Identifier(ref.guid))
+		if !src_ok do return nil, false
+		_ = engine.asset_pipeline_request_import(src, force = false)
+		path, path_ok = engine.asset_pipeline_artifact_path(ref.guid)
+		if !path_ok do return nil, false
+	}
+	if ref.local_id != 0 {
+		idx, iok := engine.mesh_clip_index(ref.guid, ref.local_id)
 		if !iok do return nil, false
-		path = engine.mesh_clip_artifact_path(whole, int(idx), context.temp_allocator)
-		path_ok = true
-	} else {
-		path, path_ok = engine.asset_pipeline_artifact_path(guid)
-		if !path_ok {
-			src, src_ok := engine.asset_db_get_path(uuid.Identifier(guid))
-			if !src_ok do return nil, false
-			_ = engine.asset_pipeline_request_import(src, force = false)
-			path, path_ok = engine.asset_pipeline_artifact_path(guid)
-			if !path_ok do return nil, false
-		}
+		path = engine.mesh_clip_artifact_path(path, int(idx), context.temp_allocator)
 	}
 	data, read_err := os.read_entire_file(path, context.temp_allocator)
 	if read_err != nil do return nil, false
@@ -206,14 +196,14 @@ animation_clip_load :: proc(guid: engine.Asset_GUID) -> (^AnimationClip, bool) {
 		cleanup_AnimationClip(&clip)
 		return nil, false
 	}
-	animation_clip_cache[guid] = clip
-	return &animation_clip_cache[guid], true
+	animation_clip_cache[ref] = clip
+	return &animation_clip_cache[ref], true
 }
 
-animation_clip_unload :: proc(guid: engine.Asset_GUID) {
-	if clip, ok := &animation_clip_cache[guid]; ok {
+animation_clip_unload :: proc(ref: engine.PPtr) {
+	if clip, ok := &animation_clip_cache[ref]; ok {
 		cleanup_AnimationClip(clip)
-		delete_key(&animation_clip_cache, guid)
+		delete_key(&animation_clip_cache, ref)
 	}
 }
 
@@ -221,7 +211,7 @@ animation_clip_unload :: proc(guid: engine.Asset_GUID) {
 // preview of unsaved asset-document edits (mirrors material_preview): the
 // scrub preview and any playing Animation component sample the edited values
 // immediately, while the file keeps the last saved state.
-animation_clip_preview :: proc(guid: engine.Asset_GUID, clip: AnimationClip) {
+animation_clip_preview :: proc(ref: engine.PPtr, clip: AnimationClip) {
 	if !_animation_clip_cache_ready do return
 	// The deep copy below becomes a cache entry, so it owns its memory for the
 	// same reason animation_clip_load's does.
@@ -232,7 +222,7 @@ animation_clip_preview :: proc(guid: engine.Asset_GUID, clip: AnimationClip) {
 	// document's zeros, or previewing an unsaved key edit would quietly turn a
 	// looping clip into a one-shot.
 	wrap, rate, offset := clip.wrap, clip.frame_rate, clip.cycle_offset
-	if old, ok := &animation_clip_cache[guid]; ok {
+	if old, ok := &animation_clip_cache[ref]; ok {
 		wrap, rate, offset = old.wrap, old.frame_rate, old.cycle_offset
 		cleanup_AnimationClip(old)
 	}
@@ -252,27 +242,24 @@ animation_clip_preview :: proc(guid: engine.Asset_GUID, clip: AnimationClip) {
 		copy(c.values[:], ch.values[:])
 		append(&cp.channels, c)
 	}
-	animation_clip_cache[guid] = cp
+	animation_clip_cache[ref] = cp
 }
 
 // Cache invalidation for external file changes, called from asset_db_refresh.
 animation_clip_path_changed :: proc(path: string) {
 	if !strings.has_suffix(path, ".anim") do return
 	if guid, ok := engine.asset_db_get_guid(path); ok {
-		animation_clip_unload(engine.Asset_GUID(guid))
+		animation_clip_unload(engine.PPtr{guid = engine.Asset_GUID(guid)})
 	}
 }
 
 // A reimported clip drops its cached copy, so the next load picks up the new
 // artifact — settings changed in the inspector apply without a restart.
 animation_clip_reimported :: proc(guid: engine.Asset_GUID) {
-	animation_clip_unload(guid)
-	// A reimported MODEL rebakes every clip it holds. Those are cached under
-	// their own guids, so the hook fires for the owner and the owned go too.
-	owned := make([dynamic]engine.Asset_GUID, context.temp_allocator)
-	for k in animation_clip_cache {
-		if sub, is_sub := engine.asset_db_get_sub(k); is_sub && sub.owner == guid do append(&owned, k)
-	}
+	// A reimported MODEL rebakes every clip it holds, each cached under
+	// {model guid, clip id}, so every entry with the guid goes.
+	owned := make([dynamic]engine.PPtr, context.temp_allocator)
+	for k in animation_clip_cache do if k.guid == guid do append(&owned, k)
 	for k in owned do animation_clip_unload(k)
 }
 

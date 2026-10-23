@@ -50,7 +50,7 @@ _extract_gltf_clip :: proc(data: ^cgltf.data, an: ^cgltf.animation, out_path: st
 
 // An Animation component playing `clip` on the root of the extracted scene.
 @(private = "file")
-_play_extracted_clip :: proc(root: engine.Transform_Handle, clip: engine.Asset_GUID) {
+_play_extracted_clip :: proc(root: engine.Transform_Handle, clip: engine.PPtr) {
 	_, a_raw := engine.transform_add_comp(root, .Animation)
 	(cast(^anim.Animation)a_raw).clip = clip
 }
