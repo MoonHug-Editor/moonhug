@@ -145,10 +145,17 @@ PolygonCollider2D :: struct {
 	build_failed: bool `json:"-" inspect:"-"`,
 }
 
+// Fills a new polygon collider's points from the sprite its object shows:
+// the outline of the sprite's opaque pixels. The physics2d/sprites
+// integration subpackage installs it in the editor. Unset, or false for an
+// object without a sprite, a new collider starts as a pentagon.
+polygon_sprite_outline: proc(owner: engine.Transform_Handle, points: ^[dynamic][2]f32) -> bool
+
 reset_PolygonCollider2D :: proc(comp: ^PolygonCollider2D) {
 	cleanup_PolygonCollider2D(comp)
 	comp.layers = 1
 	comp.density = 1
+	if polygon_sprite_outline != nil && polygon_sprite_outline(comp.owner, &comp.points) do return
 	polygon_regular(&comp.points, 5, 0.5)
 }
 
