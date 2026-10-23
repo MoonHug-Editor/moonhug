@@ -145,8 +145,10 @@ MeshCollider :: struct {
 
 	shape:       b3.ShapeId `json:"-" inspect:"-"`,
 	static_body: b3.BodyId `json:"-" inspect:"-"`,
-	// The triangles a non-convex shape reads for as long as it lives. Owned.
+	// The triangles a non-convex shape reads for as long as it lives, owned:
+	// one mesh, or a compound of mesh chunks (MESH_CHUNK_TRIANGLES).
 	mesh_data:   ^b3.MeshData `json:"-" inspect:"-"`,
+	compound:    ^b3.CompoundData `json:"-" inspect:"-"`,
 	// The sync logged why the shape cannot be built and stops trying, until
 	// a Reset or an undo write clears the component.
 	build_failed: bool `json:"-" inspect:"-"`,
@@ -161,6 +163,7 @@ reset_MeshCollider :: proc(comp: ^MeshCollider) {
 cleanup_MeshCollider :: proc(comp: ^MeshCollider) {
 	_destroy_shape(&comp.shape, &comp.static_body)
 	if comp.mesh_data != nil do b3.DestroyMesh(comp.mesh_data)
+	if comp.compound != nil do b3.DestroyCompound(comp.compound)
 	engine.comp_zero(comp)
 }
 

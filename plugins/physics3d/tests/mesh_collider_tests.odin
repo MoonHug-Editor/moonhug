@@ -186,3 +186,44 @@ physics3d_hull_cap_fits_a_dense_mesh :: proc(t: ^testing.T) {
 	defer b3.DestroyHull(h)
 	testing.expect(t, h.vertexCount <= physics3d.HULL_MAX_VERTICES, "reduced to the cap")
 }
+
+// A dense mesh: the helmet model of 15k triangles. box3d keeps 256
+// triangles per contact, so without the chunking a box over the shell falls
+// through it. With it, boxes rest on the shell at its top plus their half
+// height. The balls that a dome sends rolling are not the test.
+@(test)
+physics3d_mesh_collider_dense_mesh_holds_a_box :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	asset_pipeline.asset_pipeline_init()
+	engine.asset_db_init("moonhug/packages/app/assets/meshes/DamagedHelmet")
+	defer { engine.asset_db_shutdown(); common.remove_tree(engine.library_dir()) }
+	guid, gok := engine.asset_db_get_guid("moonhug/packages/app/assets/meshes/DamagedHelmet/DamagedHelmet.gltf")
+	testing.expect(t, gok, "the helmet is in the asset db")
+	if !gok do return
+	helmet := engine.transform_new("Helmet")
+	_, mc_ptr := engine.transform_add_comp(helmet, .MeshCollider)
+	mc := cast(^physics3d.MeshCollider)mc_ptr
+	mc.mesh = engine.PPtr{guid = engine.Asset_GUID(guid)}
+	_floor({20, 1, 20})
+
+	sizes := [2]f32{0.3, 0.8}
+	for size in sizes {
+		body := engine.transform_new("Box")
+		bt := engine.pool_get(&tc.world.transforms, engine.Handle(body))
+		// Over the top of the dome, shell at y = 0.9 there.
+		bt.position = {0.01, 2.5, -0.39}
+		_, rb_ptr := engine.transform_add_comp(body, .Rigidbody)
+		(cast(^physics3d.Rigidbody)rb_ptr).use_gravity = true
+		_, bp := engine.transform_add_comp(body, .BoxCollider)
+		(cast(^physics3d.BoxCollider)bp).size = {size, size, size}
+		for _ in 0 ..< 300 do physics3d.physics_step(1.0 / 60.0)
+		y := engine.pool_get(&tc.world.transforms, engine.Handle(body)).position.y
+		testing.expectf(t, y > 0.9 + size * 0.5 - 0.05 && y < 0.9 + size * 0.5 + 0.1, "a %v box rests on the shell, y = %v", size, y)
+		engine.transform_destroy(body)
+	}
+	testing.expect(t, b3.Shape_GetType(mc.shape) == .compoundShape, "a dense mesh is a compound of chunks")
+}

@@ -492,24 +492,132 @@ _sync_mesh_colliders :: proc(w: ^engine.World) {
 				log.errorf("[Physics3D] MeshCollider on %q: a non-convex mesh collides on a static body only, remove the Rigidbody above it or set convex", _owner_name(w, c.owner))
 				continue
 			}
-			indices := make([]i32, len(geom.indices), context.temp_allocator)
-			for idx, i in geom.indices do indices[i] = i32(idx)
-			mdef := b3.MeshDef{
-				vertices      = raw_data(geom.positions),
-				indices       = raw_data(indices),
-				vertexCount   = i32(len(geom.positions)),
-				triangleCount = i32(len(indices) / 3),
+			chunks := _mesh_chunks(geom)
+			if len(chunks) == 1 {
+				c.mesh_data = _chunk_mesh(geom, chunks[0])
+				if c.mesh_data == nil {
+					c.build_failed = true
+					log.errorf("[Physics3D] MeshCollider on %q: box3d rejected the triangles", _owner_name(w, c.owner))
+					continue
+				}
+				c.shape = b3.CreateMeshShape(target.body, def, c.mesh_data, scale)
+			} else {
+				// Several chunks: a baked compound, one child mesh each, so each
+				// chunk has a contact triangle buffer of its own.
+				material := def.baseMaterial
+				datas := make([]^b3.MeshData, len(chunks), context.temp_allocator)
+				meshes := make([]b3.CompoundMeshDef, len(chunks), context.temp_allocator)
+				built := true
+				for chunk, i in chunks {
+					datas[i] = _chunk_mesh(geom, chunk)
+					if datas[i] == nil { built = false; break }
+					meshes[i] = b3.CompoundMeshDef{meshData = datas[i], transform = {q = 1}, scale = scale, materials = &material, materialCount = 1}
+				}
+				if built {
+					cdef := b3.CompoundDef{meshes = raw_data(meshes), meshCount = len(meshes)}
+					c.compound = b3.CreateCompound(cdef)
+				}
+				// The compound clones every mesh, so the chunks go now.
+				for d in datas do if d != nil do b3.DestroyMesh(d)
+				if c.compound == nil {
+					c.build_failed = true
+					log.errorf("[Physics3D] MeshCollider on %q: box3d rejected the triangles", _owner_name(w, c.owner))
+					continue
+				}
+				c.shape = b3.CreateBakedCompoundShape(target.body, def, c.compound)
 			}
-			c.mesh_data = b3.CreateMesh(mdef, nil, 0)
-			if c.mesh_data == nil {
-				c.build_failed = true
-				log.errorf("[Physics3D] MeshCollider on %q: box3d rejected the triangles", _owner_name(w, c.owner))
-				continue
-			}
-			c.shape = b3.CreateMeshShape(target.body, def, c.mesh_data, scale)
 		}
 		_register_shape(c.shape, c.owner)
 	}
+}
+
+// The most triangles one mesh chunk holds. box3d collects the triangles
+// under a body into a buffer of B3_MAX_MESH_CONTACT_TRIANGLES per contact
+// (256 in the 0.1.0 Odin bundles) and drops the rest without a word, so a
+// body over a dense mesh falls through (erincatto/box3d#184). Each child of
+// a compound has a buffer of its own, and a chunk holds half of one, so the
+// cap is never reached whatever the mesh. A plane of 131k triangles holds a
+// ball and a box this way.
+MESH_CHUNK_TRIANGLES :: 128
+
+// The triangles of a mesh split into chunks of at most MESH_CHUNK_TRIANGLES,
+// by halving the longer side of the chunk's centroids until they fit, so the
+// chunks are compact. Temp-allocated lists of triangle indices.
+@(private = "file")
+_mesh_chunks :: proc(geom: ^engine.Mesh_Geometry) -> [][]u32 {
+	count := len(geom.indices) / 3
+	centroids := make([][3]f32, count, context.temp_allocator)
+	for t in 0 ..< count {
+		a := geom.positions[geom.indices[3 * t]]
+		b := geom.positions[geom.indices[3 * t + 1]]
+		c := geom.positions[geom.indices[3 * t + 2]]
+		centroids[t] = (a + b + c) / 3
+	}
+	all := make([]u32, count, context.temp_allocator)
+	for t in 0 ..< count do all[t] = u32(t)
+	out := make([dynamic][]u32, context.temp_allocator)
+	_mesh_chunks_split(all, centroids, &out)
+	return out[:]
+}
+
+@(private = "file")
+_mesh_chunks_split :: proc(tris: []u32, centroids: [][3]f32, out: ^[dynamic][]u32) {
+	if len(tris) <= MESH_CHUNK_TRIANGLES {
+		append(out, tris)
+		return
+	}
+	lo, hi := centroids[tris[0]], centroids[tris[0]]
+	for t in tris {
+		lo = linalg.min(lo, centroids[t])
+		hi = linalg.max(hi, centroids[t])
+	}
+	extent := hi - lo
+	axis := 0
+	if extent.y > extent[axis] do axis = 1
+	if extent.z > extent[axis] do axis = 2
+	mid := (lo[axis] + hi[axis]) * 0.5
+	// Partition in place: the triangles below the middle first.
+	split := 0
+	for i in 0 ..< len(tris) {
+		if centroids[tris[i]][axis] < mid {
+			tris[i], tris[split] = tris[split], tris[i]
+			split += 1
+		}
+	}
+	// Centroids all on one point: halve by count.
+	if split == 0 || split == len(tris) do split = len(tris) / 2
+	_mesh_chunks_split(tris[:split], centroids, out)
+	_mesh_chunks_split(tris[split:], centroids, out)
+}
+
+// One chunk as box3d mesh data: the chunk's own vertices, welded and with
+// edge adjacency, so a hull sliding across the chunk meets no inner edges.
+@(private = "file")
+_chunk_mesh :: proc(geom: ^engine.Mesh_Geometry, tris: []u32) -> ^b3.MeshData {
+	remap := make([]i32, len(geom.positions), context.temp_allocator)
+	for &r in remap do r = -1
+	verts := make([dynamic][3]f32, 0, 3 * len(tris), context.temp_allocator)
+	indices := make([]i32, 3 * len(tris), context.temp_allocator)
+	for t, i in tris {
+		for k in 0 ..< 3 {
+			g := geom.indices[3 * int(t) + k]
+			if remap[g] < 0 {
+				remap[g] = i32(len(verts))
+				append(&verts, geom.positions[g])
+			}
+			indices[3 * i + k] = remap[g]
+		}
+	}
+	mdef := b3.MeshDef{
+		vertices      = raw_data(verts[:]),
+		indices       = raw_data(indices),
+		vertexCount   = i32(len(verts)),
+		triangleCount = i32(len(tris)),
+		weldVertices  = true,
+		weldTolerance = 1e-5,
+		identifyEdges = true,
+	}
+	return b3.CreateMesh(mdef, nil, 0)
 }
 
 @(private = "file")

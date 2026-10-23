@@ -15,7 +15,7 @@ app runs.
 - **BoxCollider / SphereCollider / CapsuleCollider** — collision shapes with
   a local `center` offset. Transform scale affects the shape size. `material`
   names a Physics Material ("Physics materials").
-- **MeshCollider** — a mesh's own shape. `mesh` names a model or one of its parts, and left empty it is the MeshFilter's mesh on the same object. `convex` collides as the convex hull of the vertices, reduced to the 44 the box3d hull holds (`HULL_MAX_VERTICES`), the only form a Rigidbody can carry. Not convex, the triangles collide as they are, on a static body only: a non-convex MeshCollider under a Rigidbody builds nothing and says so in the log. Transform scale applies per axis, mirrored scale included. The gizmo draws the hull's edges when convex and the mesh's triangles otherwise.
+- **MeshCollider** — a mesh's own shape. `mesh` names a model or one of its parts, and left empty it is the MeshFilter's mesh on the same object. `convex` collides as the convex hull of the vertices, reduced to the 44 the box3d hull holds (`HULL_MAX_VERTICES`), the only form a Rigidbody can carry. Not convex, the triangles collide as they are, on a static body only: a non-convex MeshCollider under a Rigidbody builds nothing and says so in the log. A mesh of more than 128 triangles is split into compact chunks of at most 128, one child of a compound shape each, because box3d keeps at most 256 triangles per contact and drops the rest without a word (erincatto/box3d#184), which lets bodies fall through a dense mesh. Transform scale applies per axis, mirrored scale included. The gizmo draws the hull's edges when convex and the mesh's triangles otherwise.
 
 ## How bodies form
 
