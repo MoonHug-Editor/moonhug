@@ -27,12 +27,12 @@ BOX_ANIM_GLTF :: "moonhug/tests/fixtures/meshes/box_animated.gltf"
 
 @(test)
 test_mesh_import_bakes_clips_with_stable_identity :: proc(t: ^testing.T) {
-	artifact := "moonhug/tests/fixtures/meshes/_box_anim_artifact.bin"
-	part0 := engine.mesh_part_artifact_path(artifact, 0, context.temp_allocator)
+	// Its own folder, removed whole: the import writes a part file per glTF
+	// mesh and a clip file per animation, more than the test names.
+	tmp :: "moonhug/tests/fixtures/_model_clip_import_tmp"
+	artifact := tmp + "/box_anim.bin"
 	clip0 := engine.mesh_clip_artifact_path(artifact, 0, context.temp_allocator)
-	defer os.remove(artifact)
-	defer os.remove(part0)
-	defer os.remove(clip0)
+	defer common.remove_tree(tmp)
 
 	importers.gltf_clip_baker = animation_editor.bake_gltf_clip
 	ms := engine.MeshSettings{scale = 1}

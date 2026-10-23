@@ -14,12 +14,17 @@ import "moonhug:packages/engine/editor/importers"
 
 CUBE_GLB :: "moonhug/tests/fixtures/meshes/cube.glb"
 
+// Where the import tests write their artifacts. An import writes the whole
+// model plus a part file per glTF mesh, so each test removes the folder, not
+// the files it names, and nothing lands beside the fixtures.
+@(private = "file")
+_MESH_TMP :: "moonhug/tests/fixtures/_mesh_import_tmp"
+
 @(test)
 test_mesh_import_cube_glb :: proc(t: ^testing.T) {
-	artifact := "moonhug/tests/fixtures/meshes/_cube_test_artifact.bin"
-	defer os.remove(artifact)
+	artifact := _MESH_TMP + "/cube_test.bin"
+	defer _remove_tree(_MESH_TMP)
 	part0 := engine.mesh_part_artifact_path(artifact, 0, context.temp_allocator)
-	defer os.remove(part0)
 
 	ok := importers._import_mesh(CUBE_GLB, artifact, nil)
 	testing.expect(t, ok, "cube.glb import failed")
@@ -98,8 +103,8 @@ test_mesh_generate_tangents :: proc(t: ^testing.T) {
 
 @(test)
 test_mesh_import_respects_scale_setting :: proc(t: ^testing.T) {
-	artifact := "moonhug/tests/fixtures/meshes/_cube_scaled_artifact.bin"
-	defer os.remove(artifact)
+	artifact := _MESH_TMP + "/cube_scaled.bin"
+	defer _remove_tree(_MESH_TMP)
 
 	scaled := engine.MeshSettings{scale = 2}
 	ok := importers._import_mesh(CUBE_GLB, artifact, &scaled)
@@ -128,8 +133,8 @@ test_mesh_artifact_parse_rejects_garbage :: proc(t: ^testing.T) {
 // ranges partition the blob in first-appearance order.
 @(test)
 test_mesh_import_multimaterial_submeshes :: proc(t: ^testing.T) {
-	artifact := "moonhug/tests/fixtures/meshes/_multimat_test_artifact.bin"
-	defer os.remove(artifact)
+	artifact := _MESH_TMP + "/multimat_test.bin"
+	defer _remove_tree(_MESH_TMP)
 
 	ok := importers._import_mesh("moonhug/tests/fixtures/meshes/multimat_cube.glb", artifact, nil)
 	testing.expect(t, ok, "multimat_cube.glb import failed")
