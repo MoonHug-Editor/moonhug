@@ -45,3 +45,4 @@ mcp:       $(MH_BIN) ; @$(MH) mcp
 clean:     $(MH_BIN) ; @$(MH) clean
 distclean: $(MH_BIN) ; @$(MH) clean --all
 test:      $(MH_BIN) ; @$(MH) test $(if $(NAME),--name=$(NAME),)
+test-asan: $(MH_BIN) ; @$(MH) test-asan $(if $(NAME),--name=$(NAME),)

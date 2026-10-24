@@ -9,6 +9,7 @@ import "core:strings"
 import "core:time"
 
 EDITOR_BIN :: "builds/MoonHug" + EXE
+TESTS_ASAN_BIN :: "builds/tests_asan" + EXE
 MCP_BIN :: "builds/mcp_shim" + EXE
 
 // Code generation, always before a build. Two steps: prune imports of removed
@@ -144,6 +145,37 @@ cmd_test :: proc(args: []string) -> int {
 		append(&cmd, fmt.tprintf("-define:ODIN_TEST_NAMES=%s", name))
 	}
 	return run(..cmd[:])
+}
+
+// The suite under AddressSanitizer: a read or write of freed heap memory or
+// past an allocation's end aborts the run at the first one, with the stack
+// of the access, the free and the allocation. It is about four times slower
+// than `test`, so it is for the release workflow (.github/workflows) and for
+// after a change to allocators, pools, caches or object lifetimes, not the
+// edit-and-run loop. Two gaps: leak detection is off, macOS on arm64 has
+// none, and the temp allocator is invisible to it, Odin keeps the arena's
+// sanitizer hooks off, so memory kept past a frame goes unnoticed.
+cmd_test_asan :: proc(args: []string) -> int {
+	if !prebuild() do return 1
+	os.make_directory_all("builds")
+	cmd := make([dynamic]string, context.temp_allocator)
+	append(&cmd, "odin", "build", "moonhug/tests", "-build-mode:test", "-all-packages", IGNORE_ATTRS, COLLECTION, VET, "-define:ODIN_TEST_THREADS=1", "-debug", "-sanitize:address", fmt.tprintf("-out:%s", TESTS_ASAN_BIN))
+	if name := flag_value(args, "--name"); name != "" {
+		append(&cmd, fmt.tprintf("-define:ODIN_TEST_NAMES=%s", name))
+	}
+	if !step("sanitizer test build", ..cmd[:]) do return 1
+
+	// The caller's ASAN_OPTIONS win over the defaults.
+	env := make([dynamic]string, context.temp_allocator)
+	has_options := false
+	if cur, err := os.environ(context.temp_allocator); err == nil {
+		for kv in cur {
+			if strings.has_prefix(kv, "ASAN_OPTIONS=") do has_options = true
+			append(&env, kv)
+		}
+	}
+	if !has_options do append(&env, "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1")
+	return run_env(env[:], TESTS_ASAN_BIN)
 }
 
 // The MCP stdio server the client spawns (.mcp.json, docs/core/McpBridge.md).
