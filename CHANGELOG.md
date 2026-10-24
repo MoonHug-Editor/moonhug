@@ -1,3 +1,17 @@
+## [0.144.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.143.0...v0.144.0) (2026-10-24)
+
+### Features
+
+* Background Tasks is a popup panel over the status bar, shown and hidden by a tasks button that is always there ([80be153](https://github.com/MoonHug-Editor/moonhug/commit/80be1532a9a8a41b375d93d66af094eec21b1c3e))
+* EdgeCollider2D's two_sided option, on by default: each edge a segment shape that stops a body from either side ([34061bf](https://github.com/MoonHug-Editor/moonhug/commit/34061bf7442fd08950a4c03495cbb5441538f84d))
+
+### Bug Fixes
+
+* a physics material edit reaches MeshColliders while the simulation runs ([7a0b013](https://github.com/MoonHug-Editor/moonhug/commit/7a0b0131a91d671a0cf9651ad5f2491bc0242da0))
+* the crash journal keeps a thread's existing alternate signal stack and its tests skip installing signal handlers, so the test runner keeps its own and the suite runs clean under AddressSanitizer ([78c2e7f](https://github.com/MoonHug-Editor/moonhug/commit/78c2e7ffc9500f1a7ce2f5e792ab57b34b30ca31))
+* the editor's refresh treats an asset's .meta as part of it and reimports changed assets, so a git checkout or an edit elsewhere reaches the editor without a restart ([ebb1098](https://github.com/MoonHug-Editor/moonhug/commit/ebb10986a3c841a12fe248c16374627d3df0c0d0))
+* the engine's mesh cache is created with the default allocator and cleared on shutdown ([0c7ccca](https://github.com/MoonHug-Editor/moonhug/commit/0c7cccae82aaf3c4758be5ecb5e7b19fcaf563ba))
+
 ## [0.143.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.142.0...v0.143.0) (2026-10-23)
 
 ### Features
