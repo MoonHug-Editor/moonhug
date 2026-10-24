@@ -8,9 +8,11 @@ package physics3d_tests
 // posts on a bar.
 //
 // Only the first test runs the real CoACD tool, which checks its flags and
-// the hulls it makes. The others test the editor's job handling with a
-// stand-in that writes the U's three hulls at once (fake_coacd.sh), so the
-// suite never waits for a decomposition.
+// the hulls it makes. It skips when mh setup has not built CoACD, which
+// mh test reports after the summary. The others test the editor's job
+// handling with a stand-in that writes the U's three hulls at once
+// (fake_coacd.sh), so the suite never waits for a decomposition. Each test
+// starts with no job state: the teardown resets it.
 
 import "core:encoding/json"
 import "core:fmt"
@@ -64,6 +66,7 @@ _u_setup :: proc(t: ^testing.T, sets: []engine.Mesh_Hull_Set) -> (guid: engine.A
 
 @(private = "file")
 _u_teardown :: proc() {
+	physics3d_editor.hull_jobs_reset()
 	engine.asset_db_shutdown()
 	common.remove_tree(_SRC_DIR)
 	common.remove_tree(engine.library_dir())
@@ -71,6 +74,10 @@ _u_teardown :: proc() {
 
 @(test)
 physics3d_decomposition_carries_a_u :: proc(t: ^testing.T) {
+	if !os.exists(physics3d_editor.COACD_EXE) {
+		common.skip(t, "CoACD is not built, mh setup builds it")
+		return
+	}
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)

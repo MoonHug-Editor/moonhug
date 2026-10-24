@@ -64,7 +64,7 @@ shows the exact command it runs. `odin` has to be on the editor's PATH.
 | `build` | build the editor without launching it |
 | `check-noplugins` | build the editor with every plugin set aside, one row per stage, PASS or FAIL with the failed stage's output (`make check-noplugins`) |
 | `play` | run a package's run configuration, the editor's Play button from the terminal (`play app:run`, `play` alone when one package ships them) |
-| `test` | run the test suite |
+| `test` | run the test suite. A test whose optional tool is missing, such as CoACD before `setup` built it, skips, and `test` lists it under the summary, which counts it as passed |
 | `test-asan` | the same under AddressSanitizer: a read or write of freed heap memory or past an allocation's end aborts the run with the stacks of the access, the free and the allocation. About four times slower, so it is for after allocator, pool, cache or lifetime changes and before a batch of commits, not after every edit. Leak detection is off (macOS on arm64 has none) and the temp allocator is invisible to it |
 | `prebuild` | run the code generators only |
 | `shaders` | recompile the built-in GLSL shaders |

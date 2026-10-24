@@ -10,6 +10,9 @@ import "core:time"
 
 EDITOR_BIN :: "builds/MoonHug" + EXE
 TESTS_ASAN_BIN :: "builds/tests_asan" + EXE
+// Where a test records that it skipped (moonhug/tests/common/skip.odin names
+// the same path).
+TEST_SKIPS_FILE :: "builds/test_skips.txt"
 MCP_BIN :: "builds/mcp_shim" + EXE
 
 // Code generation, always before a build. Two steps: prune imports of removed
@@ -144,7 +147,25 @@ cmd_test :: proc(args: []string) -> int {
 	if name := flag_value(args, "--name"); name != "" {
 		append(&cmd, fmt.tprintf("-define:ODIN_TEST_NAMES=%s", name))
 	}
-	return run(..cmd[:])
+	_ = os.remove(TEST_SKIPS_FILE)
+	code := run(..cmd[:])
+	_report_skips()
+	return code
+}
+
+// The tests that skipped because an optional tool is missing. The runner's
+// summary counts them as passed, so they are listed under it.
+_report_skips :: proc() {
+	data, err := os.read_entire_file(TEST_SKIPS_FILE, context.temp_allocator)
+	if err != nil do return
+	text := strings.trim_space(string(data))
+	if text == "" do return
+	lines := strings.split_lines(text, context.temp_allocator)
+	fmt.printfln("mh: %d test%s skipped, the summary above counts %s as passed:", len(lines), "" if len(lines) == 1 else "s", "it" if len(lines) == 1 else "them")
+	for line in lines {
+		name, _, reason := strings.partition(line, "\t")
+		fmt.printfln("  %s: %s", name, reason)
+	}
 }
 
 // The suite under AddressSanitizer: a read or write of freed heap memory or
@@ -174,7 +195,10 @@ cmd_test_asan :: proc(args: []string) -> int {
 		}
 	}
 	if !has_options do append(&env, "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1")
-	return run_env(env[:], TESTS_ASAN_BIN)
+	_ = os.remove(TEST_SKIPS_FILE)
+	code := run_env(env[:], TESTS_ASAN_BIN)
+	_report_skips()
+	return code
 }
 
 // The MCP stdio server the client spawns (.mcp.json, docs/core/McpBridge.md).

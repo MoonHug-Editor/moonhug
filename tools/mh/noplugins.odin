@@ -10,6 +10,12 @@ package mh
 // A generator that writes into a plugin by path with that plugin absent would
 // leave a real directory where the link was. Restore removes such a directory
 // before putting the link back, and reports it, since it is a generator bug.
+//
+// Another program can also put a link back while it is aside: a git pull,
+// checkout or stash restores the tracked links. Restore removes such a link
+// as a link, never with os.remove_all, which given a link to a directory
+// empties the directory it points to. The check then fails, since the tree
+// changed under the build, and the installed state is regenerated anyway.
 
 import "core:fmt"
 import "core:os"
@@ -41,6 +47,7 @@ No_Plugins_Result :: struct {
 	failed:   Maybe(No_Plugins_Stage), // the first stage that failed
 	moved:    int,                     // links moved aside
 	strays:   [dynamic]string,         // plugin paths a generator recreated as real directories
+	relinked: [dynamic]string,         // links another program put back while they were aside
 }
 
 // The no-plugins build. `report`, when set, is called as each stage ends
@@ -49,6 +56,7 @@ No_Plugins_Result :: struct {
 @(private = "file")
 _no_plugins :: proc(report: proc(stage: No_Plugins_Stage, ok: bool, detail: string)) -> (r: No_Plugins_Result) {
 	r.strays = make([dynamic]string, context.temp_allocator)
+	r.relinked = make([dynamic]string, context.temp_allocator)
 	done := proc(r: ^No_Plugins_Result, report: proc(stage: No_Plugins_Stage, ok: bool, detail: string), stage: No_Plugins_Stage, ok: bool, detail := "") -> bool {
 		if !ok && r.failed == nil do r.failed = stage
 		if report != nil do report(stage, ok, detail)
@@ -63,9 +71,13 @@ _no_plugins :: proc(report: proc(stage: No_Plugins_Stage, ok: bool, detail: stri
 	moved := make([dynamic]Link_Entry, context.temp_allocator)
 	// The links come back whatever the build part did.
 	built := _aside_and_build(&r, report, links, &moved, done)
-	restored := _restore_links(moved[:], &r.strays, quiet = report != nil)
-	restore_detail := len(r.strays) > 0 ? fmt.tprintf("a generator recreated %s as a real directory (removed)", strings.join(r.strays[:], ", ", context.temp_allocator)) : ""
-	if done(&r, report, .Restore, restored && len(r.strays) == 0, restore_detail) {
+	restored := _restore_links(moved[:], &r.strays, &r.relinked, quiet = report != nil)
+	restore_detail := ""
+	if len(r.strays) > 0 do restore_detail = fmt.tprintf("a generator recreated %s as a real directory (removed)", strings.join(r.strays[:], ", ", context.temp_allocator))
+	if len(r.relinked) > 0 do restore_detail = fmt.tprintf("%s%sanother program, a git pull, checkout or stash for example, put %d link%s back during the check, so the build saw a changing tree: run the check again", restore_detail, "" if restore_detail == "" else ". ", len(r.relinked), "" if len(r.relinked) == 1 else "s")
+	done(&r, report, .Restore, restored && len(r.strays) == 0 && len(r.relinked) == 0, restore_detail)
+	// The installed state comes back whenever the links did.
+	if restored {
 		if report == nil do fmt.println("mh: links restored, regenerating the installed state")
 		regen := prebuild()
 		if !regen && report == nil do fmt.eprintln("mh: regenerating the installed state failed, run mh prebuild")
@@ -123,14 +135,24 @@ _all_package_links :: proc() -> []Link_Entry {
 	return out[:]
 }
 
-// Puts the links back. A directory a generator created where a link was is
-// removed first and listed in `strays`. False when a link could not be put
-// back.
+// Puts the links back. A link another program put back meanwhile is removed
+// as a link and listed in `relinked`. A directory a generator created where a
+// link was is removed first and listed in `strays`. False when a link could
+// not be put back.
 @(private = "file")
-_restore_links :: proc(moved: []Link_Entry, strays: ^[dynamic]string, quiet := false) -> (ok: bool) {
+_restore_links :: proc(moved: []Link_Entry, strays: ^[dynamic]string, relinked: ^[dynamic]string, quiet := false) -> (ok: bool) {
 	ok = true
 	for e in moved {
-		if os.exists(e.path) {
+		if _, lerr := os.read_link(e.path, context.temp_allocator); lerr == nil {
+			// Never os.remove_all here: on a link it empties the plugin.
+			if !quiet do fmt.eprintfln("mh: %s was put back by another program during the no-plugins build (a git operation?), replacing it with the moved link", e.path)
+			append(relinked, e.path)
+			if err := os.remove(e.path); err != nil {
+				fmt.eprintfln("mh: cannot remove the link %s: %v", e.path, err)
+				ok = false
+				continue
+			}
+		} else if os.exists(e.path) {
 			// Only a generator writing into an absent plugin produces this.
 			if !quiet do fmt.eprintfln("mh: %s was recreated as a real directory during the no-plugins build (a generator wrote into an absent plugin), removing it", e.path)
 			append(strays, e.path)

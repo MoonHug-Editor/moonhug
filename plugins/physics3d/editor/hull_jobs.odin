@@ -317,6 +317,24 @@ hull_jobs_shutdown :: proc() {
 	for len(_jobs.running) > 0 do _job_cancel_running(len(_jobs.running) - 1, record = false)
 }
 
+// Back to an editor that has seen no model: the running decompositions are
+// killed, and the queue, the outcomes and the known models go. Tests call it
+// between tests, so a set that failed or was cancelled in one test is not
+// still failed in the next.
+hull_jobs_reset :: proc() {
+	context.allocator = runtime.default_allocator()
+	hull_jobs_shutdown()
+	for j in _jobs.queue do _job_free(j)
+	clear(&_jobs.queue)
+	for _, o in _jobs.outcomes do delete(o.error)
+	clear(&_jobs.outcomes)
+	for _, &m in _jobs.known {
+		delete(m.sets)
+		delete(m.hashes)
+	}
+	clear(&_jobs.known)
+}
+
 // --- Jobs ------------------------------------------------------------------------
 
 @(private = "file")
