@@ -1,3 +1,13 @@
+## [0.145.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.144.0...v0.145.0) (2026-10-24)
+
+### Features
+
+* mh test-asan runs the suite under AddressSanitizer, and the release workflow runs it on a Mac before the version bump ([6dc93a2](https://github.com/MoonHug-Editor/moonhug/commit/6dc93a25ec8a7f8d7ead96a5bd5a6f142040b744))
+
+### Bug Fixes
+
+* restore previous workflows for simplicity ([b6af719](https://github.com/MoonHug-Editor/moonhug/commit/b6af7192b42a12587b409acc1ff999d60662bb7c))
+
 ## [0.144.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.143.0...v0.144.0) (2026-10-24)
 
 ### Features
