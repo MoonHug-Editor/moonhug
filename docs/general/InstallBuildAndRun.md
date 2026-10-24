@@ -65,7 +65,7 @@ shows the exact command it runs. `odin` has to be on the editor's PATH.
 | `check-noplugins` | build the editor with every plugin set aside, one row per stage, PASS or FAIL with the failed stage's output (`make check-noplugins`) |
 | `play` | run a package's run configuration, the editor's Play button from the terminal (`play app:run`, `play` alone when one package ships them) |
 | `test` | run the test suite |
-| `test-asan` | the same under AddressSanitizer: a read or write of freed heap memory or past an allocation's end aborts the run with the stacks of the access, the free and the allocation. About four times slower, so it runs in the release workflow and after allocator, pool, cache or lifetime changes, not after every edit. Leak detection is off (macOS on arm64 has none) and the temp allocator is invisible to it |
+| `test-asan` | the same under AddressSanitizer: a read or write of freed heap memory or past an allocation's end aborts the run with the stacks of the access, the free and the allocation. About four times slower, so it is for after allocator, pool, cache or lifetime changes and before a batch of commits, not after every edit. Leak detection is off (macOS on arm64 has none) and the temp allocator is invisible to it |
 | `prebuild` | run the code generators only |
 | `shaders` | recompile the built-in GLSL shaders |
 | `docs` | build the documentation site into `builds/docs` (see [Documentation](Documentation.md)) |
@@ -75,7 +75,7 @@ shows the exact command it runs. `odin` has to be on the editor's PATH.
 
 Options: `test --name=pkg.test_name` runs a single test (`make test NAME=...`),
 `build --debug` builds the editor with `-debug`, `build --no-plugins` proves the shell builds with no plugin installed (`make build NOPLUGINS=1`),
-`play <pkg>:<config> --dev|--run-only|--build-only` are the Play button's modifier keys Alt, Shift and Alt+Shift (`make play PKG=app:run FLAGS=--build-only`), `setup --force` rebuilds vendored libraries that are already built, `setup --skip=coacd` leaves a library out,
+`play <pkg>:<config> --dev|--run-only|--build-only` are the Play button's modifier keys Alt, Shift and Alt+Shift (`make play PKG=app:run FLAGS=--build-only`), `setup --force` rebuilds vendored libraries that are already built,
 `docs --open` serves the site with search and opens the browser (`make docs OPEN=1`).
 
 Commands run from the repo root whatever directory invoked them. `help` and

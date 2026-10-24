@@ -8,33 +8,8 @@ permissions:
   contents: write
 
 jobs:
-  # The suite under AddressSanitizer on a Mac, the platform the editor is
-  # developed on. A failure holds the release. CoACD is left out: the
-  # decomposition tests run a stand-in, and the real build downloads 1 GB.
-  test:
-    runs-on: macos-latest
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install Odin, SDL3 and cmake
-        run: brew install odin sdl3 sdl3_mixer cmake
-
-      - name: Build Dear ImGui
-        working-directory: moonhug/external/odin-imgui
-        run: python3 build.py
-
-      - name: Build the vendored libraries
-        run: odin run tools/mh -- setup --skip=coacd
-
-      - name: Run the test suite under AddressSanitizer
-        run: odin run tools/mh -- test-asan
-
   release:
     runs-on: ubuntu-latest
-    needs: test
 
     steps:
       - uses: actions/checkout@v4

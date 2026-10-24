@@ -13,7 +13,6 @@ package mh
 
 import "core:fmt"
 import "core:slice"
-import "core:strings"
 import "core:os"
 
 Vendor_Lib :: struct {
@@ -92,7 +91,6 @@ vendor_libs :: proc() -> []Vendor_Lib {
 
 cmd_setup :: proc(args: []string) -> int {
 	force := has_flag(args, "--force")
-	skip := strings.split(flag_value(args, "--skip"), ",", context.temp_allocator)
 	failed := 0
 	built := 0
 
@@ -105,10 +103,6 @@ cmd_setup :: proc(args: []string) -> int {
 		artifact := lib.artifact if lib.in_repo else odin_vendor(lib.artifact)
 		if !force && os.exists(artifact) {
 			fmt.printfln("  %-7s already built", lib.name)
-			continue
-		}
-		if slice.contains(skip, lib.name) {
-			fmt.printfln("  %-7s skipped (--skip)", lib.name)
 			continue
 		}
 		if !os.is_dir(lib.dir) {

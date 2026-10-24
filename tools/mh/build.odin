@@ -150,9 +150,8 @@ cmd_test :: proc(args: []string) -> int {
 // The suite under AddressSanitizer: a read or write of freed heap memory or
 // past an allocation's end aborts the run at the first one, with the stack
 // of the access, the free and the allocation. It is about four times slower
-// than `test`, so it is for the release workflow (.github/workflows) and for
-// after a change to allocators, pools, caches or object lifetimes, not the
-// edit-and-run loop. Two gaps: leak detection is off, macOS on arm64 has
+// than `test`, so it is for after a change to allocators, pools, caches or
+// object lifetimes and before a batch of commits, not the edit-and-run loop. Two gaps: leak detection is off, macOS on arm64 has
 // none, and the temp allocator is invisible to it, Odin keeps the arena's
 // sanitizer hooks off, so memory kept past a frame goes unnoticed.
 cmd_test_asan :: proc(args: []string) -> int {

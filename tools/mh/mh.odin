@@ -34,7 +34,7 @@ Command :: struct {
 }
 
 COMMANDS := []Command {
-	{"setup", "build the vendored Odin libraries this repo links against (--skip=name,... leaves some out)", cmd_setup, false},
+	{"setup", "build the vendored Odin libraries this repo links against", cmd_setup, false},
 	{"run", "build and launch the editor", cmd_run, true},
 	{"debug", "build with -debug and launch the editor", cmd_debug, true},
 	{"build", "build the editor without launching it (--no-plugins proves the shell builds alone)", cmd_build, true},
