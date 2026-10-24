@@ -102,7 +102,6 @@ show_hierarchy := true
 show_project := true
 show_console := true
 show_output := true
-show_background_tasks := false
 show_history := false
 show_animation := false
 show_playable_graph := false
@@ -126,7 +125,6 @@ view_show_flag :: proc(title: cstring) -> ^bool {
 	case icons.TITLE_PROJECT:           return &show_project
 	case icons.TITLE_CONSOLE:           return &show_console
 	case icons.TITLE_OUTPUT:            return &show_output
-	case icons.TITLE_BACKGROUND_TASKS:  return &show_background_tasks
 	case icons.TITLE_HISTORY:           return &show_history
 	case icons.TITLE_ANIMATION:         return &show_animation
 	case icons.TITLE_PLAYABLE_GRAPH:    return &show_playable_graph
@@ -160,10 +158,11 @@ window_menu_console :: proc() { _open_window(&show_console, icons.TITLE_CONSOLE)
 window_menu_output :: proc() { _open_window(&show_output, icons.TITLE_OUTPUT) }
 
 @(menu_item={path="Window/General/Background Tasks", order=9, shortcut=""})
-window_menu_background_tasks :: proc() { _open_window(&show_background_tasks, icons.TITLE_BACKGROUND_TASKS) }
+window_menu_background_tasks :: proc() { background_tasks_requested = true }
 
-// Opens the Background Tasks window, as the status bar does on a click.
-open_background_tasks :: proc() { _open_window(&show_background_tasks, icons.TITLE_BACKGROUND_TASKS) }
+// Set by Window ▸ General ▸ Background Tasks. The status bar shows its
+// Background Tasks panel on the next frame and clears it.
+background_tasks_requested := false
 
 @(menu_item={path="Edit/Undo History", order=-98, shortcut=""})
 window_menu_history :: proc() { _open_window(&show_history, icons.TITLE_HISTORY) }
