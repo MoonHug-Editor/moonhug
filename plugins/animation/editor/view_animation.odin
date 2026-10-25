@@ -925,7 +925,7 @@ _pv_draw_toolbar :: proc(clip: ^anim.AnimationClip, length: f32) {
 // The clip the view edits: the tab menu saves and discards it, and the tab
 // title carries its star.
 @(view_document={view="Animation"})
-animation_view_document :: proc() -> engine.Asset_GUID {
+animation_view_document :: proc(view: session.View) -> engine.Asset_GUID {
 	doc, _ := _pv_doc()
 	return doc.guid if doc != nil else {}
 }
@@ -1022,11 +1022,11 @@ anim_view_prefs: Anim_View_Prefs
 // because a toggle writes through a ^bool and would need its own variable —
 // two places holding the same preference, one of them persisted.
 @(view_menu={view="Animation", label="Play Ends on Last Frame", checked=anim_ends_on_last_frame})
-anim_toggle_ends_on_last_frame :: proc() {
+anim_toggle_ends_on_last_frame :: proc(view: session.View) {
 	anim_view_prefs.ends_on_last_frame = !anim_view_prefs.ends_on_last_frame
 }
 
-anim_ends_on_last_frame :: proc() -> bool {
+anim_ends_on_last_frame :: proc(view: session.View) -> bool {
 	return anim_view_prefs.ends_on_last_frame
 }
 

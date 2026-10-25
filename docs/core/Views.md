@@ -10,7 +10,7 @@ A view is a dockable editor window: the built-in ones (Scene, Game, Hierarchy, I
 
 ## View ids
 
-Every view's imgui title is `"<icon> <label>###<key>"`. imgui keys the window, its dock place and the saved layout on the key after `###`, so the icon and the label can change, a star appears while the view's asset has unsaved changes, and the tab never moves. A view's key is its id (`"Scene"`, `"Animation"`), and a window instance opened for an asset adds the asset's guid (`"shader_graph/<guid>"`). Every attribute on this page names a view by its id, the key up to its first `/`, so all instances of a window share its menu and tab bar items.
+Every view's imgui title is `"<icon> <label>###<key>"`. imgui keys the window, its dock place and the saved layout on the key after `###`, so the icon and the label can change, a star appears while the view's asset has unsaved changes, and the tab never moves. A view's key is its id (`"Scene"`, `"Animation"`), and a window instance opened for an asset adds the asset's guid (`"shader_graph/<guid>"`). Every attribute on this page names a view by its id, the key up to its first `/`, so all instances of a window share its menu and tab bar items. The procs behind those items receive the view they act for as a `session.View`, its key and its id, so each instance answers for itself. A plugin window finds its instance with `wnd.find(view.key)`.
 
 ## Editor windows
 
@@ -42,8 +42,8 @@ open_physics_debug :: proc() {
 
 Every dock node's tab bar ends with a ⋮ button, whose menu acts on the visible view. Both attributes below land in `editor/view_chrome_generated.odin` (view_chrome_gen).
 
-- **`@(view_menu={view, label, order, enabled, checked})`** adds an item to that menu. On a proc it is an action, on a bool variable a toggle. `label` is a path in the view's menu, so `"Display/Grid"` makes a submenu. `order`, `enabled` and `checked` work as on `@(menu_item)`. Two declarations of one label in one view stop the build. The bridge invokes them as `View/<view>/<label>` ([MCP Bridge](McpBridge.md)).
-- **`@(view_tab_bar={view, order})`** adds a widget left of the ⋮ button: a proc that draws it with imgui, at a width that does not change with its state. The padlock on both inspectors is one (`editor/inspector_lock.odin`).
+- **`@(view_menu={view, label, order, enabled, checked})`** adds an item to that menu. On a `proc(view: session.View)` it is an action, on a bool variable a toggle. `label` is a path in the view's menu, so `"Display/Grid"` makes a submenu. `order`, `enabled` and `checked` work as on `@(menu_item)`, and the predicates take the view too. A toggle's bool is shared by every instance of the view. Two declarations of one label in one view stop the build. The bridge invokes them as `View/<view>/<label>` ([MCP Bridge](McpBridge.md)).
+- **`@(view_tab_bar={view, order})`** adds a widget left of the ⋮ button: a `proc(view: session.View)` that draws it with imgui for that view, at a width that does not change with its state. The padlock on both inspectors is one (`editor/inspector_lock.odin`).
 
 ```odin
 @(view_menu={view="Game", label="Gizmos"})
@@ -52,11 +52,11 @@ game_gizmos: bool
 
 ## The asset a view edits
 
-A view whose asset changes while it stays open names it with `@(view_document)` on a public proc, which returns the asset's guid, or `{}` while the view edits none. The view's tab menu then starts with Save and Discard for that asset, and its tab carries a star while the asset has unsaved changes. A locked view returns its locked asset. The Project Inspector, the Hierarchy, the Scene view and the Animation window have one. A window instance opened for an asset needs none, as the Shader Graph and Render Pipeline windows show, and a view with neither has no Save, Discard or star on its tab.
+A view whose asset changes while it stays open names it with `@(view_document)` on a public proc, which takes the view and returns the asset's guid, or `{}` while the view edits none. The view's tab menu then starts with Save and Discard for that asset, and its tab carries a star while the asset has unsaved changes. A locked view returns its locked asset. The Project Inspector, the Hierarchy, the Scene view and the Animation window have one. A window instance opened for an asset needs none, as the Shader Graph and Render Pipeline windows show, and a view with neither has no Save, Discard or star on its tab.
 
 ```odin
 @(view_document={view="Animation"})
-animation_view_document :: proc() -> engine.Asset_GUID {
+animation_view_document :: proc(view: session.View) -> engine.Asset_GUID {
 	doc, _ := _pv_doc()
 	return doc.guid if doc != nil else {} // the selected clip, {} for none
 }

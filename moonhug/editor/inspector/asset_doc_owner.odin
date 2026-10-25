@@ -36,7 +36,7 @@ _asset_document_discard :: proc(key: rawptr) {
 
 // The asset the Project Inspector shows, locked or not.
 @(view_document={view="Project Inspector"})
-project_inspector_document :: proc() -> core.Asset_GUID {
+project_inspector_document :: proc(view: session.View) -> core.Asset_GUID {
 	doc := inspectorData.doc
 	if inspectorData.mode != .Asset || doc == nil || doc.kind != .File do return {}
 	return doc.guid

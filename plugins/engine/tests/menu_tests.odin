@@ -14,6 +14,7 @@ import "moonhug:packages/engine"
 import "moonhug:editor"
 import "moonhug:editor/icons"
 import "moonhug:editor/menu"
+import "moonhug:editor/session"
 
 @(private = "file") _act_ran: int
 @(private = "file") _act_flag: bool
@@ -127,9 +128,10 @@ test_menu_listing_is_deterministic :: proc(t: ^testing.T) {
 
 @(private = "file") _view_flag: bool
 @(private = "file") _view_ran: int
-@(private = "file") _view_act :: proc() { _view_ran += 1 }
-@(private = "file") _view_flip :: proc() { _view_flag = !_view_flag }
-@(private = "file") _view_is_flipped :: proc() -> bool { return _view_flag }
+@(private = "file") _view_act :: proc(view: session.View) { _view_ran += 1 }
+@(private = "file") _view_flip :: proc(view: session.View) { _view_flag = !_view_flag }
+@(private = "file") _view_is_flipped :: proc(view: session.View) -> bool { return _view_flag }
+@(private = "file") _view_never :: proc(view: session.View) -> bool { return false }
 
 @(private = "file")
 _view_fixture :: proc() {
@@ -138,7 +140,7 @@ _view_fixture :: proc() {
 	_view_ran = 0
 	editor.view_menu_add_toggle("Console", "Clear on Play", &_view_flag)
 	editor.view_menu_add_action("Console", "Reset", _view_act)
-	editor.view_menu_add_action("Console", "Never", _view_act, 0, _never)
+	editor.view_menu_add_action("Console", "Never", _view_act, 0, _view_never)
 	editor.view_tab_bar_add_item("Output", _view_act, 0)
 }
 
@@ -209,7 +211,7 @@ test_view_menu_and_toolbar_do_not_mix :: proc(t: ^testing.T) {
 	for p in paths do testing.expect(t, !strings.has_prefix(p, "View/Output/"), "a toolbar item is not a menu path")
 
 	// And a view whose only items are menu items reserves no toolbar width.
-	testing.expect_value(t, editor.view_tab_bar_width("Console"), f32(0))
+	testing.expect_value(t, editor.view_tab_bar_width(session.view_of("Console")), f32(0))
 }
 
 // The id keys the registry and the imgui ini, so it is the text after ###.

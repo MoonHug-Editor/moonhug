@@ -41,12 +41,12 @@ _scene_document_discard :: proc(key: rawptr) {
 }
 
 @(view_document={view="Hierarchy"})
-hierarchy_document :: proc() -> engine.Asset_GUID {
+hierarchy_document :: proc(view: session.View) -> engine.Asset_GUID {
 	return _active_scene_guid()
 }
 
 @(view_document={view="Scene"})
-scene_view_document :: proc() -> engine.Asset_GUID {
+scene_view_document :: proc(view: session.View) -> engine.Asset_GUID {
 	return _active_scene_guid()
 }
 

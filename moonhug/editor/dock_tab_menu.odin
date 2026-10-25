@@ -157,7 +157,7 @@ _tab_menu_node :: proc(node: ^im.DockNode) {
 				// is unique and is what distinguishes them.
 				im.PushIDInt(i32(node.ID_))
 
-				view := view_id_of(active_title)
+				view := session.view_of(view_key_of(active_title))
 				items_w := view_tab_bar_width(view)
 				// Only when the bar has room beside the tabs. A narrow node
 				// keeps its tabs readable and its items reachable through the
@@ -219,11 +219,11 @@ _tab_menu_contents :: proc(node: ^im.DockNode) {
 	if node.VisibleWindow != nil do active_title = node.VisibleWindow.Name
 
 	if active_title != nil {
-		view := view_id_of(active_title)
+		view := session.view_of(view_key_of(active_title))
 		// The file the view shows first (session/documents.odin): Save, and
 		// Discard after a confirmation. Both are off while it has no unsaved
 		// changes.
-		if d, ok := session.view_document(view_key_of(active_title)); ok {
+		if d, ok := session.view_document(view.key); ok {
 			im.BeginDisabled(!d.dirty)
 			if im.MenuItem("Save") do session.document_save(d)
 			im.EndDisabled()

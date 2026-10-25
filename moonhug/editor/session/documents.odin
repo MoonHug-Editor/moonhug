@@ -49,8 +49,23 @@ Document_Owner :: struct {
 	discard: proc(key: rawptr),
 }
 
-// The asset a view edits right now, {} when it edits none.
-View_Document_Proc :: proc() -> core.Asset_GUID
+// A view as the attribute procs that extend it see it (docs/core/Views.md):
+// @(view_document), @(view_menu) actions and their predicates, @(view_tab_bar)
+// widgets. Several instances of one window are several views of one id.
+View :: struct {
+	key: string, // the text after ### in its title: "Inspector", or "shader_graph/<guid>" for a window instance
+	id:  string, // the view's id, the key up to its first `/`
+}
+
+// The view `key` names.
+view_of :: proc(key: string) -> View {
+	id := key
+	if slash := strings.index_byte(key, '/'); slash >= 0 do id = key[:slash]
+	return {key = key, id = id}
+}
+
+// The asset the view edits right now, {} when it edits none.
+View_Document_Proc :: proc(view: View) -> core.Asset_GUID
 
 @(private = "file") _owners: [dynamic]Document_Owner
 @(private = "file") _view_documents: map[string]View_Document_Proc
@@ -123,11 +138,10 @@ view_asset_clear :: proc(key: string) {
 view_document :: proc(key: string) -> (Document, bool) {
 	guid, opened_for := _view_assets[key]
 	if !opened_for {
-		view := key
-		if slash := strings.index_byte(key, '/'); slash >= 0 do view = key[:slash]
-		p, has := _view_documents[view]
+		view := view_of(key)
+		p, has := _view_documents[view.id]
 		if !has do return {}, false
-		guid = p()
+		guid = p(view)
 	}
 	if guid == {} do return {}, false
 	for d in documents(context.temp_allocator) do if d.guid == guid do return d, true

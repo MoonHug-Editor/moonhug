@@ -5,6 +5,7 @@ import "core:mem"
 import "core:slice"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/session"
 import "moonhug:editor/widgets"
 
 MenuEntryKind :: enum {
@@ -50,6 +51,12 @@ MenuNode :: struct {
 	// each set the state and each report whether they are the current one.
 	checked:       proc() -> bool,
 	draw:          proc(), // Dynamic: emits the submenu's items, called while it is open
+	// A view menu's action and predicates take the view they act for
+	// (view_chrome.odin), set instead of `action`, `enabled` and `checked`.
+	// The tree's draw and invoke pass that view down.
+	view_action:   proc(view: session.View),
+	view_enabled:  proc(view: session.View) -> bool,
+	view_checked:  proc(view: session.View) -> bool,
 	children:      [dynamic]^MenuNode,
 	order:         int, // sort key (lower = earlier); ORDER_DEFAULT when unspecified
 	// The @(menu_item) that created this node, with its file and line, as
@@ -147,9 +154,11 @@ draw_menu_subtree :: proc(path: string) {
 
 // Draws every item under `root`. A view's menu is a whole tree rather than a
 // subtree of the main one, so it draws from its root.
-tree_draw :: proc(root: ^MenuNode) -> (drew: bool) {
+// Draws a tree's items into an open menu. A view menu passes the view its
+// items act for.
+tree_draw :: proc(root: ^MenuNode, view := session.View{}) -> (drew: bool) {
 	if root == nil || len(root.children) == 0 do return false
-	_draw_menu_children(root)
+	_draw_menu_children(root, view)
 	return true
 }
 
@@ -246,6 +255,18 @@ tree_add_item :: proc(root: ^MenuNode, path: string, shortcut: string, action: p
 	node.origin = origin
 }
 
+// A view menu's action: the action and its predicates take the view they act
+// for (view_chrome.odin).
+tree_add_view_item :: proc(root: ^MenuNode, path: string, action: proc(view: session.View), order: int = ORDER_DEFAULT, enabled: proc(view: session.View) -> bool = nil, checked: proc(view: session.View) -> bool = nil, origin := "") {
+	node := _get_or_create_path(root, path)
+	node.kind = .Action
+	node.order = order
+	node.view_action = action
+	node.view_enabled = enabled
+	node.view_checked = checked
+	node.origin = origin
+}
+
 // add_menu_toggle adds a checkbox at the given path that toggles the value.
 // Declared as @(menu_item) on a bool variable — the same attribute an action
 // uses on a proc, since what it is attached to already says which it is.
@@ -337,7 +358,7 @@ tree_find :: proc(root: ^MenuNode, path: string) -> ^MenuNode {
 _node_invokable :: proc(node: ^MenuNode) -> bool {
 	if node == nil do return false
 	#partial switch node.kind {
-	case .Action: return node.action != nil
+	case .Action: return node.action != nil || node.view_action != nil
 	case .Toggle: return node.value != nil
 	}
 	return false
@@ -352,17 +373,17 @@ invoke_path :: proc(path: string) -> (ok: bool, state: bool) {
 	return tree_invoke(_menu_root, path)
 }
 
-tree_invoke :: proc(root: ^MenuNode, path: string) -> (ok: bool, state: bool) {
+tree_invoke :: proc(root: ^MenuNode, path: string, view := session.View{}) -> (ok: bool, state: bool) {
 	node := tree_find(root, path)
 	if !_node_invokable(node) do return false, false
-	if node.enabled != nil && !node.enabled() do return false, false
+	if !_node_enabled(node, view) do return false, false
 	#partial switch node.kind {
 	case .Action:
-		node.action()
+		_node_run(node, view)
 		// An action with a tick predicate IS a toggle or a radio option, so
 		// the reply says where it landed — without it a caller that cannot see
 		// the menu learns nothing from invoking one.
-		if node.checked != nil do return true, node.checked()
+		if node.checked != nil || node.view_checked != nil do return true, _node_ticked(node, view)
 	case .Toggle:
 		node.value^ = !node.value^
 		return true, node.value^
@@ -529,17 +550,31 @@ _process_menu_shortcuts :: proc(node: ^MenuNode) {
 	}
 }
 
-_node_enabled :: proc(node: ^MenuNode) -> bool {
+_node_enabled :: proc(node: ^MenuNode, view := session.View{}) -> bool {
+	if node.view_enabled != nil do return node.view_enabled(view)
 	return node.enabled == nil || node.enabled()
 }
 
-_draw_menu_children :: proc(node: ^MenuNode) {
-	for child in node.children {
-		_draw_menu_child(child)
+_node_ticked :: proc(node: ^MenuNode, view: session.View) -> bool {
+	if node.view_checked != nil do return node.view_checked(view)
+	return node.checked != nil && node.checked()
+}
+
+_node_run :: proc(node: ^MenuNode, view: session.View) {
+	if node.view_action != nil {
+		node.view_action(view)
+	} else if node.action != nil {
+		node.action()
 	}
 }
 
-_draw_menu_child :: proc(child: ^MenuNode) {
+_draw_menu_children :: proc(node: ^MenuNode, view := session.View{}) {
+	for child in node.children {
+		_draw_menu_child(child, view)
+	}
+}
+
+_draw_menu_child :: proc(child: ^MenuNode, view := session.View{}) {
 	switch child.kind {
 	case .Separator:
 		im.Separator()
@@ -549,7 +584,7 @@ _draw_menu_child :: proc(child: ^MenuNode) {
 		// "last item" is inside the child window.
 		prev := widgets.ui_origin_push(child.origin)
 		defer widgets.ui_origin_pop(prev)
-		if im.BeginMenu(child.name_cstr, _node_enabled(child)) {
+		if im.BeginMenu(child.name_cstr, _node_enabled(child, view)) {
 			if child.draw != nil do child.draw()
 			im.EndMenu()
 		} else {
@@ -558,7 +593,7 @@ _draw_menu_child :: proc(child: ^MenuNode) {
 	case .Submenu, .Action, .Toggle:
 		if child.kind == .Submenu || len(child.children) > 0 {
 			if im.BeginMenu(child.name_cstr, true) {
-				_draw_menu_children(child)
+				_draw_menu_children(child, view)
 				im.EndMenu()
 			}
 		} else {
@@ -569,14 +604,14 @@ _draw_menu_child :: proc(child: ^MenuNode) {
 			#partial switch child.kind {
 			case .Action:
 				shortcut_label := child.shortcut_cstr if child.shortcut_cstr != nil else ""
-				ticked := child.checked != nil && child.checked()
-				if im.MenuItem(child.name_cstr, shortcut_label, ticked, _node_enabled(child)) {
-					if child.action != nil do child.action()
+				ticked := _node_ticked(child, view)
+				if im.MenuItem(child.name_cstr, shortcut_label, ticked, _node_enabled(child, view)) {
+					_node_run(child, view)
 				}
 				widgets.tooltip("", im.HoveredFlags_AllowWhenDisabled)
 			case .Toggle:
 				if child.value != nil {
-					im.MenuItemBoolPtr(child.name_cstr, child.shortcut_cstr, child.value, _node_enabled(child))
+					im.MenuItemBoolPtr(child.name_cstr, child.shortcut_cstr, child.value, _node_enabled(child, view))
 					widgets.tooltip("", im.HoveredFlags_AllowWhenDisabled)
 				}
 			}

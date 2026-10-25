@@ -18,6 +18,7 @@ package editor
 
 import "base:runtime"
 import "moonhug:editor/icons"
+import "moonhug:editor/session"
 import "moonhug:editor/widgets"
 import core "moonhug:libs/core"
 
@@ -27,7 +28,7 @@ import core "moonhug:libs/core"
 @(private = "file") _inspector_lock_sel: [dynamic]core.Transform_Handle
 
 @(view_tab_bar={view="Inspector", order=0})
-_inspector_lock_button :: proc() {
+_inspector_lock_button :: proc(view: session.View) {
 	was := _inspector_locked
 	filter_toggle_button(_inspector_locked ? icons.ICON_MD_LOCK : icons.ICON_MD_LOCK_OPEN, &_inspector_locked)
 	widgets.tooltip(_inspector_locked ? "Unlock: follow the selection again" : "Lock to the current selection")
@@ -85,7 +86,7 @@ inspector_lock_shutdown :: proc() {
 @(private = "file") _project_inspector_locked: bool
 
 @(view_tab_bar={view="Project Inspector", order=0})
-_project_inspector_lock_button :: proc() {
+_project_inspector_lock_button :: proc(view: session.View) {
 	was := _project_inspector_locked
 	filter_toggle_button(_project_inspector_locked ? icons.ICON_MD_LOCK : icons.ICON_MD_LOCK_OPEN, &_project_inspector_locked)
 	widgets.tooltip(_project_inspector_locked ? "Unlock: follow the project selection again" : "Lock to the current asset")

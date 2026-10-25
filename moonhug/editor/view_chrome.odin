@@ -5,9 +5,13 @@ package editor
 // Both render in the dock node's TAB BAR (dock_tab_menu.odin): items sit at
 // its right end, then the ⋮ button whose popup carries the menu entries.
 //
-//   @(view_tab_bar={view="Animation", order=0}) on proc()      -> a widget
-//   @(view_menu={view="Animation", label="..."}) on proc()     -> an action
+//   @(view_tab_bar={view="Animation", order=0}) on proc(view)  -> a widget
+//   @(view_menu={view="Animation", label="..."}) on proc(view) -> an action
 //   @(view_menu={view="Animation", label="..."}) on a bool var -> a toggle
+//
+// A widget's and an action's proc takes the view it acts for
+// (session.View), so each instance of a window gets its own. A toggle is a
+// bool shared by every instance.
 //
 // THE VIEW OWES THIS NOTHING. No call to make, no width to reserve, no layout
 // to choose — and so no silent failure when it forgets. The bar belongs to the
@@ -32,12 +36,13 @@ import "core:slice"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import gfx "moonhug:libs/gfx"
+import "moonhug:editor/session"
 import "moonhug:editor/widgets"
 import "menu"
 
 View_Tab_Bar_Item :: struct {
 	view:   string,
-	draw:   proc(),
+	draw:   proc(view: session.View),
 	order:  int,
 	// The @(view_tab_bar) that created the item, with its file and line, as
 	// rendered by the generator. Shown in the item's tooltip with debug tooltips on.
@@ -65,21 +70,22 @@ _view_menu_tree :: proc(view: string) -> ^menu.MenuNode {
 // `view` is the view's id, the text after ### in its window title ("Scene",
 // "Animation"), and `label` is the item's path inside that menu. On a proc the
 // item is an action, on a bool variable a toggle. `order`, `enabled` and
-// `checked` work as on @(menu_item).
+// `checked` work as on @(menu_item). The action and both predicates take the
+// view they act for, so each instance of a window gets its own.
 //
 // Registered once at startup from view_chrome_generated.odin. Process-global,
 // so never borrows the caller's allocator.
 @(extension_point={attribute="view_menu", target="proc var", fields="view label order enabled checked"})
 view_menu_add_action :: proc(
     view, label: string,
-    action: proc(),
+    action: proc(view: session.View),
     order := 0,
-    enabled: proc() -> bool = nil,
-    checked: proc() -> bool = nil,
+    enabled: proc(view: session.View) -> bool = nil,
+    checked: proc(view: session.View) -> bool = nil,
     origin := "",
 ) {
     context.allocator = runtime.default_allocator()
-    menu.tree_add_item(_view_menu_tree(view), label, "", action, order, enabled, checked, origin)
+    menu.tree_add_view_item(_view_menu_tree(view), label, action, order, enabled, checked, origin)
 }
 
 view_menu_add_toggle :: proc(view, label: string, value: ^bool, order := 0, enabled: proc() -> bool = nil, origin := "") {
@@ -97,10 +103,11 @@ view_menu_add_dynamic :: proc(view, label: string, draw: proc(), order := 0, ori
 // Adds a widget to a view's dock tab bar, left of its ⋮ menu button.
 //
 // `view` is the view's id, the text after ### in its window title, and items
-// sort by `order`. The proc draws the widget with imgui and should keep a fixed
-// width. The bar belongs to the dock node, so the view itself needs no code.
+// sort by `order`. The proc draws the widget with imgui for the view it is
+// given, and should keep a fixed width. The bar belongs to the dock node, so
+// the view itself needs no code.
 @(extension_point={attribute="view_tab_bar", target="proc", fields="view order"})
-view_tab_bar_add_item :: proc(view: string, draw: proc(), order := 0, origin := "") {
+view_tab_bar_add_item :: proc(view: string, draw: proc(view: session.View), order := 0, origin := "") {
 	context.allocator = runtime.default_allocator()
 	append(&_view_tab_bar_items, View_Tab_Bar_Item{view = view, draw = draw, order = order, origin = origin})
 }
@@ -156,20 +163,20 @@ view_key_of :: proc(title: cstring) -> string {
 // Measuring means drawing the items once off-screen, so the answer is cached
 // for the frame: a view asks for the view_tab_bar_width and then draws, and neither should
 // cost a second hidden pass.
-view_tab_bar_width :: proc(view: string) -> f32 {
-	if _view_tab_bar_width_cache.view == view && _view_tab_bar_width_cache.frame == gfx.frame_index {
+view_tab_bar_width :: proc(view: session.View) -> f32 {
+	if _view_tab_bar_width_cache.view == view.key && _view_tab_bar_width_cache.frame == gfx.frame_index {
 		return _view_tab_bar_width_cache.width
 	}
-	tools := _view_tab_bar_items_for(view)
+	tools := _view_tab_bar_items_for(view.id)
 	w: f32
 	if len(tools) > 0 {
 		// Spacing BETWEEN items only. A leading one would push the whole strip
 		// away from the menu button beside it, and both already carry their own
 		// frame padding.
 		w += im.GetStyle().ItemSpacing.x * f32(len(tools) - 1)
-		w += _view_tab_bar_measure(tools)
+		w += _view_tab_bar_measure(tools, view)
 	}
-	_view_tab_bar_width_cache = {view = view, frame = gfx.frame_index, width = w}
+	_view_tab_bar_width_cache = {view = view.key, frame = gfx.frame_index, width = w}
 	return w
 }
 
@@ -186,23 +193,23 @@ _view_tab_bar_width_cache: struct {
 // No SameLine before the first item: the caller positions the strip by screen
 // coordinates (the tab bar sits outside any view's layout), and SameLine would
 // discard that and continue from whatever was drawn last.
-view_tab_bar_draw :: proc(view: string) {
-	items := _view_tab_bar_items_for(view)
+view_tab_bar_draw :: proc(view: session.View) {
+	items := _view_tab_bar_items_for(view.id)
 	for it, i in items {
 		if i > 0 do im.SameLine()
 		if it.draw == nil do continue
 		// Ambient for the duration of the item's draw, so any tooltip it
 		// raises can name the attribute that registered it (debug tooltips).
 		prev := widgets.ui_origin_push(it.origin)
-		it.draw()
+		it.draw(view)
 		widgets.ui_origin_pop(prev)
 	}
 }
 
 // `view`'s menu items, drawn into an already-open menu. The dock tab bar's
 // button owns the popup (dock_tab_menu.odin) — this only fills it.
-view_menu_draw_items :: proc(view: string) -> (drew: bool) {
-    if t, ok := _view_menus[view]; ok do return menu.tree_draw(t)
+view_menu_draw_items :: proc(view: session.View) -> (drew: bool) {
+    if t, ok := _view_menus[view.id]; ok do return menu.tree_draw(t, view)
     return false
 }
 
@@ -210,7 +217,7 @@ view_menu_draw_items :: proc(view: string) -> (drew: bool) {
 // way to ask a widget its size before it draws, and the bar has to know the
 // total before placing the strip.
 @(private = "file")
-_view_tab_bar_measure :: proc(tools: []View_Tab_Bar_Item) -> f32 {
+_view_tab_bar_measure :: proc(tools: []View_Tab_Bar_Item, view: session.View) -> f32 {
 	start := im.GetCursorPos()
 	im.SetCursorPos(im.Vec2{-10000, start.y})
 	// Its own id scope: these are throwaway copies of widgets that are about
@@ -220,7 +227,7 @@ _view_tab_bar_measure :: proc(tools: []View_Tab_Bar_Item) -> f32 {
 	im.BeginGroup()
 	for it, i in tools {
 		if i > 0 do im.SameLine()
-		if it.draw != nil do it.draw()
+		if it.draw != nil do it.draw(view)
 	}
 	im.EndGroup()
 	w := im.GetItemRectSize().x
@@ -259,5 +266,5 @@ view_menu_invoke :: proc(path: string) -> (ok: bool, state: bool) {
     view, item := rest[:slash], rest[slash + 1:]
     tree, has := _view_menus[view]
     if !has do return false, false
-    return menu.tree_invoke(tree, item)
+    return menu.tree_invoke(tree, item, session.view_of(view))
 }
