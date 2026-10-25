@@ -9,6 +9,7 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:libs/gizmos"
 import "moonhug:editor/handles"
+import "moonhug:editor/session"
 import "moonhug:editor/widgets"
 
 @(phase={key=core.Phase.EditorInit, order=1, mode=Editor})
@@ -20,7 +21,7 @@ gizmo_settings_install :: proc() {
 // The Gizmo Settings submenu: the icon size, then a row per component type
 // with its icon and gizmo checkboxes. Checkboxes leave the menu open.
 @(private = "file")
-_draw_gizmo_settings :: proc() {
+_draw_gizmo_settings :: proc(view: session.View) {
 	im.TextUnformatted("Icon Size")
 	im.SameLine()
 	widgets.slider_float("##gizmo_icon_px", &handles.icon_px, 12, 64, "%.0f px", 140)

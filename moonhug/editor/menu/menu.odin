@@ -57,6 +57,7 @@ MenuNode :: struct {
 	view_action:   proc(view: session.View),
 	view_enabled:  proc(view: session.View) -> bool,
 	view_checked:  proc(view: session.View) -> bool,
+	view_draw:     proc(view: session.View), // a view menu's Dynamic, set instead of `draw`
 	children:      [dynamic]^MenuNode,
 	order:         int, // sort key (lower = earlier); ORDER_DEFAULT when unspecified
 	// The @(menu_item) that created this node, with its file and line, as
@@ -290,6 +291,15 @@ tree_add_dynamic :: proc(root: ^MenuNode, path: string, draw: proc(), order: int
 	node := _get_or_create_path(root, path)
 	node.kind = .Dynamic
 	node.draw = draw
+	node.order = order
+	node.origin = origin
+}
+
+// A view menu's Dynamic: `draw` gets the view the menu is drawn for.
+tree_add_view_dynamic :: proc(root: ^MenuNode, path: string, draw: proc(view: session.View), order: int = ORDER_DEFAULT, origin := "") {
+	node := _get_or_create_path(root, path)
+	node.kind = .Dynamic
+	node.view_draw = draw
 	node.order = order
 	node.origin = origin
 }
@@ -567,6 +577,7 @@ _draw_menu_child :: proc(child: ^MenuNode, view := session.View{}) {
 		defer widgets.ui_origin_pop(prev)
 		if im.BeginMenu(child.name_cstr, _node_enabled(child, view)) {
 			if child.draw != nil do child.draw()
+			if child.view_draw != nil do child.view_draw(view)
 			im.EndMenu()
 		} else {
 			widgets.tooltip("", im.HoveredFlags_AllowWhenDisabled)

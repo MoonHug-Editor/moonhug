@@ -242,52 +242,97 @@ shutdown :: proc() {
 		delete(s.list)
 		s^ = {path = s.path}
 	}
-	for k, id in _selection.by_view {
+	for k, s in _views.by_key {
 		delete(k)
-		delete(id)
+		delete(s.workspace)
+		free(s)
 	}
-	delete(_selection.by_view)
-	_selection = {}
+	delete(_views.by_key)
+	_views = {}
 }
 
-// --- The workspace each workspace view shows ---------------------------------
+// --- What each Workspace view remembers ------------------------------------
 
-// By workspace view key ("workspace", "workspace/2"), the id of the workspace
-// it shows, so a view reopens on it. In the user's settings.
+// What a Workspace view copy remembers between sessions, by its key
+// ("workspace", "workspace/2"). In the user's settings. Zero is the default.
+View_Settings :: struct {
+	workspace: string, // owned, the id of the workspace it shows
+	minimap:   Minimap,
+}
+
+// The mini-map's place in the view: attached to a corner or a side of the
+// canvas, moved from there by `offset`, at `size` (0 is the default size).
+Minimap :: struct {
+	hidden: bool,
+	anchor: Anchor,
+	offset: [2]f32,
+	size:   [2]f32,
+}
+
+Anchor :: enum {
+	Top_Right,
+	Top,
+	Top_Left,
+	Left,
+	Bottom_Left,
+	Bottom,
+	Bottom_Right,
+	Right,
+}
+
 @(private = "file")
-_selection: struct {
+_views: struct {
 	loaded: bool,
-	by_view: map[string]string, // owned keys and ids
+	by_key: map[string]^View_Settings, // owned keys and settings
 }
 
 @(private = "file")
-_SELECTION_PATH :: "UserSettings/workspace_views.json"
+_VIEWS_PATH :: "UserSettings/workspace_views.json"
 
+// The settings of the Workspace view `view`, made on first use. Call
+// view_settings_save after changing them.
+view_settings :: proc(view: string) -> ^View_Settings {
+	_views_load()
+	if s, has := _views.by_key[view]; has do return s
+	context.allocator = runtime.default_allocator()
+	s := new(View_Settings)
+	_views.by_key[strings.clone(view)] = s
+	return s
+}
+
+view_settings_save :: proc() {
+	out := make(map[string]View_Settings, len(_views.by_key), context.temp_allocator)
+	for k, s in _views.by_key do out[k] = s^
+	bytes, err := json.marshal(out, {pretty = true, spec = .JSON, sort_maps_by_key = true}, context.temp_allocator)
+	if err == nil do _ = os.write_entire_file(_VIEWS_PATH, bytes)
+}
+
+// The id of the workspace the view `view` shows, "" for none.
 view_selection :: proc(view: string) -> string {
-	_selection_load()
-	return _selection.by_view[view] or_else ""
+	return view_settings(view).workspace
 }
 
 view_select :: proc(view: string, id: string) {
-	_selection_load()
-	context.allocator = runtime.default_allocator()
-	if old, has := _selection.by_view[view]; has {
-		if old == id do return
-		delete(old)
-		_selection.by_view[view] = strings.clone(id)
-	} else {
-		_selection.by_view[strings.clone(view)] = strings.clone(id)
-	}
-	bytes, err := json.marshal(_selection.by_view, {pretty = true, spec = .JSON, sort_maps_by_key = true}, context.temp_allocator)
-	if err == nil do _ = os.write_entire_file(_SELECTION_PATH, bytes)
+	s := view_settings(view)
+	if s.workspace == id do return
+	delete(s.workspace, runtime.default_allocator())
+	s.workspace = strings.clone(id, runtime.default_allocator())
+	view_settings_save()
 }
 
 @(private = "file")
-_selection_load :: proc() {
-	if _selection.loaded do return
-	_selection.loaded = true
+_views_load :: proc() {
+	if _views.loaded do return
+	_views.loaded = true
 	context.allocator = runtime.default_allocator()
-	bytes, err := os.read_entire_file(_SELECTION_PATH, context.temp_allocator)
+	bytes, err := os.read_entire_file(_VIEWS_PATH, context.temp_allocator)
 	if err != nil do return
-	_ = json.unmarshal(bytes, &_selection.by_view)
+	file: map[string]View_Settings
+	defer delete(file)
+	if json.unmarshal(bytes, &file) != nil do return
+	for k, s in file {
+		p := new(View_Settings)
+		p^ = s
+		_views.by_key[k] = p
+	}
 }

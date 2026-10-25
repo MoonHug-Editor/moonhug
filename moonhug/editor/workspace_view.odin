@@ -16,6 +16,12 @@ package editor
 // - A view added from Add View opens hosted in a new frame. Move to Dock
 //   gives it back its own window, and a docked view's tab menu moves it into
 //   a workspace a Workspace view shows.
+// - The mini-map shows every frame and the visible area. Click or drag in it
+//   to go there. The toolbar button shows and hides it, a drag with Ctrl or
+//   Cmd held moves it, each corner resizes it, and the view's menu attaches
+//   it to a corner or a side of the canvas. Each Workspace view copy keeps
+//   its own.
+// - Frames are opaque in the window background, on a canvas a shade darker.
 
 import "base:runtime"
 import "core:fmt"
@@ -34,10 +40,15 @@ WORKSPACE_VIEW :: "workspace"
 // One Workspace view copy's own state.
 @(private = "file")
 _WS_View :: struct {
-	drag:       enum {None, Pan, Move},
+	drag:       enum {None, Pan, Move, Map_Pan, Map_Move, Map_Resize},
 	drag_frame: int,
 	drag_from:  im.Vec2, // mouse at the press
-	drag_start: [2]f32,  // the pan or the frame position at the press
+	drag_start: [2]f32,  // the pan, the frame position, or the mini-map's offset or size at the press
+	focused:    int,      // the frame focused this frame, -1 for none
+	map_frozen: _WS_Map,  // the mini-map's scale while a drag in it pans, so it holds still
+	map_corner: [2]f32,   // the corner a resize drags: -1 the left or top, 1 the right or bottom
+	map_start:  [4]f32,   // the mini-map's rect at the press of a resize
+	map_grab:   [2]f32,   // that drag: the canvas point under the mouse, from the visible area's centre
 	// Tabs closed from their frames: they leave the frame once their view is
 	// gone, and stay when the close was held (unapplied edits, Cancel).
 	closing:    [dynamic]string, // owned keys
@@ -141,6 +152,13 @@ _ws_toolbar :: proc(w: ^wnd.Window, v: ^_WS_View) {
 		}
 		im.EndPopup()
 	}
+
+	m := &workspace.view_settings(w.key).minimap
+	im.SameLine(max(im.GetWindowWidth() - _WS_PAD - im.GetFrameHeight(), im.GetCursorPosX()))
+	if widgets.icon_button(icons.ICON_MD_MAP, "##ws_map", "Show or hide the mini-map", active = !m.hidden) {
+		m.hidden = !m.hidden
+		workspace.view_settings_save()
+	}
 	im.SetCursorPosY(im.GetCursorPosY() + _WS_PAD)
 }
 
@@ -185,8 +203,11 @@ _ws_canvas :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace) {
 	size := im.GetContentRegionAvail()
 	dl := im.GetWindowDrawList()
 
-	// A dot every grid step, moving with the pan, so panning reads.
-	im.DrawList_AddRectFilled(dl, origin, origin + size, im.GetColorU32(.FrameBg))
+	// A dot every grid step, moving with the pan, so panning reads. The
+	// canvas is a darker shade of the window background, so the frames, in
+	// the window background, stand out from it.
+	cbg := im.GetStyleColorVec4(.WindowBg)^
+	im.DrawList_AddRectFilled(dl, origin, origin + size, im.GetColorU32ImVec4({cbg.x * 0.72, cbg.y * 0.72, cbg.z * 0.72, 1}))
 	dot := im.GetColorU32(.TextDisabled)
 	ox := math.mod(ws.pan.x, _WS_GRID)
 	oy := math.mod(ws.pan.y, _WS_GRID)
@@ -216,10 +237,28 @@ _ws_canvas :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace) {
 	}
 
 	_ws_prune_closing(v, ws)
+	// The mini-map draws over the frames, but imgui lets a splitter or a
+	// frame's resize border take the mouse through any window inside the same
+	// root window (FlattenChildren). With the mouse over the map, the frames
+	// draw with no mouse, as when it is outside the window, so nothing in them
+	// is hovered or clicked. A drag already under way, or a field being typed
+	// in, keeps the mouse.
+	io := im.GetIO()
+	real_mouse := io.MousePos
+	if mpos, msize, shown := _ws_map_rect(w.key, size); shown && im.IsMouseHoveringRect(origin + mpos, origin + mpos + msize) {
+		clicked := im.IsMouseClicked(.Left) || im.IsMouseClicked(.Right) || im.IsMouseClicked(.Middle)
+		held := im.IsMouseDown(.Left) || im.IsMouseDown(.Right) || im.IsMouseDown(.Middle)
+		if clicked || (!held && !im.IsAnyItemActive()) do io.MousePos = {-math.F32_MAX, -math.F32_MAX}
+	}
 	front := -1
+	v.focused = -1
 	for i := 0; i < len(ws.frames); i += 1 {
 		if _ws_frame(w, v, ws, i, origin) do front = i
 	}
+	io.MousePos = real_mouse
+	// After the frames: a sibling child submitted later draws over them and
+	// takes the mouse before them.
+	_ws_minimap(w, v, ws, origin, size)
 	// The frame clicked comes to the front: frames draw in list order.
 	if front >= 0 && front < len(ws.frames) - 1 {
 		f := ws.frames[front]
@@ -266,6 +305,11 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 		return
 	}
 	defer im.EndChild()
+	// Opaque in the window background, as a docked view's window is.
+	wbg := im.GetStyleColorVec4(.WindowBg)^
+	wbg.w = 1
+	im.DrawList_AddRectFilled(im.GetWindowDrawList(), im.GetWindowPos(), im.GetWindowPos() + im.GetWindowSize(), im.GetColorU32ImVec4(wbg), im.GetStyle().ChildRounding)
+	if im.IsWindowFocused({.ChildWindows}) do v.focused = i
 	clicked = im.IsWindowHovered(im.HoveredFlags_ChildWindows) && (im.IsMouseClicked(.Left) || im.IsMouseClicked(.Right) || im.IsMouseClicked(.Middle))
 	// The border drag resizes the child: the frame follows it.
 	if sz := im.GetWindowSize(); sz != {f.rect.z, f.rect.w} {
@@ -390,6 +434,276 @@ _ws_frame_menu :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i
 		}
 		im.EndMenu()
 	}
+}
+
+// --- Mini-map ----------------------------------------------------------------
+
+@(private = "file")
+_WS_MAP_SIZE :: [2]f32{220, 150}
+@(private = "file")
+_WS_MAP_MIN :: [2]f32{100, 70}
+@(private = "file")
+_WS_MAP_MARGIN :: f32(10)
+@(private = "file")
+_WS_MAP_PAD :: f32(24) // canvas space around the frames
+// The key held to move the mini-map instead of panning the view.
+@(private = "file")
+_WS_MAP_MOVE_KEY :: "Cmd" when ODIN_OS == .Darwin else "Ctrl"
+@(private = "file")
+_WS_MAP_CORNER :: f32(10) // the resize zone in each corner
+
+// Canvas to mini-map: screen = base + (p - min) * scale. `base` is from the
+// map's top-left corner.
+@(private = "file")
+_WS_Map :: struct {
+	min:   [2]f32,
+	scale: f32,
+	base:  [2]f32,
+}
+
+@(private = "file")
+_ws_map_to_screen :: proc(mp: _WS_Map, body_min: im.Vec2, p: [2]f32) -> im.Vec2 {
+	return body_min + mp.base + (p - mp.min) * mp.scale
+}
+
+@(private = "file")
+_ws_map_to_canvas :: proc(mp: _WS_Map, body_min: im.Vec2, s: im.Vec2) -> [2]f32 {
+	return (s - body_min - mp.base) / mp.scale + mp.min
+}
+
+// Where an anchor sits on each axis: 0 the start, 0.5 the middle, 1 the end.
+@(private = "file")
+_ws_anchor_t :: proc(a: workspace.Anchor) -> [2]f32 {
+	switch a {
+	case .Top_Left:     return {0, 0}
+	case .Top:          return {0.5, 0}
+	case .Top_Right:    return {1, 0}
+	case .Left:         return {0, 0.5}
+	case .Right:        return {1, 0.5}
+	case .Bottom_Left:  return {0, 1}
+	case .Bottom:       return {0.5, 1}
+	case .Bottom_Right: return {1, 1}
+	}
+	return {1, 0}
+}
+
+// The mini-map's size and its position from the anchor before its offset,
+// in the canvas `canvas` big.
+@(private = "file")
+_ws_map_place :: proc(m: ^workspace.Minimap, canvas: [2]f32) -> (base, size: [2]f32) {
+	avail := canvas - 2 * _WS_MAP_MARGIN
+	size = m.size if m.size.x > 0 && m.size.y > 0 else _WS_MAP_SIZE
+	size.x = clamp(size.x, _WS_MAP_MIN.x, max(avail.x, _WS_MAP_MIN.x))
+	size.y = clamp(size.y, _WS_MAP_MIN.y, max(avail.y, _WS_MAP_MIN.y))
+	base = _WS_MAP_MARGIN + (avail - size) * _ws_anchor_t(m.anchor)
+	return
+}
+
+// Kept inside the canvas.
+@(private = "file")
+_ws_map_clamp :: proc(pos, size, canvas: [2]f32) -> [2]f32 {
+	return {clamp(pos.x, 0, max(canvas.x - size.x, 0)), clamp(pos.y, 0, max(canvas.y - size.y, 0))}
+}
+
+// A corner drag: the dragged corner follows the mouse and the opposite one
+// stays, which sets a new size and the offset that keeps the map there.
+@(private = "file")
+_ws_map_resize :: proc(m: ^workspace.Minimap, v: ^_WS_View, mouse: im.Vec2, canvas: [2]f32) {
+	lo := [2]f32{v.map_start.x, v.map_start.y}
+	hi := lo + [2]f32{v.map_start.z, v.map_start.w}
+	d := mouse - v.drag_from
+	least := _WS_MAP_MIN
+	most := [2]f32{max(canvas.x - 2 * _WS_MAP_MARGIN, least.x), max(canvas.y - 2 * _WS_MAP_MARGIN, least.y)}
+	for k in 0 ..< 2 {
+		if v.map_corner[k] < 0 {
+			lo[k] = max(clamp(lo[k] + d[k], hi[k] - most[k], hi[k] - least[k]), 0)
+		} else {
+			hi[k] = min(clamp(hi[k] + d[k], lo[k] + least[k], lo[k] + most[k]), canvas[k])
+		}
+	}
+	m.size = hi - lo
+	base, _ := _ws_map_place(m, canvas)
+	m.offset = lo - base
+}
+
+// The mini-map's rect in the canvas, false while it is hidden.
+@(private = "file")
+_ws_map_rect :: proc(view: string, canvas: [2]f32) -> (pos, size: [2]f32, shown: bool) {
+	m := &workspace.view_settings(view).minimap
+	if m.hidden do return
+	base: [2]f32
+	base, size = _ws_map_place(m, canvas)
+	return _ws_map_clamp(base + m.offset, size, canvas), size, true
+}
+
+@(private = "file")
+_ws_minimap :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, origin, canvas: im.Vec2) {
+	m := &workspace.view_settings(w.key).minimap
+	if m.hidden do return
+	base, size := _ws_map_place(m, canvas)
+	pos := _ws_map_clamp(base + m.offset, size, canvas)
+
+	im.SetCursorScreenPos(origin + pos)
+	im.PushStyleVarImVec2(.WindowPadding, {0, 0})
+	visible := im.BeginChild("##ws_minimap", size, {}, {.NoScrollbar, .NoScrollWithMouse, .NoSavedSettings})
+	im.PopStyleVar()
+	defer im.EndChild()
+	if !visible do return
+	dl := im.GetWindowDrawList()
+	cmin := im.GetWindowPos()
+	mouse := im.GetMousePos()
+	// The panel of a scene view overlay: see-through, rounded, outlined.
+	bg := im.GetStyleColorVec4(.WindowBg)^
+	bg.w = 0.85
+	im.DrawList_AddRectFilled(dl, cmin, cmin + size, im.GetColorU32ImVec4(bg), 4)
+	im.DrawList_AddRect(dl, cmin, cmin + size, im.GetColorU32(.Border), 4)
+
+	// Ctrl or Cmd held over the map: a drag anywhere on it moves it. On macOS
+	// imgui turns a click with the physical Ctrl key into a right click, so
+	// with the key held the map takes either button.
+	moving := im.GetIO().KeyCtrl || im.GetIO().KeySuper
+	if v.drag == .Map_Move || (moving && v.drag == .None && im.IsWindowHovered({})) do im.SetMouseCursor(.ResizeAll)
+
+	// Every corner resizes it, and the opposite corner stays put. First, so a
+	// corner wins over the body where they meet.
+	c := _WS_MAP_CORNER
+	for corner, ci in ([4][2]f32{{-1, -1}, {1, -1}, {-1, 1}, {1, 1}}) {
+		im.SetCursorScreenPos(cmin + {0 if corner.x < 0 else size.x - c, 0 if corner.y < 0 else size.y - c})
+		im.PushIDInt(i32(ci))
+		im.InvisibleButton("##resize", {c, c}, {.MouseButtonLeft, .MouseButtonRight})
+		im.PopID()
+		if !moving && (im.IsItemHovered() || im.IsItemActive()) do im.SetMouseCursor(.ResizeNWSE if corner.x == corner.y else .ResizeNESW)
+		if im.IsItemActivated() && (moving || im.IsMouseClicked(.Left)) {
+			v.drag = .Map_Move if moving else .Map_Resize
+			v.drag_from = mouse
+			v.drag_start = m.offset
+			v.map_corner = corner
+			v.map_start = {pos.x, pos.y, size.x, size.y}
+		}
+		if v.drag == .Map_Resize && v.map_corner == corner {
+			if im.IsItemActive() {
+				_ws_map_resize(m, v, mouse, canvas)
+			} else {
+				v.drag = .None
+				workspace.view_settings_save()
+			}
+		}
+	}
+
+
+	// The body: every frame and the visible area, scaled to fit. A click or a
+	// drag goes there. Grabbing the visible area keeps the grab point.
+	body_min := cmin
+	body := size
+	view_min := -ws.pan
+	view_max := -ws.pan + canvas
+	mp := v.map_frozen
+	if v.drag != .Map_Pan {
+		lo, hi := view_min, view_max
+		for f in ws.frames {
+			lo = {min(lo.x, f.rect.x), min(lo.y, f.rect.y)}
+			hi = {max(hi.x, f.rect.x + f.rect.z), max(hi.y, f.rect.y + f.rect.w)}
+		}
+		lo -= _WS_MAP_PAD
+		hi += _WS_MAP_PAD
+		inner := body - 8
+		mp.min = lo
+		mp.scale = max(min(inner.x / (hi.x - lo.x), inner.y / (hi.y - lo.y)), 0.0001)
+		mp.base = (body - (hi - lo) * mp.scale) * 0.5
+	}
+	im.SetCursorScreenPos(body_min)
+	im.InvisibleButton("##body", {max(body.x, 1), max(body.y, 1)}, {.MouseButtonLeft, .MouseButtonRight})
+	if im.IsItemActivated() && moving {
+		v.drag = .Map_Move
+		v.drag_from = mouse
+		v.drag_start = m.offset
+	} else if im.IsItemActivated() && im.IsMouseClicked(.Left) {
+		v.drag = .Map_Pan
+		v.map_frozen = mp
+		p := _ws_map_to_canvas(mp, body_min, mouse)
+		inside := p.x >= view_min.x && p.y >= view_min.y && p.x <= view_max.x && p.y <= view_max.y
+		v.map_grab = p - (view_min + view_max) * 0.5 if inside else {}
+	}
+	if v.drag == .Map_Pan {
+		if im.IsItemActive() {
+			centre := _ws_map_to_canvas(mp, body_min, mouse) - v.map_grab
+			ws.pan = -(centre - canvas * 0.5)
+			view_min, view_max = -ws.pan, -ws.pan + canvas
+		} else {
+			v.drag = .None
+			workspace.changed(ws)
+		}
+	}
+	widgets.tooltip("Click or drag to go there. Hold " + _WS_MAP_MOVE_KEY + " to move the mini-map.")
+
+	// A move, from the body or a corner pressed with Ctrl or Cmd held, goes
+	// on until the button is released.
+	if v.drag == .Map_Move {
+		if im.IsMouseDown(.Left) || im.IsMouseDown(.Right) {
+			m.offset = _ws_map_clamp(base + v.drag_start + (mouse - v.drag_from), size, canvas) - base
+		} else {
+			v.drag = .None
+			workspace.view_settings_save()
+		}
+	}
+
+	im.PushClipRect(body_min, body_min + body, true)
+	defer im.PopClipRect()
+	for f, i in ws.frames {
+		a := _ws_map_to_screen(mp, body_min, {f.rect.x, f.rect.y})
+		b := _ws_map_to_screen(mp, body_min, {f.rect.x + f.rect.z, f.rect.y + f.rect.w})
+		b = {max(b.x, a.x + 2), max(b.y, a.y + 2)}
+		im.DrawList_AddRectFilled(dl, a, b, im.GetColorU32(.ButtonActive if i == v.focused else .Button))
+		im.DrawList_AddRect(dl, a, b, im.GetColorU32(.Border))
+	}
+	va := _ws_map_to_screen(mp, body_min, view_min)
+	vb := _ws_map_to_screen(mp, body_min, view_max)
+	im.DrawList_AddRectFilled(dl, va, vb, im.GetColorU32(.Text, 0.06))
+	im.DrawList_AddRect(dl, va, vb, im.GetColorU32(.Text, 0.8), 0, 1.5)
+}
+
+// The view menu's Mini-map submenu: show it, attach it to a corner or a side,
+// or reset its place and size.
+@(private = "file")
+_WS_ANCHORS := [?]struct {
+	anchor: workspace.Anchor,
+	label:  cstring,
+}{
+	{.Top_Left, "Top Left"}, {.Top, "Top"}, {.Top_Right, "Top Right"},
+	{.Left, "Left"}, {.Right, "Right"},
+	{.Bottom_Left, "Bottom Left"}, {.Bottom, "Bottom"}, {.Bottom_Right, "Bottom Right"},
+}
+
+@(phase={key=core.Phase.EditorInit, order=1, mode=Editor})
+workspace_view_menu_install :: proc() {
+	view_menu_add_dynamic(WORKSPACE_VIEW, "Mini-map", _ws_minimap_menu, order = 10)
+}
+
+@(private = "file")
+_ws_minimap_menu :: proc(view: session.View) {
+	m := &workspace.view_settings(view.key).minimap
+	if im.MenuItem("Show", nil, !m.hidden) {
+		m.hidden = !m.hidden
+		workspace.view_settings_save()
+	}
+	if im.BeginMenu("Attach To") {
+		for a in _WS_ANCHORS {
+			if a.anchor == .Left || a.anchor == .Bottom_Left do im.Separator()
+			if im.MenuItem(a.label, nil, m.anchor == a.anchor) {
+				m.anchor = a.anchor
+				m.offset = {}
+				m.hidden = false
+				workspace.view_settings_save()
+			}
+		}
+		im.EndMenu()
+	}
+	im.Separator()
+	if im.MenuItem("Reset") {
+		m^ = {}
+		workspace.view_settings_save()
+	}
+	widgets.tooltip("Shown, at the top right, at its default size")
 }
 
 // --- Rename and delete (the view's ⋮ menu) ----------------------------------
