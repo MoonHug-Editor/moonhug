@@ -1,3 +1,22 @@
+## [0.147.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.146.0...v0.147.0) (2026-10-25)
+
+### Features
+
+* each Scene copy draws its own outline and gizmos, and the handles run in the copy under the pointer, pinned while a drag lasts ([cc47c18](https://github.com/MoonHug-Editor/moonhug/commit/cc47c18ecb7135659f29f04d28aeaf3ac3f6f607))
+* editor windows open as instances, one per asset, each with its own state, dock place and tab name, and the Shader Graph and Render Pipeline windows edit several assets side by side ([f87000d](https://github.com/MoonHug-Editor/moonhug/commit/f87000d917851f2fcd1f17e8570e7b44b5326a3a))
+* every view but Game opens as copies with their own state, and Add Tab always opens a new view ([99ad3e6](https://github.com/MoonHug-Editor/moonhug/commit/99ad3e63117f3932bc0d4f8bba138517d0c069f9))
+* the inspectors open as instances, each with its own lock, and the tab menu's Add Tab opens any view in that dock node ([fb19cb6](https://github.com/MoonHug-Editor/moonhug/commit/fb19cb67d40ffa99883e6ae7df26116117dcb5c7))
+* the selection outline draws in its own channel under the gizmos, so a collider wire shows over it and handles over both ([136925d](https://github.com/MoonHug-Editor/moonhug/commit/136925d0ad38f6411fa397c5874110bdf086b17c))
+* the Sprite Editor edits a working copy of the texture's import settings, applied only on Apply, and asks before closing with unapplied edits ([593764d](https://github.com/MoonHug-Editor/moonhug/commit/593764d90c2b881b1b7a552780570cbfdeff73b0))
+* the Sprite Editor lists its slices in a pane with Add and remove, and the list and canvas share the selection ([f0ca310](https://github.com/MoonHug-Editor/moonhug/commit/f0ca310b75a0bee488e5ea61e5234accdb8fa24e))
+* view attribute procs receive view ([67b826b](https://github.com/MoonHug-Editor/moonhug/commit/67b826b1f7815be40bde2dd01bc2c5e8758ad7a5))
+
+### Bug Fixes
+
+* bad free ([00f8484](https://github.com/MoonHug-Editor/moonhug/commit/00f84841c8fe906079844d3dedb28b32c1c25134))
+* docs ordering fixes ([8ba8f06](https://github.com/MoonHug-Editor/moonhug/commit/8ba8f06f4c6cadb312db4459f7be7f499e64c0de))
+* project view search filters in memory and draws only visible rows, and a refresh no longer treats every folder as modified ([445ef50](https://github.com/MoonHug-Editor/moonhug/commit/445ef50c4f1dc5e6ffe22a4d88fbc2803ad83171))
+
 ## [0.146.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.145.0...v0.146.0) (2026-10-25)
 
 ### Features
