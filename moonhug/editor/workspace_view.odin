@@ -9,8 +9,13 @@ package editor
 // and the view remembers the one it shows by id, so a workspace whose
 // provider no longer holds it (its scene closed) shows as not open.
 //
-// - Drag the canvas background to pan. Drag a frame's grip to move it, its
-//   right or bottom border to resize it. A frame clicked comes to the front.
+// - Drag the canvas background to pan. Drag a frame's grip to move its
+//   chain, its right or bottom border to resize it.
+// - Frames form chains (workspace.layout): a frame chained to another sits
+//   right of it, linked by a curve. A window a frame's view opens joins that
+//   frame's chain (window.host_hook), and a view already in a frame is shown
+//   there when opened again. Chains keep apart: the chain being dragged or
+//   worked in pushes the others away.
 // - Each frame draws in a child window, so imgui's focus tells its views
 //   apart: a view takes keys while its own frame is focused.
 // - A view added from Add View opens hosted in a new frame. Move to Dock
@@ -37,14 +42,26 @@ import "moonhug:editor/workspace"
 
 WORKSPACE_VIEW :: "workspace"
 
+// A view to add as a chained frame: its key (owned) and the frame it is
+// chained to.
+@(private = "file")
+_WS_Pending :: struct {
+	key:    string,
+	parent: u32,
+}
+
 // One Workspace view copy's own state.
 @(private = "file")
 _WS_View :: struct {
 	drag:       enum {None, Pan, Move, Map_Pan, Map_Move, Map_Resize},
-	drag_frame: int,
+	drag_grip:  u32,      // a move: the frame whose grip is held
+	drag_frame: u32,      // a move: the frame heading its chain, which moves
 	drag_from:  im.Vec2, // mouse at the press
 	drag_start: [2]f32,  // the pan, the frame position, or the mini-map's offset or size at the press
 	focused:    int,      // the frame focused this frame, -1 for none
+	touched:    u32,      // the frame last moved, resized, clicked or opened in: its chain stays when chains part
+	reveal:     string,   // owned, a view key to show next frame: its tab picked, its frame brought into view
+	pending:    [dynamic]_WS_Pending, // chained frames to add next frame
 	map_frozen: _WS_Map,  // the mini-map's scale while a drag in it pans, so it holds still
 	map_corner: [2]f32,   // the corner a resize drags: -1 the left or top, 1 the right or bottom
 	map_start:  [4]f32,   // the mini-map's rect at the press of a resize
@@ -79,6 +96,9 @@ workspace_view_closed :: proc(w: ^wnd.Window) {
 	for key in _ws_hosted_keys(w.key) do wnd.close(key)
 	for k in v.closing do delete(k, runtime.default_allocator())
 	delete(v.closing)
+	for p in v.pending do delete(p.key, runtime.default_allocator())
+	delete(v.pending)
+	delete(v.reveal, runtime.default_allocator())
 	free(v, runtime.default_allocator())
 	w.data = nil
 }
@@ -203,6 +223,11 @@ _ws_canvas :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace) {
 	size := im.GetContentRegionAvail()
 	dl := im.GetWindowDrawList()
 
+	_ws_apply_pending(v, ws)
+	if workspace.fix(ws) do workspace.changed(ws)
+	if workspace.layout(ws, v.touched) && !im.IsMouseDown(.Left) do workspace.changed(ws)
+	_ws_apply_reveal(v, ws, size)
+
 	// A dot every grid step, moving with the pan, so panning reads. The
 	// canvas is a darker shade of the window background, so the frames, in
 	// the window background, stand out from it.
@@ -218,6 +243,7 @@ _ws_canvas :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace) {
 			im.DrawList_AddRectFilled(dl, origin + {x, y}, origin + {x + 1.5, y + 1.5}, dot)
 		}
 	}
+	_ws_links(dl, ws, origin + ws.pan, 1, 2)
 
 	// The background under the frames: a drag on it pans.
 	im.SetCursorScreenPos(origin)
@@ -250,22 +276,110 @@ _ws_canvas :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace) {
 		held := im.IsMouseDown(.Left) || im.IsMouseDown(.Right) || im.IsMouseDown(.Middle)
 		if clicked || (!held && !im.IsAnyItemActive()) do io.MousePos = {-math.F32_MAX, -math.F32_MAX}
 	}
-	front := -1
 	v.focused = -1
+	// Frames are named by workspace and frame id, so no frame takes the imgui
+	// state (its size) of a frame of another workspace.
+	im.PushIDStr(strings.clone_to_cstring(ws.id, context.temp_allocator), nil)
 	for i := 0; i < len(ws.frames); i += 1 {
-		if _ws_frame(w, v, ws, i, origin) do front = i
+		id := ws.frames[i].id
+		if _ws_frame(w, v, ws, i, origin) do v.touched = id
 	}
+	im.PopID()
 	io.MousePos = real_mouse
 	// After the frames: a sibling child submitted later draws over them and
 	// takes the mouse before them.
 	_ws_minimap(w, v, ws, origin, size)
-	// The frame clicked comes to the front: frames draw in list order.
-	if front >= 0 && front < len(ws.frames) - 1 {
-		f := ws.frames[front]
-		ordered_remove(&ws.frames, front)
-		append(&ws.frames, f)
-		workspace.changed(ws)
+}
+
+// The link from a frame's parent to it: a curve from the parent's right edge
+// to the frame's left edge, level with their tab bars. `at` is the canvas
+// origin on screen, `scale` the canvas-to-screen scale (the mini-map draws
+// them smaller).
+@(private = "file")
+_ws_links :: proc(dl: ^im.DrawList, ws: ^workspace.Workspace, at: im.Vec2, scale, thickness: f32) {
+	y := im.GetStyle().WindowPadding.y + im.GetFrameHeight() * 0.5
+	col := im.GetColorU32(.CheckMark)
+	for f in ws.frames {
+		p := workspace.frame_index(ws, f.parent)
+		if p < 0 do continue
+		pr := ws.frames[p].rect
+		a := at + im.Vec2{pr.x + pr.z, pr.y + y} * scale
+		b := at + im.Vec2{f.rect.x, f.rect.y + y} * scale
+		k := (b.x - a.x) * 0.6
+		im.DrawList_AddBezierCubic(dl, a, a + {k, 0}, b - {k, 0}, b, col, thickness)
 	}
+}
+
+// The frame holding the view `key`, -1 for none.
+@(private = "file")
+_ws_frame_of :: proc(ws: ^workspace.Workspace, key: string) -> int {
+	for f, i in ws.frames do for t in f.tabs do if t == key do return i
+	return -1
+}
+
+// Adds the child frames queued since the last frame (_ws_host_hook, Add
+// Child), each shown once laid out.
+@(private = "file")
+_ws_apply_pending :: proc(v: ^_WS_View, ws: ^workspace.Workspace) {
+	context.allocator = runtime.default_allocator()
+	if len(v.pending) == 0 do return
+	for p in v.pending {
+		if _ws_frame_of(ws, p.key) < 0 do workspace.frame_add(ws, p.key, {0, 0, 460, 320}, p.parent)
+		v.touched = workspace.chain_root(ws, p.parent)
+		delete(v.reveal)
+		v.reveal = p.key
+	}
+	clear(&v.pending)
+	workspace.changed(ws)
+}
+
+// Shows the view queued in `reveal`: its tab picked, and its frame centred
+// when any of it is out of view.
+@(private = "file")
+_ws_apply_reveal :: proc(v: ^_WS_View, ws: ^workspace.Workspace, canvas: [2]f32) {
+	if v.reveal == "" do return
+	defer {
+		delete(v.reveal, runtime.default_allocator())
+		v.reveal = ""
+	}
+	fi := _ws_frame_of(ws, v.reveal)
+	if fi < 0 do return
+	f := &ws.frames[fi]
+	for t, ti in f.tabs do if t == v.reveal do f.active = ti
+	v.touched = f.id
+	lo := ws.pan + {f.rect.x, f.rect.y}
+	hi := lo + {f.rect.z, f.rect.w}
+	if lo.x < 0 || lo.y < 0 || hi.x > canvas.x || hi.y > canvas.y {
+		ws.pan = canvas * 0.5 - ({f.rect.x, f.rect.y} + {f.rect.z, f.rect.w} * 0.5)
+	}
+	workspace.changed(ws)
+}
+
+// The window registry's host hook (window.host_hook). A window opened while a
+// frame's view draws opens chained to that frame. A view already in a frame
+// is shown there, and its Workspace view comes forward.
+@(private = "file")
+_ws_host_hook :: proc(opener, w: ^wnd.Window, created: bool) {
+	context.allocator = runtime.default_allocator()
+	if !created {
+		hv := wnd.find(w.host)
+		if hv == nil || hv.id != WORKSPACE_VIEW do return
+		v := wnd.state(hv, _WS_View{})
+		delete(v.reveal)
+		v.reveal = strings.clone(w.key)
+		wnd.focus(hv)
+		return
+	}
+	if opener == nil do return
+	hv := wnd.find(opener.host)
+	if hv == nil || hv.id != WORKSPACE_VIEW do return
+	e, ok := workspace.find(workspace.view_selection(hv.key))
+	if !ok do return
+	fi := _ws_frame_of(e.ws, opener.key)
+	if fi < 0 do return
+	wnd.host_open(w.key, hv.key)
+	v := wnd.state(hv, _WS_View{})
+	append(&v.pending, _WS_Pending{strings.clone(w.key), e.ws.frames[fi].id})
 }
 
 // Tabs closed earlier whose views are gone now leave their frames.
@@ -295,8 +409,8 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 	f.active = clamp(f.active, 0, len(f.tabs) - 1)
 	pos := origin + ws.pan + {f.rect.x, f.rect.y}
 	im.SetCursorScreenPos(pos)
-	// Named by its first view, so its imgui state survives a reorder.
-	im.PushIDStr(fmt.ctprintf("frame_%s", f.tabs[0]), nil)
+	// Named by its id, so its imgui state survives a reorder.
+	im.PushIDInt(i32(f.id))
 	defer im.PopID()
 	im.SetNextWindowSize({f.rect.z, f.rect.w}, .Appearing)
 	child_flags: im.ChildFlags = {.Borders, .ResizeX, .ResizeY}
@@ -314,25 +428,36 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 	// The border drag resizes the child: the frame follows it.
 	if sz := im.GetWindowSize(); sz != {f.rect.z, f.rect.w} {
 		f.rect.z, f.rect.w = sz.x, sz.y
+		v.touched = f.id
 		if !im.IsMouseDown(.Left) do workspace.changed(ws)
 	}
 
 	style := im.GetStyle()
 	bar_h := im.GetFrameHeight()
 
-	// Grip: drag to move the frame.
+	// The active view and the width of its tab-bar widgets, measured before
+	// the grip: the measure draws them off to the side, and the tab group
+	// below goes on the grip's line.
+	active := wnd.host_open(f.tabs[f.active], w.key) if !_ws_closing(v, f.tabs[f.active]) else wnd.find(f.tabs[f.active])
+	active_view := session.view_of(f.tabs[f.active])
+	widgets_w := view_tab_bar_width(active_view) if active != nil else 0
+
+	// Grip: drag to move the frame's chain, by the frame heading it.
 	im.InvisibleButton("##grip", {bar_h * 0.6, bar_h})
 	grip_hot := im.IsItemHovered() || im.IsItemActive()
 	if im.IsItemActivated() {
+		root := &ws.frames[workspace.frame_index(ws, workspace.chain_root(ws, f.id))]
 		v.drag = .Move
-		v.drag_frame = i
+		v.drag_grip = f.id
+		v.drag_frame = root.id
 		v.drag_from = im.GetMousePos()
-		v.drag_start = {f.rect.x, f.rect.y}
+		v.drag_start = {root.rect.x, root.rect.y}
+		v.touched = f.id
 	}
-	if v.drag == .Move && v.drag_frame == i {
-		if im.IsItemActive() {
+	if v.drag == .Move && v.drag_grip == f.id {
+		if r := workspace.frame_index(ws, v.drag_frame); r >= 0 && im.IsItemActive() {
 			d := im.GetMousePos() - v.drag_from
-			f.rect.x, f.rect.y = v.drag_start.x + d.x, v.drag_start.y + d.y
+			ws.frames[r].rect.x, ws.frames[r].rect.y = v.drag_start.x + d.x, v.drag_start.y + d.y
 		} else {
 			v.drag = .None
 			workspace.changed(ws)
@@ -341,13 +466,10 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 	gmin := im.GetItemRectMin()
 	gsz := im.CalcTextSize(icons.ICON_MD_DRAG_INDICATOR)
 	im.DrawList_AddText(im.GetWindowDrawList(), gmin + (im.Vec2{bar_h * 0.6, bar_h} - gsz) * 0.5, im.GetColorU32(.Text if grip_hot else .TextDisabled), icons.ICON_MD_DRAG_INDICATOR)
-	widgets.tooltip("Drag to move the frame")
+	widgets.tooltip("Drag to move the frame with its parent and children")
 
 	// The tab group, in a child as wide as the bar leaves, then the active
 	// view's widgets and its menu at the bar's right end.
-	active := wnd.host_open(f.tabs[f.active], w.key) if !_ws_closing(v, f.tabs[f.active]) else wnd.find(f.tabs[f.active])
-	active_view := session.view_of(f.tabs[f.active])
-	widgets_w := view_tab_bar_width(active_view) if active != nil else 0
 	menu_w := bar_h
 	im.SameLine(0, 0)
 	tabs_w := max(im.GetContentRegionAvail().x - widgets_w - menu_w - style.ItemSpacing.x * 2, 40)
@@ -411,7 +533,8 @@ _ws_close_tab :: proc(v: ^_WS_View, key: string) {
 }
 
 // The frame's ⋮ menu: the active view's own items (tab_menu_view_items),
-// Move to Dock, Add Tab.
+// Move to Dock, Add Tab, and the chain: Add Child (a view in a new child
+// frame), Set Parent, Unparent.
 @(private = "file")
 _ws_frame_menu :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int) {
 	f := &ws.frames[i]
@@ -434,6 +557,42 @@ _ws_frame_menu :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i
 		}
 		im.EndMenu()
 	}
+	if im.BeginMenu("Add Child") {
+		if id, picked := _ws_window_menu(); picked {
+			if inst := _ws_open_view(id, w.key); inst != nil {
+				append(&v.pending, _WS_Pending{strings.clone(inst.key, runtime.default_allocator()), f.id})
+			}
+		}
+		im.EndMenu()
+	}
+	own := workspace.chain_root(ws, f.id)
+	others := false
+	for g in ws.frames do if g.parent == 0 && g.id != own do others = true
+	if im.BeginMenu("Set Parent", others) {
+		for g in ws.frames {
+			if g.parent != 0 || g.id == own do continue
+			if im.MenuItem(_ws_frame_label(g)) {
+				workspace.chain(ws, f.id, g.id)
+				v.touched = g.id
+				workspace.changed(ws)
+			}
+		}
+		im.EndMenu()
+	}
+	if im.MenuItem("Unparent", nil, false, f.parent != 0) {
+		// The parent's chain stays, so the frame moves out of its way.
+		v.touched = f.parent
+		workspace.chain(ws, f.id, 0)
+		workspace.changed(ws)
+	}
+}
+
+// A frame as its showing view's tab title, for menus.
+@(private = "file")
+_ws_frame_label :: proc(f: workspace.Frame) -> cstring {
+	key := f.tabs[clamp(f.active, 0, len(f.tabs) - 1)]
+	if inst := wnd.find(key); inst != nil do return wnd.title(inst)
+	return strings.clone_to_cstring(key, context.temp_allocator)
 }
 
 // --- Mini-map ----------------------------------------------------------------
@@ -656,6 +815,7 @@ _ws_minimap :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, orig
 		im.DrawList_AddRectFilled(dl, a, b, im.GetColorU32(.ButtonActive if i == v.focused else .Button))
 		im.DrawList_AddRect(dl, a, b, im.GetColorU32(.Border))
 	}
+	_ws_links(dl, ws, _ws_map_to_screen(mp, body_min, {0, 0}), mp.scale, 1)
 	va := _ws_map_to_screen(mp, body_min, view_min)
 	vb := _ws_map_to_screen(mp, body_min, view_max)
 	im.DrawList_AddRectFilled(dl, va, vb, im.GetColorU32(.Text, 0.06))
@@ -675,8 +835,9 @@ _WS_ANCHORS := [?]struct {
 }
 
 @(phase={key=core.Phase.EditorInit, order=1, mode=Editor})
-workspace_view_menu_install :: proc() {
+workspace_view_install :: proc() {
 	view_menu_add_dynamic(WORKSPACE_VIEW, "Mini-map", _ws_minimap_menu, order = 10)
+	wnd.host_hook = _ws_host_hook
 }
 
 @(private = "file")

@@ -84,6 +84,19 @@ _use_count: u64            // clicks and opens so far, for Window.used
 // (view_close_prompt.odin). nil closes every instance.
 close_guard: proc(w: ^Window) -> bool
 
+// Asked when open or open_another makes an instance while a hosted
+// instance's content draws, and when open shows an instance that is hosted.
+// `opener` is the hosted instance drawing then (nil for none), `w` the
+// instance, `created` whether open made it. A hook that hosts `w` keeps it
+// out of the dock. The workspace view installs one: a window opened from a
+// frame's view opens chained to that frame, and one already in a frame is
+// shown there.
+host_hook: proc(opener, w: ^Window, created: bool)
+
+// The hosted instance whose content draws now (draw_content), nil outside one.
+@(private = "file")
+_drawing: ^Window
+
 // Declares a dockable editor window whose content the proc draws.
 //
 // `id` identifies it, and its instances, in imgui.ini. `title` and `icon` (a
@@ -164,11 +177,23 @@ open :: proc(id: string, asset := core.Asset_GUID{}) -> ^Window {
 		return nil
 	}
 	w := _find(ri, asset)
-	if w == nil do w = _create(ri, asset)
+	created := w == nil
+	if created do w = _create(ri, asset)
+	_use_count += 1
+	w.used = _use_count
+	if host_hook != nil && (w.host != "" || (created && _drawing != nil)) {
+		host_hook(_drawing, w, created)
+		if w.host != "" do return w
+	}
+	_focus_request = w
+	return w
+}
+
+// Focuses an open instance next frame, as open does.
+focus :: proc(w: ^Window) {
 	_focus_request = w
 	_use_count += 1
 	w.used = _use_count
-	return w
 }
 
 // Opens one more plain instance of the window declared under `id`, as Add
@@ -183,6 +208,10 @@ open_another :: proc(id: string) -> ^Window {
 	n := 2
 	for find(fmt.tprintf("%s/%d", id, n)) != nil do n += 1
 	w := _create(ri, {}, fmt.tprintf("%s/%d", id, n))
+	if host_hook != nil && _drawing != nil {
+		host_hook(_drawing, w, true)
+		if w.host != "" do return w
+	}
 	_focus_request = w
 	return w
 }
@@ -307,7 +336,10 @@ host_release :: proc(w: ^Window) {
 // scrollbars (is_canvas).
 draw_content :: proc(w: ^Window) {
 	w.drawn = _pass + 1
+	prev := _drawing
+	_drawing = w
 	_registry[w.reg].draw(w)
+	_drawing = prev
 	if im.IsWindowHovered(im.HoveredFlags_ChildWindows) && (im.IsMouseClicked(.Left) || im.IsMouseClicked(.Right) || im.IsMouseClicked(.Middle)) {
 		_use_count += 1
 		w.used = _use_count

@@ -9,6 +9,9 @@ package workspace
 // - A workspace has a unique id, which the workspace view remembers, a name
 //   and its frames. A frame names its views by window instance key (`id`,
 //   `id/<asset guid>`, `id/<n>`), so a hosted view reopens from it.
+// - Frames form chains, one level deep: a frame with a parent sits right of
+//   it, under its earlier siblings, and moves with it (layout). Chains keep
+//   apart: one that overlaps another moves away.
 // - Workspaces come from providers. Each provider holds a list, saves it,
 //   makes new ones. User settings and project settings are built in (this
 //   file), each in its own file. A provider's list may change: one that keeps
@@ -24,17 +27,26 @@ import "core:os"
 import "core:strings"
 
 Workspace :: struct {
-	id:     string, // owned, unique across providers
-	name:   string, // owned
-	pan:    [2]f32, // the canvas offset: where its origin sits in the view
-	frames: [dynamic]Frame,
+	id:         string, // owned, unique across providers
+	name:       string, // owned
+	pan:        [2]f32, // the canvas offset: where its origin sits in the view
+	frames:     [dynamic]Frame,
+	next_frame: u32,    // the next frame id: ids are never reused, so a new frame takes nothing from a removed one
 }
 
 Frame :: struct {
-	rect:   [4]f32,          // x, y, w, h on the canvas
+	id:     u32,             // unique in its workspace, never 0
+	parent: u32,             // the id of the frame it is chained to, 0 for none
+	rect:   [4]f32,          // x, y, w, h on the canvas. A chained frame's x and y follow its parent (layout)
 	tabs:   [dynamic]string, // owned window instance keys, in tab order
 	active: int,             // the tab showing
 }
+
+// Between a frame and the frames chained to it, and between them.
+CHAIN_COLUMN_GAP :: f32(30)
+CHAIN_ROW_GAP :: f32(20)
+// The least space between two chains.
+CHAIN_SPACING :: f32(40)
 
 // Where workspaces live. `list` appends the workspaces it holds now, `save`
 // writes `ws` after a change, `create` makes a new empty one (nil when it
@@ -107,26 +119,163 @@ new_id :: proc() -> string {
 	return uuid.to_string(uuid.generate_v4())
 }
 
-// Adds a frame holding the view `key` at `rect`.
-frame_add :: proc(ws: ^Workspace, key: string, rect: [4]f32) {
+// Adds a frame holding the view `key` at `rect`, chained to the frame
+// `parent` (an id, 0 for none), and returns its id. A frame chained to a
+// chained frame joins that frame's parent: chains are one level deep.
+frame_add :: proc(ws: ^Workspace, key: string, rect: [4]f32, parent: u32 = 0) -> u32 {
 	context.allocator = runtime.default_allocator()
-	f := Frame{rect = rect}
+	f := Frame{id = _next_id(ws), parent = chain_root(ws, parent), rect = rect}
 	append(&f.tabs, strings.clone(key))
 	append(&ws.frames, f)
+	return f.id
 }
 
-// Removes tab `tab` of frame `frame`, and the frame with its last tab.
+// Removes tab `tab` of frame `frame`, and the frame with its last tab. The
+// frames chained to a removed frame stay where they are, chained to nothing.
 tab_remove :: proc(ws: ^Workspace, frame, tab: int) {
 	context.allocator = runtime.default_allocator()
 	f := &ws.frames[frame]
 	delete(f.tabs[tab])
 	ordered_remove(&f.tabs, tab)
 	if len(f.tabs) == 0 {
+		id := f.id
 		delete(f.tabs)
 		ordered_remove(&ws.frames, frame)
+		for &c in ws.frames do if c.parent == id do c.parent = 0
 		return
 	}
 	f.active = clamp(f.active, 0, len(f.tabs) - 1)
+}
+
+// The index of the frame whose id is `id`, -1 for none.
+frame_index :: proc(ws: ^Workspace, id: u32) -> int {
+	if id == 0 do return -1
+	for f, i in ws.frames do if f.id == id do return i
+	return -1
+}
+
+// The id of the frame that heads the chain of the frame `id`: its parent,
+// or itself. 0 for 0 or an id no frame has.
+chain_root :: proc(ws: ^Workspace, id: u32) -> u32 {
+	i := frame_index(ws, id)
+	if i < 0 do return 0
+	return ws.frames[i].parent if ws.frames[i].parent != 0 else id
+}
+
+// Chains the frame `id` to the frame `parent`, or unchains it with 0. The
+// frames chained to it come along: chains are one level deep.
+chain :: proc(ws: ^Workspace, id: u32, parent: u32) {
+	target := chain_root(ws, parent)
+	if target == id do return
+	for &f in ws.frames {
+		if f.id == id || (f.parent == id && target != 0) do f.parent = target
+	}
+}
+
+// Makes the frames valid, whatever a provider loaded: every frame gets a
+// unique id, and a parent that is missing, itself, or chained is dropped.
+// True when it changed something.
+fix :: proc(ws: ^Workspace) -> (changed: bool) {
+	for &f, i in ws.frames {
+		dup := false
+		for g in ws.frames[:i] do if g.id == f.id do dup = true
+		if f.id == 0 || dup {
+			f.id = _next_id(ws)
+			changed = true
+		}
+	}
+	for &f in ws.frames {
+		if f.parent == 0 do continue
+		p := frame_index(ws, f.parent)
+		if p < 0 || f.parent == f.id || ws.frames[p].parent != 0 {
+			f.parent = 0
+			changed = true
+		}
+	}
+	return
+}
+
+// Places the chained frames and keeps chains apart. A chained frame sits
+// CHAIN_COLUMN_GAP right of its parent, CHAIN_ROW_GAP under the one before it,
+// in list order. Then a chain that comes nearer another than CHAIN_SPACING
+// moves away from it, by the shortest way out. The chain of the frame
+// `pinned` (an id, 0 for none) stays, the other one moves: the chain being
+// dragged or worked in pushes the rest. True when a frame moved.
+layout :: proc(ws: ^Workspace, pinned: u32 = 0) -> (moved: bool) {
+	for root in ws.frames {
+		if root.parent != 0 do continue
+		x := root.rect.x + root.rect.z + CHAIN_COLUMN_GAP
+		y := root.rect.y
+		for &c in ws.frames {
+			if c.parent != root.id do continue
+			if c.rect.x != x || c.rect.y != y {
+				c.rect.x, c.rect.y = x, y
+				moved = true
+			}
+			y += c.rect.w + CHAIN_ROW_GAP
+		}
+	}
+
+	// Each chain as its root and the box around it (min x, min y, max x, max y).
+	Chain :: struct {
+		root: u32,
+		box:  [4]f32,
+	}
+	chains := make([dynamic]Chain, context.temp_allocator)
+	for f in ws.frames {
+		if f.parent != 0 do continue
+		append(&chains, Chain{f.id, {f.rect.x, f.rect.y, f.rect.x + f.rect.z, f.rect.y + f.rect.w}})
+	}
+	for f in ws.frames {
+		if f.parent == 0 do continue
+		for &c in chains do if c.root == f.parent {
+			c.box = {min(c.box.x, f.rect.x), min(c.box.y, f.rect.y), max(c.box.z, f.rect.x + f.rect.z), max(c.box.w, f.rect.y + f.rect.w)}
+		}
+	}
+	keep := chain_root(ws, pinned)
+	// Each pass parts every pair that is too near. Moving one chain can bring
+	// it near a third, so passes repeat until none moves, a few at most.
+	for _ in 0 ..< 32 {
+		parted := false
+		for i in 0 ..< len(chains) {
+			for j in i + 1 ..< len(chains) {
+				a, b := chains[i].box, chains[j].box
+				g := CHAIN_SPACING
+				if !(b.x < a.z + g && a.x < b.z + g && b.y < a.w + g && a.y < b.w + g) do continue
+				// The later chain moves, unless it is the pinned one.
+				mover, other := j, i
+				if chains[j].root == keep do mover, other = i, j
+				m, o := chains[mover].box, chains[other].box
+				right := o.z + g - m.x
+				left := m.z + g - o.x
+				down := o.w + g - m.y
+				up := m.w + g - o.y
+				d := [2]f32{right, 0}
+				if left < abs(d.x) + abs(d.y) do d = {-left, 0}
+				if down < abs(d.x) + abs(d.y) do d = {0, down}
+				if up < abs(d.x) + abs(d.y) do d = {0, -up}
+				chains[mover].box += {d.x, d.y, d.x, d.y}
+				for &f in ws.frames {
+					if f.id == chains[mover].root || f.parent == chains[mover].root {
+						f.rect.x += d.x
+						f.rect.y += d.y
+					}
+				}
+				parted = true
+				moved = true
+			}
+		}
+		if !parted do break
+	}
+	return
+}
+
+@(private = "file")
+_next_id :: proc(ws: ^Workspace) -> u32 {
+	id := max(ws.next_frame, 1)
+	for f in ws.frames do id = max(id, f.id + 1)
+	ws.next_frame = id + 1
+	return id
 }
 
 workspace_free :: proc(ws: ^Workspace) {
