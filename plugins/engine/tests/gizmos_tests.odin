@@ -554,7 +554,7 @@ test_gizmo_settings_hide_per_type :: proc(t: ^testing.T) {
 }
 
 // The scene view's Gizmos toggle: off, it draws no gizmos or icons and picks
-// no icon, and keeps gameplay shapes and tools.
+// no icon, and keeps gameplay shapes, the outline and tools.
 @(test)
 test_scene_gizmos_toggle :: proc(t: ^testing.T) {
 	tc := new(TestCtx)
@@ -579,7 +579,7 @@ test_scene_gizmos_toggle :: proc(t: ^testing.T) {
 	testing.expect(t, ok, "the icon picks with gizmos on")
 
 	gizmos.scene_gizmos = false
-	testing.expect(t, gizmos.scene_gizmo_channels() == {.Game, .Tools}, "no .Editor channel")
+	testing.expect(t, gizmos.scene_gizmo_channels() == {.Game, .Outline, .Tools}, "no .Editor channel")
 	_, ok = scene_tools.scene_view_pick(v, at.x, at.y)
 	testing.expect(t, !ok, "a hidden icon does not pick")
 	gizmos.frame_end()
@@ -691,9 +691,9 @@ test_gizmo_key :: proc(t: ^testing.T) {
 
 // --- Gizmo pass: the scene view branch, game view labels ------------------------------------
 
-// A Scene copy records the selection outline and, in the copy the handles
-// run in, the transform gizmo into the scene-only .Tools channel, right
-// before its render, and publishes the handles frame with its camera.
+// A Scene copy records the selection outline into .Outline and, in the copy
+// the handles run in, the transform gizmo into .Tools, right before its
+// render, and publishes the handles frame with its camera.
 @(test)
 test_scene_copy_records_tools :: proc(t: ^testing.T) {
 	tc := new(TestCtx)
@@ -722,7 +722,8 @@ test_scene_copy_records_tools :: proc(t: ^testing.T) {
 	editor.sel_scene_only(obj)
 	editor.gizmo_pass() // picks the copy the handles run in: the only one
 	editor.scene_gizmos_record(editor.scene_render_view(800, 600))
-	testing.expect(t, _count(tc, .Tools) > 0, "the outline and the transform gizmo record into .Tools")
+	testing.expect(t, _count(tc, .Outline) > 0, "the outline records into .Outline")
+	testing.expect(t, _count(tc, .Tools) > 0, "the transform gizmo records into .Tools")
 	f := handles.frame()
 	testing.expect(t, f.valid && f.view.width == 800 && f.view.height == 600, "the handles frame is the scene view's")
 	testing.expectf(t, linalg.length(f.view.cam_pos - [3]f32{0, 0, 10}) < 1e-3, "with the scene camera, got %v", f.view.cam_pos)

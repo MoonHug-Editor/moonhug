@@ -13,7 +13,7 @@ package handles
 //
 // Clicking the badge in the scene view selects its owner, and box select
 // takes it too. Icons are gizmos, recorded for each view that shows gizmos
-// (.Editor, .Editor_Game), so handles and the transform gizmo draw over them,
+// (.Editor, .Editor_Game), so handles and the transform gizmo (.Tools) draw over them,
 // and the game view shows them with its Gizmos toggle. Each view draws them
 // facing its own camera.
 

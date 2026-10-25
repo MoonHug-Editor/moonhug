@@ -457,7 +457,8 @@ labels :: proc(channels: bit_set[core.Gizmo_Channel]) -> []core.Gizmo_Label {
 }
 
 // Drops this frame's shapes of `channels`, so a view can record them again
-// with its own camera: each Scene view copy records .Tools and .Editor.
+// with its own camera: each Scene view copy records .Outline, .Editor and
+// .Tools.
 clear_channels :: proc(channels: bit_set[core.Gizmo_Channel]) {
 	core.gizmo_buffer_clear_channels(_buffer(), channels)
 }

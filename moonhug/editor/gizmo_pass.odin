@@ -8,12 +8,13 @@ package editor
 //   @(comp_on_draw_gizmos) proc into .Editor_Game with the game camera, for
 //   the game view when its Gizmos toggle is on.
 // - scene_gizmos_record, in each Scene copy right before its render: the
-//   selection outline into .Tools and the @(comp_on_draw_gizmos) procs into
+//   selection outline into .Outline and the @(comp_on_draw_gizmos) procs into
 //   .Editor, with that copy's camera, so pixel sizes and camera-facing parts
 //   fit every copy. In the copy the handles run in, the selection's
-//   @(comp_on_scene_handles) procs and the transform gizmo record into .Tools
-//   too, once per frame. They run before the gizmo procs, so an edit shows
-//   in this frame's gizmos and render. .Tools always draws over .Editor.
+//   @(comp_on_scene_handles) procs and the transform gizmo record into .Tools,
+//   once per frame. They run before the gizmo procs, so an edit shows in this
+//   frame's gizmos and render. Channels draw in order, so where shapes
+//   coincide the gizmos paint over the outline and the handles over both.
 //
 // With several views showing gizmos the gizmo procs run once per view each
 // frame. The gizmo settings apply per component type.
@@ -63,15 +64,19 @@ _scene_handles_update :: proc() {
 }
 
 // The current Scene copy's gizmos, right before its render (render_scene_rt).
-// The .Tools and .Editor channels hold one copy's shapes at a time: each copy
-// clears them, records them with its own camera, and renders. The handles
-// record only in the copy they run in (_scene_handles), once per frame.
+// The .Outline, .Editor and .Tools channels hold one copy's shapes at a time:
+// each copy clears them, records them with its own camera, and renders. The
+// handles record only in the copy they run in (_scene_handles), once per
+// frame.
 scene_gizmos_record :: proc(view: core.Render_View) {
-	gizmos.clear_channels({.Tools, .Editor})
+	gizmos.clear_channels({.Outline, .Editor, .Tools})
 	gizmos.set_view(view)
 	{
-		gizmos.with_channel(.Tools)
+		gizmos.with_channel(.Outline)
 		viewport.outline(view)
+	}
+	{
+		gizmos.with_channel(.Tools)
 		if _sv == _scene_handles {
 			// The pointer in scene-image pixels, from the image's place last frame.
 			mp := im.GetMousePos()

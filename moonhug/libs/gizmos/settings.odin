@@ -69,7 +69,7 @@ gizmo_types_hiding :: proc(part: Gizmo_Part) -> [dynamic]string {
 // The channels the scene view draws: gizmos and icons (.Editor) only with its
 // Gizmos toggle on.
 scene_gizmo_channels :: proc() -> bit_set[core.Gizmo_Channel] {
-	return {.Game, .Editor, .Tools} if scene_gizmos else {.Game, .Tools}
+	return {.Game, .Outline, .Editor, .Tools} if scene_gizmos else {.Game, .Outline, .Tools}
 }
 
 // A type name in words: "BoxCollider2D" reads "Box Collider 2D" (temp).

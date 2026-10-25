@@ -10,7 +10,7 @@ import "moonhug:packages/engine"
 import "moonhug:libs/gizmos"
 
 // The selection outline for `view`, into the gizmo channel the caller set
-// (.Tools). It only draws, so every Scene view copy records its own.
+// (.Outline). It only draws, so every Scene view copy records its own.
 scene_outline :: proc(view: engine.Render_View) {
 	if sel := session.selection(); len(sel) > 0 {
 		quads := drawn_quads(view)

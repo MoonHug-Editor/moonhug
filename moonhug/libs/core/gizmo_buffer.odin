@@ -63,15 +63,17 @@ Gizmo_Label :: struct {
 	offset_px: [2]f32,
 }
 
-// Who a shape is for, drawn in this order. The scene view draws .Game, .Editor
-// and .Tools, the game view .Game and .Editor_Game. The @(comp_on_draw_gizmos)
-// procs record once per view, with that view's camera, so pixel sizes and
-// camera-facing parts fit the view that shows them.
+// Who a shape is for, drawn in this order, so a later channel paints over an
+// earlier one where their shapes coincide. The scene view draws .Game,
+// .Outline, .Editor and .Tools, the game view .Game and .Editor_Game. The
+// @(comp_on_draw_gizmos) procs record once per view, with that view's camera,
+// so pixel sizes and camera-facing parts fit the view that shows them.
 Gizmo_Channel :: enum u8 {
 	Game,        // gameplay and @(debug_draw) code
+	Outline,     // the selection outline: scene view only, under the gizmos
 	Editor,      // @(comp_on_draw_gizmos) procs, recorded with the scene camera
 	Editor_Game, // the same procs recorded with the game camera
-	Tools,       // handles, the transform gizmo, the selection outline: scene view only
+	Tools,       // handles and the transform gizmo: scene view only, over everything
 }
 
 // How long a shape stays. .Fixed_Tick: recorded during a fixed tick, kept
