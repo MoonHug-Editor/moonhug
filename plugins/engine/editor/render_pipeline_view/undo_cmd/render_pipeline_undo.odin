@@ -9,6 +9,8 @@ package render_pipeline_undo
 // (prebuild/undo_command_gen). The window imports both and installs
 // `load_hook`, the proc that puts a snapshot back.
 
+import core "moonhug:libs/core"
+
 // Loads a snapshot (pipeline JSON) as the document at `path`. Installed by
 // the Render Pipeline window.
 load_hook: proc(path: string, json: string)
@@ -16,6 +18,7 @@ load_hook: proc(path: string, json: string)
 @(undo_command)
 Render_Pipeline_Edit :: struct {
 	path:   string, // owned
+	guid:   core.Asset_GUID, // the pipeline asset, so its steps go with it (a discard, a delete)
 	before: string, // owned, the pipeline JSON before the edit
 	after:  string, // owned, the pipeline JSON after the edit
 }
@@ -33,6 +36,10 @@ destroy_Render_Pipeline_Edit :: proc(v: ^Render_Pipeline_Edit) {
 	delete(v.before)
 	delete(v.after)
 	v^ = {}
+}
+
+assets_Render_Pipeline_Edit :: proc(v: ^Render_Pipeline_Edit, out: ^[dynamic]core.Asset_GUID) {
+	append(out, v.guid)
 }
 
 label_Render_Pipeline_Edit :: proc(v: ^Render_Pipeline_Edit) -> string {

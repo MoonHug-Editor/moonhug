@@ -241,7 +241,7 @@ draw_hierarchy_view :: proc() {
 		_hierarchy_open_ancestors(pending)
 	}
 
-	open := im.Begin(icons.TITLE_HIERARCHY, &menu.show_hierarchy, {.NoCollapse})
+	open := im.Begin(session.view_title(icons.TITLE_HIERARCHY), &menu.show_hierarchy, {.NoCollapse})
 
 	if im.BeginDragDropTarget() {
 		payload := im.AcceptDragDropPayload("ASSET_PATH", {})
@@ -413,21 +413,17 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter: []st
 			mem.copy(&_save_as_buf[0], raw_data(path_bytes), copy_len)
 		}
 		im.Separator()
-		// Discard and Unload both destroy the Scene the rest of this proc
-		// reads, so each returns immediately after acting.
-		//
-		// Discard is off for a scene with no path — never saved, so there is
-		// no file to read back — and while a simulation runs, which holds the
-		// scene pointer it restores on Stop.
-		im.BeginDisabled(len(scene.path) == 0 || engine.application_is_playing())
+		// Discard asks first and acts after the confirmation, the same as a
+		// view's tab menu (scene_documents.odin). It is off for a scene with no
+		// unsaved changes, with no path (never saved, so there is no file to
+		// read back) and while a simulation runs, which holds the scene pointer
+		// it restores on Stop. Unload destroys the Scene the rest of this proc
+		// reads, so it returns immediately after acting.
+		doc, has_doc := session.document_find(SCENE_DOCUMENTS, scene)
+		im.BeginDisabled(!has_doc || !doc.dirty || !doc.can_discard)
 		discard := im.MenuItem("Discard")
 		im.EndDisabled()
-		widgets.tooltip("Reload this scene from its file, dropping unsaved changes", im.HoveredFlags_AllowWhenDisabled)
-		if discard {
-			_hierarchy_discard_scene(scene)
-			im.EndPopup()
-			return
-		}
+		if discard do session.document_discard_ask(doc)
 		// Unloading the scene a run is simulating leaves Stop with nothing to
 		// restore: it logs, reloads the file, and every unsaved edit made
 		// before the run is gone. Additive scenes stay unloadable — dropping

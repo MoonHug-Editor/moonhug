@@ -1,9 +1,10 @@
 package menu
 import im "moonhug:external/odin-imgui"
-import "../inspector"
+import "moonhug:libs/log"
 import "moonhug:editor/session"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/icons"
+import "core:strings"
 
 Theme :: enum {
     Spectrum_Dark,
@@ -114,22 +115,35 @@ _open_window :: proc(show: ^bool, title: cstring) {
 
 // The open flag behind a built-in view's window title, so the tab menu can
 // close the tab it is opened on. Plugin windows keep their own list
-// (window/window.odin), so this returns nil for them.
+// (window/window.odin), so this returns nil for them. Views match by the
+// text after ###, the window's id: the label before it changes, a star while
+// the view's file has unsaved changes.
 view_show_flag :: proc(title: cstring) -> ^bool {
-	switch title {
-	case icons.TITLE_SCENE:             return &show_scene
-	case icons.TITLE_GAME:              return &show_game
-	case icons.TITLE_INSPECTOR:         return &show_inspector
-	case icons.TITLE_PROJECT_INSPECTOR: return &show_project_inspector
-	case icons.TITLE_HIERARCHY:         return &show_hierarchy
-	case icons.TITLE_PROJECT:           return &show_project
-	case icons.TITLE_CONSOLE:           return &show_console
-	case icons.TITLE_OUTPUT:            return &show_output
-	case icons.TITLE_HISTORY:           return &show_history
-	case icons.TITLE_ANIMATION:         return &show_animation
-	case icons.TITLE_PLAYABLE_GRAPH:    return &show_playable_graph
+	views := [?]struct {
+		title: cstring,
+		flag:  ^bool,
+	}{
+		{icons.TITLE_SCENE, &show_scene},
+		{icons.TITLE_GAME, &show_game},
+		{icons.TITLE_INSPECTOR, &show_inspector},
+		{icons.TITLE_PROJECT_INSPECTOR, &show_project_inspector},
+		{icons.TITLE_HIERARCHY, &show_hierarchy},
+		{icons.TITLE_PROJECT, &show_project},
+		{icons.TITLE_CONSOLE, &show_console},
+		{icons.TITLE_OUTPUT, &show_output},
+		{icons.TITLE_HISTORY, &show_history},
+		{icons.TITLE_ANIMATION, &show_animation},
+		{icons.TITLE_PLAYABLE_GRAPH, &show_playable_graph},
 	}
+	id := _window_id(string(title))
+	for v in views do if _window_id(string(v.title)) == id do return v.flag
 	return nil
+}
+
+@(private = "file")
+_window_id :: proc(title: string) -> string {
+	if i := strings.last_index(title, "###"); i >= 0 do return title[i + 3:]
+	return title
 }
 
 
@@ -176,11 +190,11 @@ window_menu_playable_graph :: proc() { _open_window(&show_playable_graph, icons.
 @(menu_item={path="File/Save", order=0, shortcut="Ctrl+S"})
 file_save_menu :: proc()
 {
-    // Everything pending: the open document, every other dirty asset
-    // document, and every loaded scene edited since its last save. One
-    // shortcut, no per-view Save buttons.
-    inspector.save_to_file()
-    session.document_save_all()
+    // Every open document with unsaved edits: scenes, assets, the Shader
+    // Graph's and the Render Pipeline's files (session/documents.odin). One
+    // shortcut for all of them, and a view's tab menu saves its own.
+    saved, failed := session.documents_save_all()
+    if failed > 0 do log.errorf("[Save] %d of %d unsaved files could not be saved, see above", failed, saved + failed)
 }
 
 @(menu_separator={path="File", order=5})

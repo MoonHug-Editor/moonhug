@@ -298,6 +298,8 @@ disk — Save persists, like unsaved live-preview edits always worked.
 
 A document lives as long as its asset. Save writes to the asset's current path, looked up by guid, so a renamed or moved asset saves where it is now. A file that is gone from disk is never written back. Deleting an asset drops its document and its undo steps (`purge_asset`, through the asset-gone hook), and the Project Inspector lets go of it. Without that, undo or File/Save would bring the file back without its `.meta`, as a different asset.
 
+Discard reads the document again from its file and drops its undo steps with `purge_asset`, after a confirmation, so it cannot be undone ([Saving and discarding](Saving.md)).
+
 ## Import settings (project inspector, Sprite Editor)
 
 An asset's import settings are a second kind of asset document (`undo.Doc_Kind.Import_Settings`, `inspector/import_settings_docs.odin`): one per asset, the typed settings from its `.meta`, shared by every editor that shows or edits them. The import settings inspector, the model clip rows and the Sprite Editor all edit the same document, so an edit in one shows in the others at once.

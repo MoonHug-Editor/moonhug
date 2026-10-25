@@ -9,6 +9,8 @@ package shadergraph_undo
 // (prebuild/undo_command_gen). The window imports both and installs
 // `load_hook`, the proc that puts a snapshot back.
 
+import core "moonhug:libs/core"
+
 // Loads a snapshot (graph JSON) as the document at `path`. Installed by the
 // Shader Graph window.
 load_hook: proc(path: string, json: string)
@@ -16,6 +18,7 @@ load_hook: proc(path: string, json: string)
 @(undo_command)
 Shader_Graph_Edit :: struct {
 	path:   string, // owned
+	guid:   core.Asset_GUID, // the graph asset, so its steps go with it (a discard, a delete)
 	before: string, // owned, the graph JSON before the edit
 	after:  string, // owned, the graph JSON after the edit
 }
@@ -33,6 +36,10 @@ destroy_Shader_Graph_Edit :: proc(v: ^Shader_Graph_Edit) {
 	delete(v.before)
 	delete(v.after)
 	v^ = {}
+}
+
+assets_Shader_Graph_Edit :: proc(v: ^Shader_Graph_Edit, out: ^[dynamic]core.Asset_GUID) {
+	append(out, v.guid)
 }
 
 label_Shader_Graph_Edit :: proc(v: ^Shader_Graph_Edit) -> string {

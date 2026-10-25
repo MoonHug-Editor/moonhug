@@ -15,6 +15,7 @@ import im "moonhug:external/odin-imgui"
 import "menu"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/icons"
+import "moonhug:editor/session"
 import "moonhug:editor/widgets"
 import "core:fmt"
 import "core:slice"
@@ -218,9 +219,22 @@ _tab_menu_contents :: proc(node: ^im.DockNode) {
 	if node.VisibleWindow != nil do active_title = node.VisibleWindow.Name
 
 	if active_title != nil {
-		// The visible view's OWN options first: they are what this menu is for,
+		view := view_id_of(active_title)
+		// The file the view shows first (session/documents.odin): Save, and
+		// Discard after a confirmation. Both are off while it has no unsaved
+		// changes.
+		if d, ok := session.view_document(view); ok {
+			im.BeginDisabled(!d.dirty)
+			if im.MenuItem("Save") do session.document_save(d)
+			im.EndDisabled()
+			im.BeginDisabled(!d.dirty || !d.can_discard)
+			if im.MenuItem("Discard") do session.document_discard_ask(d)
+			im.EndDisabled()
+			im.Separator()
+		}
+		// The visible view's OWN options next: they are what this menu is for,
 		// and the tab actions below are the same on every view.
-		if view_menu_draw_items(view_id_of(active_title)) {
+		if view_menu_draw_items(view) {
 			im.Separator()
 		}
 		if im.MenuItem("Close Tab") {

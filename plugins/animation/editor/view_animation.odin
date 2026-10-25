@@ -35,9 +35,9 @@ import im "moonhug:external/odin-imgui"
 import engine "moonhug:packages/engine"
 import gfx "moonhug:libs/gfx"
 import anim "moonhug:packages/animation"
-import ser "moonhug:libs/serialization"
 import "moonhug:editor/inspector"
 import "moonhug:editor/menu"
+import "moonhug:editor/session"
 import "moonhug:editor/undo"
 import "moonhug:editor/preview"
 import "moonhug:editor/widgets"
@@ -735,7 +735,7 @@ _pv_sel_mask :: proc(ch_idx, count: int) -> []bool {
 // --- Window ---------------------------------------------------------------------------
 
 draw_animation_view :: proc() {
-	if !im.Begin(icons.TITLE_ANIMATION, &menu.show_animation, {.NoCollapse}) {
+	if !im.Begin(session.view_title(icons.TITLE_ANIMATION), &menu.show_animation, {.NoCollapse}) {
 		// Tabbed-away, not closed: the preview keeps running.
 		im.End()
 		return
@@ -776,7 +776,7 @@ draw_animation_view :: proc() {
 	doc, clip := _pv_doc()
 	length := clip != nil ? max(clip.length, 0.0001) : 0.0001
 
-	_pv_draw_toolbar(doc, clip, length)
+	_pv_draw_toolbar(clip, length)
 	_pv_advance(clip, length)
 	_pv_rec_poll(doc, clip)
 
@@ -833,7 +833,7 @@ draw_animation_view :: proc() {
 }
 
 @(private = "file")
-_pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, length: f32) {
+_pv_draw_toolbar :: proc(clip: ^anim.AnimationClip, length: f32) {
 	fps := anim.animation_clip_frame_rate(clip)
 
 	// Preview toggle. The pop must match the state at push time — the click
@@ -918,22 +918,22 @@ _pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, l
 	im.SameLine()
 	im.TextDisabled(fmt.ctprintf("/ %d", i32(math.round(length * fps))))
 
-	if clip != nil && doc != nil {
-		// Save sits at the right end, away from the transport.
-		im.SameLine()
-		save: cstring = doc.dirty ? "Save *" : "Save"
-		save_w := im.CalcTextSize(save).x + im.GetStyle().FramePadding.x * 2
-		right := im.GetContentRegionAvail().x - save_w
-		if right > 0 do im.SetCursorPosX(im.GetCursorPosX() + right)
+	// No Save button: the tab menu saves and discards the clip, File/Save
+	// saves it with every other file (session/documents.odin).
+}
 
-		im.BeginDisabled(!doc.dirty)
-		if im.Button(save) {
-			if ser.save_to_file(doc.path, doc.data) do doc.dirty = false
-		}
-		im.EndDisabled()
-	} else {
-		im.NewLine()
-	}
+// The clip the view edits is its document: the tab menu saves and discards
+// it, and the tab title carries its star.
+@(provider_install)
+_pv_install_document :: proc() {
+	session.view_document_set("Animation", _pv_view_document)
+}
+
+@(private = "file")
+_pv_view_document :: proc() -> (owner: string, key: rawptr, ok: bool) {
+	doc, _ := _pv_doc()
+	if doc == nil do return "", nil, false
+	return inspector.ASSET_DOCUMENTS, doc, true
 }
 
 // Header of the property column: the clip picker, stretched to the column

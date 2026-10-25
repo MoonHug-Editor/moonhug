@@ -92,10 +92,16 @@ launch_editor :: proc(mode: string) -> int {
 		if pid, ok := strconv.parse_int(pid_str); ok {
 			_ = os.write_entire_file(RELAUNCH_MARKER, "ready")
 			fmt.printfln("mh: built, waiting for editor %d to exit", pid)
-			// Poll instead of waiting: the old editor is not our child.
-			deadline := time.now()._nsec + i64(15 * time.Second)
-			for process_alive(pid) && time.now()._nsec < deadline {
+			// Poll instead of waiting: the old editor is not our child. It may
+			// ask about unsaved files before it quits, so there is no time
+			// limit. Its Cancel removes the marker: it keeps running and
+			// nothing launches.
+			for process_alive(pid) && os.exists(RELAUNCH_MARKER) {
 				time.sleep(50 * time.Millisecond)
+			}
+			if process_alive(pid) {
+				fmt.println("mh: the editor cancelled the relaunch, nothing launched")
+				return 0
 			}
 			_ = os.remove(RELAUNCH_MARKER)
 		}

@@ -18,6 +18,7 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import asset_pipeline "moonhug:editor/assets"
 import nc "moonhug:editor/node_canvas"
+import "moonhug:editor/session"
 import "moonhug:editor/undo"
 import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
@@ -95,28 +96,36 @@ _sg_install_undo :: proc "contextless" () {
 // Opens the graph at `path` in the window. Reopening the graph already open
 // keeps its unsaved edits.
 shader_graph_open :: proc(path: string, guid: engine.Asset_GUID) {
-	context.allocator = runtime.default_allocator()
 	if _sg.path != path || _sg.path == "" {
-		g, ok := sg.graph_load_file(path)
-		if !ok {
-			log.errorf("[ShaderGraph] %s is not a shader graph", path)
-			return
-		}
-		sg.cleanup_Shader_Graph(&_sg.graph)
-		delete(_sg.path)
-		delete(_sg.baseline)
-		_sg.path = strings.clone(path)
-		_sg.guid = guid
-		_sg.graph = g
-		_sg.baseline = _sg_snapshot()
-		_sg.dirty = false
-		_sg.touched = false
-		_sg.rename = -1
-		_sg.cv.sel = -1
-		_sg.cv.sel_link = -1
-		_sg_regen()
+		if !_sg_load(path, guid) do return
 	}
 	wnd.open("shader_graph")
+}
+
+// Reads the graph at `path` into the window, replacing what it shows. `path`
+// must not be the window's own string, which this frees.
+@(private = "file")
+_sg_load :: proc(path: string, guid: engine.Asset_GUID) -> bool {
+	context.allocator = runtime.default_allocator()
+	g, ok := sg.graph_load_file(path)
+	if !ok {
+		log.errorf("[ShaderGraph] %s is not a shader graph", path)
+		return false
+	}
+	sg.cleanup_Shader_Graph(&_sg.graph)
+	delete(_sg.path)
+	delete(_sg.baseline)
+	_sg.path = strings.clone(path)
+	_sg.guid = guid
+	_sg.graph = g
+	_sg.baseline = _sg_snapshot()
+	_sg.dirty = false
+	_sg.touched = false
+	_sg.rename = -1
+	_sg.cv.sel = -1
+	_sg.cv.sel_link = -1
+	_sg_regen()
+	return true
 }
 
 @(editor_window={id="shader_graph", title="Shader Graph", icon="ACCOUNT_TREE", width=1100, height=640})
@@ -207,8 +216,8 @@ shader_graph_window_draw :: proc() {
 
 @(private = "file")
 _sg_toolbar :: proc() {
-	if im.Button("Save") do _sg_save()
-	im.SameLine()
+	// No Save button: the tab menu saves and discards the graph, File/Save
+	// saves it with every other file (session/documents.odin).
 	im.TextUnformatted(fmt.ctprintf("%s%s", _sg.path, _sg.dirty ? " *" : ""))
 	if _sg.notice != "" && im.GetTime() < _sg.notice_until {
 		im.SameLine()
@@ -241,14 +250,54 @@ _sg_pane_toggle :: proc(label: cstring, hidden: ^bool, tip: cstring) {
 // Writes the file, then reimports it and drops the cached shader, so a
 // material on the graph draws with the new one at once.
 @(private = "file")
-_sg_save :: proc() {
+_sg_save :: proc() -> bool {
 	if !sg.graph_save_file(&_sg.graph, _sg.path, _sg.guid) {
 		log.errorf("[ShaderGraph] could not write %s", _sg.path)
-		return
+		return false
 	}
 	_sg.dirty = false
 	_ = asset_pipeline.asset_pipeline_import_asset(_sg.path)
 	engine.shader_unload(_sg.guid)
+	return true
+}
+
+// --- Open document --------------------------------------------------------------
+// The graph the window shows, as an open document (moonhug:editor/session):
+// File/Save and the tab menu save it, the tab menu discards it, and the tab
+// title carries its star.
+
+SHADER_GRAPH_DOCUMENT :: "shader_graph_window"
+
+@(provider_install)
+_sg_install_document :: proc() {
+	session.document_owner_add({name = SHADER_GRAPH_DOCUMENT, list = _sg_document_list, save = _sg_document_save, discard = _sg_document_discard})
+	session.view_document_set("shader_graph", _sg_view_document)
+}
+
+@(private = "file")
+_sg_document_list :: proc(out: ^[dynamic]session.Document) {
+	if _sg.path == "" do return
+	append(out, session.Document{path = _sg.path, dirty = _sg.dirty, can_discard = true})
+}
+
+@(private = "file")
+_sg_document_save :: proc(key: rawptr) -> bool {
+	return _sg_save()
+}
+
+// The graph read again from its file. Its undo steps go first, on the
+// caller's allocator like every purge.
+@(private = "file")
+_sg_document_discard :: proc(key: rawptr) {
+	if _sg.path == "" do return
+	undo.purge_asset(undo.get(), _sg.guid)
+	_sg_load(strings.clone(_sg.path, context.temp_allocator), _sg.guid)
+}
+
+@(private = "file")
+_sg_view_document :: proc() -> (owner: string, key: rawptr, ok: bool) {
+	if _sg.path == "" do return "", nil, false
+	return SHADER_GRAPH_DOCUMENT, nil, true
 }
 
 @(private = "file")
@@ -652,6 +701,7 @@ _sg_record :: proc(undo_allocator: runtime.Allocator) {
 	}
 	cmd := sgu.Shader_Graph_Edit{
 		path   = strings.clone(_sg.path, undo_allocator),
+		guid   = _sg.guid,
 		before = strings.clone(_sg.baseline, undo_allocator),
 		after  = strings.clone(now, undo_allocator),
 	}

@@ -9,25 +9,10 @@ import "moonhug:packages/engine"
 @(provider_install)
 install_document_actions :: proc() {
 	session.set_document_actions({
-		save_all        = _doc_save_all,
 		open_paths      = _doc_open_paths,
 		snapshot_active = _doc_snapshot_active,
 		active_path     = _doc_active_path,
 	})
-}
-
-@(private = "file")
-_doc_save_all :: proc() -> int {
-	sm := engine.ctx_scene_manager()
-	if sm == nil do return 0
-	saved := 0
-	for i in 0 ..< sm.count {
-		scene := sm.loaded[i]
-		if scene == nil || !scene.dirty || len(scene.path) == 0 do continue
-		engine.scene_save(scene, scene.path)
-		saved += 1
-	}
-	return saved
 }
 
 @(private = "file")

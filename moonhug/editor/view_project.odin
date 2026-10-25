@@ -1012,7 +1012,7 @@ _project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool
 
     // Name centered under the art, clipped to the cell.
     dl := im.GetWindowDrawList()
-    cdisplay := strings.clone_to_cstring(display, context.temp_allocator)
+    cdisplay := strings.clone_to_cstring(fmt.tprintf("%s%s", display, _project_dirty_star(full_path)), context.temp_allocator)
     tsize := im.CalcTextSize(cdisplay)
     text_col := im.GetStyleColorVec4(im.Col.Text)^
     if dim do text_col = {text_col.x * 0.6, text_col.y * 0.6, text_col.z * 0.6, text_col.w}
@@ -1053,12 +1053,25 @@ _project_grid_cell_art :: proc(full_path: string, is_dir: bool, rect_min: im.Vec
 // One row of the right pane, shared by the folder listing and search results.
 // `display` is the shown text; `full_path` drives selection, rename,
 // activation, and the drag payload.
+// The cleaned paths of the files with unsaved changes this frame. Temp-allocated,
+// set before the window draws.
+@(private = "file")
+_project_dirty_paths: map[string]bool
+
+// " *" for a file with unsaved changes, the same mark its view's tab shows.
+@(private = "file")
+_project_dirty_star :: proc(path: string) -> string {
+    if len(_project_dirty_paths) == 0 do return ""
+    clean, _ := filepath.clean(path, context.temp_allocator)
+    return " *" if clean in _project_dirty_paths else ""
+}
+
 _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool, is_link := false) {
     append(&_project_list_rows, Project_Row{name = display, path = full_path, is_dir = is_dir})
     if !_project_rename_in_tree && _project_draw_rename_row(full_path) do return
 
     icon := _project_dir_icon(is_link) if is_dir else _project_file_icon(full_path)
-    label := strings.clone_to_cstring(fmt.tprintf("%s%s", icon, display), context.temp_allocator)
+    label := strings.clone_to_cstring(fmt.tprintf("%s%s%s", icon, display, _project_dirty_star(full_path)), context.temp_allocator)
 
     is_selected := _project_active_pane == .List && sel_proj_is(full_path)
 
@@ -1400,6 +1413,9 @@ draw_project_view :: proc() {
         }
     }
 
+    // Files with unsaved changes get a star after their name, read once per
+    // frame (session/documents.odin).
+    _project_dirty_paths = session.documents_dirty_paths()
     if im.Begin(icons.TITLE_PROJECT, &menu.show_project, {.NoCollapse}) {
         // Search toolbar across the whole window, above both panes. While the
         // box has keyboard focus, list/tree key handling below is skipped

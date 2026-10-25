@@ -8,7 +8,11 @@ package engine_tests
 import "base:runtime"
 import "core:os"
 import "core:testing"
+import "core:path/filepath"
+import "core:strings"
+import "moonhug:editor/icons"
 import "moonhug:editor/inspector"
+import "moonhug:editor/session"
 import "moonhug:editor/undo"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
@@ -131,11 +135,51 @@ test_saving_an_asset_deleted_on_disk_does_not_write_it_back :: proc(t: ^testing.
 	testing.expect(t, !os.exists(path), "the file is not written back")
 }
 
-// Revert puts the file's values back as one undo step: the document is clean
-// after it, undo brings the edit (and the dirty mark) back.
+// Discard puts the file's values back for good: the document is clean, the
+// inspector follows the new instance, and the asset's undo steps are gone, so
+// nothing brings the dropped edit back. The test reaches the document the way
+// the tab menu does, through the Project Inspector's open document, and checks
+// the stars the tab and the project window show.
 @(test)
-test_revert_restores_the_file_and_undoes :: proc(t: ^testing.T) {
-	path :: _DIR + "/Reverted.mat"
+test_discard_restores_the_file_for_good :: proc(t: ^testing.T) {
+	path :: _DIR + "/Discarded.mat"
+	os.make_directory(_DIR)
+	defer {
+		_remove_tree(_DIR)
+		_remove_tree(engine.library_dir())
+	}
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+	defer engine.asset_db_shutdown()
+	defer inspector.asset_docs_shutdown()
+	defer inspector.unload()
+
+	doc := _edited_material(t, s, path)
+	if doc == nil do return
+	inspector.load_from_file(path)
+
+	d, ok := session.view_document("Project Inspector")
+	testing.expect(t, ok && d.dirty && d.key == doc, "the Project Inspector's document is the edited material")
+	testing.expect(t, strings.contains(string(session.view_title(icons.TITLE_PROJECT_INSPECTOR)), " *###"), "its tab carries a star")
+	clean, _ := filepath.clean(path, context.temp_allocator)
+	testing.expect(t, clean in session.documents_dirty_paths(), "the project window marks the file")
+
+	session.document_discard(d)
+	testing.expect(t, !doc.dirty, "discard leaves the document clean")
+	testing.expect_value(t, (^engine.Material)(doc.data.data).color, [4]f32{1, 1, 1, 1})
+	testing.expect_value(t, len(s.items), 0)
+	testing.expect(t, inspector.inspectorData.fileData.data == doc.data.data, "the inspector follows the new instance")
+	testing.expect(t, session.view_title(icons.TITLE_PROJECT_INSPECTOR) == icons.TITLE_PROJECT_INSPECTOR, "the star goes")
+}
+
+// File/Save writes every document with unsaved changes, an asset edited
+// outside the Project Inspector included.
+@(test)
+test_save_all_writes_every_dirty_document :: proc(t: ^testing.T) {
+	path :: _DIR + "/SavedAll.mat"
 	os.make_directory(_DIR)
 	defer {
 		_remove_tree(_DIR)
@@ -151,20 +195,11 @@ test_revert_restores_the_file_and_undoes :: proc(t: ^testing.T) {
 
 	doc := _edited_material(t, s, path)
 	if doc == nil do return
-	inspector.load_from_file(path)
-
-	inspector.asset_doc_revert(doc)
-	testing.expect(t, !doc.dirty, "revert leaves the document clean")
-	testing.expect_value(t, (^engine.Material)(doc.data.data).color, [4]f32{1, 1, 1, 1})
-	testing.expect_value(t, len(s.items), 2)
-	testing.expect(t, inspector.inspectorData.fileData.data == doc.data.data, "the inspector follows the new instance")
-
-	undo.apply_undo(s)
-	testing.expect(t, doc.dirty, "undo of a revert is an unsaved edit again")
-	testing.expect_value(t, (^engine.Material)(doc.data.data).color, [4]f32{1, 0, 0, 1})
-
-	undo.apply_redo(s)
-	testing.expect_value(t, (^engine.Material)(doc.data.data).color, [4]f32{1, 1, 1, 1})
+	saved, failed := session.documents_save_all()
+	testing.expect(t, saved >= 1 && failed == 0, "the material is saved")
+	testing.expect(t, !doc.dirty, "and clean")
+	data, err := os.read_entire_file(path, context.temp_allocator)
+	testing.expectf(t, err == nil && strings.contains(string(data), "[1.0, 0.0, 0.0, 1.0]"), "the file holds the edit: %s", string(data))
 }
 
 // "+ Add" and "x" on a dynamic array of an asset shown in the Project

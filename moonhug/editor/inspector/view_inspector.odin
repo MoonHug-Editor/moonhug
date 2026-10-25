@@ -9,13 +9,13 @@ import "core:encoding/uuid"
 import strings "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/widgets"
-import ser "moonhug:libs/serialization"
 import assets "moonhug:libs/assets"
 import core "moonhug:libs/core"
 import asset_pipeline "moonhug:editor/assets"
 import clip "../clipboard"
 import undo "moonhug:editor/undo"
 import "moonhug:editor/icons"
+import "moonhug:editor/session"
 
 InspectorMode :: enum {
     Asset,
@@ -280,30 +280,6 @@ get_file_path :: proc() -> string {
     return inspectorData.filePath
 }
 
-// File/Save: the open document, then every other dirty document (an asset
-// edited through an `expand` foldout has no Save button of its own).
-//
-// Only FAILURES are reported. A save that worked is already visible — the
-// dirty star clears — so a success line would be one more thing to read and
-// then dismiss.
-save_to_file :: proc() {
-    // Only an ASSET has a document to write. A package folder (or an import
-    // settings view) leaves fileData as a nil `any`, and serializing that asks
-    // for the GUID of a nil typeid — which panics rather than failing softly.
-    failed_path := ""
-    if inspectorData.mode == .Asset && inspectorData.fileData.data != nil {
-        ok := inspectorData.doc != nil ? asset_doc_save(inspectorData.doc) : ser.save_to_file(inspectorData.filePath, inspectorData.fileData)
-        if !ok do failed_path = inspectorData.filePath
-    }
-    _, failed := asset_docs_save_dirty()
-    switch {
-    case failed_path != "": _set_status(fmt.tprintf("Failed to save %s", failed_path))
-    case failed > 0:        _set_status(fmt.tprintf("%d asset(s) failed to save", failed))
-    // Clears a failure left from an earlier attempt.
-    case:                   _set_status("")
-    }
-}
-
 // p_open: the editor's show flag, so the dock tab's X can close the window
 // (the menu package imports this one, so the flag is passed in).
 // Preview pane's share of the window height, dragged via the splitter
@@ -311,7 +287,7 @@ save_to_file :: proc() {
 _preview_split_ratio: f32 = 0.3
 
 view_inspector_draw :: proc(p_open: ^bool) {
-    if im.Begin(icons.TITLE_PROJECT_INSPECTOR, p_open, {.NoCollapse}) {
+    if im.Begin(session.view_title(icons.TITLE_PROJECT_INSPECTOR), p_open, {.NoCollapse}) {
         // A registered preview pins to the window's bottom — the mode content
         // scrolls in a child above it.
         preview := _asset_preview_drawer()
@@ -515,21 +491,14 @@ _draw_asset_inspector :: proc() {
         inspectorData.fileData = inspectorData.doc.data
     }
 
-    // No Save button: File/Save (Ctrl+S) writes every dirty document and
-    // scene, and the star after the path is the pending mark. Revert is the
-    // other way out of a dirty document, live only while it is dirty.
+    // No Save or Discard button: the tab menu has both for the asset shown
+    // (session/documents.odin), File/Save (Ctrl+S) writes every dirty file,
+    // and the star after the path and on the tab is the pending mark.
     if inspectorData.statusMessage != "" {
         im.Text(strings.clone_to_cstring(inspectorData.statusMessage, context.temp_allocator))
         im.Separator()
     }
 
-    if inspectorData.doc != nil {
-        im.BeginDisabled(!inspectorData.doc.dirty)
-        if im.Button("Revert", im.Vec2{60, 0}) do asset_doc_revert(inspectorData.doc)
-        im.EndDisabled()
-        widgets.tooltip("Back to the file on disk, as one undo step.")
-        im.SameLine()
-    }
     if inspectorData.filePath != "" {
         _draw_file_row(inspectorData.doc != nil && inspectorData.doc.dirty)
     } else {

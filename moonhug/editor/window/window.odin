@@ -18,6 +18,7 @@ import "core:strings"
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
 import "moonhug:libs/log"
+import "moonhug:editor/session"
 
 Draw_Proc :: proc()
 
@@ -163,7 +164,8 @@ draw_all :: proc() {
 		}
 		// NoCollapse matches every built-in view — no collapse triangle when
 		// the window floats.
-		if im.Begin(r.title, &e.open, {.NoCollapse}) {
+		// A star on the tab while the window's file has unsaved changes.
+		if im.Begin(session.view_title(r.title), &e.open, {.NoCollapse}) {
 			r.draw()
 		}
 		im.End()

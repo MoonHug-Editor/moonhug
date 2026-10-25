@@ -10,6 +10,10 @@ package editor
 // exit and launches the new binary. A failed build writes no marker, so the
 // editor stays up and the compiler output is in the terminal mh runs in.
 //
+// The quit asks about unsaved files first (quit_prompt.odin). mh waits as
+// long as the editor runs and the marker exists, so a Cancel removes the
+// marker: mh stops waiting, launches nothing, and this editor keeps running.
+//
 // Without MH_LAUNCH (a bare binary started by hand) the mode comes from how
 // this binary was compiled: ODIN_DEBUG picks `debug`, otherwise `run`. Both
 // produce the same builds/MoonHug, so the restart still rebuilds and runs the
@@ -31,6 +35,10 @@ _relaunch: struct {
 	marker:    string, // absolute path of the ready marker
 	repo_root: string,
 }
+
+// The ready marker of a relaunch whose quit is under way, owned. "" otherwise.
+@(private = "file")
+_relaunch_quit_marker: string
 
 // The mh mode that rebuilds and runs the editor the way it is running now:
 // the one that started it, or, for a bare binary, the one matching its build.
@@ -98,6 +106,8 @@ relaunch_tick :: proc() {
 
 	if os.exists(_relaunch.marker) {
 		log.infof("[relaunch] build ready, restarting")
+		delete(_relaunch_quit_marker)
+		_relaunch_quit_marker = strings.clone(_relaunch.marker)
 		_relaunch_clear()
 		menu.quit_requested = true
 		return
@@ -110,6 +120,21 @@ relaunch_tick :: proc() {
 		log.errorf("[relaunch] build failed (mh exit %d), editor keeps running", state.exit_code)
 		_relaunch_clear()
 	}
+}
+
+// Whether the quit under way is a relaunch's, for the quit prompt's wording.
+relaunch_quitting :: proc() -> bool {
+	return _relaunch_quit_marker != ""
+}
+
+// The quit prompt's Cancel during a relaunch: the ready marker goes, so mh
+// stops waiting for this editor and launches nothing.
+relaunch_quit_cancelled :: proc() {
+	if _relaunch_quit_marker == "" do return
+	_ = os.remove(_relaunch_quit_marker)
+	delete(_relaunch_quit_marker)
+	_relaunch_quit_marker = ""
+	log.infof("[relaunch] cancelled, the editor keeps running")
 }
 
 @(private = "file")

@@ -41,6 +41,7 @@ import im "moonhug:external/odin-imgui"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/inspector"
 import "moonhug:editor/script_editor"
+import "moonhug:editor/session"
 import "moonhug:editor/undo"
 import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
@@ -135,9 +136,12 @@ render_pipeline_open :: proc(path: string, guid: engine.Asset_GUID) {
 	wnd.open("render_pipeline")
 }
 
-_rp_load :: proc(path: string, guid: engine.Asset_GUID) -> bool {
+// Reads the pipeline at `path` into the window. The one already shown stays,
+// unsaved edits and all, unless `force` reads it again (a discard). `path`
+// must not be the window's own string, which this frees.
+_rp_load :: proc(path: string, guid: engine.Asset_GUID, force := false) -> bool {
 	context.allocator = runtime.default_allocator()
-	if _rp.path == path && _rp.path != "" do return true
+	if !force && _rp.path == path && _rp.path != "" do return true
 	p, ok := engine.pipeline_load_file(path)
 	if !ok {
 		log.errorf("[Render] %s is not a render pipeline", path)
@@ -238,8 +242,8 @@ render_pipeline_window_draw :: proc() {
 // --- Toolbar and tabs -------------------------------------------------------------
 
 _rp_toolbar :: proc() {
-	if im.Button("Save") do _rp_save()
-	im.SameLine()
+	// No Save button: the tab menu saves and discards the pipeline, File/Save
+	// saves it with every other file (session/documents.odin).
 	if im.Button("Filter") do im.OpenPopup("##rp_filter")
 	widgets.tooltip("Which rows and columns the matrix shows")
 	if im.BeginPopup("##rp_filter") {
@@ -323,13 +327,53 @@ _rp_select_slot :: proc(name: string) {
 	if e := engine.pipeline_find_step(&_rp.doc, _rp.sel); e != nil && e.slot != "" && e.slot != name do _rp.sel = 0
 }
 
-_rp_save :: proc() {
+_rp_save :: proc() -> bool {
 	if !engine.pipeline_save_file(&_rp.doc, _rp.path, _rp.guid) {
 		log.errorf("[Render] could not write %s", _rp.path)
-		return
+		return false
 	}
 	_rp.dirty = false
 	_ = asset_pipeline.asset_pipeline_import_asset(_rp.path)
+	return true
+}
+
+// --- Open document ----------------------------------------------------------------
+// The pipeline the window shows, as an open document (moonhug:editor/session):
+// File/Save and the tab menu save it, the tab menu discards it, and the tab
+// title carries its star.
+
+RENDER_PIPELINE_DOCUMENT :: "render_pipeline_window"
+
+@(provider_install)
+_rp_install_document :: proc() {
+	session.document_owner_add({name = RENDER_PIPELINE_DOCUMENT, list = _rp_document_list, save = _rp_document_save, discard = _rp_document_discard})
+	session.view_document_set("render_pipeline", _rp_view_document)
+}
+
+@(private = "file")
+_rp_document_list :: proc(out: ^[dynamic]session.Document) {
+	if _rp.path == "" do return
+	append(out, session.Document{path = _rp.path, dirty = _rp.dirty, can_discard = true})
+}
+
+@(private = "file")
+_rp_document_save :: proc(key: rawptr) -> bool {
+	return _rp_save()
+}
+
+// The pipeline read again from its file. Its undo steps go first, on the
+// caller's allocator like every purge.
+@(private = "file")
+_rp_document_discard :: proc(key: rawptr) {
+	if _rp.path == "" do return
+	undo.purge_asset(undo.get(), _rp.guid)
+	_rp_load(strings.clone(_rp.path, context.temp_allocator), _rp.guid, force = true)
+}
+
+@(private = "file")
+_rp_view_document :: proc() -> (owner: string, key: rawptr, ok: bool) {
+	if _rp.path == "" do return "", nil, false
+	return RENDER_PIPELINE_DOCUMENT, nil, true
 }
 
 // --- Popups -------------------------------------------------------------------------
@@ -688,6 +732,7 @@ _rp_record :: proc(undo_allocator: runtime.Allocator) {
 	}
 	cmd := rpu.Render_Pipeline_Edit{
 		path   = strings.clone(_rp.path, undo_allocator),
+		guid   = _rp.guid,
 		before = strings.clone(_rp.baseline, undo_allocator),
 		after  = strings.clone(now, undo_allocator),
 	}

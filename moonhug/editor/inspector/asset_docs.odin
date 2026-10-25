@@ -110,7 +110,7 @@ asset_doc_get :: proc(path: string) -> ^Asset_Doc {
 }
 
 // Writes the document to its file and clears the dirty flag. The one save
-// path, whether the Project Inspector's Save button or an expanded row's.
+// path, whether File/Save, the tab menu's Save or an expanded row's.
 // The path comes from the guid at write time, so a renamed or moved asset
 // saves where it is now. An asset whose file is gone is not written: that
 // would bring it back without its .meta, as a different asset.
@@ -135,8 +135,7 @@ asset_doc_save :: proc(doc: ^Asset_Doc) -> bool {
 }
 
 // Writes every document edited since its last save, wherever it was edited:
-// the Project Inspector or an `expand` foldout under a component. This is
-// what File/Save does, so one shortcut saves all pending asset edits. Import
+// the Project Inspector or an `expand` foldout under a component. Import
 // settings are not among them: those commit through Apply.
 asset_docs_save_dirty :: proc() -> (saved, failed: int) {
     for _, doc in _docs {
@@ -184,27 +183,28 @@ asset_doc_apply_json :: proc(guid: core.Asset_GUID, kind: undo.Doc_Kind, json_by
     return true
 }
 
-// Revert: the document back to its file, as one undo step. Nothing to do
-// when it is not dirty.
-asset_doc_revert :: proc(doc: ^Asset_Doc) {
+// Discard: the document back to its file for good. Its undo steps go too, so
+// nothing brings the dropped edits back. The caller has confirmed. Nothing to
+// do when it is not dirty.
+asset_doc_discard :: proc(doc: ^Asset_Doc) {
     if doc == nil || !doc.dirty do return
-    // The document lives on the default allocator, the undo entry on the
-    // caller's: undo frees an entry with the allocator that made it.
+    assert(doc.kind == .File, "asset_doc_discard: import settings go back through import_settings_revert")
+    path := doc.path
+    if p, known := assets.asset_db_get_path(uuid.Identifier(doc.guid)); known do path = p
     fresh: any
     ok: bool
     {
         context.allocator = doc_alloc()
-        fresh, ok = ser.load_from_file(doc.path)
+        fresh, ok = ser.load_from_file(path)
     }
     if !ok {
-        log.error(fmt.tprintf("asset_docs: revert could not load %s", doc.path))
+        log.error(fmt.tprintf("asset_docs: discard could not load %s", path))
         return
     }
-    tid := doc.data.id
-    before := undo.capture_json(doc.data.data, tid)
-    after := undo.capture_json(fresh.data, tid)
+    // Before the replace and on the caller's allocator, like every purge:
+    // undo entries free with the allocator that made them.
+    undo.purge_asset(undo.get(), doc.guid)
     _doc_replace(doc, fresh, dirty = false)
-    undo.push_value(undo.get(), undo.make_asset_target(doc.guid, tid, .File), before, after, fmt.tprintf("Revert %s", filepath_base(doc.path)))
 }
 
 // A document's new instance takes over: the old one retires, the inspector

@@ -166,7 +166,8 @@ main :: proc() {
     mcp_bridge_init() // agent bridge on loopback TCP (docs/core/McpBridge.md)
     defer mcp_bridge_shutdown()
 
-    for !menu.quit_requested && !gfx.quit_requested() {
+    // Quitting with unsaved files asks first (quit_prompt.odin).
+    for !quit_gate() {
         relaunch_tick()
         // Startup scenes load here, one per frame, once the dock layout has
         // settled (imgui sizes docked windows over the first few frames) —

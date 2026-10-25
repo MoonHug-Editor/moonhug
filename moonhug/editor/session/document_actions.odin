@@ -3,14 +3,13 @@ package session
 import "base:runtime"
 import "moonhug:editor/provider"
 
-// The documents the installed engine has open (scenes), as the shell's save,
-// session and run code sees them. The engine installs the procs
+// The scenes the installed engine has open, as the shell's session and run
+// code sees them. The engine installs the procs
 // (plugins/engine/editor/scene_tools/document_actions.odin). With none
-// installed there are no open documents and nothing to save.
+// installed there are no open scenes. Saving goes through the open documents
+// (documents.odin), which cover scenes and every other kind of file.
 
 Document_Actions :: struct {
-	// Saves every open document with unsaved changes. Returns how many it saved.
-	save_all:        proc() -> int,
 	// Paths of the open documents that live in a file, temp-allocated.
 	open_paths:      proc() -> []string,
 	// The active document's path and its live state serialized, for a run that
@@ -31,11 +30,6 @@ _register_document_actions :: proc "contextless" () {
 
 set_document_actions :: proc(a: Document_Actions) {
 	_document_actions = a
-}
-
-document_save_all :: proc() -> int {
-	if _document_actions.save_all == nil do return 0
-	return _document_actions.save_all()
 }
 
 document_open_paths :: proc() -> []string {

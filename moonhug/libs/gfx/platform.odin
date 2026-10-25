@@ -135,6 +135,12 @@ request_quit :: proc() {
 	_platform.quit_requested = true
 }
 
+// Withdraws a quit the window or the system asked for, when the editor asks
+// about unsaved files first and the answer is Cancel.
+cancel_quit :: proc() {
+	_platform.quit_requested = false
+}
+
 // Computes the frame's dt (called from frame_begin in gfx.odin). Frame pacing
 // itself comes from swapchain vsync — there is no SetTargetFPS equivalent;
 // dt-based logic handles 120Hz fine.

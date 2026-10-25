@@ -11,6 +11,7 @@ import "inspector"
 import core "moonhug:libs/core"
 import "moonhug:libs/gizmos"
 import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import "core:strings"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
@@ -472,13 +473,9 @@ draw_scene_view :: proc() {
 	// freshly appearing or resizing overlay can momentarily extend past the
 	// window edge — a scrollbar would shrink the content region, resize the
 	// RT and shift the image, oscillating for frames.
-	// A star on the tab while the active scene has unsaved edits. Only the
-	// text after ### is the window id, so the label can change freely.
-	scene_title: cstring = icons.TITLE_SCENE
-	if viewport.dirty() {
-		scene_title = icons.ICON_MD_LANDSCAPE + " Scene *###Scene"
-	}
-	open := im.Begin(scene_title, &menu.show_scene, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse})
+	// A star on the tab while the active scene has unsaved edits
+	// (session/documents.odin).
+	open := im.Begin(session.view_title(icons.TITLE_SCENE), &menu.show_scene, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse})
 	im.PopStyleVar()
 	if open {
 		if _scene_2d_pending {
