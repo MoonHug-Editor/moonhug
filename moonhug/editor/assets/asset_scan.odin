@@ -117,6 +117,7 @@ asset_db_refresh :: proc() {
 		}
 	}
 
+	asset_db_last_refresh = {created, modified, deleted}
 	if created + modified + deleted > 0 {
 		// Through the log package: visible in the editor console/status bar,
 		// not just the terminal.
@@ -124,8 +125,13 @@ asset_db_refresh :: proc() {
 	}
 }
 
+// What the last asset_db_refresh found: entries created, modified, deleted.
+asset_db_last_refresh: struct {
+	created, modified, deleted: int,
+}
+
 _Db_Walk :: struct {
-	files: map[string]assets.Asset_File_Stamp, // temp; folders carry a zero stamp
+	files: map[string]assets.Asset_File_Stamp, // temp; folders carry is_dir and their .meta's times
 	metas: [dynamic]string,                    // temp
 }
 
@@ -146,18 +152,20 @@ _db_walk :: proc(dir_path: string, walk: ^_Db_Walk) {
 	for entry in entries {
 		if strings.has_prefix(entry.name, ".") do continue
 		full_path, _ := filepath.join({dir_path, entry.name}, context.temp_allocator)
-		if entry.type == .Directory {
-			walk.files[full_path] = {}
-			_db_walk(full_path, walk)
-		} else if strings.has_suffix(entry.name, ".meta") {
+		if strings.has_suffix(entry.name, ".meta") {
 			append(&walk.metas, full_path)
-		} else {
-			stamp := assets.Asset_File_Stamp{mtime = entry.modification_time, size = entry.size}
-			if meta, has := metas[strings.concatenate({entry.name, ".meta"}, context.temp_allocator)]; has {
-				stamp.meta_mtime, stamp.meta_size = meta.modification_time, meta.size
-			}
-			walk.files[full_path] = stamp
+			continue
 		}
+		// A folder keeps no file times, which churn with every child change,
+		// but carries its .meta's like a file: the stored stamp has them
+		// (_with_meta_stamp), so without them every folder reads as changed.
+		stamp := assets.Asset_File_Stamp{is_dir = true}
+		if entry.type != .Directory do stamp = {mtime = entry.modification_time, size = entry.size}
+		if meta, has := metas[strings.concatenate({entry.name, ".meta"}, context.temp_allocator)]; has {
+			stamp.meta_mtime, stamp.meta_size = meta.modification_time, meta.size
+		}
+		walk.files[full_path] = stamp
+		if entry.type == .Directory do _db_walk(full_path, walk)
 	}
 }
 

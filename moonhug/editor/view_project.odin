@@ -89,6 +89,18 @@ Project_View :: struct {
     // last frame's answer.
     path_hovered: int,
     split_ratio: f32, // the tree pane's share of the window width
+    // The search hits for search_for, found once per query and kept until
+    // the files change (_project_search_hits).
+    search_for: string, // owned
+    search_gen: u64,    // project_dir_cache_gen when they were found
+    search_count: int,  // assets in the db then: an import or a delete changes it
+    search_hits: [dynamic]Project_Search_Hit,
+}
+
+// A search hit: an asset path and whether it is a folder.
+Project_Search_Hit :: struct {
+    path:   string, // owned
+    is_dir: bool,
 }
 
 @(private = "file")
@@ -137,6 +149,9 @@ _project_view_free :: proc(pv: ^Project_View) {
     delete(pv.rename_path)
     delete(pv.ping_path)
     delete(pv.range_pending)
+    delete(pv.search_for)
+    for h in pv.search_hits do delete(h.path)
+    delete(pv.search_hits)
     pv^ = {}
 }
 
@@ -898,21 +913,21 @@ draw_file_list :: proc(path: string) {
         return
     }
 
-    // Draw directories first
+    // Directories first, files below them.
+    items := make([dynamic]_Project_List_Item, 0, len(entries), context.temp_allocator)
     for entry in entries {
         if !entry.is_dir do continue
         entry_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
-        _project_draw_list_row(entry.name, entry_path, is_dir = true, is_link = entry.is_link)
+        append(&items, _Project_List_Item{display = entry.name, path = entry_path, is_dir = true, is_link = entry.is_link})
     }
-
-    // Draw files below directories
     for entry in entries {
         if entry.is_dir do continue
         if strings.has_prefix(entry.name, ".") do continue
         if filepath.ext(entry.name) == ".meta" do continue
         entry_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
-        _project_draw_list_row(entry.name, entry_path, is_dir = false)
+        append(&items, _Project_List_Item{display = entry.name, path = entry_path})
     }
+    _project_draw_rows(items[:])
 }
 
 // Unity's grid mode: a cell per item — thumbnail or scaled type glyph with the
@@ -1143,8 +1158,10 @@ _project_dirty_star :: proc(path: string) -> string {
     return " *" if clean in _project_dirty_paths else ""
 }
 
-_project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool, is_link := false) {
-    append(&_pv.list_rows, Project_Row{name = display, path = full_path, is_dir = is_dir})
+// One list row. `listed`: the caller already put it in list_rows, the
+// keyboard navigation list (_project_draw_rows).
+_project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool, is_link := false, listed := false) {
+    if !listed do append(&_pv.list_rows, Project_Row{name = display, path = full_path, is_dir = is_dir})
     if !_pv.rename_in_tree && _project_draw_rename_row(full_path) do return
 
     icon := _project_dir_icon(is_link) if is_dir else _project_file_icon(full_path)
@@ -1366,27 +1383,89 @@ _project_item_extras :: proc(full_path: string, is_dir: bool, drag_label: cstrin
 // it's both the cheapest and the freshest source — no directory re-walk.
 // Returns the match count for the status line.
 _project_draw_search_results :: proc(query: string) -> int {
-    terms := widgets.search_terms(query)
-
-    matches := make([dynamic]string, context.temp_allocator)
-    for path in assets.asset_db.path_to_guid {
-        name := filepath.base(path)
-        if widgets.search_match(name, terms) {
-            append(&matches, path)
-        }
-    }
-    // Map iteration order is unstable — sort so rows don't jump between frames.
-    slice.sort(matches[:])
-
+    hits := _project_search_hits(query)
     prefix := strings.concatenate({projectViewData.rootPath, "/"}, context.temp_allocator)
-    for path in matches {
-        display := path
-        if strings.has_prefix(path, prefix) {
-            display = path[len(prefix):]
-        }
-        _project_draw_list_row(display, path, os.is_dir(path))
+    items := make([]_Project_List_Item, len(hits), context.temp_allocator)
+    for h, i in hits {
+        display := h.path
+        if strings.has_prefix(h.path, prefix) do display = h.path[len(prefix):]
+        items[i] = {display = display, path = h.path, is_dir = h.is_dir}
     }
-    return len(matches)
+    _project_draw_rows(items)
+    return len(hits)
+}
+
+// The assets whose names match `query`, sorted by path. Found once per query
+// and kept while the files stay the same, since a search draws every frame.
+// Finding them touches no file: the asset db knows which entries are folders.
+@(private = "file")
+_project_search_hits :: proc(query: string) -> []Project_Search_Hit {
+    gen := project_dir_cache_gen()
+    count := len(assets.asset_db.path_to_guid)
+    if query == _pv.search_for && gen == _pv.search_gen && count == _pv.search_count {
+        return _pv.search_hits[:]
+    }
+    delete(_pv.search_for)
+    _pv.search_for = strings.clone(query)
+    _pv.search_gen = gen
+    _pv.search_count = count
+    for h in _pv.search_hits do delete(h.path)
+    clear(&_pv.search_hits)
+
+    terms := widgets.search_terms(query)
+    for path in assets.asset_db.path_to_guid {
+        if widgets.search_match(filepath.base(path), terms) {
+            append(&_pv.search_hits, Project_Search_Hit{path = strings.clone(path), is_dir = assets.asset_db_is_dir(path)})
+        }
+    }
+    // Map iteration order is unstable: sorted, rows keep their places.
+    slice.sort_by(_pv.search_hits[:], proc(a, b: Project_Search_Hit) -> bool { return a.path < b.path })
+    return _pv.search_hits[:]
+}
+
+// A row of the list pane, for _project_draw_rows.
+@(private = "file")
+_Project_List_Item :: struct {
+    display: string,
+    path:    string,
+    is_dir:  bool,
+    is_link: bool,
+}
+
+// Draws the list pane's rows, the ones on screen only. Every row joins the
+// keyboard navigation list (list_rows), but a row off screen costs nothing
+// more: drawing a row asks for its thumbnail and its sub-assets, which may
+// load the asset, so a long folder or result list costs what its visible rows
+// cost. A row that has to scroll into view (the selection, a ping) draws
+// wherever it is. Rows of different heights (one unfolded to its sub-assets,
+// one being renamed) all draw.
+@(private = "file")
+_project_draw_rows :: proc(items: []_Project_List_Item) {
+    for it in items do append(&_pv.list_rows, Project_Row{name = it.display, path = it.path, is_dir = it.is_dir})
+    uneven := _pv.rename_active && !_pv.rename_in_tree
+    if !uneven {
+        for it in items do if _pv.expanded[it.path] {
+            uneven = true
+            break
+        }
+    }
+    if uneven {
+        for it in items do _project_draw_list_row(it.display, it.path, it.is_dir, it.is_link, listed = true)
+        return
+    }
+    clipper: im.ListClipper
+    im.ListClipper_Begin(&clipper, i32(len(items)))
+    for it, i in items {
+        scroll_sel := _pv.scroll_to_list_sel && _pv.active_pane == .List && sel_proj_is(it.path)
+        scroll_ping := _pv.scroll_to_ping && it.path == _pv.ping_path
+        if scroll_sel || scroll_ping do im.ListClipper_IncludeItemByIndex(&clipper, i32(i))
+    }
+    for im.ListClipper_Step(&clipper) {
+        for i in clipper.DisplayStart ..< clipper.DisplayEnd {
+            it := items[i]
+            _project_draw_list_row(it.display, it.path, it.is_dir, it.is_link, listed = true)
+        }
+    }
 }
 
 // Create a prefab variant of the scene at `base_path`, written alongside it as

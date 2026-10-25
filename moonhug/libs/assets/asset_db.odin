@@ -47,8 +47,9 @@ AssetDB :: struct {
     // at the last refresh. asset_db_refresh diffs the tree against this and
     // touches ONLY what changed — no polling, no OS watcher; the caller
     // decides when to refresh (editor: on window focus + own file operations).
-    // Keys are owned clones. Directories get a zero stamp: tracked for
-    // create/delete only (their mtimes churn with every child change).
+    // Keys are owned clones. Directories carry is_dir and no file times:
+    // tracked for create/delete only (their mtimes churn with every child
+    // change).
     file_state: map[string]Asset_File_Stamp,
 }
 
@@ -67,6 +68,7 @@ Asset_File_Stamp :: struct {
     size:       i64,
     meta_mtime: time.Time,
     meta_size:  i64,
+    is_dir:     bool, // a folder: the scan saw a directory here
 }
 
 asset_db: AssetDB
@@ -320,6 +322,13 @@ asset_db_get_root_info :: proc(guid: core.Asset_GUID) -> (Asset_Root_Info, bool)
 asset_db_get_stamp :: proc(path: string) -> (Asset_File_Stamp, bool) {
     stamp, ok := asset_db.file_state[path]
     return stamp, ok
+}
+
+// Whether the last refresh saw a folder at `path`, with no file system call:
+// a search tells folders from files for every hit.
+asset_db_is_dir :: proc(path: string) -> bool {
+    stamp, ok := asset_db.file_state[path]
+    return ok && stamp.is_dir
 }
 
 _index_add :: proc(key: core.TypeKey, guid: core.Asset_GUID, local_id: core.Local_ID) {

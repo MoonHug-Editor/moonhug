@@ -56,9 +56,18 @@ project_dir_listing :: proc(path: string) -> (entries: []Project_Dir_Entry, ok: 
 	return fresh, scan_ok
 }
 
+// Counts invalidations, for caches built from the same tree (the Project
+// view's search hits): a different number means they are stale.
+_dir_cache_gen: u64
+
+project_dir_cache_gen :: proc() -> u64 {
+	return _dir_cache_gen
+}
+
 // Drop everything — call after any editor-side file mutation so the UI
 // updates the same frame (external changes ride the TTL).
 project_dir_cache_invalidate :: proc() {
+	_dir_cache_gen += 1
 	for k, l in _dir_listings {
 		_listing_free(l)
 		delete(k)

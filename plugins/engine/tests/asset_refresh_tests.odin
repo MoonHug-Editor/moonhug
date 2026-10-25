@@ -12,6 +12,7 @@ import "core:testing"
 import "core:time"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
+import assets "moonhug:libs/assets"
 
 @(test)
 test_refresh_reimports_an_asset_whose_meta_changed_on_disk :: proc(t: ^testing.T) {
@@ -73,4 +74,36 @@ test_refresh_reimports_an_asset_whose_meta_changed_on_disk :: proc(t: ^testing.T
 	asset_pipeline.asset_db_refresh()
 	_, imported = engine.asset_pipeline_artifact_key(engine.Asset_GUID(raw2))
 	testing.expect(t, !imported, "the refresh's own meta write imports nothing")
+}
+
+// The scan records which entries are folders, so a lookup needs no file
+// system call (the Project view's search asks for every hit). A folder made
+// later shows up as one after the next refresh, and an unchanged folder does
+// not read as changed.
+@(test)
+test_asset_db_knows_folders :: proc(t: ^testing.T) {
+	dir :: "moonhug/tests/fixtures/_folders_tmp"
+	os.make_directory(dir)
+	os.make_directory(dir + "/sub")
+	defer {
+		_remove_tree(dir)
+		_remove_tree(engine.library_dir())
+	}
+	data, rerr := os.read_entire_file("moonhug/tests/fixtures/textures/circle-256.png", context.temp_allocator)
+	testing.expect(t, rerr == nil)
+	if rerr != nil do return
+	testing.expect(t, os.write_entire_file(dir + "/sub/probe.png", data) == nil)
+
+	asset_pipeline.asset_pipeline_init()
+	engine.asset_db_init(dir)
+	defer engine.asset_db_shutdown()
+	testing.expect(t, assets.asset_db_is_dir(dir + "/sub"), "a folder")
+	testing.expect(t, !assets.asset_db_is_dir(dir + "/sub/probe.png"), "a file")
+	testing.expect(t, !assets.asset_db_is_dir(dir + "/missing"), "nothing there")
+
+	os.make_directory(dir + "/later")
+	asset_pipeline.asset_db_refresh()
+	testing.expect(t, assets.asset_db_is_dir(dir + "/later"), "a folder made later")
+	testing.expect_value(t, asset_pipeline.asset_db_last_refresh.created, 1)
+	testing.expect_value(t, asset_pipeline.asset_db_last_refresh.modified, 0) // the unchanged folder and file
 }
