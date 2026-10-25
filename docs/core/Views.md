@@ -64,7 +64,7 @@ animation_view_document :: proc(view: session.View) -> engine.Asset_GUID {
 }
 ```
 
-An open document is an asset loaded for editing (`editor/session/documents.odin`): a loaded scene, or a serialized asset. An owner is the code that holds loaded copies, not a file type. There are two: the scene manager's loaded scenes, and the inspector's asset documents, which cover every serialized asset type. Every view that edits an asset shares its one document. Each owner reports what it holds when asked, so no list is kept. File/Save saves every dirty document. Import settings are not documents: they commit through Apply and go back through Revert ([Undo](Undo.md)).
+An open document is an asset loaded for editing (`editor/session/documents.odin`): a loaded scene, a serialized asset, or an editor's working copy. An owner is the code that holds loaded copies, not a file type. There are three: the scene manager's loaded scenes, the inspector's asset documents, which cover every serialized asset type, and the inspector's working copies (below). Every view that edits an asset shares its one document, unless it works on a copy. Each owner reports what it holds when asked, so no list is kept. File/Save saves every dirty document. Import settings are not documents: they commit through Apply and go back through Revert ([Undo](Undo.md)).
 
 - **Discard is final.** It asks first, then reads the document again from its file and purges its undo steps (`undo.purge_asset`, `undo.purge_scene`). Enter discards, Escape cancels.
 - **After a save**, a hook per asset type refreshes what the file feeds (`inspector.doc_saved_register`): the Shader Graph reimports and drops its cached shader, the Render Pipeline reimports.
@@ -72,7 +72,14 @@ An open document is an asset loaded for editing (`editor/session/documents.odin`
 
 A window that edits an asset keeps the asset's guid and edits its shared document (`inspector.asset_doc_get`), allocating with `inspector.doc_alloc()`. It never keeps the document pointer across frames: an undo, a redo or a Discard replaces the instance.
 
-An editor that needs its own working copy, applied to the asset at once, also registers an owner (`session.document_owner_add`): `list` reports the copy, `save` applies it, `discard` drops it. File/Save, the quit prompt and the project window's star then cover the copy. A guid alone cannot tell the copy from the asset's shared document, so the tab menu needs more from the attribute before it can name a copy. No editor keeps a copy today.
+An editor that applies its edits all at once works on a copy instead (`editor/inspector/asset_doc_copies.odin`). The Sprite Editor does this with a texture's slices.
+
+- `h := inspector.asset_doc_copy_open(path, kind, view)` loads a copy of what the editor edits from disk: the asset's file (`.File`) or its import settings, the .meta (`.Import_Settings`). `view` is the key of the view that holds it. The texture or model itself is never touched.
+- `inspector.asset_doc_copy(h)` gives the copy each frame. Undo replaces its value, so the editor keeps the handle and fetches the value through it.
+- Edits recorded on the copy become steps on the one undo queue, with no code in the editor. Each step names the copy by its handle, so Ctrl+Z changes only the copy.
+- `asset_doc_copy_apply(h)` writes the copy to the file, and the asset's shared document follows. `asset_doc_copy_revert(h)` goes back to the file as one undo step. `asset_doc_copy_discard(h)` drops the unapplied edits and their steps. `asset_doc_copy_close(h)` frees the copy and its steps.
+- Until Apply nothing else sees the copy: the Project Inspector shows the file as it is.
+- The copy is a document of the view that holds it. Its tab carries the star, the tab menu's Save applies it and Discard drops its edits, File/Save and the quit prompt cover it, and closing the view with unapplied edits asks Apply, Discard or Cancel (`editor/view_close_prompt.odin`).
 
 ## Scene view overlays
 

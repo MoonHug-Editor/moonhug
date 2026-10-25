@@ -75,6 +75,11 @@ _focus_request: ^Window    // the instance to focus next frame
 _pass: u64                 // draw passes so far: draw_all ends one
 _use_count: u64            // clicks and opens so far, for Window.used
 
+// Asked before a closed instance goes: true keeps it open. The editor
+// installs one that asks before a view holding unapplied edits closes
+// (view_close_prompt.odin). nil closes every instance.
+close_guard: proc(w: ^Window) -> bool
+
 // Declares a dockable editor window whose content the proc draws.
 //
 // `id` identifies it, and its instances, in imgui.ini. `title` and `icon` (a
@@ -87,6 +92,8 @@ _use_count: u64            // clicks and opens so far, for Window.used
 // key stays the imgui id whatever they are.
 @(extension_point={attribute="editor_window", target="proc", fields="id title icon width height closed canvas"})
 register :: proc(id: string, title: string, icon: string, draw: Draw_Proc, width, height: f32, origin := "", closed: Close_Proc = nil, canvas := false) {
+	// Process-global: never borrows the caller's allocator.
+	context.allocator = runtime.default_allocator()
 	for &r in _registry {
 		if r.id == id {
 			log.errorf("editor_window: duplicate id %q (%s ignored)", id, title)
@@ -233,7 +240,15 @@ draw :: proc(id: string) {
 // Instances draw in the order they opened, so an earlier one has its place
 // when a later one looks for a sibling to dock beside.
 draw_all :: proc() {
-	for i := len(_windows) - 1; i >= 0; i -= 1 do if !_windows[i].open do _destroy(i)
+	for i := len(_windows) - 1; i >= 0; i -= 1 {
+		w := _windows[i]
+		if w.open do continue
+		if close_guard != nil && close_guard(w) {
+			w.open = true
+			continue
+		}
+		_destroy(i)
+	}
 	for i := 0; i < len(_windows); i += 1 {
 		w := _windows[i]
 		if w.open && w.drawn != _pass + 1 do _draw_instance(w)

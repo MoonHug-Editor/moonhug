@@ -111,10 +111,11 @@ _project_view :: proc(w: ^wnd.Window) -> ^Project_View {
     return (^Project_View)(w.data)
 }
 
+// current_path is on the default allocator (_project_set_current), the rest
+// on the caller's, as the draw that grows it.
 @(private = "file")
 _project_view_init :: proc(pv: ^Project_View) {
-    context.allocator = runtime.default_allocator()
-    pv.current_path = strings.clone("assets")
+    pv.current_path = strings.clone("assets", runtime.default_allocator())
     pv.active_pane = .List
     pv.path_hovered = -1
     pv.split_ratio = 0.5
@@ -125,8 +126,7 @@ _project_view_init :: proc(pv: ^Project_View) {
 
 @(private = "file")
 _project_view_free :: proc(pv: ^Project_View) {
-    context.allocator = runtime.default_allocator()
-    delete(pv.current_path)
+    delete(pv.current_path, runtime.default_allocator())
     delete(pv.tree_rows)
     delete(pv.list_rows)
     for k in pv.tree_open_state do delete(k)

@@ -1,16 +1,18 @@
 package sprites_editor
 
-// The Sprite Editor window — Unity's Sprite Editor: a dedicated window over
-// the texture with zoom/pan, a Slice popup (Automatic, Grid By Cell Size,
-// Grid By Cell Count), manual rect editing (drag-create on empty space,
-// drag-move, a fields panel for the selection) and its own Apply/Revert.
-// The slices live in the texture's import settings document
-// (inspector/import_settings_docs.odin), the same one the import settings
-// inspector shows: an edit here shows there at once, and undo records every
-// finished edit with no code in this file. Apply writes the .meta and reimports.
-// An edit allocates into the document (slice names, the slice list), so it
-// uses the document's allocator (inspector.doc_alloc): undo frees a replaced
-// instance with it.
+// The Sprite Editor window: a dedicated window over the texture with
+// zoom/pan, a Slice popup (Automatic, Grid By Cell Size, Grid By Cell Count),
+// manual rect editing (Add Slice, drag-create on empty space, drag-move, a
+// fields panel for the selection) and its own Apply/Revert.
+//
+// The slices are edited in a working copy of the texture's import settings
+// (inspector.asset_doc_copy_open), so nothing reaches the .meta until Apply,
+// which writes it and reimports. Undo records every finished edit on the copy
+// with no code in this file. Unapplied edits put a star on the tab, and its
+// menu, File/Save and the quit prompt apply or discard them. Closing the
+// window, or opening it on another texture, asks first. An edit allocates
+// into the copy (slice names, the slice list), so it uses the document
+// allocator (inspector.doc_alloc): undo frees a replaced value with it.
 
 import "base:runtime"
 import "core:fmt"
@@ -24,6 +26,7 @@ import "moonhug:packages/engine"
 import gfx "moonhug:libs/gfx"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/inspector"
+import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
 
 _SE_Mode :: enum {
@@ -66,12 +69,17 @@ _SE_Drag :: enum {
 _SE_State :: struct {
 	path:   string, // heap clone; "" = no target
 	guid:   engine.Asset_GUID,
-	// The texture's import settings document and its data, resolved at the top
-	// of every window frame (_se_resolve): undo swaps the instance, so neither
-	// is kept across frames. Slices are ts.sprites, the Single-mode 9-slice
-	// border is ts.sprite_border.
-	doc:    ^inspector.Asset_Doc,
+	// The working copy of the texture's import settings, and the copy and its
+	// data resolved at the top of every window frame (_se_resolve): undo
+	// swaps the value, so neither pointer is kept across frames. Slices are
+	// ts.sprites, the Single-mode 9-slice border is ts.sprite_border.
+	copy:   inspector.Doc_Copy,
+	doc:    ^inspector.Asset_Doc_Copy,
 	ts:     ^engine.TextureSettings,
+	// The texture to open once the question about unapplied edits is
+	// answered (sprite_editor_open).
+	pending_path: string, // heap clone
+	pending_guid: engine.Asset_GUID,
 	sel:    int, // -1 = none
 
 	zoom: f32,
@@ -83,11 +91,6 @@ _SE_State :: struct {
 	drag_border: int,     // Border: 0 left, 1 bottom, 2 right, 3 top
 
 	name_buf: [128]u8,
-
-	// Apply runs at the TOP of the next window frame, never from the
-	// toolbar: reimport evicts the texture cache, and the rest of the frame
-	// would draw with the freed ^Texture2D / GPU handle.
-	want_apply: bool,
 
 	// Slice popup params.
 	mode:      _SE_Mode,
@@ -120,9 +123,26 @@ _SE_CREATE   :: u32(0xFF7DE59E) // ABGR green
 _SE_ZOOM_MIN :: f32(0.1)
 _SE_ZOOM_MAX :: f32(32)
 
-// Opened from the texture importer inspector's Sprite Editor button.
+// Opened from the texture importer inspector's Sprite Editor button. On
+// another texture while the open one has unapplied edits, it asks first:
+// Apply or Discard them and switch, or Cancel and stay.
 sprite_editor_open :: proc(path: string, guid: engine.Asset_GUID) {
+	if path != _se.path {
+		if c := inspector.asset_doc_copy(_se.copy); c != nil && c.dirty {
+			_se_ask_switch(path, guid)
+			return
+		}
+		_se_switch(path, guid)
+	}
+	wnd.open(SPRITE_EDITOR)
+}
+
+// Points the window at another texture, with a fresh working copy.
+@(private = "file")
+_se_switch :: proc(path: string, guid: engine.Asset_GUID) {
 	context.allocator = runtime.default_allocator()
+	inspector.asset_doc_copy_close(_se.copy)
+	_se.copy = 0
 	delete(_se.path)
 	_se.path = strings.clone(path)
 	_se.guid = guid
@@ -131,7 +151,38 @@ sprite_editor_open :: proc(path: string, guid: engine.Asset_GUID) {
 	_se.zoom = 0 // fit on first frame
 	_se.pan = {}
 	if _se_resolve() do _se_heal_ids()
-	wnd.open("sprite_editor")
+}
+
+@(private = "file")
+_se_ask_switch :: proc(path: string, guid: engine.Asset_GUID) {
+	context.allocator = runtime.default_allocator()
+	delete(_se.pending_path)
+	_se.pending_path = strings.clone(path)
+	_se.pending_guid = guid
+	// Enter applies, Escape cancels.
+	buttons := []widgets.Dialog_Button{
+		{label = "Apply", action = _se_switch_apply, is_default = true},
+		{label = "Discard", action = _se_switch_discard},
+		{label = "Cancel", is_cancel = true},
+	}
+	widgets.dialog_open({
+		title       = "Unapplied Changes",
+		description = fmt.tprintf("Apply \"%s\" changes before opening \"%s\"?\nDiscard loses them.", filepath.base(_se.path), filepath.base(path)),
+		buttons     = buttons,
+	})
+}
+
+@(private = "file")
+_se_switch_apply :: proc() {
+	if !inspector.asset_doc_copy_apply(_se.copy) do return
+	_se_switch(_se.pending_path, _se.pending_guid)
+	wnd.open(SPRITE_EDITOR)
+}
+
+@(private = "file")
+_se_switch_discard :: proc() {
+	_se_switch(_se.pending_path, _se.pending_guid)
+	wnd.open(SPRITE_EDITOR)
 }
 
 // Opened on a specific slice (a sub-asset row in the project window).
@@ -146,10 +197,13 @@ sprite_editor_open_at :: proc(path: string, guid: engine.Asset_GUID, slice_id: e
 	}
 }
 
-// This frame's settings document. False when the texture has no texture
-// import settings (nothing to slice).
+// This frame's working copy of the import settings, opened on first use.
+// False when the texture has no texture import settings (nothing to slice).
 _se_resolve :: proc() -> bool {
-	_se.doc = inspector.import_settings_doc_get(_se.path)
+	if inspector.asset_doc_copy(_se.copy) == nil {
+		_se.copy = inspector.asset_doc_copy_open(_se.path, .Import_Settings, SPRITE_EDITOR)
+	}
+	_se.doc = inspector.asset_doc_copy(_se.copy)
 	_se.ts = nil
 	if _se.doc == nil || _se.doc.data.id != typeid_of(engine.TextureSettings) do return false
 	_se.ts = cast(^engine.TextureSettings)_se.doc.data.data
@@ -190,18 +244,26 @@ _se_slices_added :: proc() {
 }
 
 _se_apply :: proc() {
-	if _se_resolve() do inspector.import_settings_apply(_se.doc)
+	if _se_resolve() do inspector.asset_doc_copy_apply(_se.copy)
 }
 
-@(editor_window={id="sprite_editor", title="Sprite Editor", icon="CROP", width=940, height=640})
+// The last Sprite Editor tab closing ends the working copy. A close with
+// unapplied edits asked first (the editor's view close prompt).
+sprite_editor_window_closed :: proc(w: ^wnd.Window) {
+	if wnd.is_open(SPRITE_EDITOR) do return
+	inspector.asset_doc_copy_close(_se.copy)
+	_se.copy = 0
+	_se.doc = nil
+	_se.ts = nil
+}
+
+SPRITE_EDITOR :: "sprite_editor"
+
+@(editor_window={id="sprite_editor", title="Sprite Editor", icon="CROP", width=940, height=640, closed=sprite_editor_window_closed})
 sprite_editor_window_draw :: proc(w: ^wnd.Window) {
 	if _se.path == "" {
 		im.TextDisabled("Select a texture in the Project view and press Sprite Editor.")
 		return
-	}
-	if _se.want_apply {
-		_se.want_apply = false
-		_se_apply()
 	}
 	if !_se_resolve() {
 		im.TextDisabled("no texture import settings: %s", strings.clone_to_cstring(_se.path, context.temp_allocator))
@@ -231,12 +293,20 @@ _se_toolbar :: proc(tex: ^engine.Texture2D) {
 		im.EndPopup()
 	}
 
+	// A slice over the middle of the texture, half its size: the way to add
+	// one when slices leave no empty space to drag on.
+	im.SameLine()
+	if im.Button("Add Slice") {
+		w, h := f32(tex.width), f32(tex.height)
+		sprite_editor_add_slice({math.floor(w / 4), math.floor(h / 4), max(math.floor(w / 2), 1), max(math.floor(h / 2), 1)})
+	}
+
 	im.SameLine()
 	im.BeginDisabled(!_se.doc.dirty)
-	if im.Button("Apply") do _se.want_apply = true
+	if im.Button("Apply") do _se_apply()
 	im.SameLine()
 	if im.Button("Revert") {
-		inspector.import_settings_revert(_se.doc)
+		inspector.asset_doc_copy_revert(_se.copy)
 		_se_resolve()
 		_se.sel = -1
 	}
@@ -623,7 +693,7 @@ _se_select :: proc(i: int) {
 // Adds a slice over `rect` (pixels, top-left origin) to the open texture,
 // selects it and makes the texture Multiple: what a drag on empty space does.
 sprite_editor_add_slice :: proc(rect: [4]f32) {
-	if _se.ts == nil do return
+	if !_se_resolve() do return
 	context.allocator = inspector.doc_alloc()
 	append(&_se.ts.sprites, engine.Sprite_Rect{
 		id    = _se_mint_id(),

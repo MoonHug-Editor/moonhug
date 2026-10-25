@@ -334,6 +334,7 @@ _asset_docs_register :: proc "contextless" () {
 
 asset_docs_shutdown :: proc() {
     context.allocator = doc_alloc()
+    _doc_copies_shutdown()
     _doc_retired_drain(true)
     for _, doc in _docs do _asset_doc_free(doc)
     delete(_docs)

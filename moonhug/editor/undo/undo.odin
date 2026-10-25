@@ -38,6 +38,7 @@ Property_Target :: struct {
 	raw_ptr:    rawptr,
 	asset_guid: core.Asset_GUID, // .Asset only
 	asset_doc:  Doc_Kind,          // .Asset only
+	asset_copy: u64,               // .Asset: an editor's working copy (inspector.Doc_Copy), 0 for the shared document
 }
 
 @(undo_command)
@@ -594,6 +595,12 @@ push_value :: proc(s: ^Undo_Stack, t: Property_Target, old_json, new_json: []byt
 
 @(private)
 _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
+	if vc.target.kind == .Asset && vc.target.asset_copy != 0 {
+		if _asset_copy_apply_hook == nil || !_asset_copy_apply_hook(vc.target.asset_copy, json_bytes) {
+			log.error(fmt.tprintf("undo: working copy apply failed (copy=%v)", vc.target.asset_copy))
+		}
+		return
+	}
 	if vc.target.kind == .Asset {
 		if _asset_apply_hook == nil {
 			log.error("undo: no asset apply hook installed (inspector init missing?)")
@@ -708,6 +715,7 @@ _cleanup_before_unmarshal :: proc(ptr: rawptr, tid: typeid) {
 @(private) _selection_capture_hook: proc() -> Selection_State
 @(private) _selection_apply_hook:   proc(state: Selection_State)
 @(private) _asset_apply_hook:       proc(guid: core.Asset_GUID, doc: Doc_Kind, json_bytes: []byte) -> bool
+@(private) _asset_copy_apply_hook:  proc(copy: u64, json_bytes: []byte) -> bool
 
 set_selection_hooks :: proc(capture: proc() -> Selection_State, apply: proc(state: Selection_State)) {
 	_selection_capture_hook = capture
@@ -720,13 +728,19 @@ set_asset_apply :: proc(cb: proc(guid: core.Asset_GUID, doc: Doc_Kind, json_byte
 	_asset_apply_hook = cb
 }
 
+// cb replaces a working copy's data with the given JSON payload (installed by
+// the inspector's working copies, asset_doc_copies.odin).
+set_asset_copy_apply :: proc(cb: proc(copy: u64, json_bytes: []byte) -> bool) {
+	_asset_copy_apply_hook = cb
+}
+
 @(private)
 _selection_apply :: proc(state: Selection_State) {
 	if _selection_apply_hook != nil do _selection_apply_hook(state)
 }
 
-make_asset_target :: proc(guid: core.Asset_GUID, tid: typeid, doc := Doc_Kind.File) -> Property_Target {
-	return Property_Target{kind = .Asset, asset_guid = guid, asset_doc = doc, type_id = tid}
+make_asset_target :: proc(guid: core.Asset_GUID, tid: typeid, doc := Doc_Kind.File, copy := u64(0)) -> Property_Target {
+	return Property_Target{kind = .Asset, asset_guid = guid, asset_doc = doc, type_id = tid, asset_copy = copy}
 }
 
 // --- Selection state helpers ----------------------------------------------------
@@ -944,6 +958,25 @@ _command_refs_asset :: proc(cmd: ^Command, guid: core.Asset_GUID) -> bool {
 	_command_assets(cmd, &guids)
 	for g in guids do if g == guid do return true
 	return false
+}
+
+// Drop the steps on one working copy (inspector.Doc_Copy), and keep the
+// asset's other steps: a discarded or closed copy takes its steps along.
+purge_asset_copy :: proc(s: ^Undo_Stack, copy: u64) {
+	if s == nil || copy == 0 do return
+	removed := false
+	for i := len(s.items) - 1; i >= 0; i -= 1 {
+		v, is_value := s.items[i].cmd.(Value_Command)
+		if !is_value || v.target.kind != .Asset || v.target.asset_copy != copy do continue
+		_entry_destroy(&s.items[i])
+		ordered_remove(&s.items, i)
+		if i < s.top do s.top -= 1
+		removed = true
+	}
+	if removed {
+		s.activity = true
+		s.disturbed = true
+	}
 }
 
 // Drop entries that edit this asset's document. Call when the asset left the

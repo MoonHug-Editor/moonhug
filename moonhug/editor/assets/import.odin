@@ -10,6 +10,7 @@ package asset_pipeline
 // Installed into the asset database at ImportersInit (editor mode): the
 // refresh proc and the loaders' import request.
 
+import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
@@ -101,6 +102,32 @@ asset_pipeline_import_asset :: proc(source_path: string) -> bool {
 // Forced: always re-runs the importer into the current key's artifact.
 asset_pipeline_reimport :: proc(source_path: string) -> bool {
 	return _import_asset(source_path, force = true)
+}
+
+// Reimports queued by asset_pipeline_reimport_later, owned paths. Cross-frame
+// state: never borrows the caller's allocator.
+@(private = "file")
+_reimports_pending: [dynamic]string
+
+// Reimports `source_path` at the start of the next frame
+// (asset_pipeline_reimport_pending), before any view draws. A reimport frees
+// what the asset fed, its GPU textures among them, and a view drawn earlier
+// in the frame may already have queued one of them for drawing. An editor
+// that writes import settings mid-frame (an Apply button) asks for this.
+asset_pipeline_reimport_later :: proc(source_path: string) {
+	context.allocator = runtime.default_allocator()
+	for p in _reimports_pending do if p == source_path do return
+	append(&_reimports_pending, strings.clone(source_path))
+}
+
+// Runs the queued reimports. Once per frame, before any view draws.
+asset_pipeline_reimport_pending :: proc() {
+	context.allocator = runtime.default_allocator()
+	for len(_reimports_pending) > 0 {
+		path := pop_front(&_reimports_pending)
+		defer delete(path)
+		asset_pipeline_reimport(path)
+	}
 }
 
 @(private = "file")

@@ -37,6 +37,9 @@ Document :: struct {
 	// Discard can run now. False for a scene with no file or while a
 	// simulation runs.
 	can_discard: bool,
+	// The view that holds it, an editor's working copy, which closing that
+	// view would lose. "" for a document any view may show.
+	view:        string,
 }
 
 Document_Owner :: struct {
@@ -136,6 +139,8 @@ view_asset_clear :: proc(key: string) {
 // view's @(view_document) proc names it, the view being the key up to its
 // first `/`. ok=false when it edits none.
 view_document :: proc(key: string) -> (Document, bool) {
+	// A working copy the view holds names itself.
+	for d in documents(context.temp_allocator) do if d.view == key do return d, true
 	guid, opened_for := _view_assets[key]
 	if !opened_for {
 		view := view_of(key)

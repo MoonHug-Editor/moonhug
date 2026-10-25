@@ -159,6 +159,7 @@ main :: proc() {
     // first run opens the views the default layout docks, the Game view
     // included (menu.show_game defaults on).
     wnd.open_saved(editor_settings.open_window_ids[:])
+    wnd.close_guard = view_close_guard
     if !editor_settings.has_window_state {
         wnd.open_saved({"Scene", "Hierarchy", "Inspector", "Project", "Project Inspector", "Console", "Output"})
     }
@@ -208,6 +209,10 @@ main :: proc() {
         // from clicks, picking, pending-select and undo restore alike.
         core.inspector_set_active_selection(sel_scene_active())
         core.inspector_set_inspected_selection(inspector_active_target("Inspector"))
+
+        // Reimports an Apply asked for last frame, before any view draws: a
+        // reimport frees the asset's GPU textures (editor/assets/import.odin).
+        asset_pipeline.asset_pipeline_reimport_pending()
 
         // Thumbnail generation before ANY view draws: scene previews spawn and
         // destroy live content within this call, so nothing leaks into the
@@ -301,7 +306,10 @@ main :: proc() {
 
         // Import settings undo steps: a finished change to a settings document
         // becomes one step (inspector/import_settings_docs.odin).
-        inspector.import_settings_track(_frame_may_finish_edit())
+        // Working copies record the same way (inspector/asset_doc_copies.odin).
+        may_finish := _frame_may_finish_edit()
+        inspector.import_settings_track(may_finish)
+        inspector.asset_doc_copies_track(may_finish)
 
         // Selection undo steps (Unity model): diff selection against the
         // frame's baseline after all views handled input.

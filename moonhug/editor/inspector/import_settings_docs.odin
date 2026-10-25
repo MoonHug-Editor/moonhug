@@ -6,8 +6,9 @@ package inspector
 // document registry (asset_docs.odin) under Doc_Kind.Import_Settings.
 //
 // - Nothing reaches the disk until Apply (import_settings_apply), which writes
-//   the .meta and reimports. Revert (import_settings_revert) reloads the .meta
-//   as one undo step. File/Save leaves them alone.
+//   the .meta and reimports at the start of the next frame. Revert
+//   (import_settings_revert) reloads the .meta as one undo step. File/Save
+//   leaves them alone.
 // - Undo needs no code in the editors: import_settings_track compares every
 //   document shown or edited since the last compare with its baseline, and
 //   turns a change into one undo step. The main loop calls it with check=true
@@ -68,8 +69,10 @@ import_settings_doc_get :: proc(path: string) -> ^Asset_Doc {
 	return doc
 }
 
-// Apply: writes the document into the .meta and reimports. The document
-// stays, now equal to the .meta.
+// Apply: writes the document into the .meta and reimports at the start of the
+// next frame (asset_pipeline_reimport_later): the reimport frees the asset's
+// GPU textures, which a view drawn earlier in this frame may have queued for
+// drawing. The document stays, now equal to the .meta.
 import_settings_apply :: proc(doc: ^Asset_Doc) -> bool {
 	context.allocator = doc_alloc()
 	if doc == nil || doc.data.data == nil do return false
@@ -87,7 +90,7 @@ import_settings_apply :: proc(doc: ^Asset_Doc) -> bool {
 	// reimport hook then reloads this document. The hooks also evict every
 	// guid-keyed cache (textures, package asset caches), so the new settings
 	// apply without a restart.
-	asset_pipeline.asset_pipeline_reimport(path)
+	asset_pipeline.asset_pipeline_reimport_later(path)
 	return true
 }
 
