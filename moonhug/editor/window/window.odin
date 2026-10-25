@@ -49,6 +49,8 @@ Window :: struct {
 	dock:   im.ID, // its dock node last frame, 0 while floating: a new sibling docks there
 	pos:    im.Vec2, // its position last frame: a new sibling opens offset from it
 	placed: bool,  // drawn once, so its place is imgui's to keep
+	used:   u64,   // when it was last clicked in or opened: the highest is last(id)
+	drawn:  u64,   // the draw pass it was last drawn in, so draw_all skips what draw(id) drew
 }
 
 Draw_Proc  :: proc(w: ^Window)
@@ -61,6 +63,7 @@ _Registered :: struct {
 	draw:         Draw_Proc,
 	closed:       Close_Proc, // frees an instance's `data`, nil when the window keeps none
 	default_size: im.Vec2, // {} = imgui's default
+	canvas:       bool,    // edge to edge: no window padding, no scrollbars, the wheel stays with the content
 	// The @(editor_window) that declared it, with its file and line, as
 	// rendered by the generator. Shown on the tab's menu button with debug tooltips on.
 	origin:       string,
@@ -69,6 +72,8 @@ _Registered :: struct {
 _registry: [dynamic]_Registered
 _windows: [dynamic]^Window // the open instances, pointer-stable for their state
 _focus_request: ^Window    // the instance to focus next frame
+_pass: u64                 // draw passes so far: draw_all ends one
+_use_count: u64            // clicks and opens so far, for Window.used
 
 // Declares a dockable editor window whose content the proc draws.
 //
@@ -80,8 +85,8 @@ _focus_request: ^Window    // the instance to focus next frame
 // Called by the generated _register_editor_windows (editor_window_gen). The
 // imgui window name is "<icon> <label>###<key>": the icon and label show, the
 // key stays the imgui id whatever they are.
-@(extension_point={attribute="editor_window", target="proc", fields="id title icon width height closed"})
-register :: proc(id: string, title: string, icon: string, draw: Draw_Proc, width, height: f32, origin := "", closed: Close_Proc = nil) {
+@(extension_point={attribute="editor_window", target="proc", fields="id title icon width height closed canvas"})
+register :: proc(id: string, title: string, icon: string, draw: Draw_Proc, width, height: f32, origin := "", closed: Close_Proc = nil, canvas := false) {
 	for &r in _registry {
 		if r.id == id {
 			log.errorf("editor_window: duplicate id %q (%s ignored)", id, title)
@@ -96,6 +101,7 @@ register :: proc(id: string, title: string, icon: string, draw: Draw_Proc, width
 		closed       = closed,
 		default_size = {width, height},
 		origin       = origin,
+		canvas       = canvas,
 	})
 }
 
@@ -149,6 +155,8 @@ open :: proc(id: string, asset := core.Asset_GUID{}) -> ^Window {
 	w := _find(ri, asset)
 	if w == nil do w = _create(ri, asset)
 	_focus_request = w
+	_use_count += 1
+	w.used = _use_count
 	return w
 }
 
@@ -210,41 +218,90 @@ is_open :: proc(id: string) -> bool {
 	return false
 }
 
-// One call per editor frame, after the built-in views. Removal happens here,
-// the frame after the close button flips `open`. Instances draw in the order
-// they opened, so an earlier one has its place when a later one looks for a
-// sibling to dock beside.
+// Draws the open instances of the window declared under `id` now, for a
+// window that has to draw at a set point of the frame (the Scene view, inside
+// the preview pose). draw_all then skips them.
+draw :: proc(id: string) {
+	for i := 0; i < len(_windows); i += 1 {
+		w := _windows[i]
+		if w.open && w.id == id do _draw_instance(w)
+	}
+}
+
+// One call per editor frame, after the views that draw at a set point.
+// Removal happens here, the frame after the close button flips `open`.
+// Instances draw in the order they opened, so an earlier one has its place
+// when a later one looks for a sibling to dock beside.
 draw_all :: proc() {
 	for i := len(_windows) - 1; i >= 0; i -= 1 do if !_windows[i].open do _destroy(i)
 	for i := 0; i < len(_windows); i += 1 {
 		w := _windows[i]
-		if !w.open do continue
-		r := &_registry[w.reg]
-		if r.default_size != {} {
-			im.SetNextWindowSize(r.default_size, .FirstUseEver)
-		}
-		if !w.placed {
-			w.placed = true
-			if sibling := _sibling(w, docked = true); sibling != nil {
-				im.SetNextWindowDockID(sibling.dock, .FirstUseEver)
-			} else if sibling := _sibling(w, docked = false); sibling != nil {
-				im.SetNextWindowPos(sibling.pos + _SIBLING_OFFSET, .FirstUseEver)
-			}
-		}
-		if _focus_request == w {
-			im.SetNextWindowFocus()
-			_focus_request = nil
-		}
-		// NoCollapse matches every built-in view — no collapse triangle when
-		// the window floats. A star on the tab while the instance's asset has
-		// unsaved changes.
-		if im.Begin(session.view_title(_title(w)), &w.open, {.NoCollapse}) {
-			r.draw(w)
-		}
-		w.dock = im.GetWindowDockID()
-		w.pos = im.GetWindowPos()
-		im.End()
+		if w.open && w.drawn != _pass + 1 do _draw_instance(w)
 	}
+	_pass += 1
+}
+
+// The instance's state, made from `init` on first use. It lives on the
+// default allocator, since it outlives frames. A window whose state owns no
+// memory needs no closed proc: the instance frees `data` when it closes.
+state :: proc(w: ^Window, init: $T) -> ^T {
+	if w.data == nil {
+		p := new(T, runtime.default_allocator())
+		p^ = init
+		w.data = p
+	}
+	return (^T)(w.data)
+}
+
+// The open instance of the window declared under `id` that was clicked in
+// or opened last, nil when none is open. Code outside a view that needs one
+// of its instances (a menu action, the bridge) acts on this one.
+last :: proc(id: string) -> ^Window {
+	best: ^Window
+	for w in _windows do if w.open && w.id == id && (best == nil || w.used > best.used) do best = w
+	return best
+}
+
+@(private = "file")
+_draw_instance :: proc(w: ^Window) {
+	w.drawn = _pass + 1
+	r := &_registry[w.reg]
+	if r.default_size != {} {
+		im.SetNextWindowSize(r.default_size, .FirstUseEver)
+	}
+	if !w.placed {
+		w.placed = true
+		if sibling := _sibling(w, docked = true); sibling != nil {
+			im.SetNextWindowDockID(sibling.dock, .FirstUseEver)
+		} else if sibling := _sibling(w, docked = false); sibling != nil {
+			im.SetNextWindowPos(sibling.pos + _SIBLING_OFFSET, .FirstUseEver)
+		}
+	}
+	if _focus_request == w {
+		im.SetNextWindowFocus()
+		_focus_request = nil
+	}
+	// NoCollapse matches every view: no collapse triangle when the window
+	// floats. A star on the tab while the instance's asset has unsaved
+	// changes. A canvas view's padding is popped right after Begin, so the
+	// tooltips and popups raised over it keep theirs.
+	flags: im.WindowFlags = {.NoCollapse}
+	if r.canvas {
+		flags += {.NoScrollbar, .NoScrollWithMouse}
+		im.PushStyleVarImVec2(.WindowPadding, im.Vec2{0, 0})
+	}
+	visible := im.Begin(session.view_title(_title(w)), &w.open, flags)
+	if r.canvas do im.PopStyleVar()
+	if visible {
+		r.draw(w)
+		if im.IsWindowHovered(im.HoveredFlags_RootAndChildWindows) && (im.IsMouseClicked(.Left) || im.IsMouseClicked(.Right) || im.IsMouseClicked(.Middle)) {
+			_use_count += 1
+			w.used = _use_count
+		}
+	}
+	w.dock = im.GetWindowDockID()
+	w.pos = im.GetWindowPos()
+	im.End()
 }
 
 shutdown :: proc() {
@@ -284,6 +341,8 @@ _create :: proc(ri: int, asset: core.Asset_GUID, key := "") -> ^Window {
 	case:             w.key = fmt.aprintf("%s/%s", r.id, uuid.to_string(uuid.Identifier(asset), context.temp_allocator))
 	}
 	if asset != {} do session.view_asset_set(w.key, asset)
+	_use_count += 1
+	w.used = _use_count
 	append(&_windows, w)
 	return w
 }
@@ -293,7 +352,12 @@ _create :: proc(ri: int, asset: core.Asset_GUID, key := "") -> ^Window {
 @(private = "file")
 _destroy :: proc(i: int) {
 	w := _windows[i]
-	if closed := _registry[w.reg].closed; closed != nil do closed(w)
+	if closed := _registry[w.reg].closed; closed != nil {
+		closed(w)
+	} else if w.data != nil {
+		free(w.data, runtime.default_allocator())
+		w.data = nil
+	}
 	// An instance reopened under the same key keeps the mapping.
 	if w.asset != {} && find(w.key) == nil do session.view_asset_clear(w.key)
 	if _focus_request == w do _focus_request = nil

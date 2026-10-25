@@ -18,11 +18,11 @@ package animation_editor
 
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
-import "moonhug:editor/menu"
+import "base:runtime"
 import nc "moonhug:editor/node_canvas"
+import wnd "moonhug:editor/window"
 import engine "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
-import "moonhug:editor/icons"
 
 @(private = "file") _PG_BAR_PAD :: f32(4) // inset of the strip above the canvas
 @(private = "file") _PG_COL_W :: f32(250) // one depth rank
@@ -38,31 +38,38 @@ import "moonhug:editor/icons"
 @(private = "file") _PG_SCRIPT :: im.Vec4{0.62, 0.43, 0.23, 1}
 @(private = "file") _PG_OUTPUT :: im.Vec4{0.55, 0.28, 0.28, 1}
 
+// One Playable Graph copy's own state.
 @(private = "file")
-_pg: struct {
+_PG_View :: struct {
 	cv:  nc.Node_Canvas,
 	pos: map[int]im.Vec2, // node id -> canvas position (drag offsets live here)
 	sig: u64, // structure signature the current layout was computed for
 }
 
-shutdown_playable_graph_view :: proc() {
-	delete(_pg.pos)
-	_pg.pos = nil
+// The copy being drawn.
+@(private = "file")
+_pg: ^_PG_View
+
+playable_graph_view_closed :: proc(w: ^wnd.Window) {
+	pg := (^_PG_View)(w.data)
+	if pg == nil do return
+	delete(pg.pos)
+	free(pg, runtime.default_allocator())
+	w.data = nil
 }
 
-draw_playable_graph_view :: proc() {
-	// No window padding, so the canvas reaches every edge of the view — a
-	// canvas framed by the panel colour reads as a widget sitting in a window
-	// rather than as the surface the window is for. Everything drawn above it
-	// pads itself instead (the game view's toolbar does the same).
-	im.PushStyleVarImVec2(.WindowPadding, im.Vec2{0, 0})
-	defer im.PopStyleVar()
-
-	if !im.Begin(icons.TITLE_PLAYABLE_GRAPH, &menu.show_playable_graph, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse}) {
-		im.End()
-		return
+// A canvas window: no padding, so the canvas reaches every edge of the view.
+// A canvas framed by the panel colour reads as a widget sitting in a window
+// rather than as the surface the window is for. Everything drawn above it
+// pads itself instead (the game view's toolbar does the same).
+@(editor_window={id="Playable Graph", title="Playable Graph", icon="HUB", canvas=true, closed=playable_graph_view_closed})
+playable_graph_view_draw :: proc(w: ^wnd.Window) {
+	if w.data == nil {
+		pg := new(_PG_View, runtime.default_allocator())
+		pg.pos = make(map[int]im.Vec2, runtime.default_allocator())
+		w.data = pg
 	}
-	defer im.End()
+	_pg = (^_PG_View)(w.data)
 
 	// Who owns a graph is not this window's business: it asks the registry
 	// (playable_graph.odin) and draws whatever claims the selection. An

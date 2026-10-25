@@ -12,20 +12,22 @@ import "moonhug:editor/session"
 @(provider_install)
 install_scene_views :: proc() {
 	session.set_scene_views({
-		draw_hierarchy       = draw_hierarchy_view,
-		inspector_frame_begin = inspector_frame_begin,
+		frame_begin          = proc() {
+			inspector_frame_begin()
+			hierarchy_frame_begin()
+		},
 		register_menus       = _register_menus,
 		shutdown             = _shutdown,
 		edit_can             = edit_can,
 		edit_run             = edit_run,
 		edit_stack_clear     = hierarchy_edit_stack_clear,
 		reveal               = _hierarchy_open_ancestors,
-		scroll_to_selection  = proc() { _hierarchy_scroll_to_sel = true },
+		scroll_to_selection  = hierarchy_scroll_to_selection,
 		apply_pending_select = hierarchy_apply_pending_select,
-		rename_active        = proc() -> bool { return _hierarchy_rename_target != _HANDLE_NONE },
+		rename_active        = proc() -> bool { return _hv.rename_target != _HANDLE_NONE },
 		reset_input_gates    = proc() {
-			_hierarchy_rename_target = _HANDLE_NONE
-			_hierarchy_rename_just_finished = false
+			_hv.rename_target = _HANDLE_NONE
+			_hv.rename_just_finished = false
 		},
 	})
 }

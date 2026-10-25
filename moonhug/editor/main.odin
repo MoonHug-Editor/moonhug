@@ -156,10 +156,11 @@ main :: proc() {
     simulate_init()
     defer simulate_shutdown()
     // Reopen what was open last session — declarations must exist first. A
-    // first run opens the two inspectors the default layout docks.
+    // first run opens the views the default layout docks, the Game view
+    // included (menu.show_game defaults on).
     wnd.open_saved(editor_settings.open_window_ids[:])
-    if !editor_settings.has_view_state {
-        for id in ([]string{"Inspector", "Project Inspector"}) do if wnd.is_registered(id) do wnd.open(id)
+    if !editor_settings.has_window_state {
+        wnd.open_saved({"Scene", "Hierarchy", "Inspector", "Project", "Project Inspector", "Console", "Output"})
     }
     defer wnd.shutdown()
     defer preview.shutdown()
@@ -259,31 +260,17 @@ main :: proc() {
         sim_tick(gfx.delta_time())
         input.set_game_scope(false)
 
-        // ImGui UI. The inspectors are window instances, drawn with the
-        // other windows (wnd.draw_all). Their per-frame bookkeeping runs here,
+        // ImGui UI. The views are window instances, drawn with the other
+        // windows (wnd.draw_all). Their per-frame bookkeeping runs here,
         // whether or not one is visible.
-        session.inspector_frame_begin()
+        session.scene_views_frame_begin()
         inspector_locks_prune()
 
-        if menu.show_project {
-            draw_project_view()
-        }
+        project_frame_begin()
 
-        if menu.show_console {
-            draw_console_view()
-        }
-
-        if menu.show_history {
-            draw_history_view()
-        }
-
-        if menu.show_hierarchy {
-            session.hierarchy_draw()
-        }
-
-        // Package editor views (animation, playable graph, ...) — each owns
-        // its own visibility flag (editor/preview).
-        preview.draw_views()
+        // Package windows' once-per-frame work (editor/preview): the
+        // Animation window's transport.
+        preview.frame_all()
 
         // The scrub preview poses the world ONLY for the scene/game render:
         // apply here, restore right after, so every other consumer of the
@@ -292,9 +279,7 @@ main :: proc() {
         // Handles and gizmo hooks record once per frame, before any view
         // renders: every view draws the same shapes (gizmo_pass.odin).
         gizmo_pass()
-        if menu.show_scene {
-            draw_scene_view()
-        }
+        wnd.draw("Scene")
 
         if menu.show_game {
             draw_game_view()
@@ -303,10 +288,6 @@ main :: proc() {
 
         if menu.show_input_debug {
             draw_input_debug()
-        }
-
-        if menu.show_output {
-            draw_output_view()
         }
 
         // Plugin-opened windows (editor/window, docs/core/Plugins.md).

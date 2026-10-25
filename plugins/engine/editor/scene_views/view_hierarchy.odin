@@ -16,6 +16,7 @@ import undo "moonhug:packages/engine/editor/undo"
 import "moonhug:editor/simulate"
 import "moonhug:editor/widgets"
 import "moonhug:editor/icons"
+import wnd "moonhug:editor/window"
 
 HIERARCHY_DRAG_TYPE :: "HIERARCHY_TRANSFORM"
 
@@ -48,65 +49,92 @@ _duplicate_with_undo :: proc(tH: engine.Transform_Handle) -> engine.Transform_Ha
 // the interaction: plain click = select only, cmd-click = toggle, shift-click
 // = range over the visible rows.
 
-// Shift-click range target — processed AFTER the tree is drawn, because the
-// range spans _hierarchy_nav_list which is still being built at click time.
-@(private)
-_hierarchy_range_pending: engine.Transform_Handle
+// One Hierarchy copy's own state. A request every copy follows (a reveal, a
+// ping, scrolling to the selection) goes to all of them (_hierarchy_views).
+Hierarchy_View :: struct {
+	// Shift-click range target, processed AFTER the tree is drawn, because
+	// the range spans nav_list, which is still being built at click time.
+	range_pending:        engine.Transform_Handle,
+	rename_target:        engine.Transform_Handle,
+	rename_buf:           [256]byte,
+	rename_focus:         bool,
+	rename_just_opened:   bool,
+	rename_just_finished: bool,
+	force_open:           engine.Transform_Handle,
+	// Set while drawing if the mouse is inside ANY row's rect. The background
+	// context menu is suppressed then, so a right-click anywhere on a row
+	// (text, actions column, or the padding between them) gets that row's menu.
+	pointer_over_row:     bool,
+	alt_open_pending:     map[engine.Transform_Handle]bool,
+	nav_list:             [dynamic]engine.Transform_Handle,
+	// Name filter (substring, case-insensitive). Non-empty: each scene's tree
+	// flattens to just the matching rows.
+	filter_buf:           [256]byte,
+	// Scroll the selected row into view next frame (set by ping requests).
+	scroll_to_sel:        bool,
+	// Ping flash: reveal + fading row highlight WITHOUT changing the selection.
+	ping_tH:              engine.Transform_Handle,
+	ping_deadline_ns:     i64,
+	scroll_to_ping:       bool,
+}
 
+_HIER_PING_NS :: i64(800_000_000)
+
+// The copy being drawn, and outside a draw the copy clicked in last, which
+// menu actions and the shell's queries act on. With no copy open it points
+// at a spare state, so a write lands nowhere.
 @(private)
-_hierarchy_rename_target: engine.Transform_Handle
-@(private)
-_hierarchy_rename_buf: [256]byte
-@(private)
-_hierarchy_rename_focus: bool
-@(private)
-_hierarchy_rename_just_opened: bool
-@(private)
-_hierarchy_rename_just_finished: bool
+_hv: ^Hierarchy_View = &_hv_none
+
+@(private = "file")
+_hv_none: Hierarchy_View
 
 @(private)
 _hierarchy_dimmed_color: im.Vec4
 
-@(private)
-_hierarchy_force_open: engine.Transform_Handle
-
-// Set while drawing if the mouse is inside ANY row's rect. The background
-// context menu is suppressed then, so a right-click anywhere on a row — text,
-// actions column, or the padding between them — gets that row's menu.
-@(private)
-_hierarchy_pointer_over_row: bool
-
-@(private)
-_hierarchy_alt_open_pending: map[engine.Transform_Handle]bool
-
-// Editor-wide state: pinned to the default allocator, whoever first touches it.
-@(init)
-_hierarchy_alt_open_pending_init :: proc "contextless" () {
-	context = runtime.default_context()
-	_hierarchy_alt_open_pending = make(map[engine.Transform_Handle]bool, runtime.default_allocator())
+// A copy's state, made on its first frame. On the default allocator: it
+// outlives frames.
+@(private = "file")
+_hierarchy_view :: proc(w: ^wnd.Window) -> ^Hierarchy_View {
+	if w.data == nil {
+		context.allocator = runtime.default_allocator()
+		hv := new(Hierarchy_View)
+		hv.alt_open_pending = make(map[engine.Transform_Handle]bool)
+		w.data = hv
+	}
+	return (^Hierarchy_View)(w.data)
 }
 
+// Every open copy's state, for a request they all follow.
 @(private)
-_hierarchy_nav_list: [dynamic]engine.Transform_Handle
+_hierarchy_views :: proc() -> []^Hierarchy_View {
+	out := make([dynamic]^Hierarchy_View, context.temp_allocator)
+	for w in wnd.instances(HIERARCHY) do append(&out, _hierarchy_view(w))
+	return out[:]
+}
 
-// Name filter (substring, case-insensitive). Non-empty: each scene's tree
-// flattens to just the matching rows.
+// Unfolds `tH` in every copy, to show a child just made or pasted under it.
 @(private)
-_hierarchy_filter_buf: [256]byte
+_hierarchy_reveal_open :: proc(tH: engine.Transform_Handle) {
+	for hv in _hierarchy_views() do hv.force_open = tH
+}
 
-// Scroll the selected row into view next frame (set by ping requests).
-@(private)
-_hierarchy_scroll_to_sel: bool
+hierarchy_view_closed :: proc(w: ^wnd.Window) {
+	hv := (^Hierarchy_View)(w.data)
+	if hv == nil do return
+	if _hv == hv do _hv = &_hv_none
+	_hierarchy_view_free(hv)
+	free(hv, runtime.default_allocator())
+	w.data = nil
+}
 
-// Ping flash (Unity-style): reveal + fading row highlight WITHOUT changing
-// the selection.
-_HIER_PING_NS :: i64(800_000_000)
-@(private)
-_hierarchy_ping_tH: engine.Transform_Handle
-@(private)
-_hierarchy_ping_deadline_ns: i64
-@(private)
-_hierarchy_scroll_to_ping: bool
+@(private = "file")
+_hierarchy_view_free :: proc(hv: ^Hierarchy_View) {
+	context.allocator = runtime.default_allocator()
+	delete(hv.alt_open_pending)
+	delete(hv.nav_list)
+	hv^ = {}
+}
 
 // --- Scene edit stack (Unity prefab-mode style) ----------------------------
 // Entering a nested scene opens its SOURCE .scene asset (replacing the open
@@ -226,22 +254,41 @@ _save_as_pending: bool
 hierarchy_apply_pending_select :: proc() {
 	if pending, ok := engine.inspector_take_pending_select(); ok {
 		session.select_only(pending)
-		_hierarchy_scroll_to_sel = true
+		hierarchy_scroll_to_selection()
 		_hierarchy_open_ancestors(pending)
 	}
 }
 
-draw_hierarchy_view :: proc() {
+// Scrolls every copy to the selection next frame.
+hierarchy_scroll_to_selection :: proc() {
+	for hv in _hierarchy_views() do hv.scroll_to_sel = true
+}
+
+// The requests every copy follows, once per frame whether or not a copy is
+// visible: a select posted from elsewhere, and a ping (reveal + flash,
+// selection untouched).
+hierarchy_frame_begin :: proc() {
 	hierarchy_apply_pending_select()
-	// Ping requests: reveal + flash, selection untouched.
 	if pending, ok := engine.inspector_take_pending_ping(); ok {
-		_hierarchy_ping_tH = pending
-		_hierarchy_ping_deadline_ns = time.now()._nsec + _HIER_PING_NS
-		_hierarchy_scroll_to_ping = true
+		deadline := time.now()._nsec + _HIER_PING_NS
+		for hv in _hierarchy_views() {
+			hv.ping_tH = pending
+			hv.ping_deadline_ns = deadline
+			hv.scroll_to_ping = true
+		}
 		_hierarchy_open_ancestors(pending)
 	}
+}
 
-	open := im.Begin(session.view_title(icons.TITLE_HIERARCHY), &menu.show_hierarchy, {.NoCollapse})
+HIERARCHY :: "Hierarchy"
+
+@(editor_window={id="Hierarchy", title="Hierarchy", icon="ACCOUNT_TREE", closed=hierarchy_view_closed})
+hierarchy_view_draw :: proc(w: ^wnd.Window) {
+	_hv = _hierarchy_view(w)
+	defer {
+		last := wnd.last(HIERARCHY)
+		_hv = _hierarchy_view(last) if last != nil else &_hv_none
+	}
 
 	if im.BeginDragDropTarget() {
 		payload := im.AcceptDragDropPayload("ASSET_PATH", {})
@@ -254,28 +301,22 @@ draw_hierarchy_view :: proc() {
 		im.EndDragDropTarget()
 	}
 
-	if !open {
-		im.End()
-		return
-	}
-	defer im.End()
-
 	text_col := im.GetStyleColorVec4(im.Col.Text)
 	_hierarchy_dimmed_color = {text_col[0] * 0.5, text_col[1] * 0.5, text_col[2] * 0.5, text_col[3]}
 
 	// Filter row (drawn before the compact style vars so it matches the
 	// project view's search box). "x" or Esc clears it.
-	filter_query := strings.trim_space(string(cstring(raw_data(_hierarchy_filter_buf[:]))))
+	filter_query := strings.trim_space(string(cstring(raw_data(_hv.filter_buf[:]))))
 	clear_btn_w := im.GetFrameHeight()
 	im.SetNextItemWidth(-(clear_btn_w + im.GetStyle().ItemSpacing.x) if filter_query != "" else -1)
 	// NoTabStop: keyboard tabbing must never land in the filter box.
 	im.PushItemFlag({.NoTabStop}, true)
-	im.InputTextWithHint("##hier_filter", "Filter", cstring(raw_data(_hierarchy_filter_buf[:])), c.size_t(len(_hierarchy_filter_buf)), {})
+	im.InputTextWithHint("##hier_filter", "Filter", cstring(raw_data(_hv.filter_buf[:])), c.size_t(len(_hv.filter_buf)), {})
 	im.PopItemFlag()
 	if filter_query != "" {
 		im.SameLine()
 		if im.Button(icons.ICON_MD_CLOSE + "###hier_filter_clear", im.Vec2{clear_btn_w, 0}) {
-			mem.zero(&_hierarchy_filter_buf, len(_hierarchy_filter_buf))
+			mem.zero(&_hv.filter_buf, len(_hv.filter_buf))
 			filter_query = ""
 		}
 	}
@@ -294,9 +335,9 @@ draw_hierarchy_view :: proc() {
 		}
 	}
 
-	clear(&_hierarchy_nav_list)
+	clear(&_hv.nav_list)
 	session.prune()
-	_hierarchy_pointer_over_row = false
+	_hv.pointer_over_row = false
 
 	for i in 0..<sm.count {
 		scene := sm.loaded[i]
@@ -311,13 +352,13 @@ draw_hierarchy_view :: proc() {
 
 	// Shift-click range: active row → clicked row over the visible rows,
 	// REPLACING the selection (Unity); the clicked row becomes active. Runs
-	// here because _hierarchy_nav_list is only complete after drawing.
-	if _hierarchy_range_pending != _HANDLE_NONE {
-		target := _hierarchy_range_pending
-		_hierarchy_range_pending = _HANDLE_NONE
+	// here because _hv.nav_list is only complete after drawing.
+	if _hv.range_pending != _HANDLE_NONE {
+		target := _hv.range_pending
+		_hv.range_pending = _HANDLE_NONE
 		anchor := session.active()
 		a_idx, t_idx := -1, -1
-		for h, i in _hierarchy_nav_list {
+		for h, i in _hv.nav_list {
 			if h == anchor do a_idx = i
 			if h == target do t_idx = i
 		}
@@ -327,21 +368,21 @@ draw_hierarchy_view :: proc() {
 			session.select_clear()
 			step := 1 if a_idx <= t_idx else -1
 			for i := a_idx; ; i += step {
-				session.select_add(_hierarchy_nav_list[i])
+				session.select_add(_hv.nav_list[i])
 				if i == t_idx do break
 			}
 		}
 	}
 
-	if _hierarchy_rename_just_finished {
-		_hierarchy_rename_just_finished = false
+	if _hv.rename_just_finished {
+		_hv.rename_just_finished = false
 	} else {
-		is_not_renaming := _hierarchy_rename_target == _HANDLE_NONE
+		is_not_renaming := _hv.rename_target == _HANDLE_NONE
 		active_sel := session.active()
 		// Not while a text input (filter box) owns the keyboard.
 		if is_not_renaming && im.IsWindowFocused({}) && !im.IsAnyItemActive() {
 			if len(filter) > 0 && im.IsKeyPressed(im.Key.Escape) {
-				mem.zero(&_hierarchy_filter_buf, len(_hierarchy_filter_buf))
+				mem.zero(&_hv.filter_buf, len(_hv.filter_buf))
 			}
 			if active_sel != _HANDLE_NONE {
 				if im.IsKeyPressed(im.Key.Enter) || im.IsKeyPressed(im.Key.F2) {
@@ -484,7 +525,7 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter: []st
 	// hit-test misses the actions column and the cell padding — right-clicking
 	// those few pixels opened this GameObject-only menu instead of the row's
 	// full one, which is why the menu changed with the click position.
-	if !_hierarchy_pointer_over_row &&
+	if !_hv.pointer_over_row &&
 	   im.BeginPopupContextWindow("##HierarchyContextBg", im.PopupFlags_MouseButtonRight | im.PopupFlags_NoOpenOverItems) {
 		menu.draw_menu_sections({
 			menu.section("GameObject", max_order = menu.GO_SECTION_PARENTING - 1),
@@ -556,7 +597,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 
 	has_children := len(t.children) > 0 && !filtered
 	is_selected := session.is_selected(tH)
-	is_renaming := _hierarchy_rename_target == tH
+	is_renaming := _hv.rename_target == tH
 
 	pushed_dim := !t.is_active && !parent_inactive
 
@@ -593,12 +634,12 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		im.PushStyleColorImVec4(im.Col.Text, _hierarchy_dimmed_color)
 	}
 
-	if _hierarchy_force_open == tH {
+	if _hv.force_open == tH {
 		im.SetNextItemOpen(true)
-		_hierarchy_force_open = _HANDLE_NONE
-	} else if v, ok := _hierarchy_alt_open_pending[tH]; ok {
+		_hv.force_open = _HANDLE_NONE
+	} else if v, ok := _hv.alt_open_pending[tH]; ok {
 		im.SetNextItemOpen(v)
-		delete_key(&_hierarchy_alt_open_pending, tH)
+		delete_key(&_hv.alt_open_pending, tH)
 	}
 	// Cursor x BEFORE the node is the indented content start within the name
 	// column. SpanAllColumns moves the node's ItemRect min to the table's left
@@ -606,9 +647,9 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	content_x := im.GetCursorScreenPos().x
 	node_open := im.TreeNodeEx("##n", flags)
 
-	if is_selected && _hierarchy_scroll_to_sel {
+	if is_selected && _hv.scroll_to_sel {
 		im.SetScrollHereY()
-		_hierarchy_scroll_to_sel = false
+		_hv.scroll_to_sel = false
 	}
 
 	// Capture the ROW's click/hover state now, before drawing the ">" button —
@@ -630,7 +671,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		_draw_drag_source(tH)
 	}
 
-	append(&_hierarchy_nav_list, tH)
+	append(&_hv.nav_list, tH)
 
 	node_toggled := has_children && im.IsItemToggledOpen()
 	if node_toggled {
@@ -644,14 +685,14 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	// SpanAllColumns makes this rect cover the whole row, so it is the honest
 	// answer to "is the pointer on this row" — imgui's item hit-test misses the
 	// actions column and the cell padding. Used both to suppress the background
-	// menu (_hierarchy_pointer_over_row) and to open THIS row's menu, so the
+	// menu (_hv.pointer_over_row) and to open THIS row's menu, so the
 	// two agree on where a row begins and ends and no dead zone is left between
 	// them — notably over a nested host's ">" button, which is submitted after
 	// the row and would otherwise swallow the right-click.
 	mp := im.GetIO().MousePos
 	pointer_on_row := mp.x >= node_rect_min.x && mp.x <= node_rect_max.x &&
 		mp.y >= node_rect_min.y && mp.y <= node_rect_max.y
-	if pointer_on_row do _hierarchy_pointer_over_row = true
+	if pointer_on_row do _hv.pointer_over_row = true
 	if pointer_on_row && im.IsMouseClicked(.Right) && im.IsWindowHovered(im.HoveredFlags_ChildWindows) {
 		node_right_clicked = true
 	}
@@ -664,14 +705,14 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	}
 
 	// Ping flash: fading highlight over the whole row (SpanAllColumns rect).
-	if tH == _hierarchy_ping_tH {
-		remaining := _hierarchy_ping_deadline_ns - time.now()._nsec
+	if tH == _hv.ping_tH {
+		remaining := _hv.ping_deadline_ns - time.now()._nsec
 		if remaining <= 0 {
-			_hierarchy_ping_tH = _HANDLE_NONE
+			_hv.ping_tH = _HANDLE_NONE
 		} else {
-			if _hierarchy_scroll_to_ping {
+			if _hv.scroll_to_ping {
 				im.SetScrollHereY()
-				_hierarchy_scroll_to_ping = false
+				_hv.scroll_to_ping = false
 			}
 			alpha := 0.45 * f32(remaining) / f32(_HIER_PING_NS)
 			flash := im.GetColorU32ImVec4(im.Vec4{1.0, 0.8, 0.2, alpha})
@@ -683,23 +724,23 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	if is_renaming {
 		input_width := node_rect_max.x - text_x
 		im.SetCursorScreenPos(im.Vec2{text_x, node_rect_min.y})
-		if _hierarchy_rename_focus {
+		if _hv.rename_focus {
 			im.SetKeyboardFocusHere(0)
-			_hierarchy_rename_focus = false
-			_hierarchy_rename_just_opened = true
+			_hv.rename_focus = false
+			_hv.rename_just_opened = true
 		}
 		im.SetNextItemWidth(input_width)
-		buf_cstr := cstring(raw_data(_hierarchy_rename_buf[:]))
-		if im.InputText("##rename", buf_cstr, c.size_t(len(_hierarchy_rename_buf)), {.EnterReturnsTrue, .AutoSelectAll}) {
+		buf_cstr := cstring(raw_data(_hv.rename_buf[:]))
+		if im.InputText("##rename", buf_cstr, c.size_t(len(_hv.rename_buf)), {.EnterReturnsTrue, .AutoSelectAll}) {
 			_apply_rename(t)
 		}
-		if _hierarchy_rename_just_opened {
-			_hierarchy_rename_just_opened = false
+		if _hv.rename_just_opened {
+			_hv.rename_just_opened = false
 		} else if !im.IsItemActive() {
 			if im.IsItemDeactivatedAfterEdit() {
 				_apply_rename(t)
 			} else {
-				_hierarchy_rename_target = _HANDLE_NONE
+				_hv.rename_target = _HANDLE_NONE
 			}
 		}
 	} else {
@@ -777,7 +818,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		if in_arrow_zone {
 			// If imgui's own arrow hit-test didn't already toggle, do it ourselves.
 			if !node_toggled {
-				_hierarchy_alt_open_pending[tH] = !node_open
+				_hv.alt_open_pending[tH] = !node_open
 			}
 			// Either way this was a fold, not a selection.
 		} else if !is_renaming {
@@ -786,7 +827,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 			if io.KeyCtrl || io.KeySuper {
 				session.select_toggle(tH)
 			} else if io.KeyShift {
-				_hierarchy_range_pending = tH
+				_hv.range_pending = tH
 			} else {
 				session.select_only(tH)
 			}
@@ -971,7 +1012,7 @@ _hierarchy_open_ancestors :: proc(tH: engine.Transform_Handle) {
 		if t == nil do break
 		if !engine.pool_valid(&w.transforms, t.parent.handle) do break
 		cur = engine.Transform_Handle(t.parent.handle)
-		_hierarchy_alt_open_pending[cur] = true
+		for hv in _hierarchy_views() do hv.alt_open_pending[cur] = true
 	}
 }
 
@@ -981,17 +1022,17 @@ _begin_rename :: proc(tH: engine.Transform_Handle) {
 	t := engine.pool_get(&w.transforms, engine.Handle(tH))
 	if t == nil do return
 
-	_hierarchy_rename_target = tH
-	_hierarchy_rename_focus = true
-	mem.zero(&_hierarchy_rename_buf, len(_hierarchy_rename_buf))
+	_hv.rename_target = tH
+	_hv.rename_focus = true
+	mem.zero(&_hv.rename_buf, len(_hv.rename_buf))
 	name_bytes := transmute([]u8)t.name
-	copy_len := min(len(name_bytes), len(_hierarchy_rename_buf) - 1)
-	mem.copy(&_hierarchy_rename_buf[0], raw_data(name_bytes), copy_len)
+	copy_len := min(len(name_bytes), len(_hv.rename_buf) - 1)
+	mem.copy(&_hv.rename_buf[0], raw_data(name_bytes), copy_len)
 }
 
 @(private)
 _apply_rename :: proc(t: ^engine.Transform) {
-	buf_cstr := cstring(raw_data(_hierarchy_rename_buf[:]))
+	buf_cstr := cstring(raw_data(_hv.rename_buf[:]))
 	new_name := string(buf_cstr)
 	if len(new_name) > 0 && new_name != t.name {
 		w := engine.ctx_world()
@@ -1011,8 +1052,8 @@ _apply_rename :: proc(t: ^engine.Transform) {
 		delete(t.name)
 		t.name = strings.clone(new_name)
 	}
-	_hierarchy_rename_target = _HANDLE_NONE
-	_hierarchy_rename_just_finished = true
+	_hv.rename_target = _HANDLE_NONE
+	_hv.rename_just_finished = true
 }
 
 @(private)
@@ -1034,7 +1075,7 @@ _create_empty_parent :: proc(tH: engine.Transform_Handle) {
 	undo.group_commit(&g)
 
 	session.select_only(new_parent)
-	_hierarchy_force_open = new_parent
+	_hierarchy_reveal_open(new_parent)
 }
 
 @(private)
@@ -1179,7 +1220,7 @@ _hierarchy_drop_asset_as_child :: proc(path: string, parent_tH: engine.Transform
 
 	undo.record_create(new_tH, parent_tH)
 	session.select_only(new_tH)
-	_hierarchy_force_open = parent_tH
+	_hierarchy_reveal_open(parent_tH)
 }
 
 @(private)
@@ -1192,7 +1233,7 @@ _populate_alt_open_pending :: proc(parent_tH: engine.Transform_Handle, t: ^engin
 		if !ok do continue
 		ct := engine.pool_get(&w.transforms, engine.Handle(ch))
 		if ct == nil do continue
-		_hierarchy_alt_open_pending[ch] = open
+		_hv.alt_open_pending[ch] = open
 		if len(ct.children) > 0 {
 			_populate_alt_open_pending(ch, ct, open)
 		}
@@ -1215,7 +1256,7 @@ _is_ancestor :: proc(potential_ancestor: engine.Transform_Handle, node: engine.T
 
 @(private)
 _hierarchy_node_expand :: proc(tH: engine.Transform_Handle, t: ^engine.Transform, deep: bool) {
-	_hierarchy_force_open = tH
+	_hv.force_open = tH
 	if deep {
 		_populate_alt_open_pending(tH, t, true)
 	}
@@ -1223,7 +1264,7 @@ _hierarchy_node_expand :: proc(tH: engine.Transform_Handle, t: ^engine.Transform
 
 @(private)
 _hierarchy_node_collapse :: proc(tH: engine.Transform_Handle, t: ^engine.Transform, deep: bool) {
-	_hierarchy_alt_open_pending[tH] = false
+	_hv.alt_open_pending[tH] = false
 	if deep {
 		_populate_alt_open_pending(tH, t, false)
 	}
@@ -1233,14 +1274,14 @@ _hierarchy_node_collapse :: proc(tH: engine.Transform_Handle, t: ^engine.Transfo
 _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 	w := engine.ctx_world()
 
-	nav_count := len(_hierarchy_nav_list)
+	nav_count := len(_hv.nav_list)
 	if nav_count == 0 do return
 
 	active := session.active()
 	cur_idx := -1
 	if active != _HANDLE_NONE {
 		for i in 0..<nav_count {
-			if _hierarchy_nav_list[i] == active {
+			if _hv.nav_list[i] == active {
 				cur_idx = i
 				break
 			}
@@ -1249,7 +1290,7 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 
 	_nav_select_first :: proc(nav_count: int) {
 		if nav_count > 0 {
-			session.select_only(_hierarchy_nav_list[0])
+			session.select_only(_hv.nav_list[0])
 		}
 	}
 
@@ -1261,7 +1302,7 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 		if cur_idx == -1 {
 			_nav_select_first(nav_count)
 		} else if cur_idx + 1 < nav_count {
-			next := _hierarchy_nav_list[cur_idx + 1]
+			next := _hv.nav_list[cur_idx + 1]
 			if shift {
 				session.select_add(next)
 			} else {
@@ -1275,7 +1316,7 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 		if cur_idx == -1 {
 			_nav_select_first(nav_count)
 		} else if cur_idx - 1 >= 0 {
-			prev := _hierarchy_nav_list[cur_idx - 1]
+			prev := _hv.nav_list[cur_idx - 1]
 			if shift {
 				session.select_add(prev)
 			} else {
@@ -1294,7 +1335,7 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 
 	if cur_idx == -1 do return
 
-	selected_tH := _hierarchy_nav_list[cur_idx]
+	selected_tH := _hv.nav_list[cur_idx]
 	t := engine.pool_get(&w.transforms, engine.Handle(selected_tH))
 	if t == nil do return
 
@@ -1303,14 +1344,14 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 	if im.IsKeyPressed(im.Key.RightArrow) {
 		has_children := len(t.children) > 0
 		if has_children {
-			is_expanded := cur_idx + 1 < nav_count && _is_ancestor(selected_tH, _hierarchy_nav_list[cur_idx + 1])
+			is_expanded := cur_idx + 1 < nav_count && _is_ancestor(selected_tH, _hv.nav_list[cur_idx + 1])
 			if !is_expanded {
 				_hierarchy_node_expand(selected_tH, t, deep = alt)
 				return
 			}
 		}
 		if cur_idx + 1 < nav_count {
-			session.select_only(_hierarchy_nav_list[cur_idx + 1])
+			session.select_only(_hv.nav_list[cur_idx + 1])
 		}
 		return
 	}
@@ -1318,7 +1359,7 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 	if im.IsKeyPressed(im.Key.LeftArrow) {
 		has_children := len(t.children) > 0
 		if has_children {
-			is_expanded := cur_idx + 1 < nav_count && _is_ancestor(selected_tH, _hierarchy_nav_list[cur_idx + 1])
+			is_expanded := cur_idx + 1 < nav_count && _is_ancestor(selected_tH, _hv.nav_list[cur_idx + 1])
 			if is_expanded {
 				_hierarchy_node_collapse(selected_tH, t, deep = alt)
 				return
@@ -1360,7 +1401,6 @@ hierarchy_toggle_active_menu :: proc() {
 }
 
 shutdown_hierarchy_views :: proc() {
-	delete(_hierarchy_nav_list)
-	delete(_hierarchy_alt_open_pending)
+	_hierarchy_view_free(&_hv_none)
 	delete(_inspector_comp_open)
 }

@@ -22,10 +22,9 @@ Edit_Op :: enum {
 }
 
 Scene_Views :: struct {
-	draw_hierarchy:       proc(),
-	// The Inspector windows' per-frame bookkeeping, run every frame whether
-	// or not one is visible (the windows themselves draw as window instances).
-	inspector_frame_begin: proc(),
+	// The scene views' per-frame bookkeeping, run every frame whether or not
+	// a view is visible (the views themselves draw as window instances).
+	frame_begin:          proc(),
 	// The Component menu and the components' overflow menu entries, once the menus exist.
 	register_menus:       proc(),
 	shutdown:             proc(),
@@ -34,9 +33,9 @@ Scene_Views :: struct {
 	edit_run:             proc(op: Edit_Op),
 	// Forgets the nested scenes entered from the hierarchy, before another scene opens.
 	edit_stack_clear:     proc(),
-	// Unfolds every ancestor of `tH` in the hierarchy.
+	// Unfolds every ancestor of `tH` in every hierarchy copy.
 	reveal:               proc(tH: core.Transform_Handle),
-	// Scrolls the hierarchy to the selection next frame.
+	// Scrolls every hierarchy copy to the selection next frame.
 	scroll_to_selection:  proc(),
 	// Applies a select request posted this frame (core.inspector_request_select).
 	apply_pending_select: proc(),
@@ -58,12 +57,8 @@ set_scene_views :: proc(v: Scene_Views) {
 	_scene_views = v
 }
 
-hierarchy_draw :: proc() {
-	if _scene_views.draw_hierarchy != nil do _scene_views.draw_hierarchy()
-}
-
-inspector_frame_begin :: proc() {
-	if _scene_views.inspector_frame_begin != nil do _scene_views.inspector_frame_begin()
+scene_views_frame_begin :: proc() {
+	if _scene_views.frame_begin != nil do _scene_views.frame_begin()
 }
 
 scene_views_register_menus :: proc() {

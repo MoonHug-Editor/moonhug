@@ -86,16 +86,8 @@ _dock_build_default_layout :: proc(dockspace_id: im.ID, size: im.Vec2) {
 @(menu_item={path="Window/Reset Layout", order=20, shortcut=""})
 view_reset_layout_menu :: proc() {
 	_dock_layout_reset = true
-	menu.show_hierarchy = true
-	for id in ([]string{"Inspector", "Project Inspector"}) do if wnd.is_registered(id) do wnd.open(id)
-	menu.show_scene = true
+	wnd.open_saved({"Scene", "Hierarchy", "Inspector", "Project", "Project Inspector", "Console", "Output", "History", "Animation", "Playable Graph"})
 	menu.show_game = true
-	menu.show_project = true
-	menu.show_console = true
-	menu.show_output = true
-	menu.show_history = true
-	menu.show_animation = true
-	menu.show_playable_graph = true
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +164,7 @@ Overlay :: struct {
 	bg_max:     im.Vec2,
 	dragging:   bool,
 	drag_off:   im.Vec2, // grab offset from content top-left, px
+	drag_host:  im.ID,   // the window the drag started in: each Scene copy draws the overlays, one copy owns a drag
 	// No background or border: only the grip and the items show (Unity's
 	// Orientation overlay). Hover and drag work the same.
 	transparent: bool,
@@ -179,6 +172,13 @@ Overlay :: struct {
 
 _overlays: [dynamic]Overlay
 _overlay_mouse_over: bool // mouse over any overlay this frame (or dragging one)
+_overlay_host: im.ID      // the window drawing the overlays now
+
+// An overlay follows the pointer only in the window its drag started in.
+@(private = "file")
+_overlay_dragging :: proc(ov: ^Overlay) -> bool {
+	return ov.dragging && ov.drag_host == _overlay_host
+}
 
 // The item currently being drawn — overlay_tool_button reads it to append the
 // overlay id/order to tooltips (how-to-extend discoverability).
@@ -299,12 +299,13 @@ overlay_bar_insets :: proc() -> (left, right, top, bottom: f32) {
 // A strip is only as thick as the items themselves plus BAR_PAD, so it hugs
 // the buttons instead of reserving a full overlay panel's worth of chrome.
 overlays_measure_bars :: proc() {
+	_overlay_host = im.GetCurrentWindowRead().ID_
 	_bar_thickness = {}
 	for &ov in _overlays {
 		if !overlay_anchor_is_bar(ov.anchor) do continue
 		// A dragged overlay is following the mouse, so it must not keep
 		// reserving space in the strip it came from.
-		if ov.dragging || ov.items_size.x < 0.5 do continue
+		if _overlay_dragging(&ov) || ov.items_size.x < 0.5 do continue
 		// The grip spans the items across the strip and is only
 		// OVERLAY_GRIP_THICK deep, so it never drives the thickness — but a
 		// horizontal strip puts it BESIDE the items, where it must at least
@@ -322,6 +323,7 @@ overlays_measure_bars :: proc() {
 // [bar_min, bar_max] is the FULL content rect including the strip space that
 // overlay_bar_insets took out of the image.
 overlays_draw :: proc(view_min, view_max: im.Vec2, bar_min := im.Vec2{}, bar_max := im.Vec2{}) {
+	_overlay_host = im.GetCurrentWindowRead().ID_
 	_overlay_mouse_over = false
 	if view_max.x - view_min.x < 1 || view_max.y - view_min.y < 1 do return
 
@@ -335,7 +337,7 @@ overlays_draw :: proc(view_min, view_max: im.Vec2, bar_min := im.Vec2{}, bar_max
 	// Left/Right overlay never overlaps a Top_Left/Top_Right one.
 	top_left_h, top_right_h: f32
 	for &ov in _overlays {
-		if ov.dragging || ov.size.y <= 0 do continue
+		if _overlay_dragging(&ov) || ov.size.y <= 0 do continue
 		full_y := ov.size.y + OVERLAY_PAD * 2
 		#partial switch ov.anchor {
 		case .Top_Left:  top_left_h = max(top_left_h, full_y)
@@ -369,7 +371,8 @@ overlays_draw :: proc(view_min, view_max: im.Vec2, bar_min := im.Vec2{}, bar_max
 
 		// Content top-left for this frame.
 		pos: im.Vec2
-		if ov.dragging {
+		dragging := _overlay_dragging(&ov)
+		if dragging {
 			pos = mp - ov.drag_off
 			vertical = false // dragged overlays preview horizontal, Unity-like
 			full = ov.size + {OVERLAY_PAD * 2, OVERLAY_PAD * 2}
@@ -433,9 +436,9 @@ overlays_draw :: proc(view_min, view_max: im.Vec2, bar_min := im.Vec2{}, bar_max
 		// normalized, so a resize could otherwise strand it out of reach.
 		// Strip overlays measure against the whole content rect, since their
 		// strip lies outside the image.
-		cmin := overlay_anchor_is_bar(ov.anchor) && !ov.dragging ? bmin : view_min
-		cmax := overlay_anchor_is_bar(ov.anchor) && !ov.dragging ? bmax : view_max
-		if ov.anchor == .Float && !ov.dragging {
+		cmin := overlay_anchor_is_bar(ov.anchor) && !dragging ? bmin : view_min
+		cmax := overlay_anchor_is_bar(ov.anchor) && !dragging ? bmax : view_max
+		if ov.anchor == .Float && !dragging {
 			pos.x = math.round(clamp(pos.x, cmin.x + OVERLAY_PAD, max(cmax.x - full.x + OVERLAY_PAD, cmin.x + OVERLAY_PAD)))
 			pos.y = math.round(clamp(pos.y, cmin.y + OVERLAY_PAD, max(cmax.y - full.y + OVERLAY_PAD, cmin.y + OVERLAY_PAD)))
 		} else {
@@ -445,7 +448,7 @@ overlays_draw :: proc(view_min, view_max: im.Vec2, bar_min := im.Vec2{}, bar_max
 
 		_overlay_draw_one(&ov, pos, vertical)
 
-		if ov.dragging {
+		if dragging {
 			dragging_any = true
 			if !im.IsMouseDown(.Left) {
 				// Drop: dock into the zone under the cursor, else float here.
@@ -520,7 +523,7 @@ _overlay_draw_one :: proc(ov: ^Overlay, pos: im.Vec2, vertical: bool) {
 
 	// A strip overlay has no panel of its own: the strip IS its background, so
 	// it draws only the grip and the items (Unity's docked toolbar).
-	in_bar := overlay_anchor_is_bar(ov.anchor) && !ov.dragging
+	in_bar := overlay_anchor_is_bar(ov.anchor) && !_overlay_dragging(ov)
 
 	ov.bg_min = pos - {OVERLAY_PAD, OVERLAY_PAD}
 	ov.bg_max = empty ? ov.bg_min : pos + ov.size + {OVERLAY_PAD, OVERLAY_PAD}
@@ -550,8 +553,9 @@ _overlay_draw_one :: proc(ov: ^Overlay, pos: im.Vec2, vertical: bool) {
 		if im.IsItemActive() && im.IsMouseDragging(.Left, 2) && !ov.dragging {
 			ov.dragging = true
 			ov.drag_off = im.GetMousePos() - pos
+			ov.drag_host = _overlay_host
 		}
-		grip_col := im.GetColorU32(im.IsItemHovered({}) || ov.dragging ? .Text : .TextDisabled)
+		grip_col := im.GetColorU32(im.IsItemHovered({}) || _overlay_dragging(ov) ? .Text : .TextDisabled)
 		glyph: cstring = vertical ? icons.ICON_MD_DRAG_HANDLE : icons.ICON_MD_DRAG_INDICATOR
 		icon_size := im.CalcTextSize(glyph, nil, false, -1)
 		im.DrawList_AddText(dl, grip_min + (grip_size - icon_size) * 0.5, grip_col, glyph)

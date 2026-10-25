@@ -27,10 +27,6 @@ import "moonhug:editor/viewport"
 import "moonhug:editor/session"
 import "moonhug:libs/gizmos"
 
-// The gfx frame the scene view last rendered in, and its image size then.
-_scene_rendered_frame: u64
-_scene_view_size: [2]f32
-
 // Draws gizmos for every enabled instance of a component, each frame, in the
 // scene view.
 //
@@ -41,7 +37,11 @@ _scene_view_size: [2]f32
 @(extension_point={attribute="comp_on_draw_gizmos", target="proc", fields="component"})
 gizmo_pass :: proc() {
 	sel_scene_prune()
-	scene_live := menu.show_scene && _scene_rendered_frame + 1 == gfx.frame_index && _scene_view_size.x > 0 && _scene_view_size.y > 0
+	// The handles and gizmos are recorded once, for the active Scene copy
+	// (the one under the pointer, else the one clicked in last). Every copy
+	// draws them, so their pixel sizes fit the active copy's camera.
+	_sv = _scene_active()
+	scene_live := _sv.rendered_frame + 1 == gfx.frame_index && _sv.view_size.x > 0 && _sv.view_size.y > 0
 	game_live := menu.show_game && game_gizmos
 	if !scene_live && !game_live do return
 
@@ -50,14 +50,14 @@ gizmo_pass :: proc() {
 		// The camera's focus animation (F) steps first, so the handles and
 		// the render see the same camera.
 		_update_frame_tween(im.GetIO().DeltaTime)
-		view := scene_render_view(_scene_view_size.x, _scene_view_size.y)
+		view := scene_render_view(_sv.view_size.x, _sv.view_size.y)
 		// The pointer in scene-image pixels, from the image's place last frame.
 		mp := im.GetMousePos()
 		io := im.GetIO()
 		snapping := _gizmo_snap_active()
 		handles.frame_begin(view, handles.Input{
-			mouse      = {mp.x - _scene_img_min.x, mp.y - _scene_img_min.y},
-			hovered    = scene_view_hovered,
+			mouse      = {mp.x - _sv.img_min.x, mp.y - _sv.img_min.y},
+			hovered    = _sv.hovered,
 			down       = im.IsMouseDown(.Left),
 			clicked    = im.IsMouseClicked(.Left),
 			alt        = io.KeyAlt,
@@ -131,6 +131,6 @@ _install_selection_source :: proc "contextless" () {
 		inspected_active = inspector_active_target,
 		frame_selected   = scene_frame_selected,
 		project_active   = proc() -> string { return projectViewData.selectedFile },
-		project_dir      = proc() -> string { return projectViewData.currentPath },
+		project_dir      = proc() -> string { return _pv.current_path },
 	})
 }

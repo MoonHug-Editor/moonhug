@@ -41,20 +41,20 @@ _ORIENT_AXES := [6]_Orient_Axis{
 scene_view_from_axis :: proc(axis: [3]f32) {
 	fwd := -axis
 	if abs(fwd.y) < 0.999 {
-		scene_cam_yaw = math.atan2(fwd.z, fwd.x)
+		_sv.cam_yaw = math.atan2(fwd.z, fwd.x)
 	}
-	scene_cam_pitch = clamp(math.asin(fwd.y), -PITCH_LIMIT, PITCH_LIMIT)
+	_sv.cam_pitch = clamp(math.asin(fwd.y), -PITCH_LIMIT, PITCH_LIMIT)
 	f, _, _ := _scene_cam_basis()
-	scene_cam_pos = scene_cam_target - f * scene_cam_dist
+	_sv.cam_pos = _sv.cam_target - f * _sv.cam_dist
 	update_scene_camera()
 }
 
 @(scene_overlay={id="Orientation", order=0})
 draw_orientation_overlay :: proc(vertical: bool) {
-	if scene_2d_mode do return // nothing drawn: the overlay hides itself
+	if _sv.mode_2d do return // nothing drawn: the overlay hides itself
 
 	// Reserve the widget's box as one imgui item; everything draws into it.
-	label: cstring = scene_cam_ortho ? "Iso" : "Persp"
+	label: cstring = _sv.cam_ortho ? "Iso" : "Persp"
 	label_size := im.CalcTextSize(label)
 	im.Dummy({2 * _ORIENT_RADIUS, 2 * _ORIENT_RADIUS + 4 + label_size.y})
 	box_min := im.GetItemRectMin()
@@ -134,7 +134,7 @@ draw_orientation_overlay :: proc(vertical: bool) {
 		if hot >= 0 {
 			scene_view_from_axis(_ORIENT_AXES[hot].axis)
 		} else if over_center || over_label {
-			scene_cam_ortho = !scene_cam_ortho
+			_sv.cam_ortho = !_sv.cam_ortho
 		}
 	}
 	if hot >= 0 {
@@ -143,6 +143,6 @@ draw_orientation_overlay :: proc(vertical: bool) {
 		// one imgui item), so the tooltip is raised without an item check.
 		widgets.tooltip_unchecked(a.axis.y > 0.5 ? "Top" : a.axis.y < -0.5 ? "Bottom" : a.axis.x > 0.5 ? "Right" : a.axis.x < -0.5 ? "Left" : a.axis.z > 0.5 ? "Front" : "Back")
 	} else if over_center || over_label {
-		widgets.tooltip_unchecked(scene_cam_ortho ? "Orthographic — click for perspective" : "Perspective — click for orthographic")
+		widgets.tooltip_unchecked(_sv.cam_ortho ? "Orthographic — click for perspective" : "Perspective — click for orthographic")
 	}
 }

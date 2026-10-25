@@ -1,6 +1,6 @@
 package preview
 
-// Editor frame hooks for package editor windows: DOCKED VIEWS and SCRUB
+// Editor frame hooks for package editor windows: FRAME HOOKS and SCRUB
 // PREVIEWS (plugins/animation/docs/PlayableGraph.md step 5, plugins/sequencer/docs/Sequencer.md).
 //
 // A package editor window may pose the world for the scene/game render only
@@ -24,15 +24,15 @@ Hook :: struct {
 	restore: proc(),
 }
 
-// A docked view the editor root draws every frame in view order. The window
-// owns its own visibility (menu.show_*), so `draw` decides whether to draw —
-// the root just calls it.
-View_Hook :: struct {
-	draw: proc(),
+// Work a window does once per frame whatever its copies show, before the
+// views draw: the Animation window's transport runs here, so two copies do
+// not advance the playhead twice.
+Frame_Hook :: struct {
+	frame: proc(),
 }
 
 @(private) _hooks: [dynamic]Hook
-@(private) _views: [dynamic]View_Hook
+@(private) _frames: [dynamic]Frame_Hook
 
 // Registered once per window, at EditorInit. Process-global: never borrows
 // the caller's allocator.
@@ -41,15 +41,15 @@ register :: proc(hook: Hook) {
 	append(&_hooks, hook)
 }
 
-register_view :: proc(hook: View_Hook) {
+register_frame :: proc(hook: Frame_Hook) {
 	context.allocator = runtime.default_allocator()
-	append(&_views, hook)
+	append(&_frames, hook)
 }
 
-// Drawn with the root's own views, before the scene/game render.
-draw_views :: proc() {
-	for v in _views {
-		if v.draw != nil do v.draw()
+// Once per frame, before the views draw and the scene/game render.
+frame_all :: proc() {
+	for f in _frames {
+		if f.frame != nil do f.frame()
 	}
 }
 
@@ -68,6 +68,6 @@ restore_all :: proc() {
 shutdown :: proc() {
 	delete(_hooks)
 	_hooks = nil
-	delete(_views)
-	_views = nil
+	delete(_frames)
+	_frames = nil
 }

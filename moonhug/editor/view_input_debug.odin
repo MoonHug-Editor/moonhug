@@ -52,8 +52,8 @@ draw_input_debug :: proc() {
 	im.SeparatorText("editor gates")
 	_dbg_text("any item active: %v (stuck true blocks every view's key handling)", im.IsAnyItemActive())
 	_dbg_text("hierarchy rename active: %v", session.hierarchy_rename_active())
-	_dbg_text("project rename active: %v", _project_rename_active)
-	_dbg_text("scene view hovered: %v", scene_view_hovered)
+	_dbg_text("project rename active: %v", _pv.rename_active)
+	_dbg_text("scene view hovered: %v", _sv.hovered)
 
 	im.Separator()
 	if im.Button("Reset editor input gates") {
@@ -61,7 +61,7 @@ draw_input_debug :: proc() {
 		// gate keyboard handling. If this revives the keyboard, the culprit
 		// was one of the gates above; if not, the problem is SDL/imgui-side.
 		session.reset_input_gates()
-		_project_rename_active = false
-		_project_rename_just_finished = false
+		_pv.rename_active = false
+		_pv.rename_just_finished = false
 	}
 }

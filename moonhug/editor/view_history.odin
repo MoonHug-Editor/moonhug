@@ -3,27 +3,24 @@ package editor
 import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import "menu"
 import "undo"
 import "moonhug:editor/widgets"
-import "moonhug:editor/icons"
+import wnd "moonhug:editor/window"
 
-@(private="file")
-_history_selected: int = -1
+// One History copy's own state.
+@(private = "file")
+_History_View :: struct {
+	selected:    int, // the entry shown in the details pane: 0 the initial state, -1 none
+	last_count:  int, // entries last frame: more means a new step to scroll to
+	split_ratio: f32, // the list's share of the list/details split
+}
 
-@(private="file")
-_history_last_count: int
+@(private = "file")
+_hv: ^_History_View
 
-@(private="file")
-_history_split_ratio: f32 = 0.6
-
-draw_history_view :: proc() {
-	if !im.Begin(icons.TITLE_HISTORY, &menu.show_history, {.NoCollapse}) {
-		im.End()
-		return
-	}
-	defer im.End()
-
+@(editor_window={id="History", title="History", icon="HISTORY"})
+history_view_draw :: proc(w: ^wnd.Window) {
+	_hv = wnd.state(w, _History_View{selected = -1, split_ratio = 0.6})
 	s := undo.get()
 	if s == nil {
 		im.TextDisabled("Undo stack unavailable")
@@ -40,7 +37,7 @@ draw_history_view :: proc() {
 	im.SameLine()
 	if im.Button("Clear") {
 		undo.clear(s)
-		_history_selected = -1
+		_hv.selected = -1
 	}
 
 	items := undo.entries(s)
@@ -52,7 +49,7 @@ draw_history_view :: proc() {
 	avail := im.GetContentRegionAvail()
 	split_total := avail.y - widgets.SPLITTER_SIZE
 	MIN_PANE :: f32(60)
-	list_h := split_total * _history_split_ratio
+	list_h := split_total * _hv.split_ratio
 	if list_h < MIN_PANE do list_h = MIN_PANE
 	if list_h > split_total - MIN_PANE do list_h = split_total - MIN_PANE
 	details_h := split_total - list_h
@@ -63,20 +60,20 @@ draw_history_view :: proc() {
 
 		if im.IsWindowFocused() {
 			if im.IsKeyPressed(.UpArrow) {
-				if _history_selected > 0 do _history_selected -= 1
+				if _hv.selected > 0 do _hv.selected -= 1
 				im.SetScrollHereY(0)
 			}
 			if im.IsKeyPressed(.DownArrow) {
-				if _history_selected < max_index do _history_selected += 1
+				if _hv.selected < max_index do _hv.selected += 1
 				im.SetScrollHereY(1)
 			}
 			if im.IsKeyPressed(.Enter) {
-				undo.jump_to(s, _history_selected)
+				undo.jump_to(s, _hv.selected)
 			}
 		}
 
-		if im.Selectable("<initial>", _history_selected == 0, {.SpanAllColumns}) {
-			_history_selected = 0
+		if im.Selectable("<initial>", _hv.selected == 0, {.SpanAllColumns}) {
+			_hv.selected = 0
 		}
 		if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
 			undo.jump_to(s, 0)
@@ -108,8 +105,8 @@ draw_history_view :: proc() {
 			}
 			im.PushStyleColorImVec4(.Text, text_col)
 
-			if im.Selectable(crow, _history_selected == step_index, {.SpanAllColumns}) {
-				_history_selected = step_index
+			if im.Selectable(crow, _hv.selected == step_index, {.SpanAllColumns}) {
+				_hv.selected = step_index
 			}
 			im.PopStyleColor()
 
@@ -118,35 +115,35 @@ draw_history_view :: proc() {
 			}
 		}
 
-		if len(items) > _history_last_count {
+		if len(items) > _hv.last_count {
 			im.SetScrollHereY(1)
 		}
-		_history_last_count = len(items)
+		_hv.last_count = len(items)
 	}
 	im.EndChild()
 
 	if widgets.splitter("##hsplit", false, &list_h, &details_h, MIN_PANE, MIN_PANE) {
-		_history_split_ratio = list_h / split_total
+		_hv.split_ratio = list_h / split_total
 	}
 
 	im.BeginChild("HistoryDetails", im.Vec2{0, 0}, {.Borders})
 	defer im.EndChild()
 
-	if _history_selected < 0 {
+	if _hv.selected < 0 {
 		im.TextDisabled("Select an entry to see details")
 		return
 	}
-	if _history_selected == 0 {
+	if _hv.selected == 0 {
 		im.Text("Initial state")
 		im.TextDisabled("Double-click any row to jump to that step.")
 		return
 	}
-	if _history_selected > len(items) {
-		_history_selected = -1
+	if _hv.selected > len(items) {
+		_hv.selected = -1
 		return
 	}
 
-	entry := items[_history_selected - 1]
+	entry := items[_hv.selected - 1]
 	_draw_history_entry_details(&entry)
 }
 

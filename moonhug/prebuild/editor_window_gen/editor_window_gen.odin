@@ -27,6 +27,7 @@ WindowEntry :: struct {
 	icon:        string, // icons.ICON_MD_<icon>; EXTENSION when the attribute has none
 	name:        string, // draw proc
 	closed:      string, // the proc that frees an instance's state, "" for none
+	canvas:      bool,   // drawn edge to edge, without padding or scrollbars
 	width:       int,
 	height:      int,
 	source_pkg:  string,
@@ -77,6 +78,7 @@ provide :: proc(w: ^db.World) -> bool {
 				icon        = icon,
 				name        = decl.name,
 				closed      = args.fields["closed"],
+				canvas      = args.fields["canvas"] == "true",
 				width       = gen_facts.attr_int(args, "width"),
 				height      = gen_facts.attr_int(args, "height"),
 				source_pkg  = decl.pkg.name,
@@ -180,6 +182,7 @@ generate :: proc(w: ^db.World) -> bool {
 			if e.source_pkg != "" && e.source_pkg != _PKG_NAME do closed = fmt.tprintf("%s.%s", e.source_pkg, e.closed)
 			fmt.sbprintf(&b, ", closed = %s", closed)
 		}
+		if e.canvas do strings.write_string(&b, ", canvas = true")
 		strings.write_string(&b, ")\n")
 	}
 	strings.write_string(&b, "}\n")

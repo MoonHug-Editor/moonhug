@@ -39,16 +39,8 @@ EditorSettings :: struct {
     open_scene_guids:         [dynamic]string,
     recent_scene_guids:       [dynamic]string,          // File/Recent Scenes, newest first (recent_scenes.odin)
     open_window_ids:          [dynamic]string,          // plugin editor windows open last session (window/window.odin)
-    show_project:             bool,
-    show_console:             bool,
-    show_scene:               bool,
     show_game:                bool,
-    show_output:              bool,
-    show_hierarchy:           bool,
-    show_history:             bool,
-    show_animation:           bool,
-    show_playable_graph:      bool,
-    has_view_state:           bool,
+    has_window_state:         bool,                     // open_window_ids and show_game are saved: false on a first run
     scene_overlays:           [dynamic]Overlay_Setting, // dockable overlay placement (dock.odin)
     grid:                     Grid_Settings,            // scene grid (view_scene.odin)
     snap:                     Snap_Settings,            // gizmo snapping (view_scene.odin)
@@ -92,7 +84,7 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
             if editor_settings.snap.angle > 0 {
                 snap_settings = editor_settings.snap
             }
-            scene_cam_ortho = editor_settings.scene_ortho
+            _sv_plain.cam_ortho = editor_settings.scene_ortho
             game_size_index = editor_settings.game_size_index
             // Zero = the field predates this setting; keep the 1x default.
             if editor_settings.game_scale > 0 do game_scale = editor_settings.game_scale
@@ -103,18 +95,10 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
             if editor_settings.gizmo_icon_px > 0 do handles.icon_px = editor_settings.gizmo_icon_px
             for name in editor_settings.gizmo_hidden_icons do gizmos.gizmo_type_set(name, .Icon, false)
             for name in editor_settings.gizmo_hidden_gizmos do gizmos.gizmo_type_set(name, .Gizmo, false)
-            if editor_settings.scene_2d do _scene_2d_pending = true
-            scene_view_mode = editor_settings.scene_mode
-            if editor_settings.has_view_state {
-                menu.show_project           = editor_settings.show_project
-                menu.show_console           = editor_settings.show_console
-                menu.show_scene             = editor_settings.show_scene
+            if editor_settings.scene_2d do _sv_plain.pending_2d = true
+            _sv_plain.view_mode = editor_settings.scene_mode
+            if editor_settings.has_window_state {
                 menu.show_game              = editor_settings.show_game
-                menu.show_output            = editor_settings.show_output
-                menu.show_hierarchy         = editor_settings.show_hierarchy
-                menu.show_history           = editor_settings.show_history
-                menu.show_animation         = editor_settings.show_animation
-                menu.show_playable_graph    = editor_settings.show_playable_graph
             }
             if editor_settings.width > 0 && editor_settings.height > 0 {
                 return editor_settings.width, editor_settings.height, editor_settings.x, editor_settings.y
@@ -146,16 +130,8 @@ save_editor_settings :: proc() {
     editor_settings.y      = pos.y
     editor_settings.theme  = menu.active_theme
 
-    editor_settings.show_project           = menu.show_project
-    editor_settings.show_console           = menu.show_console
-    editor_settings.show_scene             = menu.show_scene
     editor_settings.show_game              = menu.show_game
-    editor_settings.show_output            = menu.show_output
-    editor_settings.show_hierarchy         = menu.show_hierarchy
-    editor_settings.show_history           = menu.show_history
-    editor_settings.show_animation         = menu.show_animation
-    editor_settings.show_playable_graph    = menu.show_playable_graph
-    editor_settings.has_view_state         = true
+    editor_settings.has_window_state       = true
 
     // Plugin windows: imgui.ini keeps each instance's dock and size, not
     // whether it existed: the instance keys are what reopen them.
@@ -166,9 +142,9 @@ save_editor_settings :: proc() {
     overlays_capture_settings()
     editor_settings.grid = grid_settings
     editor_settings.snap = snap_settings
-    editor_settings.scene_ortho = _pre_2d_ortho if scene_2d_mode else scene_cam_ortho
-    editor_settings.scene_2d = scene_2d_mode
-    editor_settings.scene_mode = scene_view_mode
+    editor_settings.scene_ortho = _sv_plain.pre_2d_ortho if _sv_plain.mode_2d else _sv_plain.cam_ortho
+    editor_settings.scene_2d = _sv_plain.mode_2d
+    editor_settings.scene_mode = _sv_plain.view_mode
     editor_settings.game_size_index = game_size_index
     editor_settings.game_scale = game_scale
     editor_settings.game_size_flipped = game_size_flipped

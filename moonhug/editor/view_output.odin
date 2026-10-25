@@ -3,18 +3,21 @@ package editor
 import "core:strings"
 import "core:sync"
 import im "moonhug:external/odin-imgui"
-import "menu"
-import "moonhug:editor/icons"
+import wnd "moonhug:editor/window"
 
 MAX_OUTPUT_LINES :: 2000
 
-// Off means the view stays where you scrolled it while a build keeps writing,
-// which is the only way to read an error that has scrolled past.
-output_follow_tail := true
-
 _output_lines: [dynamic]string
 _output_mutex: sync.Mutex
-_output_last_count: int
+
+// One Output copy's own state.
+@(private = "file")
+_Output_View :: struct {
+	// Off means the view stays where you scrolled it while a build keeps
+	// writing, which is the only way to read an error that has scrolled past.
+	follow_tail: bool,
+	last_count:  int, // lines shown last frame: more means new output
+}
 
 output_view_append :: proc(stdout, stderr: []byte) {
 	if len(stdout) == 0 && len(stderr) == 0 do return
@@ -71,22 +74,16 @@ output_view_clear :: proc() {
 		delete(line)
 	}
 	clear(&_output_lines)
-	_output_last_count = 0
 }
 
-draw_output_view :: proc() {
-	if !im.Begin(icons.TITLE_OUTPUT, &menu.show_output, {.NoCollapse}) {
-		im.End()
-		return
-	}
-	defer im.End()
-
+@(editor_window={id="Output", title="Output", icon="RECEIPT_LONG"})
+output_view_draw :: proc(w: ^wnd.Window) {
+	ov := wnd.state(w, _Output_View{follow_tail = true})
 	if im.Button("Clear") {
 		output_view_clear()
 	}
 	im.SameLine()
-	im.SameLine()
-	filter_toggle_button("Follow", &output_follow_tail)
+	filter_toggle_button("Follow", &ov.follow_tail)
 	im.SameLine()
 	im.Text("Last run stdout/stderr (max %d lines)", MAX_OUTPUT_LINES)
 	im.Separator()
@@ -99,12 +96,12 @@ draw_output_view :: proc() {
 	joined := strings.join(_output_lines[:], "\n", context.temp_allocator)
 	sync.mutex_unlock(&_output_mutex)
 
-	if output_follow_tail && n > _output_last_count && n > 0 {
+	if ov.follow_tail && n > ov.last_count && n > 0 {
 		// New output: pin the input's internal child (the NEXT window imgui
 		// creates) to the bottom. x = -1 leaves horizontal scroll alone.
 		im.SetNextWindowScroll(im.Vec2{-1, max(f32)})
 	}
-	_output_last_count = n
+	ov.last_count = n
 	buf := strings.clone_to_cstring(joined, context.temp_allocator)
 	im.InputTextMultiline("##output_text", buf, len(joined) + 1, im.Vec2{-1, -1}, {.ReadOnly})
 }

@@ -36,16 +36,13 @@ import engine "moonhug:packages/engine"
 import gfx "moonhug:libs/gfx"
 import anim "moonhug:packages/animation"
 import "moonhug:editor/inspector"
-import "moonhug:editor/menu"
 import "moonhug:editor/session"
 import "moonhug:editor/undo"
 import "moonhug:editor/preview"
 import "moonhug:editor/widgets"
+import wnd "moonhug:editor/window"
 import "moonhug:editor/icons"
 
-// Property column width, dragged via the pane splitter between it and the
-// time canvas.
-@(private = "file") _anim_left_w: f32 = 200
 @(private = "file") _ANIM_MIN_LEFT_W :: f32(120)
 @(private = "file") _ANIM_MIN_CANVAS_W :: f32(80)
 @(private = "file") _ANIM_RULER_H :: f32(22) // minimum: the band grows to a frame height
@@ -88,11 +85,6 @@ _pv: struct {
 	graph_sig: u64, // authored clip set the graph was built from
 	ready:     bool,
 
-	// Set by the sheet each frame: the pointer is over the time canvas, where
-	// the wheel zooms. Read by the body child, which scrolls on the wheel only
-	// when it is false.
-	over_canvas: bool,
-
 	// STATE mode: the States tree is previewing an authored state rather than
 	// the window scrubbing a clip. Both drive this one preview, so they cannot
 	// pose the object at the same time — entry 0 means clip-scrub mode.
@@ -114,6 +106,21 @@ _pv: struct {
 	// alone never keys because authored values do not move with the playhead.
 	rec_shadow: [dynamic][4]f32,
 
+	sync:      bool, // document edited this frame -> push to the clip cache
+}
+
+ANIMATION_VIEW :: "Animation"
+
+// One Animation copy's own state: how it shows the clip. The clip, the
+// playhead and the transport are the preview's (_pv), shared by every copy,
+// since the world holds one pose.
+@(private = "file")
+_Anim_View :: struct {
+	left_w:    f32, // property column width, dragged via the pane splitter
+	// Set by the sheet each frame: the pointer is over the time canvas, where
+	// the wheel zooms. Read by the body child, which scrolls on the wheel only
+	// when it is false.
+	over_canvas: bool,
 	mode:      _Anim_Mode,
 	sel_ch:    int, // selected channel row, -1 = none
 	sel_key:   int, // PRIMARY selected key in sel_ch, -1 = none
@@ -128,49 +135,77 @@ _pv: struct {
 	// Box select in progress, and where it started (screen space).
 	box:       bool,
 	box_from:  im.Vec2,
-
 	// Time-axis view, the sequencer's model: zoom is a multiple of the scale
 	// that fits the whole clip, so 1 is "fit" and pan is then pinned to 0.
 	// pan is the time at the canvas's left edge.
 	zoom:      f32,
 	pan:       f32,
 	wheel:     widgets.Wheel_Lock, // one wheel axis per gesture
-	sync:      bool, // document edited this frame -> push to the clip cache
+}
+
+_ANIM_VIEW_INIT :: _Anim_View{left_w = 200, sel_ch = -1, sel_key = -1}
+
+// The copy being drawn, and outside a draw the copy clicked in last. With no
+// copy open it points at a spare state, so a write lands nowhere.
+@(private = "file")
+_av: ^_Anim_View = &_av_none
+
+@(private = "file")
+_av_none := _ANIM_VIEW_INIT
+
+@(private = "file")
+_anim_view :: proc(w: ^wnd.Window) -> ^_Anim_View {
+	return wnd.state(w, _ANIM_VIEW_INIT)
+}
+
+@(private = "file")
+_anim_view_free :: proc(av: ^_Anim_View) {
+	context.allocator = runtime.default_allocator()
+	delete(av.sel)
+	delete(av.drag_t0)
+	av.sel = nil
+	av.drag_t0 = nil
+}
+
+animation_view_closed :: proc(w: ^wnd.Window) {
+	av := (^_Anim_View)(w.data)
+	if av == nil do return
+	if _av == av do _av = &_av_none
+	_anim_view_free(av)
+	free(av, runtime.default_allocator())
+	w.data = nil
 }
 
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
 animation_preview_install :: proc() {
 	preview.register({apply = animation_preview_apply, restore = animation_preview_restore})
-	preview.register_view({draw = _animation_views_draw})
+	preview.register_frame({frame = _animation_views_frame})
 }
 
-// Both animation views in one entry: visibility is the menu's persisted
-// flags, and the window that is CLOSED must still stop its preview.
+// The preview's own frame, once per frame before the views draw: with an
+// Animation copy open it follows the target and runs the transport, whether
+// or not a copy is visible, and with none open the preview ends.
 @(private = "file")
-_animation_views_draw :: proc() {
-	if menu.show_animation {
-		draw_animation_view()
+_animation_views_frame :: proc() {
+	if wnd.is_open(ANIMATION_VIEW) {
+		_animation_frame()
 	} else {
 		animation_preview_stop()
-	}
-	if menu.show_playable_graph {
-		draw_playable_graph_view()
 	}
 }
 
 @(phase={key=engine.Phase.EditorShutdown, order=1, mode=Editor})
 animation_views_shutdown :: proc() {
-	shutdown_playable_graph_view()
 	shutdown_animation_view()
 	shutdown_animation_inspector()
 }
 
 shutdown_animation_view :: proc() {
 	_pv_teardown()
+	_anim_view_free(&_av_none)
 }
 
-// Closing the window ends the preview. Called from the main
-// loop when the window toggle is off.
+// Closing the last Animation copy ends the preview.
 animation_preview_stop :: proc() {
 	_pv_preview_off()
 }
@@ -218,7 +253,7 @@ _pv_teardown :: proc() {
 // Play an authored state on `owner` in edit mode, from its start.
 preview_play_entry :: proc(owner: engine.Transform_Handle, id: i32) {
 	if _pv.owner != owner {
-		_pv_deselect()
+		_pv_deselect_all()
 		_pv.owner = owner
 		_pv.clip = {}
 	}
@@ -242,13 +277,24 @@ preview_stop_entry :: proc() {
 	_pv_teardown()
 }
 
+// Clears every copy's key selection: the clip they select in changed.
+@(private = "file")
+_pv_deselect_all :: proc() {
+	prev := _av
+	defer _av = prev
+	for w in wnd.instances(ANIMATION_VIEW) {
+		_av = _anim_view(w)
+		_pv_deselect()
+	}
+}
+
 @(private = "file")
 _pv_deselect :: proc() {
-	_pv.sel_ch = -1
-	_pv.sel_key = -1
-	clear(&_pv.sel)
-	_pv.drag_key = false
-	_pv.box = false
+	_av.sel_ch = -1
+	_av.sel_key = -1
+	clear(&_av.sel)
+	_av.drag_key = false
+	_av.box = false
 }
 
 // --- Key selection ---------------------------------------------------------------------
@@ -256,39 +302,39 @@ _pv_deselect :: proc() {
 // Replace the selection with one key, which becomes primary.
 @(private = "file")
 _pv_sel_set :: proc(ch, key: int) {
-	clear(&_pv.sel)
-	append(&_pv.sel, _Key_Ref{ch, key})
-	_pv.sel_ch = ch
-	_pv.sel_key = key
+	clear(&_av.sel)
+	append(&_av.sel, _Key_Ref{ch, key})
+	_av.sel_ch = ch
+	_av.sel_key = key
 }
 
 // Add a key to the selection, or drop it when already there (additive click).
 // The clicked key becomes primary either way it stays selected.
 @(private = "file")
 _pv_sel_toggle :: proc(ch, key: int) {
-	for r, i in _pv.sel {
+	for r, i in _av.sel {
 		if r.ch == ch && r.key == key {
-			ordered_remove(&_pv.sel, i)
+			ordered_remove(&_av.sel, i)
 			// The primary went with it: fall back to any remaining key.
-			if _pv.sel_ch == ch && _pv.sel_key == key {
-				if len(_pv.sel) > 0 {
-					_pv.sel_ch = _pv.sel[0].ch
-					_pv.sel_key = _pv.sel[0].key
+			if _av.sel_ch == ch && _av.sel_key == key {
+				if len(_av.sel) > 0 {
+					_av.sel_ch = _av.sel[0].ch
+					_av.sel_key = _av.sel[0].key
 				} else {
-					_pv.sel_key = -1
+					_av.sel_key = -1
 				}
 			}
 			return
 		}
 	}
-	append(&_pv.sel, _Key_Ref{ch, key})
-	_pv.sel_ch = ch
-	_pv.sel_key = key
+	append(&_av.sel, _Key_Ref{ch, key})
+	_av.sel_ch = ch
+	_av.sel_key = key
 }
 
 @(private = "file")
 _pv_sel_has :: proc(ch, key: int) -> bool {
-	for r in _pv.sel {
+	for r in _av.sel {
 		if r.ch == ch && r.key == key do return true
 	}
 	return false
@@ -298,10 +344,10 @@ _pv_sel_has :: proc(ch, key: int) -> bool {
 // removed by undo, or by deleting keys).
 @(private = "file")
 _pv_sel_prune :: proc(clip: ^anim.AnimationClip) {
-	for i := len(_pv.sel) - 1; i >= 0; i -= 1 {
-		r := _pv.sel[i]
+	for i := len(_av.sel) - 1; i >= 0; i -= 1 {
+		r := _av.sel[i]
 		if r.ch < 0 || r.ch >= len(clip.channels) || r.key < 0 || r.key >= len(clip.channels[r.ch].times) {
-			ordered_remove(&_pv.sel, i)
+			ordered_remove(&_av.sel, i)
 		}
 	}
 }
@@ -443,8 +489,8 @@ _pv_field_undo :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cha
 	if changed do _pv_mark_edited(doc)
 	if im.IsItemDeactivatedAfterEdit() {
 		if _pv_sel_valid(clip) {
-			ch := &clip.channels[_pv.sel_ch]
-			if ch.path == .Rotation do _pv_normalize_rot_key(ch, _pv.sel_key)
+			ch := &clip.channels[_av.sel_ch]
+			if ch.path == .Rotation do _pv_normalize_rot_key(ch, _av.sel_key)
 		}
 		_pv_edit_commit(doc)
 	}
@@ -458,8 +504,8 @@ _pv_normalize_rot_key :: proc(ch: ^anim.Animation_Channel, k: int) {
 
 @(private = "file")
 _pv_sel_valid :: proc(clip: ^anim.AnimationClip) -> bool {
-	if _pv.sel_ch < 0 || _pv.sel_ch >= len(clip.channels) do return false
-	return _pv.sel_key >= 0 && _pv.sel_key < len(clip.channels[_pv.sel_ch].times)
+	if _av.sel_ch < 0 || _av.sel_ch >= len(clip.channels) do return false
+	return _av.sel_key >= 0 && _av.sel_key < len(clip.channels[_av.sel_ch].times)
 }
 
 // Value lanes a channel edits: transform channels by path, property channels
@@ -539,11 +585,11 @@ _pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx
 _pv_delete_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	if !_pv_sel_valid(clip) do return
 	_pv_sel_prune(clip)
-	if len(_pv.sel) == 0 do return
+	if len(_av.sel) == 0 do return
 
 	// Highest key index first, so each removal cannot shift the next one.
-	refs := make([dynamic]_Key_Ref, 0, len(_pv.sel), context.temp_allocator)
-	append(&refs, .._pv.sel[:])
+	refs := make([dynamic]_Key_Ref, 0, len(_av.sel), context.temp_allocator)
+	append(&refs, .._av.sel[:])
 	slice.sort_by(refs[:], proc(a, b: _Key_Ref) -> bool {
 		return a.ch != b.ch ? a.ch > b.ch : a.key > b.key
 	})
@@ -726,7 +772,7 @@ _pv_drag_time_bounds :: proc(ch: ^anim.Animation_Channel, k: int, length: f32) -
 @(private = "file")
 _pv_sel_mask :: proc(ch_idx, count: int) -> []bool {
 	mask := make([]bool, count, context.temp_allocator)
-	for r in _pv.sel {
+	for r in _av.sel {
 		if r.ch == ch_idx && r.key >= 0 && r.key < count do mask[r.key] = true
 	}
 	return mask
@@ -734,32 +780,26 @@ _pv_sel_mask :: proc(ch_idx, count: int) -> []bool {
 
 // --- Window ---------------------------------------------------------------------------
 
-draw_animation_view :: proc() {
-	if !im.Begin(session.view_title(icons.TITLE_ANIMATION), &menu.show_animation, {.NoCollapse}) {
-		// Tabbed-away, not closed: the preview keeps running.
-		im.End()
-		return
-	}
-	defer im.End()
-
+// The target and the transport: retargeting follows the selection, the
+// playhead advances, recording keys edits.
+@(private = "file")
+_animation_frame :: proc() {
 	owner, a := _pv_target()
 	if a == nil {
 		_pv_preview_off()
-		im.TextDisabled("Select an object with an Animation component.")
 		return
 	}
 	// Retarget follows selection: the old target's graph and binding
 	// belong to the old owner.
 	if owner != _pv.owner {
 		_pv_teardown()
-		_pv_deselect()
+		_pv_deselect_all()
 		_pv.owner = owner
 	}
 
 	clips := _pv_clips(a)
 	if len(clips) == 0 {
 		_pv_preview_off()
-		im.TextDisabled("The Animation component has no clips.")
 		return
 	}
 	in_list := false
@@ -768,27 +808,50 @@ draw_animation_view :: proc() {
 	}
 	if !in_list {
 		_pv_teardown()
-		_pv_deselect()
+		_pv_deselect_all()
 		_pv.clip = clips[0]
 		_pv.time = 0
 	}
 
 	doc, clip := _pv_doc()
 	length := clip != nil ? max(clip.length, 0.0001) : 0.0001
-
-	_pv_draw_toolbar(clip, length)
 	_pv_advance(clip, length)
 	_pv_rec_poll(doc, clip)
+}
+
+@(editor_window={id="Animation", title="Animation", icon="ANIMATION", closed=animation_view_closed})
+animation_view_draw :: proc(w: ^wnd.Window) {
+	_av = _anim_view(w)
+	defer {
+		last := wnd.last(ANIMATION_VIEW)
+		_av = _anim_view(last) if last != nil else &_av_none
+	}
+
+	_, a := _pv_target()
+	if a == nil {
+		im.TextDisabled("Select an object with an Animation component.")
+		return
+	}
+	clips := _pv_clips(a)
+	if len(clips) == 0 {
+		im.TextDisabled("The Animation component has no clips.")
+		return
+	}
+
+	doc, clip := _pv_doc()
+	length := clip != nil ? max(clip.length, 0.0001) : 0.0001
+
+	_pv_draw_toolbar(clip, length)
 
 	if clip == nil {
 		// The picker still draws, so a broken clip is not a dead end.
-		_pv_draw_sheet_header(doc, nil, clips, _anim_left_w)
+		_pv_draw_sheet_header(doc, nil, clips, _av.left_w)
 		im.TextDisabled("The clip has no document (missing or unreadable .anim).")
 		return
 	}
 	// Undo may have shrunk the clip since the selection was made.
-	if _pv.sel_ch >= len(clip.channels) do _pv_deselect()
-	if _pv.sel_ch >= 0 && _pv.sel_key >= len(clip.channels[_pv.sel_ch].times) do _pv.sel_key = -1
+	if _av.sel_ch >= len(clip.channels) do _pv_deselect()
+	if _av.sel_ch >= 0 && _av.sel_key >= len(clip.channels[_av.sel_ch].times) do _av.sel_key = -1
 	_pv_sel_prune(clip)
 
 	// The sheet, then the view tabs under it: the tabs belong to the sheet,
@@ -803,7 +866,7 @@ draw_animation_view :: proc() {
 	// same way.
 	im.BeginChild("##anim_body", im.Vec2{0, body_h}, {.Borders}, {.NoScrollWithMouse})
 	_pv_draw_sheet(doc, clip, clips)
-	if !_pv.over_canvas && im.IsWindowHovered(im.HoveredFlags_ChildWindows) {
+	if !_av.over_canvas && im.IsWindowHovered(im.HoveredFlags_ChildWindows) {
 		if wheel := im.GetIO().MouseWheel; wheel != 0 {
 			im.SetScrollY(im.GetScrollY() - wheel * im.GetTextLineHeightWithSpacing() * 3)
 		}
@@ -956,9 +1019,9 @@ _pv_draw_sheet_header :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationCl
 	widgets.tooltip("Clip to edit")
 
 	im.SameLine()
-	im.BeginDisabled(doc == nil || clip == nil || _pv.sel_ch < 0 || _pv.sel_ch >= len(clip.channels))
+	im.BeginDisabled(doc == nil || clip == nil || _av.sel_ch < 0 || _av.sel_ch >= len(clip.channels))
 	if widgets.icon_button(icons.ICON_MD_KEYFRAME, "##addkey", "Add a keyframe on the selected property") {
-		_pv_add_key(doc, clip, _pv.sel_ch, _pv.time)
+		_pv_add_key(doc, clip, _av.sel_ch, _pv.time)
 	}
 	im.EndDisabled()
 }
@@ -968,12 +1031,12 @@ _pv_draw_sheet_header :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationCl
 _pv_draw_mode_tabs :: proc() {
 	if !im.BeginTabBar("##anim_modes", {}) do return
 	defer im.EndTabBar()
-	// imgui owns which tab is open and _pv.mode follows it. Forcing the open
-	// tab from _pv.mode every frame would re-select the current one before a
+	// imgui owns which tab is open and _av.mode follows it. Forcing the open
+	// tab from _av.mode every frame would re-select the current one before a
 	// click on the other could take effect.
 	for mode in _Anim_Mode {
 		if im.BeginTabItem(fmt.ctprintf("%v", mode), nil, {}) {
-			_pv.mode = mode
+			_av.mode = mode
 			im.EndTabItem()
 		}
 	}
@@ -1129,7 +1192,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 
 	length := max(clip.length, 0.0001)
 	// Property column | splitter gap | time canvas.
-	left_w := clamp(_anim_left_w, _ANIM_MIN_LEFT_W, avail.x - widgets.SPLITTER_SIZE - _ANIM_MIN_CANVAS_W)
+	left_w := clamp(_av.left_w, _ANIM_MIN_LEFT_W, avail.x - widgets.SPLITTER_SIZE - _ANIM_MIN_CANVAS_W)
 	// The ruler band spans the whole sheet, but only the canvas half of it
 	// holds the ruler — the property column's half takes the header controls.
 	// It is at least a frame tall so they fit without a row of their own.
@@ -1146,18 +1209,18 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	x1 := origin.x + avail.x
 	// Time axis: pps (pixels per second) is the fit scale times the zoom, so
 	// zoom 1 shows the whole clip and no pan is possible.
-	if _pv.zoom < 1 do _pv.zoom = 1
+	if _av.zoom < 1 do _av.zoom = 1
 	span_px := max(x1 - x0 - 2 * _ANIM_PAD_X, 1)
 	pps_fit := span_px / length
-	pps := pps_fit * _pv.zoom
+	pps := pps_fit * _av.zoom
 	visible := span_px / pps // seconds across the canvas
-	_pv.pan = clamp(_pv.pan, 0, max(length - visible, 0))
-	tx0 := x0 + _ANIM_PAD_X - _pv.pan * pps // x of t=0
+	_av.pan = clamp(_av.pan, 0, max(length - visible, 0))
+	tx0 := x0 + _ANIM_PAD_X - _av.pan * pps // x of t=0
 
 	nrows := len(clip.channels)
 	rows_y := origin.y + ruler_h
 	body_h: f32
-	if _pv.mode == .Dopesheet {
+	if _av.mode == .Dopesheet {
 		// Fills the pane rather than stopping at the last track: the empty
 		// area below the tracks is where a box selection often starts.
 		body_h = max(f32(nrows) * _ANIM_ROW_H, max(avail.y - ruler_h, _ANIM_ROW_H))
@@ -1171,32 +1234,32 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 		mp := im.GetMousePos()
 		// Resolved every frame so a gesture times out even while the pointer
 		// is elsewhere; only acted on while the canvas is under it.
-		wheel_v, wheel_h := widgets.wheel_dominant(&_pv.wheel)
+		wheel_v, wheel_h := widgets.wheel_dominant(&_av.wheel)
 		over_canvas := im.IsWindowHovered(im.HoveredFlags_ChildWindows) && mp.x >= x0 && mp.x <= x1
-		_pv.over_canvas = over_canvas
+		_av.over_canvas = over_canvas
 		if over_canvas {
 			if wheel := wheel_v; wheel != 0 {
 				t_at := (mp.x - tx0) / pps
-				_pv.zoom = clamp(_pv.zoom * math.pow(f32(1.15), wheel), 1, 200)
-				new_pps := pps_fit * _pv.zoom
-				_pv.pan = t_at + (x0 + _ANIM_PAD_X - mp.x) / new_pps
+				_av.zoom = clamp(_av.zoom * math.pow(f32(1.15), wheel), 1, 200)
+				new_pps := pps_fit * _av.zoom
+				_av.pan = t_at + (x0 + _ANIM_PAD_X - mp.x) / new_pps
 				pps = new_pps
 				visible = span_px / pps
-				_pv.pan = clamp(_pv.pan, 0, max(length - visible, 0))
-				tx0 = x0 + _ANIM_PAD_X - _pv.pan * pps
+				_av.pan = clamp(_av.pan, 0, max(length - visible, 0))
+				tx0 = x0 + _ANIM_PAD_X - _av.pan * pps
 			}
 			// Horizontal wheel (a trackpad's sideways swipe) pans, signed the
 			// way imgui scrolls its own windows: positive moves the view
 			// toward earlier time.
 			if wheel_h != 0 {
 				step := span_px * 0.15 / pps // a sixth of the view per notch
-				_pv.pan = clamp(_pv.pan - wheel_h * step, 0, max(length - visible, 0))
-				tx0 = x0 + _ANIM_PAD_X - _pv.pan * pps
+				_av.pan = clamp(_av.pan - wheel_h * step, 0, max(length - visible, 0))
+				tx0 = x0 + _ANIM_PAD_X - _av.pan * pps
 			}
 			// Middle-drag pans too, for a mouse without a sideways wheel.
 			if im.IsMouseDragging(.Middle, 1) {
-				_pv.pan = clamp(_pv.pan - im.GetIO().MouseDelta.x / pps, 0, max(length - visible, 0))
-				tx0 = x0 + _ANIM_PAD_X - _pv.pan * pps
+				_av.pan = clamp(_av.pan - im.GetIO().MouseDelta.x / pps, 0, max(length - visible, 0))
+				tx0 = x0 + _ANIM_PAD_X - _av.pan * pps
 			}
 		}
 	}
@@ -1246,7 +1309,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	im.DrawList_PushClipRect(dl, im.Vec2{origin.x, rows_y}, im.Vec2{left_x1, rows_y + body_h}, true)
 	for &ch, i in clip.channels {
 		ry := rows_y + f32(i) * _ANIM_ROW_H
-		if i == _pv.sel_ch {
+		if i == _av.sel_ch {
 			im.DrawList_AddRectFilled(dl, im.Vec2{origin.x, ry}, im.Vec2{left_x1, ry + _ANIM_ROW_H}, im.GetColorU32(.Header, 0.7))
 		} else if i % 2 == 1 {
 			im.DrawList_AddRectFilled(dl, im.Vec2{origin.x, ry}, im.Vec2{left_x1, ry + _ANIM_ROW_H}, im.GetColorU32(.FrameBg, 0.25))
@@ -1262,14 +1325,14 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	// Right-click a row: channel operations.
 	if hovered && mp.x < x0 && row_at >= 0 && row_at < len(clip.channels) &&
 	   im.IsMouseClicked(.Right) {
-		_pv.sel_ch = row_at
-		_pv.sel_key = -1
+		_av.sel_ch = row_at
+		_av.sel_key = -1
 		im.OpenPopup("##anim_ch_ctx")
 	}
 	if im.BeginPopup("##anim_ch_ctx") {
-		if im.MenuItem("Remove Property") && _pv.sel_ch >= 0 && _pv.sel_ch < len(clip.channels) {
+		if im.MenuItem("Remove Property") && _av.sel_ch >= 0 && _av.sel_ch < len(clip.channels) {
 			_pv_edit_begin(doc)
-			_pv_channel_remove(clip, _pv.sel_ch)
+			_pv_channel_remove(clip, _av.sel_ch)
 			_pv_deselect()
 			_pv_edit_commit(doc)
 		}
@@ -1277,7 +1340,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	}
 
 	im.DrawList_PushClipRect(dl, canvas_clip_min, canvas_clip_max, true)
-	if _pv.mode == .Dopesheet {
+	if _av.mode == .Dopesheet {
 		_pv_sheet_dopesheet(doc, clip, dl, origin, rows_y, body_h, x0, x1, tx0, pps, hovered, mp, row_at)
 	} else {
 		_pv_sheet_curves(doc, clip, dl, rows_y, body_h, x0, x1, tx0, pps, mp, row_at)
@@ -1293,47 +1356,47 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	im.DrawList_PopClipRect(dl)
 
 	// Shared drag update/commit (a drag started in either mode).
-	if _pv.drag_key {
-		if !_pv_sel_valid(clip) || len(_pv.sel) != len(_pv.drag_t0) {
+	if _av.drag_key {
+		if !_pv_sel_valid(clip) || len(_av.sel) != len(_av.drag_t0) {
 			// A key vanished mid-drag, so there is no edit to record.
-			_pv.drag_key = false
+			_av.drag_key = false
 			undo.edit_session_abort(&_pv_session)
 		} else if im.IsMouseDown(.Left) {
 			// One delta for the whole selection, snapped, then clamped by the
 			// tightest neighbour bound among the dragged keys so none of them
 			// can cross another and reorder the channel.
-			want := _pv_snap_time(clip, (mp.x - tx0) / pps) - _pv.drag_from
+			want := _pv_snap_time(clip, (mp.x - tx0) / pps) - _av.drag_from
 			lo_d, hi_d := -max(f32), max(f32)
-			for r, i in _pv.sel {
+			for r, i in _av.sel {
 				ch := &clip.channels[r.ch]
 				mask := _pv_sel_mask(r.ch, len(ch.times))
 				lo, hi := anim.animation_key_bounds(ch.times[:], mask, r.key, clip.length)
-				lo_d = max(lo_d, lo - _pv.drag_t0[i])
-				hi_d = min(hi_d, hi - _pv.drag_t0[i])
+				lo_d = max(lo_d, lo - _av.drag_t0[i])
+				hi_d = min(hi_d, hi - _av.drag_t0[i])
 			}
 			d := clamp(want, lo_d, hi_d)
-			for r, i in _pv.sel {
-				clip.channels[r.ch].times[r.key] = _pv.drag_t0[i] + d
+			for r, i in _av.sel {
+				clip.channels[r.ch].times[r.key] = _av.drag_t0[i] + d
 			}
-			if _pv.drag_comp >= 0 {
+			if _av.drag_comp >= 0 {
 				// Curves: y edits the grabbed component's value on the primary
 				// key only — the others have their own values to keep.
-				ch := &clip.channels[_pv.sel_ch]
-				ch.values[_pv.sel_key][_pv.drag_comp] = _pv_curve_y_to_v(mp.y, rows_y, body_h)
+				ch := &clip.channels[_av.sel_ch]
+				ch.values[_av.sel_key][_av.drag_comp] = _pv_curve_y_to_v(mp.y, rows_y, body_h)
 			}
 			_pv_mark_edited(doc)
 		} else {
-			ch := &clip.channels[_pv.sel_ch]
-			if ch.path == .Rotation && _pv.drag_comp >= 0 do _pv_normalize_rot_key(ch, _pv.sel_key)
+			ch := &clip.channels[_av.sel_ch]
+			if ch.path == .Rotation && _av.drag_comp >= 0 do _pv_normalize_rot_key(ch, _av.sel_key)
 			_pv_edit_commit(doc)
-			_pv.drag_key = false
+			_av.drag_key = false
 		}
 	}
 
 	// Key context menu (opened by the mode-specific right-click handling).
 	if im.BeginPopup("##anim_key_ctx") {
 		can_delete := _pv_sel_valid(clip)
-		label: cstring = len(_pv.sel) > 1 ? fmt.ctprintf("Delete %d Keys", len(_pv.sel)) : "Delete Key"
+		label: cstring = len(_av.sel) > 1 ? fmt.ctprintf("Delete %d Keys", len(_av.sel)) : "Delete Key"
 		if im.MenuItem(label, nil, false, can_delete) do _pv_delete_key(doc, clip)
 		im.EndPopup()
 	}
@@ -1363,7 +1426,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	canvas_w := x1 - x0
 	im.SetCursorScreenPos(im.Vec2{left_x1, origin.y})
 	if widgets.splitter("##anim_split", true, &left_w, &canvas_w, _ANIM_MIN_LEFT_W, _ANIM_MIN_CANVAS_W) {
-		_anim_left_w = left_w
+		_av.left_w = left_w
 	}
 }
 
@@ -1427,24 +1490,24 @@ _pv_sheet_dopesheet :: proc(
 			// Dragging a key that is already selected moves the whole
 			// selection; grabbing an unselected one selects just it.
 			if !_pv_sel_has(row_at, k) do _pv_sel_set(row_at, k)
-			_pv.sel_ch = row_at
-			_pv.sel_key = k
+			_av.sel_ch = row_at
+			_av.sel_key = k
 			_pv_drag_begin(doc, clip, (mp.x - tx0) / pps, comp = -1)
 		case in_canvas:
 			// Empty canvas, on a track row or below the last one: rubber-band
 			// a new selection. The row under the press only sets the channel
 			// when there is one, so a band started below the tracks leaves
 			// the current channel alone.
-			if valid_row do _pv.sel_ch = row_at
-			_pv.sel_key = -1
-			clear(&_pv.sel)
-			_pv.box = true
-			_pv.box_from = mp
+			if valid_row do _av.sel_ch = row_at
+			_av.sel_key = -1
+			clear(&_av.sel)
+			_av.box = true
+			_av.box_from = mp
 		case valid_row:
 			// Left panel: pick the channel.
-			_pv.sel_ch = row_at
-			_pv.sel_key = -1
-			clear(&_pv.sel)
+			_av.sel_ch = row_at
+			_av.sel_key = -1
+			clear(&_av.sel)
 		}
 	}
 	if im.IsItemClicked(.Right) && valid_row {
@@ -1452,45 +1515,45 @@ _pv_sheet_dopesheet :: proc(
 			// Right-clicking outside the selection retargets it, so the menu
 			// always acts on what is under the cursor.
 			if !_pv_sel_has(row_at, k) do _pv_sel_set(row_at, k)
-			_pv.sel_ch = row_at
-			_pv.sel_key = k
+			_av.sel_ch = row_at
+			_av.sel_key = k
 			im.OpenPopup("##anim_key_ctx")
 		}
 	}
 	// Double-click on empty canvas: add a key there (sampled, shape-preserving).
 	if hovered && valid_row && mp.x >= x0 && im.IsMouseDoubleClicked(.Left) {
 		if _pv_key_hit_x(&clip.channels[row_at], mp.x, tx0, pps) < 0 {
-			_pv.box = false // the press that opened the band was this click
+			_av.box = false // the press that opened the band was this click
 			_pv_add_key(doc, clip, row_at, _pv_snap_time(clip, (mp.x - tx0) / pps))
 		}
 	}
 
 	// --- Box select: every key inside the band, across channels.
-	if _pv.box {
-		rmin := im.Vec2{min(_pv.box_from.x, mp.x), min(_pv.box_from.y, mp.y)}
-		rmax := im.Vec2{max(_pv.box_from.x, mp.x), max(_pv.box_from.y, mp.y)}
+	if _av.box {
+		rmin := im.Vec2{min(_av.box_from.x, mp.x), min(_av.box_from.y, mp.y)}
+		rmax := im.Vec2{max(_av.box_from.x, mp.x), max(_av.box_from.y, mp.y)}
 		im.DrawList_AddRectFilled(dl, rmin, rmax, im.GetColorU32(.Header, 0.35))
 		im.DrawList_AddRect(dl, rmin, rmax, im.GetColorU32(.CheckMark))
 
-		clear(&_pv.sel)
+		clear(&_av.sel)
 		for &ch, i in clip.channels {
 			ky := rows_y + f32(i) * _ANIM_ROW_H + _ANIM_ROW_H * 0.5
 			if ky < rmin.y || ky > rmax.y do continue
 			for t, k in ch.times {
 				kx := tx0 + t * pps
 				if kx < rmin.x || kx > rmax.x do continue
-				append(&_pv.sel, _Key_Ref{i, k})
+				append(&_av.sel, _Key_Ref{i, k})
 			}
 		}
 		// Primary is the first key the band caught, so the value footer has
 		// something to edit.
-		if len(_pv.sel) > 0 {
-			_pv.sel_ch = _pv.sel[0].ch
-			_pv.sel_key = _pv.sel[0].key
+		if len(_av.sel) > 0 {
+			_av.sel_ch = _av.sel[0].ch
+			_av.sel_key = _av.sel[0].key
 		} else {
-			_pv.sel_key = -1
+			_av.sel_key = -1
 		}
-		if !im.IsMouseDown(.Left) do _pv.box = false
+		if !im.IsMouseDown(.Left) do _av.box = false
 	}
 }
 
@@ -1499,11 +1562,11 @@ _pv_sheet_dopesheet :: proc(
 @(private = "file")
 _pv_drag_begin :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, from: f32, comp: int) {
 	_pv_edit_begin(doc)
-	_pv.drag_key = true
-	_pv.drag_comp = comp
-	_pv.drag_from = _pv_snap_time(clip, from)
-	clear(&_pv.drag_t0)
-	for r in _pv.sel do append(&_pv.drag_t0, clip.channels[r.ch].times[r.key])
+	_av.drag_key = true
+	_av.drag_comp = comp
+	_av.drag_from = _pv_snap_time(clip, from)
+	clear(&_av.drag_t0)
+	for r in _av.sel do append(&_av.drag_t0, clip.channels[r.ch].times[r.key])
 }
 
 // --- Curves ---------------------------------------------------------------------------
@@ -1536,21 +1599,21 @@ _pv_sheet_curves :: proc(
 ) {
 	// Left-panel click selects the channel whose curves show.
 	if im.IsItemActivated() && mp.x < x0 && row_at >= 0 && row_at < len(clip.channels) {
-		_pv.sel_ch = row_at
-		_pv.sel_key = -1
-		clear(&_pv.sel)
+		_av.sel_ch = row_at
+		_av.sel_key = -1
+		clear(&_av.sel)
 	}
 
-	if _pv.sel_ch < 0 || _pv.sel_ch >= len(clip.channels) {
+	if _av.sel_ch < 0 || _av.sel_ch >= len(clip.channels) {
 		im.DrawList_AddText(dl, im.Vec2{x0 + 12, rows_y + 8}, im.GetColorU32(.TextDisabled), "Select a property to edit its curves.")
 		return
 	}
-	ch := &clip.channels[_pv.sel_ch]
+	ch := &clip.channels[_av.sel_ch]
 	ncomp := _pv_ch_ncomp(ch)
 
 	// Freeze the value range while dragging — a range that follows the edited
 	// value makes the curve chase the cursor.
-	if !_pv.drag_key {
+	if !_av.drag_key {
 		vmin, vmax := max(f32), min(f32)
 		for v in ch.values {
 			for c in 0 ..< ncomp {
@@ -1595,7 +1658,7 @@ _pv_sheet_curves :: proc(
 		for t, k in ch.times {
 			kx := tx0 + t * pps
 			ky := _pv_curve_v_to_y(ch.values[k][c], rows_y, body_h)
-			sel := k == _pv.sel_key && c == _pv.drag_comp
+			sel := k == _av.sel_key && c == _av.drag_comp
 			r := sel ? f32(4) : f32(3)
 			im.DrawList_AddRectFilled(dl, im.Vec2{kx - r, ky - r}, im.Vec2{kx + r, ky + r}, sel ? im.GetColorU32(.CheckMark) : col)
 		}
@@ -1619,23 +1682,23 @@ _pv_sheet_curves :: proc(
 		}
 		if best_k >= 0 {
 			if _pv_additive() {
-				_pv_sel_toggle(_pv.sel_ch, best_k)
+				_pv_sel_toggle(_av.sel_ch, best_k)
 			} else {
 				// As in the dopesheet: dragging a selected key moves the
 				// group, an unselected one becomes the selection.
-				if !_pv_sel_has(_pv.sel_ch, best_k) do _pv_sel_set(_pv.sel_ch, best_k)
-				_pv.sel_key = best_k
+				if !_pv_sel_has(_av.sel_ch, best_k) do _pv_sel_set(_av.sel_ch, best_k)
+				_av.sel_key = best_k
 				_pv_drag_begin(doc, clip, (mp.x - tx0) / pps, comp = best_c)
 			}
 		} else {
-			_pv.sel_key = -1
-			clear(&_pv.sel)
+			_av.sel_key = -1
+			clear(&_av.sel)
 		}
 	}
 	if im.IsItemClicked(.Right) && mp.x >= x0 {
 		if k := _pv_key_hit_x(ch, mp.x, tx0, pps); k >= 0 {
-			if !_pv_sel_has(_pv.sel_ch, k) do _pv_sel_set(_pv.sel_ch, k)
-			_pv.sel_key = k
+			if !_pv_sel_has(_av.sel_ch, k) do _pv_sel_set(_av.sel_ch, k)
+			_av.sel_key = k
 			im.OpenPopup("##anim_key_ctx")
 		}
 	}
@@ -1645,8 +1708,8 @@ _pv_sheet_curves :: proc(
 
 @(private = "file")
 _pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
-	ch := &clip.channels[_pv.sel_ch]
-	k := _pv.sel_key
+	ch := &clip.channels[_av.sel_ch]
+	k := _av.sel_key
 
 	im.AlignTextToFramePadding()
 	im.TextUnformatted(fmt.ctprintf("Key %d   t", k))
@@ -1667,7 +1730,7 @@ _pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 
 	im.SameLine()
 	im.BeginDisabled(len(ch.times) <= 1)
-	if im.Button(len(_pv.sel) > 1 ? fmt.ctprintf("Delete %d Keys", len(_pv.sel)) : "Delete Key") {
+	if im.Button(len(_av.sel) > 1 ? fmt.ctprintf("Delete %d Keys", len(_av.sel)) : "Delete Key") {
 		_pv_delete_key(doc, clip)
 	}
 	im.EndDisabled()

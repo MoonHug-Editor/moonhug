@@ -13,6 +13,8 @@ import "moonhug:editor/undo"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:packages/engine/editor/scene_views"
+import "moonhug:editor/session"
+import wnd "moonhug:editor/window"
 
 // Every test here touches editor-wide selection state, so each starts and ends
 // from nothing.
@@ -241,4 +243,37 @@ test_inspector_instances_lock_apart :: proc(t: ^testing.T) {
 	editor.inspector_locks_prune()
 	second = editor.inspector_targets("Inspector/2")
 	testing.expect(t, len(second) == 1 && second[0] == b, "a closed Inspector's lock is gone")
+}
+
+// A request every Hierarchy copy follows reaches all of them: scrolling to
+// the selection, and unfolding the ancestors of an object to reveal.
+@(test)
+test_hierarchy_requests_reach_every_copy :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	if !wnd.is_registered(scene_views.HIERARCHY) {
+		wnd.register(scene_views.HIERARCHY, "Hierarchy", "X", scene_views.hierarchy_view_draw, 0, 0, closed = scene_views.hierarchy_view_closed)
+	}
+	first := wnd.open(scene_views.HIERARCHY)
+	second := wnd.open_another(scene_views.HIERARCHY)
+	defer {
+		wnd.close(first.key)
+		wnd.close(second.key)
+		wnd.draw_all()
+	}
+
+	scene_views.hierarchy_scroll_to_selection()
+	a := (^scene_views.Hierarchy_View)(first.data)
+	b := (^scene_views.Hierarchy_View)(second.data)
+	testing.expect(t, a != nil && b != nil && a != b, "each copy has its own state")
+	if a == nil || b == nil do return
+	testing.expect(t, a.scroll_to_sel && b.scroll_to_sel, "both copies scroll to the selection")
+
+	parent := engine.transform_new("Parent")
+	child := engine.transform_new("Child", parent)
+	session.hierarchy_reveal(child)
+	testing.expect(t, a.alt_open_pending[parent] && b.alt_open_pending[parent], "both copies unfold the object's parent")
 }

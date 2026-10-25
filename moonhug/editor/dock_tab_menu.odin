@@ -251,10 +251,10 @@ _tab_menu_contents :: proc(node: ^im.DockNode) {
 
 // --- Add Tab ----------------------------------------------------------------
 
-// Add Tab lists every view, sorted by name. A built-in view moves into the
-// node, since there is one of each. A window (an inspector, a plugin window)
-// opens its plain instance here, or another instance when the plain one
-// already shows somewhere.
+// Add Tab lists every view, sorted by name, and opens a new one in the node:
+// the window's plain instance, or another instance when the plain one already
+// shows somewhere. The Game view is the one view that exists once: it opens
+// here when closed and is focused where it is when open.
 @(private = "file")
 _add_tab_items :: proc(node: im.ID) {
 	Entry :: struct {
@@ -270,8 +270,12 @@ _add_tab_items :: proc(node: im.ID) {
 	for e in entries {
 		if !im.MenuItem(strings.clone_to_cstring(e.label, context.temp_allocator)) do continue
 		if e.flag != nil {
-			e.flag^ = true
-			_tab_dock(view_key_of(e.title), node)
+			if e.flag^ {
+				im.SetWindowFocusStr(e.title)
+			} else {
+				e.flag^ = true
+				_tab_dock(view_key_of(e.title), node)
+			}
 			continue
 		}
 		w := wnd.open_another(e.id) if wnd.find(e.id) != nil else wnd.open(e.id)

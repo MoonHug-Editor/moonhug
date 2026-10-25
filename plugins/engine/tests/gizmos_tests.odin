@@ -331,9 +331,9 @@ test_gizmo_pass_records_for_the_game_view_alone :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer teardown(tc)
 	defer editor.sel_scene_clear()
-	prev_scene, prev_game, prev_toggle := menu.show_scene, menu.show_game, editor.game_gizmos
+	prev_size, prev_game, prev_toggle := editor._sv.view_size, menu.show_game, editor.game_gizmos
 	defer {
-		menu.show_scene = prev_scene
+		editor._sv.view_size = prev_size
 		menu.show_game = prev_game
 		editor.game_gizmos = prev_toggle
 	}
@@ -349,7 +349,7 @@ test_gizmo_pass_records_for_the_game_view_alone :: proc(t: ^testing.T) {
 	cam.enabled = true
 	editor.sel_scene_only(cam_t)
 
-	menu.show_scene = false
+	editor._sv.view_size = {} // no Scene view on screen: it rendered no image
 	menu.show_game = true
 	editor.game_gizmos = true
 	editor.gizmo_pass()
@@ -506,15 +506,15 @@ test_gizmo_settings_hide_per_type :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer teardown(tc)
 	defer editor.sel_scene_clear()
-	prev_scene, prev_game, prev_toggle := menu.show_scene, menu.show_game, editor.game_gizmos
+	prev_size, prev_game, prev_toggle := editor._sv.view_size, menu.show_game, editor.game_gizmos
 	defer {
-		menu.show_scene = prev_scene
+		editor._sv.view_size = prev_size
 		menu.show_game = prev_game
 		editor.game_gizmos = prev_toggle
 		gizmos.gizmo_type_set("Light", .Icon, true)
 		gizmos.gizmo_type_set("Light", .Gizmo, true)
 	}
-	menu.show_scene = false
+	editor._sv.view_size = {} // no Scene view on screen: it rendered no image
 	menu.show_game = true
 	editor.game_gizmos = true
 	prev_rt := editor.game_rt
@@ -705,27 +705,25 @@ test_gizmo_pass_records_tools_for_the_scene_view :: proc(t: ^testing.T) {
 	defer im.DestroyContext(ictx)
 	defer editor.sel_scene_clear()
 
-	prev_scene, prev_game := menu.show_scene, menu.show_game
-	prev_frame, prev_rendered, prev_size := gfx.frame_index, editor._scene_rendered_frame, editor._scene_view_size
-	prev_cam, prev_target, prev_mode := editor.scene_cam_pos, editor.scene_cam_target, viewport.gizmo_mode
+	prev_game := menu.show_game
+	prev_frame, prev_rendered, prev_size := gfx.frame_index, editor._sv.rendered_frame, editor._sv.view_size
+	prev_cam, prev_target, prev_mode := editor._sv.cam_pos, editor._sv.cam_target, viewport.gizmo_mode
 	defer {
-		menu.show_scene = prev_scene
 		menu.show_game = prev_game
 		gfx.frame_index = prev_frame
-		editor._scene_rendered_frame = prev_rendered
-		editor._scene_view_size = prev_size
-		editor.scene_cam_pos = prev_cam
-		editor.scene_cam_target = prev_target
+		editor._sv.rendered_frame = prev_rendered
+		editor._sv.view_size = prev_size
+		editor._sv.cam_pos = prev_cam
+		editor._sv.cam_target = prev_target
 		viewport.gizmo_mode = prev_mode
 	}
-	menu.show_scene = true
 	menu.show_game = false
-	editor.scene_cam_pos = {0, 0, 10}
-	editor.scene_cam_target = {0, 0, 0}
+	editor._sv.cam_pos = {0, 0, 10}
+	editor._sv.cam_target = {0, 0, 0}
 	viewport.gizmo_mode = .Translate
 	gfx.frame_index += 1
-	editor._scene_rendered_frame = gfx.frame_index - 1
-	editor._scene_view_size = {800, 600}
+	editor._sv.rendered_frame = gfx.frame_index - 1
+	editor._sv.view_size = {800, 600}
 
 	obj := engine.transform_new("Obj")
 	editor.sel_scene_only(obj)
@@ -765,27 +763,25 @@ test_gizmos_record_per_camera :: proc(t: ^testing.T) {
 	defer im.DestroyContext(ictx)
 	defer editor.sel_scene_clear()
 
-	prev_scene, prev_game, prev_toggle := menu.show_scene, menu.show_game, editor.game_gizmos
-	prev_frame, prev_rendered, prev_size := gfx.frame_index, editor._scene_rendered_frame, editor._scene_view_size
-	prev_cam, prev_target, prev_rt := editor.scene_cam_pos, editor.scene_cam_target, editor.game_rt
+	prev_game, prev_toggle := menu.show_game, editor.game_gizmos
+	prev_frame, prev_rendered, prev_size := gfx.frame_index, editor._sv.rendered_frame, editor._sv.view_size
+	prev_cam, prev_target, prev_rt := editor._sv.cam_pos, editor._sv.cam_target, editor.game_rt
 	defer {
-		menu.show_scene = prev_scene
 		menu.show_game = prev_game
 		editor.game_gizmos = prev_toggle
 		gfx.frame_index = prev_frame
-		editor._scene_rendered_frame = prev_rendered
-		editor._scene_view_size = prev_size
-		editor.scene_cam_pos = prev_cam
-		editor.scene_cam_target = prev_target
+		editor._sv.rendered_frame = prev_rendered
+		editor._sv.view_size = prev_size
+		editor._sv.cam_pos = prev_cam
+		editor._sv.cam_target = prev_target
 		editor.game_rt = prev_rt
 	}
 	// The scene view on screen, its camera 10 away.
-	menu.show_scene = true
-	editor.scene_cam_pos = {0, 0, 10}
-	editor.scene_cam_target = {0, 0, 0}
+	editor._sv.cam_pos = {0, 0, 10}
+	editor._sv.cam_target = {0, 0, 0}
 	gfx.frame_index += 1
-	editor._scene_rendered_frame = gfx.frame_index - 1
-	editor._scene_view_size = {800, 600}
+	editor._sv.rendered_frame = gfx.frame_index - 1
+	editor._sv.view_size = {800, 600}
 	// The game view showing gizmos, its camera 30 away.
 	menu.show_game = true
 	editor.game_gizmos = true

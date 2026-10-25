@@ -128,13 +128,13 @@ _project_select_paths :: proc(paths: []string) {
 		sel_proj_add(p)
 	}
 	_project_set_active(paths[len(paths) - 1])
-	_project_scroll_to_list_sel = true
+	_pv.scroll_to_list_sel = true
 }
 
 // --- Operations (menu items + shortcuts call these) ----------------------------
 
 project_ops_new_folder :: proc() {
-	dir := projectViewData.currentPath
+	dir := _pv.current_path
 	if dir == "" do return
 	if dir == _PROJECT_PACKAGES_PATH {
 		fmt.println("[Editor] New Folder: packages are managed on disk (moonhug/packages), not here")
@@ -156,7 +156,7 @@ project_ops_new_folder :: proc() {
 // taken), then known to the asset database, selected and ready to rename, as
 // New Folder does. The generated create menu items call it.
 project_ops_create_asset :: proc(file_name: string, type_key: core.TypeKey) {
-	dir := projectViewData.currentPath
+	dir := _pv.current_path
 	if dir == "" do return
 	if dir == _PROJECT_PACKAGES_PATH {
 		fmt.println("[Editor] Create: the Packages node lists packages, not files — create inside a package's content instead")
@@ -180,7 +180,7 @@ project_ops_create_asset :: proc(file_name: string, type_key: core.TypeKey) {
 
 project_ops_show_in_finder :: proc() {
 	target := projectViewData.selectedFile
-	if target == "" do target = projectViewData.currentPath
+	if target == "" do target = _pv.current_path
 	if target == "" do return
 	file_reveal_in_os(target)
 }
@@ -211,7 +211,7 @@ project_ops_paste :: proc() {
 		fmt.println("[Editor] Paste: clipboard is empty (Cut or Copy files first)")
 		return
 	}
-	dst_dir := projectViewData.currentPath
+	dst_dir := _pv.current_path
 	if dst_dir == "" do return
 	if dst_dir == _PROJECT_PACKAGES_PATH {
 		fmt.println("[Editor] Paste: the Packages node lists packages, not files — paste inside a package's content instead")

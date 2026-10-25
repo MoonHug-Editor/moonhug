@@ -608,7 +608,7 @@ mcp_tool_screenshot :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 	rt: ^gfx.Render_Target
 	switch view {
 	case "scene":
-		rt = scene_rt
+		rt = _sv.rt
 		view = "scene"
 	case "game":
 		rt = game_rt

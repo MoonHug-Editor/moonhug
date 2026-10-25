@@ -45,6 +45,7 @@ import im "moonhug:external/odin-imgui"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/inspector"
 import "moonhug:editor/script_editor"
+import "moonhug:editor/session"
 import "moonhug:editor/undo"
 import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
@@ -172,6 +173,15 @@ _rp_state_free :: proc(st: ^_RP_State) {
 	st.set_buf = nil
 }
 
+// The pipeline an instance opened for no asset shows: the active one. An
+// instance opened for an asset names it through the window registry.
+@(view_document={view="render_pipeline"})
+render_pipeline_view_document :: proc(view: session.View) -> engine.Asset_GUID {
+	w := wnd.find(view.key)
+	if w == nil || w.data == nil do return {}
+	return (^_RP_State)(w.data).guid
+}
+
 render_pipeline_window_closed :: proc(w: ^wnd.Window) {
 	st := (^_RP_State)(w.data)
 	if st == nil do return
@@ -228,19 +238,20 @@ render_pipeline_window_draw :: proc(w: ^wnd.Window) {
 	// context allocator, so a step is built with the caller's (_rp_record).
 	caller := context.allocator
 	context.allocator = inspector.doc_alloc()
+	_rp = _rp_instance(w)
 	if w.asset == {} {
-		// The plain instance: the active pipeline's own instance takes over
-		// once it is an asset.
+		// An instance opened for no asset shows the project's active
+		// pipeline, and follows it when Project Settings names another.
 		active := engine.render_pipeline_active().guid
-		if _, ok := engine.asset_db_get_path(uuid.Identifier(active)); active != {} && ok {
-			wnd.open("render_pipeline", active)
-			w.open = false
+		if _, ok := engine.asset_db_get_path(uuid.Identifier(active)); active == {} || !ok {
+			im.TextDisabled("The built-in frame. Create a Render Pipeline asset (Assets > Create > Render Pipeline) and set it in Project Settings > Rendering.")
 			return
 		}
-		im.TextDisabled("The built-in frame. Create a Render Pipeline asset (Assets > Create > Render Pipeline) and set it in Project Settings > Rendering.")
-		return
+		if _rp.guid != active {
+			_rp.guid = active
+			_rp.failed = false
+		}
 	}
-	_rp = _rp_instance(w)
 	if !_rp_fetch() {
 		im.TextDisabled("This file is not a render pipeline.")
 		return

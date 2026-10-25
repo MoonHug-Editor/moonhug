@@ -143,7 +143,7 @@ _hierarchy_paste :: proc() {
 		engine._transform_append_name_suffix(result, "_copy")
 		if result != _HANDLE_NONE do session.select_only(result)
 	}
-	_hierarchy_force_open = target
+	_hierarchy_reveal_open(target)
 }
 
 @(private)
@@ -160,8 +160,8 @@ _hierarchy_rename :: proc() {
 
 @(private = "file")
 _hierarchy_delete :: proc() {
-	if _hierarchy_rename_target != _HANDLE_NONE && session.is_selected(_hierarchy_rename_target) {
-		_hierarchy_rename_target = _HANDLE_NONE
+	if _hv.rename_target != _HANDLE_NONE && session.is_selected(_hv.rename_target) {
+		_hv.rename_target = _HANDLE_NONE
 	}
 	if _hierarchy_cut_tH != _HANDLE_NONE && session.is_selected(_hierarchy_cut_tH) {
 		_hierarchy_cut_tH = _HANDLE_NONE
@@ -195,7 +195,7 @@ hierarchy_create_empty_child_menu :: proc() {
 	// A child under prefab content is an added_object on the instance
 	// (plugins/engine/docs/PrefabsSpec.md §4.4) — the capture pass picks it up on save.
 	session.select_only(undo.record_create_child("Transform", parent))
-	_hierarchy_force_open = parent
+	_hierarchy_reveal_open(parent)
 }
 
 _hierarchy_can_create_parent :: proc() -> bool {

@@ -129,3 +129,32 @@ test_window_numbered_instances :: proc(t: ^testing.T) {
 	wnd.close("instance_test/4")
 	wnd.draw_all()
 }
+
+// The copy opened or clicked in last is the one code outside a view acts
+// on, and a window's plain state needs no closed proc: the copy frees it.
+@(test)
+test_window_last_and_state :: proc(t: ^testing.T) {
+	if !wnd.is_registered("state_test") {
+		wnd.register("state_test", "State Test", "X", proc(w: ^wnd.Window) {}, 0, 0)
+	}
+	Probe :: struct {
+		count: int,
+		label: string,
+	}
+	first := wnd.open("state_test")
+	second := wnd.open_another("state_test")
+	testing.expect(t, first != nil && second != nil, "both copies open")
+	if first == nil || second == nil do return
+	testing.expect(t, wnd.last("state_test") == second, "the copy opened last is the last one")
+	testing.expect(t, wnd.open("state_test") == first && wnd.last("state_test") == first, "opening the plain copy again makes it the last one")
+
+	st := wnd.state(first, Probe{count = 3, label = "a"})
+	testing.expect(t, st.count == 3 && st.label == "a", "the state starts from its init value")
+	st.count += 1
+	testing.expect_value(t, wnd.state(first, Probe{}).count, 4)
+	testing.expect(t, wnd.state(second, Probe{}) != st, "each copy has its own state")
+
+	for w in wnd.instances("state_test") do wnd.close(w.key)
+	wnd.draw_all() // frees both states, no closed proc needed
+	testing.expect(t, wnd.last("state_test") == nil, "no copy is open")
+}

@@ -96,15 +96,7 @@ quit_requested := false
 // Shortcuts match Unity (Ctrl+1..6 = Cmd+1..6 on macOS): Scene, Game,
 // Inspector, Hierarchy, Project, Animation, and Cmd+Shift+C for Console.
 
-show_scene := true
 show_game := true
-show_hierarchy := true
-show_project := true
-show_console := true
-show_output := true
-show_history := false
-show_animation := false
-show_playable_graph := false
 
 @(private = "file")
 _open_window :: proc(show: ^bool, title: cstring) {
@@ -123,8 +115,8 @@ view_show_flag :: proc(title: cstring) -> ^bool {
 	return nil
 }
 
-// A built-in view: one per editor, opened by its flag. The inspectors and
-// plugin windows are window instances instead (editor/window).
+// A view that exists once, opened by its flag: the Game view. Every other
+// view is a window instance (editor/window).
 Builtin_View :: struct {
 	title: cstring,
 	flag:  ^bool,
@@ -136,15 +128,7 @@ builtin_views :: proc() -> []Builtin_View {
 
 @(private = "file")
 _builtin_views := [?]Builtin_View{
-	{icons.TITLE_SCENE, &show_scene},
 	{icons.TITLE_GAME, &show_game},
-	{icons.TITLE_HIERARCHY, &show_hierarchy},
-	{icons.TITLE_PROJECT, &show_project},
-	{icons.TITLE_CONSOLE, &show_console},
-	{icons.TITLE_OUTPUT, &show_output},
-	{icons.TITLE_HISTORY, &show_history},
-	{icons.TITLE_ANIMATION, &show_animation},
-	{icons.TITLE_PLAYABLE_GRAPH, &show_playable_graph},
 }
 
 @(private = "file")
@@ -155,32 +139,34 @@ _window_id :: proc(title: string) -> string {
 
 
 @(menu_item={path="Window/General/Scene", order=0, shortcut="Ctrl+1"})
-window_menu_scene :: proc() { _open_window(&show_scene, icons.TITLE_SCENE) }
+window_menu_scene :: proc() { wnd.open("Scene") }
 
 @(menu_item={path="Window/General/Game", order=1, shortcut="Ctrl+2"})
 window_menu_game :: proc() { _open_window(&show_game, icons.TITLE_GAME) }
 
-// The inspectors are window instances (editor/window). The scene Inspector
-// is declared by the engine, so the item is off without it.
+// The views are window instances (editor/window). The engine declares the
+// Inspector and the Hierarchy, so their items are off without it.
 @(menu_item={path="Window/General/Inspector", order=2, shortcut="Ctrl+3", enabled=_inspector_registered})
 window_menu_inspector :: proc() { wnd.open("Inspector") }
 
 _inspector_registered :: proc() -> bool { return wnd.is_registered("Inspector") }
 
-@(menu_item={path="Window/General/Hierarchy", order=4, shortcut="Ctrl+4"})
-window_menu_hierarchy :: proc() { _open_window(&show_hierarchy, icons.TITLE_HIERARCHY) }
+@(menu_item={path="Window/General/Hierarchy", order=4, shortcut="Ctrl+4", enabled=_hierarchy_registered})
+window_menu_hierarchy :: proc() { wnd.open("Hierarchy") }
+
+_hierarchy_registered :: proc() -> bool { return wnd.is_registered("Hierarchy") }
 
 @(menu_item={path="Window/General/Project", order=5, shortcut="Ctrl+5"})
-window_menu_project :: proc() { _open_window(&show_project, icons.TITLE_PROJECT) }
+window_menu_project :: proc() { wnd.open("Project") }
 
 @(menu_item={path="Window/General/Project Inspector", order=6, shortcut="Ctrl+Alt+5"})
 window_menu_project_inspector :: proc() { wnd.open("Project Inspector") }
 
 @(menu_item={path="Window/General/Console", order=7, shortcut="Ctrl+Shift+C"})
-window_menu_console :: proc() { _open_window(&show_console, icons.TITLE_CONSOLE) }
+window_menu_console :: proc() { wnd.open("Console") }
 
 @(menu_item={path="Window/General/Output", order=8, shortcut=""})
-window_menu_output :: proc() { _open_window(&show_output, icons.TITLE_OUTPUT) }
+window_menu_output :: proc() { wnd.open("Output") }
 
 @(menu_item={path="Window/General/Background Tasks", order=9, shortcut=""})
 window_menu_background_tasks :: proc() { background_tasks_requested = true }
@@ -190,13 +176,18 @@ window_menu_background_tasks :: proc() { background_tasks_requested = true }
 background_tasks_requested := false
 
 @(menu_item={path="Edit/Undo History", order=-98, shortcut=""})
-window_menu_history :: proc() { _open_window(&show_history, icons.TITLE_HISTORY) }
+window_menu_history :: proc() { wnd.open("History") }
 
-@(menu_item={path="Window/Animation/Animation", order=0, shortcut="Ctrl+6"})
-window_menu_animation :: proc() { _open_window(&show_animation, icons.TITLE_ANIMATION) }
+// The animation plugin declares both windows, so the items are off without it.
+@(menu_item={path="Window/Animation/Animation", order=0, shortcut="Ctrl+6", enabled=_animation_registered})
+window_menu_animation :: proc() { wnd.open("Animation") }
 
-@(menu_item={path="Window/Animation/Playable Graph", order=1, shortcut=""})
-window_menu_playable_graph :: proc() { _open_window(&show_playable_graph, icons.TITLE_PLAYABLE_GRAPH) }
+_animation_registered :: proc() -> bool { return wnd.is_registered("Animation") }
+
+@(menu_item={path="Window/Animation/Playable Graph", order=1, shortcut="", enabled=_playable_graph_registered})
+window_menu_playable_graph :: proc() { wnd.open("Playable Graph") }
+
+_playable_graph_registered :: proc() -> bool { return wnd.is_registered("Playable Graph") }
 
 @(menu_item={path="File/Save", order=0, shortcut="Ctrl+S"})
 file_save_menu :: proc()

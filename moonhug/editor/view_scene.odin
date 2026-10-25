@@ -11,96 +11,182 @@ import "inspector"
 import core "moonhug:libs/core"
 import "moonhug:libs/gizmos"
 import "moonhug:editor/viewport"
-import "moonhug:editor/session"
 import "core:strings"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
+import wnd "moonhug:editor/window"
 
-scene_rt: ^gfx.Render_Target
+SCENE :: "Scene"
 
-// Editor camera: first-person data (position + yaw/pitch about the EYE), NOT
-// a Camera component — the scene view renders through the same engine
-// collect/execute path as game cameras. scene_cam_target is derived: the
-// look-at anchor scene_cam_dist along the forward ray. Orbit/zoom/frame pull
-// toward it; fly and pan carry it along (Unity's pivot model).
-scene_cam_pos: [3]f32
-scene_cam_yaw: f32   // radians, atan2(fwd.z, fwd.x)
-scene_cam_pitch: f32 // radians, asin(fwd.y), clamped just short of the poles
-scene_cam_dist: f32
-scene_cam_target: [3]f32
+// One Scene copy's own state. The first copy's lives in _sv_plain, which
+// outlives its window and holds what editor_settings persists. A copy opened
+// from Add Tab has its own in its wnd.Window, with its own render target.
+Scene_View :: struct {
+	rt: ^gfx.Render_Target,
 
-// Flythrough speed: wheel while flying rescales the base (kept for the whole
-// session), holding movement keys ramps the current speed toward base*mult.
-scene_fly_speed: f32
-_fly_speed_cur: f32
+	// Editor camera: first-person data (position + yaw/pitch about the EYE),
+	// NOT a Camera component: the scene view renders through the same engine
+	// collect/execute path as game cameras. cam_target is derived: the
+	// look-at anchor cam_dist along the forward ray. Orbit/zoom/frame pull
+	// toward it, fly and pan carry it along (the pivot model).
+	cam_pos:    [3]f32,
+	cam_yaw:    f32, // radians, atan2(fwd.z, fwd.x)
+	cam_pitch:  f32, // radians, asin(fwd.y), clamped just short of the poles
+	cam_dist:   f32,
+	cam_target: [3]f32,
 
-// Flythrough smoothing: mouse look drives TARGET angles and the camera
-// exponentially chases them; movement velocity chases the keyed direction the
-// same way. Both use 1-exp(-dt/tau), so the lag feel is frame-rate independent.
-_fly_yaw_target: f32
-_fly_pitch_target: f32
-_fly_vel: [3]f32
+	// Flythrough speed: wheel while flying rescales the base (kept for the
+	// whole session), holding movement keys ramps the current speed toward
+	// base*mult.
+	fly_speed:     f32,
+	fly_speed_cur: f32,
+	// Flythrough smoothing: mouse look drives TARGET angles and the camera
+	// exponentially chases them, movement velocity chases the keyed direction
+	// the same way. Both use 1-exp(-dt/tau), so the lag feel is frame-rate
+	// independent.
+	fly_yaw_target:   f32,
+	fly_pitch_target: f32,
+	fly_vel:          [3]f32,
 
-_orbit_active: bool
-_orbit_pivot: [3]f32
+	orbit_active: bool,
+	orbit_pivot:  [3]f32,
 
-scene_view_hovered: bool
-scene_flythrough_active: bool
+	hovered:           bool,
+	flythrough_active: bool,
 
-// Projection and the 2D view (Unity's scene view toggles). Orthographic keeps
-// the framing of the perspective view: the ortho height derives from the
-// orbit distance and the FOV, so toggling does not jump and wheel zoom keeps
-// working. 2D fixes the view along -Z (X right, Y up), orthographic, with no
-// orbit: right and middle drag both pan. Leaving 2D restores the view that
-// was active before it.
-scene_cam_ortho: bool
-scene_2d_mode: bool
-_pre_2d_yaw: f32
-_pre_2d_pitch: f32
-_pre_2d_ortho: bool
-_scene_2d_pending: bool // settings asked for 2D before the camera existed
+	// Projection and the 2D view. Orthographic keeps the framing of the
+	// perspective view: the ortho height derives from the orbit distance and
+	// the FOV, so toggling does not jump and wheel zoom keeps working. 2D
+	// fixes the view along -Z (X right, Y up), orthographic, with no orbit:
+	// right and middle drag both pan. Leaving 2D restores the view that was
+	// active before it.
+	cam_ortho:    bool,
+	mode_2d:      bool,
+	pre_2d_yaw:   f32,
+	pre_2d_pitch: f32,
+	pre_2d_ortho: bool,
+	pending_2d:   bool, // settings asked for 2D before the camera existed
+
+	// Click-to-pick state: a click is press+release under a small drag
+	// threshold (so orbit/pan drags never select).
+	img_min:       im.Vec2,
+	view_last:     core.Render_View, // the view the image was last rendered with: labels project through it
+	click_pos:     im.Vec2,
+	click_pending: bool,
+
+	// Rubber-band box select: an armed LMB click that travels beyond the
+	// click threshold becomes a live box select. The selection updates every
+	// frame while the band is open, and the selection-undo tracker pauses
+	// (scene_band_selecting) so the whole gesture records as ONE "Select" step.
+	band_active:   bool,
+	band_anchor:   im.Vec2, // screen coords
+	band_additive: bool,    // cmd/ctrl held at band start: adds to the base set
+	band_base:     [dynamic]core.Transform_Handle, // selection at band start
+
+	// Frame Selected's camera move (scene_frame_selected).
+	tween_active:      bool,
+	tween_t:           f32,
+	tween_from_target: [3]f32,
+	tween_to_target:   [3]f32,
+	tween_from_dist:   f32,
+	tween_to_dist:     f32,
+
+	view_mode: core.View_Mode, // shading mode (the Shading overlay)
+
+	// The gfx frame the copy last rendered in, and its image size then.
+	rendered_frame: u64,
+	view_size:      [2]f32,
+
+	// The right-click context menu and the Cmd+right-click pick menu.
+	ctx_click_pending: bool,
+	ctx_click_pos:     [2]f32, // scene-image pixels at the press
+	ctx_click_travel:  f32,
+	ctx_menu_target:   core.Transform_Handle, // {} = empty space
+	pick_menu:         [dynamic]core.Transform_Handle,
+}
+
+@(private)
+_sv_plain: Scene_View
+
+// The copy being drawn, and outside a draw the active copy (_scene_active),
+// which the gizmo pass, menu actions and the bridge act on.
+_sv: ^Scene_View = &_sv_plain
+
+// The copy the pointer was over last frame, else the copy clicked in last,
+// else the first copy's state. The gizmo pass records handles for it.
+@(private)
+_scene_active :: proc() -> ^Scene_View {
+	for w in wnd.instances(SCENE) do if sv := _scene_view(w); sv.hovered do return sv
+	if last := wnd.last(SCENE); last != nil do return _scene_view(last)
+	return &_sv_plain
+}
+
+@(private = "file")
+_scene_view :: proc(w: ^wnd.Window) -> ^Scene_View {
+	if w.key == SCENE do return &_sv_plain
+	if w.data == nil {
+		sv := new(Scene_View, runtime.default_allocator())
+		_scene_view_init(sv)
+		// A new copy starts where the first one looks.
+		sv.cam_pos, sv.cam_yaw, sv.cam_pitch, sv.cam_dist, sv.cam_target = _sv_plain.cam_pos, _sv_plain.cam_yaw, _sv_plain.cam_pitch, _sv_plain.cam_dist, _sv_plain.cam_target
+		sv.cam_ortho, sv.view_mode = _sv_plain.cam_ortho, _sv_plain.view_mode
+		w.data = sv
+	}
+	return (^Scene_View)(w.data)
+}
+
+@(private = "file")
+_scene_view_init :: proc(sv: ^Scene_View) {
+	sv.rt = gfx.rt_create(1, 1)
+	sv.fly_speed = FLYTHROUGH_BASE_SPEED
+	sv.fly_speed_cur = FLYTHROUGH_BASE_SPEED
+	prev := _sv
+	_sv = sv
+	scene_cam_look_at({7, 7, 7}, {0, 0, 0})
+	_sv = prev
+}
+
+@(private = "file")
+_scene_view_free :: proc(sv: ^Scene_View) {
+	context.allocator = runtime.default_allocator()
+	delete(sv.band_base)
+	delete(sv.pick_menu)
+	gfx.rt_destroy(sv.rt)
+	sv^ = {}
+}
+
+scene_view_closed :: proc(w: ^wnd.Window) {
+	if w.key == SCENE do return
+	sv := (^Scene_View)(w.data)
+	if sv == nil do return
+	if _sv == sv do _sv = &_sv_plain
+	_scene_view_free(sv)
+	free(sv, runtime.default_allocator())
+	w.data = nil
+}
 
 scene_set_2d :: proc(on: bool) {
-	if on == scene_2d_mode do return
-	scene_2d_mode = on
+	if on == _sv.mode_2d do return
+	_sv.mode_2d = on
 	if on {
-		_pre_2d_yaw, _pre_2d_pitch, _pre_2d_ortho = scene_cam_yaw, scene_cam_pitch, scene_cam_ortho
-		scene_cam_ortho = true
-		scene_cam_yaw = -math.PI / 2 // forward = -Z
-		scene_cam_pitch = 0
+		_sv.pre_2d_yaw, _sv.pre_2d_pitch, _sv.pre_2d_ortho = _sv.cam_yaw, _sv.cam_pitch, _sv.cam_ortho
+		_sv.cam_ortho = true
+		_sv.cam_yaw = -math.PI / 2 // forward = -Z
+		_sv.cam_pitch = 0
 	} else {
-		scene_cam_yaw, scene_cam_pitch, scene_cam_ortho = _pre_2d_yaw, _pre_2d_pitch, _pre_2d_ortho
+		_sv.cam_yaw, _sv.cam_pitch, _sv.cam_ortho = _sv.pre_2d_yaw, _sv.pre_2d_pitch, _sv.pre_2d_ortho
 	}
-	_frame_tween_active = false
+	_sv.tween_active = false
 	fwd, _, _ := _scene_cam_basis()
-	scene_cam_pos = scene_cam_target - fwd * scene_cam_dist
+	_sv.cam_pos = _sv.cam_target - fwd * _sv.cam_dist
 	update_scene_camera()
 }
 
-// Click-to-pick state: a click is press+release under a small drag threshold
-// (so orbit/pan drags never select). Set in draw_scene_view / handle_scene_input.
-_scene_img_min: im.Vec2
-// The view the scene image was last rendered with: labels project through it.
-_scene_view_last: core.Render_View
-_scene_click_pos: im.Vec2
-_scene_click_pending: bool
-
-// Rubber-band box select (Unity): an armed LMB click that travels beyond the
-// click threshold becomes a live box select. The selection updates every
-// frame while the band is open; the selection-undo tracker pauses
-// (scene_band_selecting) so the whole gesture records as ONE "Select" step.
-_band_active: bool
-_band_anchor: im.Vec2 // screen coords
-_band_additive: bool  // cmd/ctrl held at band start: adds to the base set
-_band_base: [dynamic]core.Transform_Handle // selection at band start
-
+// Any copy's band is open.
 scene_band_selecting :: proc() -> bool {
-	return _band_active
-}
-
-_band_shutdown :: proc() {
-	delete(_band_base)
-	_band_base = nil
+	if _sv_plain.band_active do return true
+	for w in wnd.instances(SCENE) do if _scene_view(w).band_active do return true
+	return false
 }
 
 FLYTHROUGH_BASE_SPEED :: f32(8.0)
@@ -124,10 +210,7 @@ SCENE_CAM_NEAR :: f32(0.1)
 SCENE_CAM_FAR :: f32(20000) // far enough to frame a whole 4K canvas (one unit per canvas pixel)
 
 init_scene_view :: proc() {
-	scene_rt = gfx.rt_create(1, 1)
-	scene_fly_speed = FLYTHROUGH_BASE_SPEED
-	_fly_speed_cur = FLYTHROUGH_BASE_SPEED
-	scene_cam_look_at({7, 7, 7}, {0, 0, 0})
+	_scene_view_init(&_sv_plain)
 
 	// Unity-style dockable overlays (dock.odin): register every
 	// @(scene_overlay) item (generated), then restore persisted placement.
@@ -140,19 +223,15 @@ init_scene_view :: proc() {
 
 shutdown_scene_view :: proc() {
 	viewport.tools_shutdown()
-	_band_shutdown()
-	delete(_pick_menu)
-	_pick_menu = nil
 	overlays_shutdown()
-	gfx.rt_destroy(scene_rt)
-	scene_rt = nil
+	_scene_view_free(&_sv_plain)
 }
 
 // Orthonormal frame from yaw/pitch. The pitch clamp in update_scene_camera
 // keeps fwd off the world-up pole, so the crosses never degenerate.
 _scene_cam_basis :: proc() -> (fwd, right, up: [3]f32) {
-	cp := math.cos(scene_cam_pitch)
-	fwd = {math.cos(scene_cam_yaw) * cp, math.sin(scene_cam_pitch), math.sin(scene_cam_yaw) * cp}
+	cp := math.cos(_sv.cam_pitch)
+	fwd = {math.cos(_sv.cam_yaw) * cp, math.sin(_sv.cam_pitch), math.sin(_sv.cam_yaw) * cp}
 	right = linalg.normalize(linalg.cross(fwd, [3]f32{0, 1, 0}))
 	up = linalg.cross(right, fwd)
 	return
@@ -175,13 +254,13 @@ scene_cam_up :: proc() -> [3]f32 {
 
 // Place the camera and derive yaw/pitch/dist so it looks at target.
 scene_cam_look_at :: proc(pos, target: [3]f32) {
-	scene_cam_pos = pos
+	_sv.cam_pos = pos
 	d := target - pos
-	scene_cam_dist = linalg.length(d)
-	if scene_cam_dist > 0.0001 {
-		dir := d / scene_cam_dist
-		scene_cam_pitch = math.asin(clamp(dir.y, -1, 1))
-		scene_cam_yaw = math.atan2(dir.z, dir.x)
+	_sv.cam_dist = linalg.length(d)
+	if _sv.cam_dist > 0.0001 {
+		dir := d / _sv.cam_dist
+		_sv.cam_pitch = math.asin(clamp(dir.y, -1, 1))
+		_sv.cam_yaw = math.atan2(dir.z, dir.x)
 	}
 	update_scene_camera()
 }
@@ -192,11 +271,11 @@ PITCH_LIMIT :: f32(math.PI / 2 - 0.02)
 // guard resets the camera instead of leaving the view unrecoverably black
 // (bad mesh bounds or a zero-length basis would poison every later frame).
 update_scene_camera :: proc() {
-	scene_cam_pitch = clamp(scene_cam_pitch, -PITCH_LIMIT, PITCH_LIMIT)
-	scene_cam_dist = clamp(scene_cam_dist, 0.1, 10000)
+	_sv.cam_pitch = clamp(_sv.cam_pitch, -PITCH_LIMIT, PITCH_LIMIT)
+	_sv.cam_dist = clamp(_sv.cam_dist, 0.1, 10000)
 
 	fwd, _, _ := _scene_cam_basis()
-	scene_cam_target = scene_cam_pos + fwd * scene_cam_dist
+	_sv.cam_target = _sv.cam_pos + fwd * _sv.cam_dist
 
 	ok :: proc(v: [3]f32) -> bool {
 		for c in v {
@@ -204,7 +283,7 @@ update_scene_camera :: proc() {
 		}
 		return true
 	}
-	if !ok(scene_cam_pos) || !ok(scene_cam_target) || scene_cam_yaw != scene_cam_yaw {
+	if !ok(_sv.cam_pos) || !ok(_sv.cam_target) || _sv.cam_yaw != _sv.cam_yaw {
 		scene_cam_look_at({7, 7, 7}, {0, 0, 0})
 	}
 }
@@ -214,11 +293,6 @@ update_scene_camera :: proc() {
 // tweens with ease-in/out over SCENE_FRAME_TWEEN_SEC (any manual camera input
 // cancels it).
 SCENE_FRAME_TWEEN_SEC :: f32(0.2)
-
-_frame_tween_active: bool
-_frame_tween_t: f32
-_frame_tween_from_target, _frame_tween_to_target: [3]f32
-_frame_tween_from_dist, _frame_tween_to_dist: f32
 
 // Unity's Edit > Frame Selected (F in the scene view).
 @(menu_item={path="Edit/Frame Selected", order=-44, shortcut=""})
@@ -230,7 +304,7 @@ scene_frame_selected :: proc() {
 	// Union over ALL selected objects (Unity frames the whole selection).
 	first := true
 	cmin, cmax: [3]f32
-	view := scene_render_view(max(_scene_view_size.x, 1), max(_scene_view_size.y, 1))
+	view := scene_render_view(max(_sv.view_size.x, 1), max(_sv.view_size.y, 1))
 	for h in sel_scene_items() {
 		c, r, ok := viewport.object_bounds(view, h)
 		if !ok do continue
@@ -247,27 +321,27 @@ scene_frame_selected :: proc() {
 	if first do return
 	center := (cmin + cmax) * 0.5
 	radius := max(linalg.length(cmax - cmin) * 0.5, 0.1)
-	_frame_tween_from_target = scene_cam_target
-	_frame_tween_from_dist = scene_cam_dist
-	_frame_tween_to_target = center
-	_frame_tween_to_dist = max(radius / math.tan(math.to_radians(SCENE_CAM_FOV_DEG) * 0.5) * 1.2, 1)
-	_frame_tween_t = 0
-	_frame_tween_active = true
+	_sv.tween_from_target = _sv.cam_target
+	_sv.tween_from_dist = _sv.cam_dist
+	_sv.tween_to_target = center
+	_sv.tween_to_dist = max(radius / math.tan(math.to_radians(SCENE_CAM_FOV_DEG) * 0.5) * 1.2, 1)
+	_sv.tween_t = 0
+	_sv.tween_active = true
 }
 
 _update_frame_tween :: proc(dt: f32) {
-	if !_frame_tween_active do return
-	_frame_tween_t = min(_frame_tween_t + dt / SCENE_FRAME_TWEEN_SEC, 1)
-	t := _frame_tween_t
+	if !_sv.tween_active do return
+	_sv.tween_t = min(_sv.tween_t + dt / SCENE_FRAME_TWEEN_SEC, 1)
+	t := _sv.tween_t
 	k := t * t * (3 - 2 * t) // smoothstep: ease in/out
 	// Framing keeps the view direction (Unity's F): the eye rides behind the
 	// tweened anchor along the current forward ray.
-	tgt := linalg.lerp(_frame_tween_from_target, _frame_tween_to_target, k)
-	scene_cam_dist = _frame_tween_from_dist + (_frame_tween_to_dist - _frame_tween_from_dist) * k
+	tgt := linalg.lerp(_sv.tween_from_target, _sv.tween_to_target, k)
+	_sv.cam_dist = _sv.tween_from_dist + (_sv.tween_to_dist - _sv.tween_from_dist) * k
 	fwd, _, _ := _scene_cam_basis()
-	scene_cam_pos = tgt - fwd * scene_cam_dist
+	_sv.cam_pos = tgt - fwd * _sv.cam_dist
 	update_scene_camera()
-	if _frame_tween_t >= 1 do _frame_tween_active = false
+	if _sv.tween_t >= 1 do _sv.tween_active = false
 }
 
 // A gizmo label at `p` (screen), shadowed, for the scene and game views. A
@@ -311,27 +385,27 @@ _draw_handle_label :: proc(dl: ^im.DrawList, p: im.Vec2, l: core.Gizmo_Label) {
 }
 
 // Half the visible height at the anchor: what the perspective view shows at
-// scene_cam_dist, and the orthographic view's half height.
+// _sv.cam_dist, and the orthographic view's half height.
 scene_cam_half_height :: proc() -> f32 {
-	return max(scene_cam_dist, 0.05) * math.tan(math.to_radians(SCENE_CAM_FOV_DEG) * 0.5)
+	return max(_sv.cam_dist, 0.05) * math.tan(math.to_radians(SCENE_CAM_FOV_DEG) * 0.5)
 }
 
 // The scene view's Render_View — also the basis for picking rays later.
 scene_render_view :: proc(w, h: f32) -> core.Render_View {
-	view := linalg.matrix4_look_at_f32(scene_cam_pos, scene_cam_target, {0, 1, 0})
+	view := linalg.matrix4_look_at_f32(_sv.cam_pos, _sv.cam_target, {0, 1, 0})
 	aspect := w / max(h, 1)
 	proj: matrix[4, 4]f32
-	if scene_cam_ortho {
+	if _sv.cam_ortho {
 		half_h := scene_cam_half_height()
 		half_w := half_h * aspect
-		// The eye sits scene_cam_dist before the anchor; the near plane goes
+		// The eye sits _sv.cam_dist before the anchor; the near plane goes
 		// far behind it so an ortho view never clips what a zoom-in passes.
 		proj = gfx.matrix4_ortho_z01(-half_w, half_w, -half_h, half_h, -SCENE_CAM_FAR, SCENE_CAM_FAR)
 	} else {
 		proj = gfx.matrix4_perspective_z01(math.to_radians(SCENE_CAM_FOV_DEG), aspect, SCENE_CAM_NEAR, SCENE_CAM_FAR)
 	}
 	rv := core.render_view_make(view, proj, w, h, ~u32(0), .SceneView) // editor sees all layers
-	rv.mode = scene_view_mode
+	rv.mode = _sv.view_mode
 	rv.cull = true
 	return rv
 }
@@ -342,25 +416,22 @@ scene_render_view :: proc(w, h: f32) -> core.Render_View {
 // back to an empty view.
 SCENE_VIEW_SLOT :: "Editor"
 
-// Shading mode of the scene view (the Shading overlay), persisted in editor_settings.
-scene_view_mode: core.View_Mode
-
 render_scene_rt :: proc(w, h: i32) {
 	if w < 1 || h < 1 do return
-	gfx.rt_resize(scene_rt, w, h)
+	gfx.rt_resize(_sv.rt, w, h)
 
 	view := scene_render_view(f32(w), f32(h))
 	// The gizmo pass (gizmo_pass.odin) recorded the outline, the handles, the
 	// transform gizmo and the gizmo hooks before this render. The next pass reads the view's size
 	// and the frame it rendered in.
-	_scene_rendered_frame = gfx.frame_index
-	_scene_view_size = {f32(w), f32(h)}
+	_sv.rendered_frame = gfx.frame_index
+	_sv.view_size = {f32(w), f32(h)}
 	gizmos.set_view(view)
-	_scene_view_last = view
+	_sv.view_last = view
 	// The engine's render pipeline owns the passes: the grid and axes draw
 	// under the scene, the gizmos over it, both from scene passes that share
 	// its depth.
-	viewport.render(scene_rt, view, SCENE_VIEW_SLOT, [4]f32{0.15, 0.15, 0.15, 1}, _draw_scene_under, _draw_scene_over)
+	viewport.render(_sv.rt, view, SCENE_VIEW_SLOT, [4]f32{0.15, 0.15, 0.15, 1}, _draw_scene_under, _draw_scene_over)
 }
 
 @(private = "file")
@@ -429,7 +500,7 @@ _GRID_SUB_COL :: [4]f32{0.3, 0.3, 0.3, 1}     // subdivision lines
 draw_grid :: proc() {
 	gs := grid_settings
 	if gs.cells_count <= 0 || gs.cell_size <= 0 do return
-	if scene_2d_mode {
+	if _sv.mode_2d {
 		// The 2D view looks along -Z: only the XY grid reads, the others are
 		// edge-on lines.
 		_draw_grid_plane({1, 0, 0}, {0, 1, 0})
@@ -462,24 +533,19 @@ draw_axis_lines :: proc() {
 	gfx.draw_line({0, 0, 0}, {0, 0, 5}, {0, 0.47, 0.95, 1}, depth_write = true)   // Z blue
 }
 
-draw_scene_view :: proc() {
-	// Zero padding so the render target fills the window edge to edge. Popped
-	// as soon as Begin has read it (the content region is computed there):
-	// held any longer, every tooltip and popup the overlays raise is a window
-	// too and would draw its text flush against its own border.
-	im.PushStyleVarImVec2(.WindowPadding, im.Vec2{0, 0})
-
-	// NoScrollbar: overlays draw ON the image with last-frame sizes, so a
-	// freshly appearing or resizing overlay can momentarily extend past the
-	// window edge — a scrollbar would shrink the content region, resize the
-	// RT and shift the image, oscillating for frames.
-	// A star on the tab while the active scene has unsaved edits
-	// (session/documents.odin).
-	open := im.Begin(session.view_title(icons.TITLE_SCENE), &menu.show_scene, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse})
-	im.PopStyleVar()
-	if open {
-		if _scene_2d_pending {
-			_scene_2d_pending = false
+// Drawn at a set point of the frame (wnd.draw in main.odin): after the gizmo
+// pass, inside the preview pose. A canvas window: no padding, so the render
+// target fills it edge to edge, and no scrollbar, since overlays draw ON the
+// image with last-frame sizes, so a freshly appearing or resizing overlay can
+// momentarily extend past the window edge. A scrollbar would shrink the
+// content region, resize the RT and shift the image, oscillating for frames.
+@(editor_window={id="Scene", title="Scene", icon="LANDSCAPE", canvas=true, closed=scene_view_closed})
+scene_view_draw :: proc(w: ^wnd.Window) {
+	_sv = _scene_view(w)
+	defer _sv = _scene_active()
+	{
+		if _sv.pending_2d {
+			_sv.pending_2d = false
 			scene_set_2d(true)
 		}
 
@@ -492,41 +558,40 @@ draw_scene_view :: proc() {
 		content_max := content_min + avail
 		avail.x = max(avail.x - bar_l - bar_r, 0)
 		avail.y = max(avail.y - bar_t - bar_b, 0)
-		w := i32(avail.x)
-		h := i32(avail.y)
+		rw := i32(avail.x)
+		rh := i32(avail.y)
 
-		if w > 0 && h > 0 {
-			render_scene_rt(w, h)
-			tex_id := im.TextureID(uintptr(gfx.rt_imgui_id(scene_rt)))
+		if rw > 0 && rh > 0 {
+			render_scene_rt(rw, rh)
+			tex_id := im.TextureID(uintptr(gfx.rt_imgui_id(_sv.rt)))
 			im.SetCursorScreenPos({content_min.x + bar_l, content_min.y + bar_t})
 			im.Image(im.TextureRef{_TexID = tex_id}, avail)
-			_scene_img_min = im.GetItemRectMin()
+			_sv.img_min = im.GetItemRectMin()
 			// Gizmo labels (anchor percentages and such) over the image,
 			// shadowed so they read on any background.
 			dl := im.GetWindowDrawList()
 			for l in gizmos.labels(gizmos.scene_gizmo_channels()) {
-				px, ok := gizmos.helper_project_in(_scene_view_last, l.pos)
+				px, ok := gizmos.helper_project_in(_sv.view_last, l.pos)
 				if !ok do continue
-				_draw_handle_label(dl, _scene_img_min + px + l.offset_px, l)
+				_draw_handle_label(dl, _sv.img_min + px + l.offset_px, l)
 			}
-			overlays_draw(_scene_img_min, _scene_img_min + avail, content_min, content_max)
+			overlays_draw(_sv.img_min, _sv.img_min + avail, content_min, content_max)
 		}
 
-		scene_view_hovered = im.IsWindowHovered({})
+		_sv.hovered = im.IsWindowHovered({})
 		// Flythrough is hover-independent once latched: the captured cursor
 		// is pinned, so hover can't be trusted mid-flight.
-		if scene_view_hovered || scene_flythrough_active {
+		if _sv.hovered || _sv.flythrough_active {
 			handle_scene_input()
 		}
 		// Band tracking is hover-independent: the drag keeps working when the
 		// cursor leaves the image, like orbit/gizmo drags.
-		if _band_active {
+		if _sv.band_active {
 			_update_rubber_band()
 		}
 		_draw_pick_menu()
 		_draw_scene_context_menu()
 	}
-	im.End()
 }
 
 // --- Context menu ----------------------------------------------------------------------
@@ -539,15 +604,10 @@ draw_scene_view :: proc() {
 // click and not a look.
 CONTEXT_CLICK_SLOP_PX :: f32(3)
 
-@(private = "file") _ctx_click_pending: bool
-@(private = "file") _ctx_click_pos: [2]f32 // scene-image pixels at the press
-@(private = "file") _ctx_click_travel: f32
-@(private = "file") _ctx_menu_target: core.Transform_Handle // {} = empty space
-
 @(private = "file")
 _scene_context_menu_open :: proc(view: core.Render_View, px, py: f32) {
 	tH, hit := viewport.pick(view, px, py)
-	_ctx_menu_target = tH if hit else {}
+	_sv.ctx_menu_target = tH if hit else {}
 	if hit && !sel_scene_is(tH) do core.inspector_request_select(tH)
 	im.OpenPopup("##scene_context_menu")
 }
@@ -556,7 +616,7 @@ _scene_context_menu_open :: proc(view: core.Render_View, px, py: f32) {
 _draw_scene_context_menu :: proc() {
 	if !im.BeginPopup("##scene_context_menu") do return
 	defer im.EndPopup()
-	if _, alive := inspector.object_owner_of(core.Handle(_ctx_menu_target)); _ctx_menu_target != {} && alive {
+	if _, alive := inspector.object_owner_of(core.Handle(_sv.ctx_menu_target)); _sv.ctx_menu_target != {} && alive {
 		menu.draw_menu_sections({
 			menu.section("Edit", min_order = menu.EDIT_SECTION_SELECTION_MIN, max_order = menu.EDIT_SECTION_SELECTION_MAX),
 			menu.section("GameObject", max_order = menu.GO_SECTION_PARENTING - 1),
@@ -577,20 +637,17 @@ _draw_scene_context_menu :: proc() {
 // open.
 
 @(private = "file")
-_pick_menu: [dynamic]core.Transform_Handle // cross-frame: default allocator
-
-@(private = "file")
 _pick_menu_open :: proc(view: core.Render_View, px, py: f32) {
-	if _pick_menu == nil do _pick_menu = make([dynamic]core.Transform_Handle, runtime.default_allocator())
-	clear(&_pick_menu)
-	for h in viewport.pick_all(view, px, py) do append(&_pick_menu, h)
-	if len(_pick_menu) > 0 do im.OpenPopup("##scene_pick_menu")
+	if _sv.pick_menu == nil do _sv.pick_menu = make([dynamic]core.Transform_Handle, runtime.default_allocator())
+	clear(&_sv.pick_menu)
+	for h in viewport.pick_all(view, px, py) do append(&_sv.pick_menu, h)
+	if len(_sv.pick_menu) > 0 do im.OpenPopup("##scene_pick_menu")
 }
 
 @(private = "file")
 _draw_pick_menu :: proc() {
 	if !im.BeginPopup("##scene_pick_menu") do return
-	for h in _pick_menu {
+	for h in _sv.pick_menu {
 		if _, alive := inspector.object_owner_of(core.Handle(h)); !alive do continue // gone since the click
 		im.PushIDInt(i32(h.index))
 		if im.MenuItem(strings.clone_to_cstring(inspector.object_name(h), context.temp_allocator)) {
@@ -603,21 +660,21 @@ _draw_pick_menu :: proc() {
 
 _update_rubber_band :: proc() {
 	if !im.IsMouseDown(.Left) {
-		_band_active = false // released: the tracker records the final set
+		_sv.band_active = false // released: the tracker records the final set
 		return
 	}
 	mp := im.GetMousePos()
-	rmin := im.Vec2{min(mp.x, _band_anchor.x), min(mp.y, _band_anchor.y)}
-	rmax := im.Vec2{max(mp.x, _band_anchor.x), max(mp.y, _band_anchor.y)}
+	rmin := im.Vec2{min(mp.x, _sv.band_anchor.x), min(mp.y, _sv.band_anchor.y)}
+	rmax := im.Vec2{max(mp.x, _sv.band_anchor.x), max(mp.y, _sv.band_anchor.y)}
 
-	if scene_rt != nil {
-		view := scene_render_view(f32(scene_rt.width), f32(scene_rt.height))
-		vmin := [2]f32{rmin.x - _scene_img_min.x, rmin.y - _scene_img_min.y}
-		vmax := [2]f32{rmax.x - _scene_img_min.x, rmax.y - _scene_img_min.y}
+	if _sv.rt != nil {
+		view := scene_render_view(f32(_sv.rt.width), f32(_sv.rt.height))
+		vmin := [2]f32{rmin.x - _sv.img_min.x, rmin.y - _sv.img_min.y}
+		vmax := [2]f32{rmax.x - _sv.img_min.x, rmax.y - _sv.img_min.y}
 		hits := viewport.band_query(view, vmin, vmax)
 		sel_scene_clear()
-		if _band_additive {
-			for h in _band_base do sel_scene_add(h)
+		if _sv.band_additive {
+			for h in _sv.band_base do sel_scene_add(h)
 		}
 		for h in hits do sel_scene_add(h)
 	}
@@ -648,8 +705,8 @@ draw_tools_overlay :: proc(vertical: bool) {
 // View overlay: Unity's 2D toggle.
 @(scene_overlay={id="View", order=50})
 draw_view_overlay :: proc(vertical: bool) {
-	if overlay_tool_button("2D", "2D view: orthographic, looking along -Z, no orbit (right or middle drag pans)", scene_2d_mode, width = vertical ? OVERLAY_SPLIT_WIDTH : 0) {
-		scene_set_2d(!scene_2d_mode)
+	if overlay_tool_button("2D", "2D view: orthographic, looking along -Z, no orbit (right or middle drag pans)", _sv.mode_2d, width = vertical ? OVERLAY_SPLIT_WIDTH : 0) {
+		scene_set_2d(!_sv.mode_2d)
 	}
 }
 
@@ -666,9 +723,9 @@ draw_shading_overlay :: proc(vertical: bool) {
 	}
 	if !vertical do im.SameLine()
 	im.SetNextItemWidth(vertical ? OVERLAY_SPLIT_WIDTH : 100)
-	if im.BeginCombo("##shading", labels[scene_view_mode]) {
+	if im.BeginCombo("##shading", labels[_sv.view_mode]) {
 		for mode in core.View_Mode {
-			if im.Selectable(labels[mode], mode == scene_view_mode) do scene_view_mode = mode
+			if im.Selectable(labels[mode], mode == _sv.view_mode) do _sv.view_mode = mode
 		}
 		im.EndCombo()
 	}
@@ -807,27 +864,27 @@ handle_scene_input :: proc() {
 
 	// Cmd (Ctrl) + right-click: the pick menu, every object under the
 	// pointer. It takes the click from the flythrough.
-	if cmd && im.IsMouseClicked(.Right) && !alt_down && !overlay_wants_mouse() && scene_rt != nil {
+	if cmd && im.IsMouseClicked(.Right) && !alt_down && !overlay_wants_mouse() && _sv.rt != nil {
 		mp := im.GetMousePos()
-		view := scene_render_view(f32(scene_rt.width), f32(scene_rt.height))
-		_pick_menu_open(view, mp.x - _scene_img_min.x, mp.y - _scene_img_min.y)
+		view := scene_render_view(f32(_sv.rt.width), f32(_sv.rt.height))
+		_pick_menu_open(view, mp.x - _sv.img_min.x, mp.y - _sv.img_min.y)
 	}
 
 	// A right-click that neither turns, flies nor pans the camera opens the
 	// context menu when the button comes up. The flythrough still starts on
 	// the press: moving the mouse or the camera drops the menu.
-	if im.IsMouseClicked(.Right) && !cmd && !alt_down && !overlay_wants_mouse() && scene_rt != nil {
+	if im.IsMouseClicked(.Right) && !cmd && !alt_down && !overlay_wants_mouse() && _sv.rt != nil {
 		mp := im.GetMousePos()
-		_ctx_click_pos = {mp.x - _scene_img_min.x, mp.y - _scene_img_min.y}
-		_ctx_click_travel = 0
-		_ctx_click_pending = _ctx_click_pos.x >= 0 && _ctx_click_pos.y >= 0 && _ctx_click_pos.x < f32(scene_rt.width) && _ctx_click_pos.y < f32(scene_rt.height)
+		_sv.ctx_click_pos = {mp.x - _sv.img_min.x, mp.y - _sv.img_min.y}
+		_sv.ctx_click_travel = 0
+		_sv.ctx_click_pending = _sv.ctx_click_pos.x >= 0 && _sv.ctx_click_pos.y >= 0 && _sv.ctx_click_pos.x < f32(_sv.rt.width) && _sv.ctx_click_pos.y < f32(_sv.rt.height)
 	}
-	if _ctx_click_pending && (rmb_dragging || alt_down || cmd) do _ctx_click_pending = false
-	if _ctx_click_pending && im.IsMouseReleased(.Right) {
-		_ctx_click_pending = false
-		if scene_rt != nil {
-			view := scene_render_view(f32(scene_rt.width), f32(scene_rt.height))
-			_scene_context_menu_open(view, _ctx_click_pos.x, _ctx_click_pos.y)
+	if _sv.ctx_click_pending && (rmb_dragging || alt_down || cmd) do _sv.ctx_click_pending = false
+	if _sv.ctx_click_pending && im.IsMouseReleased(.Right) {
+		_sv.ctx_click_pending = false
+		if _sv.rt != nil {
+			view := scene_render_view(f32(_sv.rt.width), f32(_sv.rt.height))
+			_scene_context_menu_open(view, _sv.ctx_click_pos.x, _sv.ctx_click_pos.y)
 		}
 	}
 
@@ -836,29 +893,29 @@ handle_scene_input :: proc() {
 	// keeps streaming raw deltas — without it the visible cursor stalls the
 	// rotation at every screen edge and drops the camera whenever it drifts
 	// off the window (the "jaggy flythrough" bug).
-	if scene_flythrough_active && (!rmb_down || alt_down) {
-		scene_flythrough_active = false
+	if _sv.flythrough_active && (!rmb_down || alt_down) {
+		_sv.flythrough_active = false
 		input.set_mouse_relative(false)
 	}
-	if !scene_flythrough_active && rmb_down && !alt_down && !cmd && scene_view_hovered && !scene_2d_mode {
-		scene_flythrough_active = true
+	if !_sv.flythrough_active && rmb_down && !alt_down && !cmd && _sv.hovered && !_sv.mode_2d {
+		_sv.flythrough_active = true
 		input.set_mouse_relative(true)
 		// Smoothing state starts at rest so entry doesn't inherit stale lag.
-		_fly_yaw_target = scene_cam_yaw
-		_fly_pitch_target = scene_cam_pitch
-		_fly_vel = {0, 0, 0}
+		_sv.fly_yaw_target = _sv.cam_yaw
+		_sv.fly_pitch_target = _sv.cam_pitch
+		_sv.fly_vel = {0, 0, 0}
 	}
 
 	// Any manual camera input takes over from an in-flight frame tween.
 	if rmb_down || mmb_dragging || (alt_down && lmb_dragging) || io.MouseWheel != 0 {
-		_frame_tween_active = false
+		_sv.tween_active = false
 	}
 
 	// Fly camera FIRST and returns: while captured, the shortcut/pick/band
 	// handling below must not react to the pinned cursor (and this proc runs
 	// un-hovered while latched).
-	if scene_flythrough_active {
-		_orbit_active = false
+	if _sv.flythrough_active {
+		_sv.orbit_active = false
 		// The full frame rate while flying: holding the button still sends
 		// no input, and the idle rate's long frames would make the first key
 		// press a jump.
@@ -873,18 +930,18 @@ handle_scene_input :: proc() {
 		delta := input.mouse_delta()
 		// The pointer moved or the camera flew: the right-click is a look,
 		// not a click for the context menu.
-		_ctx_click_travel += abs(delta.x) + abs(delta.y)
-		if _ctx_click_travel > CONTEXT_CLICK_SLOP_PX || input.wheel() != 0 do _ctx_click_pending = false
-		_fly_yaw_target += delta.x * LOOK_SENSITIVITY
-		_fly_pitch_target = clamp(_fly_pitch_target - delta.y * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
+		_sv.ctx_click_travel += abs(delta.x) + abs(delta.y)
+		if _sv.ctx_click_travel > CONTEXT_CLICK_SLOP_PX || input.wheel() != 0 do _sv.ctx_click_pending = false
+		_sv.fly_yaw_target += delta.x * LOOK_SENSITIVITY
+		_sv.fly_pitch_target = clamp(_sv.fly_pitch_target - delta.y * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
 		look_k := 1 - math.exp(-dt / FLY_LOOK_SMOOTH_TAU)
-		scene_cam_yaw += (_fly_yaw_target - scene_cam_yaw) * look_k
-		scene_cam_pitch = clamp(scene_cam_pitch + (_fly_pitch_target - scene_cam_pitch) * look_k, -PITCH_LIMIT, PITCH_LIMIT)
+		_sv.cam_yaw += (_sv.fly_yaw_target - _sv.cam_yaw) * look_k
+		_sv.cam_pitch = clamp(_sv.cam_pitch + (_sv.fly_pitch_target - _sv.cam_pitch) * look_k, -PITCH_LIMIT, PITCH_LIMIT)
 
 		// Wheel during fly rescales the base speed for the session (Unity).
 		if wheel := input.wheel(); wheel != 0 {
-			scene_fly_speed = clamp(scene_fly_speed * math.pow(FLY_SPEED_WHEEL_BASE, wheel), 0.5, 100)
-			_fly_speed_cur = min(_fly_speed_cur, scene_fly_speed * FLYTHROUGH_RAMP_MULT)
+			_sv.fly_speed = clamp(_sv.fly_speed * math.pow(FLY_SPEED_WHEEL_BASE, wheel), 0.5, 100)
+			_sv.fly_speed_cur = min(_sv.fly_speed_cur, _sv.fly_speed * FLYTHROUGH_RAMP_MULT)
 		}
 
 		fwd, right, _ := _scene_cam_basis()
@@ -895,7 +952,7 @@ handle_scene_input :: proc() {
 		if input.key_down(.A) do move -= right
 		if input.key_down(.E) do move += [3]f32{0, 1, 0}
 		if input.key_down(.Q) do move -= [3]f32{0, 1, 0}
-		if move != {} do _ctx_click_pending = false
+		if move != {} do _sv.ctx_click_pending = false
 
 		// Target velocity from the keys; the smoothed velocity chases it so
 		// starts, stops, and direction changes ease instead of stepping.
@@ -904,24 +961,24 @@ handle_scene_input :: proc() {
 		if len > 0 {
 			// Held movement ramps toward the cap, so short taps stay precise
 			// and long hauls get fast. Release resets to base.
-			_fly_speed_cur = min(
-				_fly_speed_cur + scene_fly_speed * (FLYTHROUGH_RAMP_MULT - 1) / FLYTHROUGH_RAMP_TIME * dt,
-				scene_fly_speed * FLYTHROUGH_RAMP_MULT,
+			_sv.fly_speed_cur = min(
+				_sv.fly_speed_cur + _sv.fly_speed * (FLYTHROUGH_RAMP_MULT - 1) / FLYTHROUGH_RAMP_TIME * dt,
+				_sv.fly_speed * FLYTHROUGH_RAMP_MULT,
 			)
-			speed := _fly_speed_cur
+			speed := _sv.fly_speed_cur
 			if input.key_down(.LSHIFT) || input.key_down(.RSHIFT) do speed *= FLYTHROUGH_SHIFT_MULT
 			target_vel = move / len * speed
 		} else {
-			_fly_speed_cur = scene_fly_speed
+			_sv.fly_speed_cur = _sv.fly_speed
 		}
 		step: [3]f32
-		_fly_vel, step = scene_fly_move_step(_fly_vel, target_vel, dt)
-		scene_cam_pos += step
+		_sv.fly_vel, step = scene_fly_move_step(_sv.fly_vel, target_vel, dt)
+		_sv.cam_pos += step
 
 		update_scene_camera()
 		return
 	}
-	_fly_speed_cur = scene_fly_speed
+	_sv.fly_speed_cur = _sv.fly_speed
 
 	// Gizmo mode shortcuts (Unity's Q/W/E/R/T) — not during flythrough, whose
 	// WASDQE movement owns these keys.
@@ -938,50 +995,50 @@ handle_scene_input :: proc() {
 	// gizmo_tool_frame would leave its undo step open). During a
 	// band it cancels the band and restores the pre-band selection instead.
 	if im.IsKeyPressed(.Escape) && !viewport.tools_dragging() {
-		if _band_active {
-			_band_active = false
+		if _sv.band_active {
+			_sv.band_active = false
 			sel_scene_clear()
-			for h in _band_base do sel_scene_add(h)
+			for h in _sv.band_base do sel_scene_add(h)
 		} else {
 			sel_scene_clear()
 		}
-		_scene_click_pending = false
+		_sv.click_pending = false
 	}
 
 	// Click-to-pick: LMB press + release within a few pixels (and no Alt —
 	// Alt+LMB orbits; not on the gizmo — grabs must not select-through; and
 	// not on an overlay — button clicks must not pick behind them).
 	if im.IsMouseClicked(.Left) && !alt_down && !viewport.tools_consume_mouse() && !overlay_wants_mouse() {
-		_scene_click_pos = im.GetMousePos()
-		_scene_click_pending = true
+		_sv.click_pos = im.GetMousePos()
+		_sv.click_pending = true
 	}
-	if _scene_click_pending && viewport.tools_consume_mouse() {
-		_scene_click_pending = false
+	if _sv.click_pending && viewport.tools_consume_mouse() {
+		_sv.click_pending = false
 	}
 	// An armed click that travels beyond the click threshold becomes a rubber
 	// band (works in every tool mode, Unity-style).
-	if _scene_click_pending && !_band_active {
+	if _sv.click_pending && !_sv.band_active {
 		mp := im.GetMousePos()
-		dx := mp.x - _scene_click_pos.x
-		dy := mp.y - _scene_click_pos.y
+		dx := mp.x - _sv.click_pos.x
+		dy := mp.y - _sv.click_pos.y
 		if dx * dx + dy * dy >= 16 {
-			_scene_click_pending = false
-			_band_active = true
-			_band_anchor = _scene_click_pos
-			_band_additive = io.KeyCtrl || io.KeySuper
-			clear(&_band_base)
-			for h in sel_scene_items() do append(&_band_base, h)
+			_sv.click_pending = false
+			_sv.band_active = true
+			_sv.band_anchor = _sv.click_pos
+			_sv.band_additive = io.KeyCtrl || io.KeySuper
+			clear(&_sv.band_base)
+			for h in sel_scene_items() do append(&_sv.band_base, h)
 		}
 	}
-	if _scene_click_pending && im.IsMouseReleased(.Left) {
-		_scene_click_pending = false
+	if _sv.click_pending && im.IsMouseReleased(.Left) {
+		_sv.click_pending = false
 		mp := im.GetMousePos()
-		dx := mp.x - _scene_click_pos.x
-		dy := mp.y - _scene_click_pos.y
-		if !alt_down && dx * dx + dy * dy < 16 && scene_rt != nil {
-			view := scene_render_view(f32(scene_rt.width), f32(scene_rt.height))
-			px := mp.x - _scene_img_min.x
-			py := mp.y - _scene_img_min.y
+		dx := mp.x - _sv.click_pos.x
+		dy := mp.y - _sv.click_pos.y
+		if !alt_down && dx * dx + dy * dy < 16 && _sv.rt != nil {
+			view := scene_render_view(f32(_sv.rt.width), f32(_sv.rt.height))
+			px := mp.x - _sv.img_min.x
+			py := mp.y - _sv.img_min.y
 			// cmd/ctrl-click toggles the picked object in/out of the
 			// selection (no hierarchy reveal); plain click selects only it.
 			// Clicking empty space clears — unless toggling, where a miss
@@ -998,47 +1055,47 @@ handle_scene_input :: proc() {
 		}
 	}
 
-	if alt_down && lmb_dragging && !scene_2d_mode {
+	if alt_down && lmb_dragging && !_sv.mode_2d {
 		// Orbit around the anchor captured when the drag started (Unity's
 		// pivot model: F/pan/zoom place it, orbit revolves around it).
-		if !_orbit_active {
-			_orbit_active = true
-			_orbit_pivot = scene_cam_target
-			scene_cam_dist = max(linalg.length(scene_cam_pos - _orbit_pivot), 0.1)
+		if !_sv.orbit_active {
+			_sv.orbit_active = true
+			_sv.orbit_pivot = _sv.cam_target
+			_sv.cam_dist = max(linalg.length(_sv.cam_pos - _sv.orbit_pivot), 0.1)
 		}
 		delta := io.MouseDelta
-		scene_cam_yaw += delta.x * LOOK_SENSITIVITY
-		scene_cam_pitch = clamp(scene_cam_pitch - delta.y * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
+		_sv.cam_yaw += delta.x * LOOK_SENSITIVITY
+		_sv.cam_pitch = clamp(_sv.cam_pitch - delta.y * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
 		fwd, _, _ := _scene_cam_basis()
-		scene_cam_pos = _orbit_pivot - fwd * scene_cam_dist
+		_sv.cam_pos = _sv.orbit_pivot - fwd * _sv.cam_dist
 		update_scene_camera()
 		return
 	}
-	_orbit_active = false
+	_sv.orbit_active = false
 
 	if alt_down && rmb_dragging {
 		// Zoom drag: dolly the eye toward/away from the fixed anchor.
 		delta := io.MouseDelta
 		zoom_delta := (delta.x + delta.y) * ZOOM_DRAG_FACTOR
-		anchor := scene_cam_target
-		scene_cam_dist = clamp(scene_cam_dist * (1 - zoom_delta), 0.1, 10000)
+		anchor := _sv.cam_target
+		_sv.cam_dist = clamp(_sv.cam_dist * (1 - zoom_delta), 0.1, 10000)
 		fwd, _, _ := _scene_cam_basis()
-		scene_cam_pos = anchor - fwd * scene_cam_dist
+		_sv.cam_pos = anchor - fwd * _sv.cam_dist
 		update_scene_camera()
 		return
 	}
 
 	// Pan: middle drag, and in 2D also right drag and alt-drag (no orbit there).
-	if mmb_dragging || (scene_2d_mode && scene_view_hovered && (rmb_dragging || (alt_down && lmb_dragging))) {
+	if mmb_dragging || (_sv.mode_2d && _sv.hovered && (rmb_dragging || (alt_down && lmb_dragging))) {
 		delta := io.MouseDelta
 		_, r, u := _scene_cam_basis()
 
 		// Distance/viewport scaling keeps the grabbed point under the cursor
 		// at any zoom level and window size; exact in orthographic.
-		units_per_px := scene_cam_dist / max(f32(scene_rt.height), 1)
-		if scene_cam_ortho do units_per_px = 2 * scene_cam_half_height() / max(f32(scene_rt.height), 1)
+		units_per_px := _sv.cam_dist / max(f32(_sv.rt.height), 1)
+		if _sv.cam_ortho do units_per_px = 2 * scene_cam_half_height() / max(f32(_sv.rt.height), 1)
 		pan := r * (-delta.x * units_per_px) + u * (delta.y * units_per_px)
-		scene_cam_pos += pan
+		_sv.cam_pos += pan
 		update_scene_camera()
 		return
 	}
@@ -1047,15 +1104,15 @@ handle_scene_input :: proc() {
 	if wheel != 0 {
 		// Logarithmic dolly toward the fixed anchor, with a minimum absolute
 		// step so close-range zoom stays responsive.
-		anchor := scene_cam_target
-		old_dist := scene_cam_dist
+		anchor := _sv.cam_target
+		old_dist := _sv.cam_dist
 		new_dist := old_dist * math.pow(ZOOM_WHEEL_BASE, -wheel)
 		min_step := ZOOM_MIN_STEP * abs(wheel)
 		if wheel > 0 && old_dist - new_dist < min_step do new_dist = old_dist - min_step
 		if wheel < 0 && new_dist - old_dist < min_step do new_dist = old_dist + min_step
-		scene_cam_dist = clamp(new_dist, 0.1, 10000)
+		_sv.cam_dist = clamp(new_dist, 0.1, 10000)
 		fwd, _, _ := _scene_cam_basis()
-		scene_cam_pos = anchor - fwd * scene_cam_dist
+		_sv.cam_pos = anchor - fwd * _sv.cam_dist
 		update_scene_camera()
 	}
 }
