@@ -57,7 +57,7 @@ _Walked :: struct {
 }
 
 @(editor_window={id="tween_graph", title="Tween Graph", icon="SHOW_CHART", width=900, height=520})
-tween_graph_window_draw :: proc() {
+tween_graph_window_draw :: proc(w: ^wnd.Window) {
 	w := engine.ctx_world()
 	if w == nil {
 		im.TextDisabled("No world.")

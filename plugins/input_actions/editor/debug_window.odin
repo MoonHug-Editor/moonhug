@@ -21,7 +21,7 @@ input_actions_window_open :: proc() {
 }
 
 @(editor_window={id="input_actions_debug", title="Input Actions", icon="SPORTS_ESPORTS", width=620, height=400})
-input_actions_window_draw :: proc() {
+input_actions_window_draw :: proc(w: ^window.Window) {
 	im.TextDisabled(engine.application_is_playing() ? "Live values of the running game" : "The values update while the game runs")
 	im.SameLine()
 	im.TextDisabled(input.gamepad_connected() ? "  gamepad connected" : "  no gamepad")

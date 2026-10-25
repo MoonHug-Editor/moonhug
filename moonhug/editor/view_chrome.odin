@@ -132,9 +132,19 @@ _view_tab_bar_items_for :: proc(view: string) -> []View_Tab_Bar_Item {
 	return out[:]
 }
 
-// The id a title carries: everything after "###". Falls back to the whole
-// string, so a title written without the marker still keys something stable.
+// The view id a title carries: everything after "###", up to the `/` an
+// instance of a window adds (`shader_graph/<asset guid>`), so every instance
+// of a window shares its view's menu and tab bar items. Falls back to the
+// whole string, so a title written without the marker still keys something
+// stable.
 view_id_of :: proc(title: cstring) -> string {
+	key := view_key_of(title)
+	if slash := strings.index_byte(key, '/'); slash >= 0 do return key[:slash]
+	return key
+}
+
+// The key a title carries: everything after "###", an instance's own id.
+view_key_of :: proc(title: cstring) -> string {
 	s := string(title)
 	if i := strings.last_index(s, "###"); i >= 0 do return s[i + 3:]
 	return s

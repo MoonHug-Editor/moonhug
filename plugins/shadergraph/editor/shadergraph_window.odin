@@ -31,7 +31,8 @@ import "moonhug:packages/engine"
 import sg "moonhug:packages/shadergraph"
 
 _SG_State :: struct {
-	guid:     engine.Asset_GUID, // the open graph, {} = nothing open
+	guid:     engine.Asset_GUID, // the instance's graph
+	failed:   bool,              // the file is not a shader graph, said once
 	// The graph's shared document and its instance, looked up at the start
 	// of each frame (_sg_fetch). Pointers never survive a frame.
 	asset:    ^inspector.Asset_Doc,
@@ -57,7 +58,9 @@ _SG_State :: struct {
 	notice_until: f64,
 }
 
-_sg := _SG_State{rename = -1}
+// The instance being drawn: each instance of the window keeps its own state
+// in its wnd.Window (_sg_instance).
+_sg: ^_SG_State
 
 _SG_LEFT_W  :: f32(250) // the side panes' default widths
 _SG_RIGHT_W :: f32(340)
@@ -93,20 +96,40 @@ _SG_PROP_KIND_NAMES := [sg.Prop_Kind]cstring{
 	.Texture = "Texture",
 }
 
-// Opens the graph at `path` in the window. Its unsaved edits stay in its
-// document, so reopening it, or opening another graph and coming back, keeps
-// them.
+// Opens the graph at `path` in its own instance of the window, so two graphs
+// are edited side by side. Its unsaved edits stay in its document, so closing
+// the instance and opening it again keeps them.
 shader_graph_open :: proc(path: string, guid: engine.Asset_GUID) {
-	if _sg.guid != guid {
-		_sg.guid = guid
-		_sg.seen = nil
-		_sg.touched = false
-		_sg.rename = -1
-		_sg.cv.sel = -1
-		_sg.cv.sel_link = -1
+	wnd.open("shader_graph", guid)
+}
+
+// An instance's state, created on its first frame.
+@(private = "file")
+_sg_instance :: proc(w: ^wnd.Window) -> ^_SG_State {
+	if w.data == nil {
+		st := new(_SG_State, runtime.default_allocator())
+		st^ = {guid = w.asset, rename = -1}
+		st.cv.sel = -1
+		st.cv.sel_link = -1
+		w.data = st
 	}
-	if !_sg_fetch() do return
-	wnd.open("shader_graph")
+	return (^_SG_State)(w.data)
+}
+
+// Frees an instance's state, on the default allocator like the rest of the
+// window's own state.
+shader_graph_window_closed :: proc(w: ^wnd.Window) {
+	st := (^_SG_State)(w.data)
+	if st == nil do return
+	context.allocator = runtime.default_allocator()
+	delete(st.baseline)
+	delete(st.glsl)
+	for e in st.errors do delete(e)
+	delete(st.errors)
+	delete(st.error_nodes)
+	if _sg == st do _sg = nil
+	free(st)
+	w.data = nil
 }
 
 // Looks up the open graph's shared document, loading it on first use. A new
@@ -122,8 +145,8 @@ _sg_fetch :: proc() -> bool {
 	path, known := engine.asset_db_get_path(uuid.Identifier(_sg.guid))
 	doc := inspector.asset_doc_get(path) if known else nil
 	if doc == nil || doc.data.id != typeid_of(sg.Shader_Graph) {
-		log.errorf("[ShaderGraph] %s is not a shader graph", path)
-		_sg.guid = {}
+		if !_sg.failed do log.errorf("[ShaderGraph] %s is not a shader graph", path)
+		_sg.failed = true
 		return false
 	}
 	_sg.asset = doc
@@ -141,15 +164,20 @@ _sg_fetch :: proc() -> bool {
 	return true
 }
 
-@(editor_window={id="shader_graph", title="Shader Graph", icon="ACCOUNT_TREE", width=1100, height=640})
-shader_graph_window_draw :: proc() {
+@(editor_window={id="shader_graph", title="Shader Graph", icon="ACCOUNT_TREE", width=1100, height=640, closed=shader_graph_window_closed})
+shader_graph_window_draw :: proc(w: ^wnd.Window) {
 	// Edits allocate into the shared document, so they use its allocator.
 	// The undo stack owns what is pushed to it and frees it with the editor's
 	// context allocator, so a step is built with the caller's (_sg_record).
 	caller := context.allocator
 	context.allocator = inspector.doc_alloc()
-	if !_sg_fetch() {
+	if w.asset == {} {
 		im.TextDisabled("Select a .shadergraph in the Project view and press Open Shader Graph.")
+		return
+	}
+	_sg = _sg_instance(w)
+	if !_sg_fetch() {
+		im.TextDisabled("This file is not a shader graph.")
 		return
 	}
 
@@ -258,12 +286,6 @@ _sg_pane_toggle :: proc(label: cstring, hidden: ^bool, tip: cstring) {
 	if im.Button(label) do hidden^ = !hidden^
 	if lit do im.PopStyleColor()
 	widgets.tooltip(tip)
-}
-
-// The graph the window edits, for its tab menu and the star on its tab.
-@(view_document={view="shader_graph"})
-shader_graph_view_document :: proc() -> engine.Asset_GUID {
-	return _sg.guid
 }
 
 // A save reimports the graph and drops its cached shader, so a material on

@@ -302,7 +302,7 @@ sequencer_menu_open :: proc() {
 }
 
 @(editor_window={id="sequencer", title="Sequencer", icon="VIEW_TIMELINE", width=1100, height=420})
-sequencer_window_draw :: proc() {
+sequencer_window_draw :: proc(w: ^wnd.Window) {
 	if _sq.pps == 0 do _sq.pps = 120
 	if _sq.legend_w == 0 do _sq.legend_w = 230
 	if _sq.inspector_w == 0 do _sq.inspector_w = 260

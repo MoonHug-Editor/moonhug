@@ -10,7 +10,7 @@ A view is a dockable editor window: the built-in ones (Scene, Game, Hierarchy, I
 
 ## View ids
 
-Every view's imgui title is `"<icon> <label>###<id>"`. imgui keys the window, its dock place and the saved layout on the id after `###`, and every attribute on this page names a view by that id: `"Scene"`, `"Animation"`, `"shader_graph"`. So the icon and the label can change, a star appears while the view's asset has unsaved changes, and the tab never moves.
+Every view's imgui title is `"<icon> <label>###<key>"`. imgui keys the window, its dock place and the saved layout on the key after `###`, so the icon and the label can change, a star appears while the view's asset has unsaved changes, and the tab never moves. A view's key is its id (`"Scene"`, `"Animation"`), and a window instance opened for an asset adds the asset's guid (`"shader_graph/<guid>"`). Every attribute on this page names a view by its id, the key up to its first `/`, so all instances of a window share its menu and tab bar items.
 
 ## Editor windows
 
@@ -20,7 +20,7 @@ A plugin declares a dockable window with `@(editor_window)` and opens it by id:
 import wnd "moonhug:editor/window"
 
 @(editor_window={id="physics2d", title="Physics 2D", icon="TUNE", width=420, height=240})
-draw_physics_debug :: proc() {
+draw_physics_debug :: proc(w: ^wnd.Window) {
     // window CONTENT only: Begin/End, the close button and the open flag
     // belong to the host
 }
@@ -31,9 +31,11 @@ open_physics_debug :: proc() {
 }
 ```
 
-- `title` defaults to the id. `icon` names a Material Symbols glyph from `editor/icons` without the `ICON_MD_` prefix (default `EXTENSION`). `width` and `height` are the first-shown size, applied only while imgui.ini has no entry for the id. Once the user resizes or docks it, imgui.ini wins.
-- `wnd.open` focuses the window if it is already open. Any code can call it, a button or a context menu as well as a menu item.
-- The open list lasts for the process, so a window reopens from its menu after a restart. Its dock place and size persist in imgui.ini by id. `editor/imgui_ini_migrate.odin` renames `[Window][<title>]` entries to the id on startup, for layouts saved before titles carried icons.
+- `title` defaults to the id. `icon` names a Material Symbols glyph from `editor/icons` without the `ICON_MD_` prefix (default `EXTENSION`). `width` and `height` are the first-shown size, applied only while imgui.ini has no entry for the instance. Once the user resizes or docks it, imgui.ini wins.
+- A window opens as instances. `wnd.open(id)` shows its plain instance, `wnd.open(id, asset)` the instance for that asset, so two assets are edited side by side. Opening an open instance focuses it. Any code can call it, a button or a context menu as well as a menu item.
+- The draw proc receives its instance (`wnd.Window`) and keeps that instance's state in `w.data`. The attribute's `closed` field names a proc that frees it when the instance closes: `closed=draw_physics_debug_closed`. Window state lives there, not in globals, so a window can have several instances.
+- An asset instance's tab shows the asset's name, and its tab menu offers Save and Discard for that asset, with the star while it has unsaved changes, with no `@(view_document)`. A new asset instance with nothing saved docks beside an open instance of the same window.
+- The editor reopens the open instances after a restart. Each one's dock place and size persist in imgui.ini by its key. `editor/imgui_ini_migrate.odin` renames `[Window][<title>]` entries to the id on startup, for layouts saved before titles carried icons.
 - Declarations land in `editor/editor_windows_generated.odin` (editor_window_gen). `packages/plugin_example/editor` carries a working demo.
 
 ## Menu and tab bar
@@ -50,12 +52,13 @@ game_gizmos: bool
 
 ## The asset a view edits
 
-A view that edits an asset names it with `@(view_document)` on a public proc, which returns the asset's guid, or `{}` while the view edits none. The view's tab menu then starts with Save and Discard for that asset, and its tab carries a star while the asset has unsaved changes. A locked view returns its locked asset. The attribute is optional: the Project Inspector, the Hierarchy, the Scene view and the Animation, Shader Graph and Render Pipeline windows have one, and a view without it has no Save, Discard or star on its tab.
+A view whose asset changes while it stays open names it with `@(view_document)` on a public proc, which returns the asset's guid, or `{}` while the view edits none. The view's tab menu then starts with Save and Discard for that asset, and its tab carries a star while the asset has unsaved changes. A locked view returns its locked asset. The Project Inspector, the Hierarchy, the Scene view and the Animation window have one. A window instance opened for an asset needs none, as the Shader Graph and Render Pipeline windows show, and a view with neither has no Save, Discard or star on its tab.
 
 ```odin
-@(view_document={view="shader_graph"})
-shader_graph_view_document :: proc() -> engine.Asset_GUID {
-	return _sg.guid // {} while the window edits nothing
+@(view_document={view="Animation"})
+animation_view_document :: proc() -> engine.Asset_GUID {
+	doc, _ := _pv_doc()
+	return doc.guid if doc != nil else {} // the selected clip, {} for none
 }
 ```
 

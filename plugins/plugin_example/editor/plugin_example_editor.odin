@@ -34,7 +34,7 @@ _spinner_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 // the window, a @(menu_item) opens it by id - Unity's [MenuItem] + GetWindow
 // shape. width/height apply on first show, before imgui.ini has an entry.
 @(editor_window={id="plugin_example", title="Plugin Example", width=420, height=200})
-plugin_example_window_draw :: proc() {
+plugin_example_window_draw :: proc(w: ^wnd.Window) {
 	im.TextWrapped("A plugin-owned editor window. Dock me anywhere - " +
 		"position persists in imgui.ini. Close and reopen from " +
 		"Window/Plugin Example.")

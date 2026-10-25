@@ -317,8 +317,11 @@ test_render_steps_optional_reads :: proc(t: ^testing.T) {
 // no ssao row, nothing reported missing.
 @(test)
 test_render_pipeline_window_optional_reads :: proc(t: ^testing.T) {
-	saved := rpv._rp.doc
-	defer rpv._rp.doc = saved
+	// The window's state for one instance, as its draw proc would make it.
+	st: rpv._RP_State
+	saved := rpv._rp
+	rpv._rp = &st
+	defer rpv._rp = saved
 	find :: proc(m: rpv._Model, name: string) -> ^rpv._Resource {
 		for &r in m.res do if r.name == name do return &r
 		return nil
@@ -492,14 +495,15 @@ test_render_pipeline_window_mute_previews :: proc(t: ^testing.T) {
 	guid, gok := engine.asset_db_get_guid(path)
 	testing.expect(t, gok, "the pipeline is in the asset db")
 	if !gok do return
+	// The window's state for the pipeline's instance, as its draw proc would
+	// make it.
+	st := rpv._RP_State{guid = engine.Asset_GUID(guid), write_edit = -1, set_stale = true}
+	saved := rpv._rp
+	rpv._rp = &st
 	defer {
-		rpv._rp.guid = {}
-		rpv._rp.seen = nil
-		rpv._rp.doc = nil
-		rpv._rp.asset = nil
+		rpv._rp_state_free(&st)
+		rpv._rp = saved
 	}
-
-	rpv._rp_open_guid(engine.Asset_GUID(guid))
 	testing.expect(t, rpv._rp_fetch(), "the window looks up the shared document")
 	// In a debug editor the draw runs on the document allocator, the editor's
 	// tracking allocator over the default heap. A tracking allocator of the

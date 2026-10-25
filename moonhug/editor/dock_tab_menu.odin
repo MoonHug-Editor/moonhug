@@ -223,7 +223,7 @@ _tab_menu_contents :: proc(node: ^im.DockNode) {
 		// The file the view shows first (session/documents.odin): Save, and
 		// Discard after a confirmation. Both are off while it has no unsaved
 		// changes.
-		if d, ok := session.view_document(view); ok {
+		if d, ok := session.view_document(view_key_of(active_title)); ok {
 			im.BeginDisabled(!d.dirty)
 			if im.MenuItem("Save") do session.document_save(d)
 			im.EndDisabled()

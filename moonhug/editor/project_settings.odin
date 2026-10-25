@@ -143,7 +143,7 @@ _settings_persist :: proc(tab: ^_Settings_Tab) {
 }
 
 @(editor_window={id="project_settings", title="Project Settings", icon="SETTINGS", width=720, height=440})
-project_settings_window_draw :: proc() {
+project_settings_window_draw :: proc(w: ^wnd.Window) {
 	if len(_settings_tabs) == 0 {
 		im.TextDisabled("No project settings registered")
 		return

@@ -54,7 +54,8 @@ import "moonhug:packages/engine"
 _RP_PAYLOAD :: "RP_STEP"
 
 _RP_State :: struct {
-	guid:     engine.Asset_GUID, // the open pipeline, {} = nothing open
+	key:      string, // heap, the instance's key in the window registry
+	guid:     engine.Asset_GUID, // the instance's pipeline
 	// The pipeline's shared document and its instance, looked up at the
 	// start of each frame (_rp_fetch). Pointers never survive a frame.
 	asset:    ^inspector.Asset_Doc,
@@ -66,7 +67,7 @@ _RP_State :: struct {
 	changed:  bool,   // the document changed this frame, the preview follows
 	preview:  string, // heap, the document as last sent to the preview
 
-	tried_guid: engine.Asset_GUID, // the active pipeline last opened on its own, not retried after a failed load
+	failed: bool, // the file is not a render pipeline, said once
 
 	slot:    string, // heap, the slot the tabs show
 	sel:     i32,    // selected step (entry id), 0 = none
@@ -104,7 +105,14 @@ _RP_State :: struct {
 	step_search: [64]u8,
 }
 
-_rp := _RP_State{write_edit = -1}
+// The instance being drawn or acted on: each instance of the window keeps
+// its own state in its wnd.Window (_rp_instance).
+_rp: ^_RP_State
+
+// The instance a pending slot removal is for, by key: the confirm dialog's
+// action runs outside the window's draw.
+@(private = "file")
+_rp_remove_key: string
 
 // The window's layout and filters, saved per developer.
 Render_Pipeline_Prefs :: struct {
@@ -123,31 +131,54 @@ Render_Pipeline_Prefs :: struct {
 render_pipeline_prefs: Render_Pipeline_Prefs
 
 
+// Opens the project's active pipeline when it is an asset, else the window's
+// plain instance, which explains the built-in frame.
 @(menu_item={path="Window/Rendering/Render Pipeline", shortcut=""})
 render_pipeline_menu_open :: proc() {
-	if _rp.guid == {} do _rp_open_active()
-	wnd.open("render_pipeline")
+	active := engine.render_pipeline_active().guid
+	if _, ok := engine.asset_db_get_path(uuid.Identifier(active)); active != {} && ok {
+		wnd.open("render_pipeline", active)
+	} else {
+		wnd.open("render_pipeline")
+	}
 }
 
-// Opens the pipeline at `path` in the window. Its unsaved edits stay in its
-// document, so reopening it, or opening another pipeline and coming back,
+// Opens the pipeline at `path` in its own instance of the window. Its unsaved
+// edits stay in its document, so closing the instance and opening it again
 // keeps them.
 render_pipeline_open :: proc(path: string, guid: engine.Asset_GUID) {
-	_rp_open_guid(guid)
-	wnd.open("render_pipeline")
+	wnd.open("render_pipeline", guid)
 }
 
-// Points the window at the pipeline `guid`, its view state reset.
-_rp_open_guid :: proc(guid: engine.Asset_GUID) {
-	if _rp.guid == guid do return
-	_rp.guid = guid
-	_rp.seen = nil
-	_rp.touched = false
-	_rp.changed = false
-	_rp.write_edit = -1
-	_rp.sel = 0
-	_rp_set_string(&_rp.sel_res, "")
-	_rp.set_stale = true
+// An instance's state, created on its first frame.
+_rp_instance :: proc(w: ^wnd.Window) -> ^_RP_State {
+	if w.data == nil {
+		st := new(_RP_State, runtime.default_allocator())
+		st^ = {key = strings.clone(w.key, runtime.default_allocator()), guid = w.asset, write_edit = -1, set_stale = true}
+		w.data = st
+	}
+	return (^_RP_State)(w.data)
+}
+
+// Frees what an instance's state owns, on the default allocator like the
+// rest of the window's own state.
+_rp_state_free :: proc(st: ^_RP_State) {
+	context.allocator = runtime.default_allocator()
+	for str in ([]^string{&st.key, &st.baseline, &st.preview, &st.slot, &st.sel_res, &st.menu_slot, &st.rename_slot, &st.remove_slot}) {
+		delete(str^)
+		str^ = ""
+	}
+	delete(st.set_buf)
+	st.set_buf = nil
+}
+
+render_pipeline_window_closed :: proc(w: ^wnd.Window) {
+	st := (^_RP_State)(w.data)
+	if st == nil do return
+	_rp_state_free(st)
+	if _rp == st do _rp = nil
+	free(st, runtime.default_allocator())
+	w.data = nil
 }
 
 // Looks up the open pipeline's shared document, loading it on first use. A
@@ -163,8 +194,8 @@ _rp_fetch :: proc() -> bool {
 	path, known := engine.asset_db_get_path(uuid.Identifier(_rp.guid))
 	doc := inspector.asset_doc_get(path) if known else nil
 	if doc == nil || doc.data.id != typeid_of(engine.Render_Pipeline) {
-		log.errorf("[Render] %s is not a render pipeline", path)
-		_rp.guid = {}
+		if !_rp.failed do log.errorf("[Render] %s is not a render pipeline", path)
+		_rp.failed = true
 		return false
 	}
 	_rp.asset = doc
@@ -190,25 +221,28 @@ _rp_fetch :: proc() -> bool {
 	return true
 }
 
-// The project's active pipeline, when it is an asset.
-_rp_open_active :: proc() {
-	active := engine.render_pipeline_active()
-	if active.guid == {} || active.guid == _rp.tried_guid do return
-	_rp.tried_guid = active.guid
-	if _, ok := engine.asset_db_get_path(uuid.Identifier(active.guid)); !ok do return
-	_rp_open_guid(active.guid)
-}
-
-@(editor_window={id="render_pipeline", title="Render Pipeline", icon="HUB", width=1100, height=600})
-render_pipeline_window_draw :: proc() {
+@(editor_window={id="render_pipeline", title="Render Pipeline", icon="HUB", width=1100, height=600, closed=render_pipeline_window_closed})
+render_pipeline_window_draw :: proc(w: ^wnd.Window) {
 	// Edits allocate into the shared document, so they use its allocator.
 	// The undo stack owns what is pushed to it and frees it with the editor's
 	// context allocator, so a step is built with the caller's (_rp_record).
 	caller := context.allocator
 	context.allocator = inspector.doc_alloc()
-	if _rp.guid == {} do _rp_open_active()
-	if !_rp_fetch() {
+	if w.asset == {} {
+		// The plain instance: the active pipeline's own instance takes over
+		// once it is an asset.
+		active := engine.render_pipeline_active().guid
+		if _, ok := engine.asset_db_get_path(uuid.Identifier(active)); active != {} && ok {
+			wnd.open("render_pipeline", active)
+			w.open = false
+			return
+		}
 		im.TextDisabled("The built-in frame. Create a Render Pipeline asset (Assets > Create > Render Pipeline) and set it in Project Settings > Rendering.")
+		return
+	}
+	_rp = _rp_instance(w)
+	if !_rp_fetch() {
+		im.TextDisabled("This file is not a render pipeline.")
 		return
 	}
 	if engine.pipeline_find_step(_rp.doc, _rp.sel) == nil do _rp.sel = 0
@@ -348,12 +382,6 @@ _rp_tabs :: proc() {
 _rp_select_slot :: proc(name: string) {
 	_rp_set_string(&_rp.slot, name)
 	if e := engine.pipeline_find_step(_rp.doc, _rp.sel); e != nil && e.slot != "" && e.slot != name do _rp.sel = 0
-}
-
-// The pipeline the window edits, for its tab menu and the star on its tab.
-@(view_document={view="render_pipeline"})
-render_pipeline_view_document :: proc() -> engine.Asset_GUID {
-	return _rp.guid
 }
 
 // A save reimports the pipeline.
@@ -551,6 +579,8 @@ _rp_ask_remove_slot :: proc(name: string) {
 	count := 0
 	for e in _rp.doc.steps do if e.slot == name do count += 1
 	_rp_set_string(&_rp.remove_slot, name)
+	delete(_rp_remove_key, runtime.default_allocator())
+	_rp_remove_key = strings.clone(_rp.key, runtime.default_allocator())
 	if count == 0 {
 		_rp_remove_pending_slot()
 		return
@@ -568,6 +598,9 @@ _rp_ask_remove_slot :: proc(name: string) {
 // The confirm dialog's action, run outside the window's draw: the document is
 // looked up again, and the edit allocates into it with its allocator.
 _rp_remove_pending_slot :: proc() {
+	w := wnd.find(_rp_remove_key)
+	if w == nil || w.data == nil do return
+	_rp = (^_RP_State)(w.data)
 	if _rp.remove_slot == "" || !_rp_fetch() do return
 	context.allocator = inspector.doc_alloc()
 	engine.pipeline_remove_slot(_rp.doc, _rp.remove_slot)
@@ -609,11 +642,11 @@ _rp_open_code :: proc(n: ^engine.Render_Step) {
 // buffer and written back to the entry's JSON when a field changed.
 _rp_settings_edit :: proc(e: ^engine.Pipeline_Entry, n: ^engine.Render_Step) {
 	if _rp.set_stale || _rp.set_id != e.id || len(_rp.set_buf) != n.settings_size {
-		delete(_rp.set_buf)
+		delete(_rp.set_buf, runtime.default_allocator())
 		_rp.set_buf = nil
 		_rp.set_id = e.id
 		_rp.set_stale = false
-		buf, err := runtime.mem_alloc_bytes(n.settings_size, 16)
+		buf, err := runtime.mem_alloc_bytes(n.settings_size, 16, runtime.default_allocator())
 		if err != nil do return
 		_rp.set_buf = buf
 		_rp_settings_fill(buf, e, n)

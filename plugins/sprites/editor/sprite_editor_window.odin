@@ -191,7 +191,7 @@ _se_apply :: proc() {
 }
 
 @(editor_window={id="sprite_editor", title="Sprite Editor", icon="CROP", width=940, height=640})
-sprite_editor_window_draw :: proc() {
+sprite_editor_window_draw :: proc(w: ^wnd.Window) {
 	if _se.path == "" {
 		im.TextDisabled("Select a texture in the Project view and press Sprite Editor.")
 		return

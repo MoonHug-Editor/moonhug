@@ -163,11 +163,11 @@ save_editor_settings :: proc() {
     editor_settings.show_playable_graph    = menu.show_playable_graph
     editor_settings.has_view_state         = true
 
-    // Plugin windows: imgui.ini keeps their dock and size, not whether they
-    // existed — the id list is what reopens them.
+    // Plugin windows: imgui.ini keeps each instance's dock and size, not
+    // whether it existed: the instance keys are what reopen them.
     delete(editor_settings.open_window_ids)
     editor_settings.open_window_ids = make([dynamic]string, context.temp_allocator)
-    for id in wnd.open_ids() do append(&editor_settings.open_window_ids, id)
+    for key in wnd.open_keys() do append(&editor_settings.open_window_ids, key)
 
     overlays_capture_settings()
     editor_settings.grid = grid_settings

@@ -54,6 +54,7 @@ View_Document_Proc :: proc() -> core.Asset_GUID
 
 @(private = "file") _owners: [dynamic]Document_Owner
 @(private = "file") _view_documents: map[string]View_Document_Proc
+@(private = "file") _view_assets: map[string]core.Asset_GUID // window instance key -> the asset it is open for
 
 // Registers the code that holds loaded copies of some files. Called once per
 // owner from a @(provider_install) proc.
@@ -100,11 +101,34 @@ document_find :: proc(owner: string, key: rawptr) -> (Document, bool) {
 	return {}, false
 }
 
-// The document view `view` shows. ok=false when it shows none.
-view_document :: proc(view: string) -> (Document, bool) {
-	p, has := _view_documents[view]
-	if !has do return {}, false
-	guid := p()
+// A window instance opened for an asset (editor/window) edits that asset.
+// The window registry sets it when the instance opens and clears it when it
+// closes. `key` is the instance's id, the text after ### in its title.
+view_asset_set :: proc(key: string, asset: core.Asset_GUID) {
+	context.allocator = runtime.default_allocator()
+	if key not_in _view_assets do _view_assets[strings.clone(key)] = asset
+}
+
+view_asset_clear :: proc(key: string) {
+	context.allocator = runtime.default_allocator()
+	if key not_in _view_assets do return
+	k, _ := delete_key(&_view_assets, key)
+	delete(k)
+}
+
+// The document the view `key` edits, the text after ### in its title. A
+// window instance opened for an asset edits that asset. Otherwise the
+// view's @(view_document) proc names it, the view being the key up to its
+// first `/`. ok=false when it edits none.
+view_document :: proc(key: string) -> (Document, bool) {
+	guid, opened_for := _view_assets[key]
+	if !opened_for {
+		view := key
+		if slash := strings.index_byte(key, '/'); slash >= 0 do view = key[:slash]
+		p, has := _view_documents[view]
+		if !has do return {}, false
+		guid = p()
+	}
 	if guid == {} do return {}, false
 	for d in documents(context.temp_allocator) do if d.guid == guid do return d, true
 	return {}, false
