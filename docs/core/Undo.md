@@ -1,7 +1,7 @@
 ---
 title: "Undo"
 description: "Editor-only undo and redo for value edits, hierarchy changes, asset document edits and selection changes"
-order: 120
+weight: 120
 tags: ["undo", "inspector", "selection", "editor"]
 path: editor/editing
 ---

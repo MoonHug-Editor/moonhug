@@ -1,7 +1,7 @@
 ---
 title: "Simulate (play in the editor)"
 description: "Running the open scene inside the editor and rolling it back: controls, what Stop restores, ticking and input"
-order: 180
+weight: 180
 tags: ["simulate", "editor"]
 path: editor
 ---

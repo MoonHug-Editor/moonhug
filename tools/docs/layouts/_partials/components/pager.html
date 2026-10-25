@@ -1,0 +1,59 @@
+{{- /* OVERRIDE (tools/docs): previous and next follow the sidebar, the order a
+     reader sees on the left (custom/sidebar-order.html), across sections. The
+     theme takes them from the page's own section only, so they stop at a
+     section's end. `prev` and `next` front matter still override them, as in
+     the theme. The markup below is the theme's. */ -}}
+
+{{- $navRoot := cond (eq site.Home.Type "docs") site.Home .FirstSection -}}
+{{- $pages := slice $navRoot | append (partial "custom/sidebar-order.html" $navRoot) -}}
+{{- $prev := false -}}
+{{- $next := false -}}
+{{- range $i, $p := $pages -}}
+  {{- if eq $p.RelPermalink $.RelPermalink -}}
+    {{- if gt $i 0 }}{{ $prev = index $pages (sub $i 1) }}{{ end -}}
+    {{- if lt (add $i 1) (len $pages) }}{{ $next = index $pages (add $i 1) }}{{ end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- if eq .Params.prev false }}
+  {{- $prev = false -}}
+{{ else }}
+  {{- with .Params.prev -}}
+    {{- with $.Site.GetPage . }}{{ $prev = . }}{{ end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- if eq .Params.next false }}
+  {{- $next = false -}}
+{{ else }}
+  {{- with .Params.next -}}
+    {{- with $.Site.GetPage . }}{{ $next = . }}{{ end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- if or $prev $next -}}
+  <div class="hx:mb-8 hx:flex hx:items-center hx:border-t hx:pt-8 hx:border-gray-200 hx:dark:border-neutral-800 hx:contrast-more:border-neutral-400 hx:dark:contrast-more:border-neutral-400 hx:print:hidden">
+    {{- if $prev -}}
+      {{- $linkTitle := partial "utils/title" $prev -}}
+      <a
+        href="{{ $prev.RelPermalink }}"
+        title="{{ $linkTitle }}"
+        class="hx:flex hx:max-w-[50%] hx:items-center hx:gap-1 hx:py-4 hx:text-base hx:font-medium hx:text-gray-600 hx:transition-colors [word-break:break-word] hx:hover:text-primary-600 hx:dark:text-gray-300 hx:md:text-lg hx:ltr:pr-4 hx:rtl:pl-4"
+      >
+        {{- partial "utils/icon.html" (dict "name" "chevron-right" "attributes" "class=\"hx:inline hx:h-5 hx:shrink-0 hx:ltr:rotate-180\"") -}}
+        {{- $linkTitle -}}
+      </a>
+    {{- end -}}
+    {{- if $next -}}
+      {{- $linkTitle := partial "utils/title" $next -}}
+      <a
+        href="{{ $next.RelPermalink }}"
+        title="{{ $linkTitle }}"
+        class="hx:flex hx:max-w-[50%] hx:items-center hx:gap-1 hx:py-4 hx:text-base hx:font-medium hx:text-gray-600 hx:transition-colors [word-break:break-word] hx:hover:text-primary-600 hx:dark:text-gray-300 hx:md:text-lg hx:ltr:ml-auto hx:ltr:pl-4 hx:ltr:text-right hx:rtl:mr-auto hx:rtl:pr-4 hx:rtl:text-left"
+      >
+        {{- $linkTitle -}}
+        {{- partial "utils/icon.html" (dict "name" "chevron-right" "attributes" "class=\"hx:inline hx:h-5 hx:shrink-0 hx:rtl:-rotate-180\"") -}}
+      </a>
+    {{- end -}}
+  </div>
+{{- end -}}

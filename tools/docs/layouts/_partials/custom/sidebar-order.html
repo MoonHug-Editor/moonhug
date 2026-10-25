@@ -1,0 +1,15 @@
+{{- /* The pages under `.` in the sidebar's order (the theme's sidebar.html),
+     depth first: each level sorted by `weight` front matter, a section
+     followed by its own pages and sections. Pages the sidebar leaves out, and
+     its separator headings, are left out too. The pager walks this list. */ -}}
+{{- $out := slice -}}
+{{- $items := where (union .RegularPages .Sections) "Params.sidebar.exclude" "!=" true -}}
+{{- range $items.ByWeight -}}
+  {{- if not .Params.sidebar.separator -}}
+    {{- $out = $out | append . -}}
+  {{- end -}}
+  {{- if .IsSection -}}
+    {{- $out = $out | append (partial "custom/sidebar-order.html" .) -}}
+  {{- end -}}
+{{- end -}}
+{{- return $out -}}

@@ -1,7 +1,7 @@
 ---
 title: "Nested Prefabs"
 description: "How the prefab specification is implemented here: file layout, records, and the resolve and save pipeline"
-order: 40
+weight: 40
 tags: ["prefabs", "scenes", "serialization", "engine"]
 path: engine/scenes
 ---

@@ -1,7 +1,7 @@
 ---
 title: "Architecture"
 description: "The Editor and the App, the layers they are built from, what each layer owns, and the one rule about imports"
-order: 1
+weight: 1
 tags: ["design", "plugins", "editor", "engine"]
 path: general/architecture
 ---

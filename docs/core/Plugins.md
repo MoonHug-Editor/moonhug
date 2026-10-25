@@ -1,7 +1,7 @@
 ---
 title: "Plugins (Packages)"
 description: "Plugin packages: folder layout, manifest, install model, and extension points for importers, windows and settings"
-order: 3
+weight: 3
 tags: ["plugins", "build", "editor", "engine"]
 path: general/architecture
 ---

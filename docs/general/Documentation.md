@@ -1,7 +1,7 @@
 ---
 title: "Documentation"
 description: "How the documentation site is assembled from the repo's markdown, generated reference pages and the README"
-order: 4
+weight: 4
 tags: ["build", "contributing", "prebuild"]
 path: general
 ---
@@ -14,6 +14,7 @@ path: general
 - `themes/hextra` is the theme, a git submodule. A fresh clone needs `git submodule update --init`.
 - `layouts/_markup/render-link.html` is the theme's link hook with one addition: it translates repo paths into site paths, see Links below.
 - `layouts/_partials/custom/head-end.html` fills one of the theme's empty hook partials: it lifts the article column's fixed 72rem cap, so with `params.page.width = 'full'` in the config every page uses the whole window. No theme file is copied.
+- `layouts/_partials/components/pager.html` is the theme's previous and next links, following the sidebar's order across sections, where the theme stops at a section's end: `layouts/_partials/custom/sidebar-order.html` lists the pages the way the sidebar shows them. A page's place in both is its `weight` front matter, lower first, as everywhere in Hugo.
 
 ## How the content is assembled
 

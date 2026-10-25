@@ -1,7 +1,7 @@
 ---
 title: "Layers"
 description: "Named layers per domain: objects hold layer bits, consumers hold masks, the render layer names live in a Render Layers asset chosen in the Layers project setting, plugins own domains of their own"
-order: 95
+weight: 95
 tags: ["layers", "rendering", "physics", "engine", "editor"]
 path: engine/rendering
 ---

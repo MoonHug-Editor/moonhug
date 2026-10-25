@@ -1,7 +1,7 @@
 ---
 title: "Fixed Tick"
 description: "Fixed-rate simulation update with one project tick rate, per-proc order and divisor, and a code-side rate override"
-order: 70
+weight: 70
 tags: ["components", "engine"]
 path: engine/frame
 ---

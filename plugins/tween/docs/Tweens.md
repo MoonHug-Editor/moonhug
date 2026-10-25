@@ -1,7 +1,7 @@
 ---
 title: "Tweens"
 description: "Tween trees as authored guid-tagged JSON values in component fields and as live pooled nodes created by tween_run"
-order: 10
+weight: 10
 tags: ["tween", "tweens", "serialization"]
 ---
 

@@ -1,7 +1,7 @@
 ---
 title: "Inspector Property"
 description: "Addressed fields resolved from an owner and a dotted path, carrying the value, undo owner and prefab override target"
-order: 130
+weight: 130
 tags: ["inspector", "undo", "prefabs", "editor"]
 path: editor/inspector
 ---

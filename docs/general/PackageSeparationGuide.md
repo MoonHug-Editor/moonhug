@@ -1,7 +1,7 @@
 ---
 title: "Package Separation Guide"
 description: "Notes on indie game code architecture from Jonas Tyroller's talk: packages, glue, dependencies, data and time"
-order: 60
+weight: 60
 tags: ["design", "contributing"]
 path: general/guides
 ---

@@ -1,7 +1,7 @@
 ---
 title: "Post FX"
 description: "Auto exposure, bloom, tonemap operators with colour grading and FXAA as render steps a pipeline places between the engine's scene steps and its final blit, each with its own settings"
-order: 10
+weight: 10
 tags: ["rendering", "plugins"]
 ---
 

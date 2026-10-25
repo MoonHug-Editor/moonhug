@@ -543,7 +543,7 @@ docs_write_home :: proc(plugins: []string) -> bool {
 		return false
 	}
 	os.make_directory_all(fmt.tprintf("%s/general/legal", DOCS_HOME_DIR))
-	lp := strings.concatenate({"---\ntitle: \"License\"\ndescription: \"The license MoonHug is distributed under\"\norder: 1004\ntags: [\"contributing\"]\n---\n\n", string(license)}, context.temp_allocator)
+	lp := strings.concatenate({"---\ntitle: \"License\"\ndescription: \"The license MoonHug is distributed under\"\nweight: 1004\ntags: [\"contributing\"]\n---\n\n", string(license)}, context.temp_allocator)
 	if err := docs_home_write(fmt.tprintf("%s/general/legal/License.md", DOCS_HOME_DIR), transmute([]byte)lp); err != nil {
 		fmt.eprintfln("mh: cannot write the License page: %v", err)
 		return false
@@ -551,7 +551,7 @@ docs_write_home :: proc(plugins: []string) -> bool {
 	// The Plugins section index. The repo has no plugins/docs folder to hold
 	// one, the section exists only on the site, so it is written here.
 	os.make_directory(fmt.tprintf("%s/plugins", DOCS_HOME_DIR))
-	sec := "---\ntitle: \"Plugins\"\ndescription: \"Documentation that ships with each plugin\"\norder: 30\n---\n\nEach plugin keeps its pages in its own `docs/` folder and they are collected here at build time. The plugins model itself is described in [Plugins](/docs/core/Plugins.md), and how this site is put together in [Documentation](/docs/general/Documentation.md).\n"
+	sec := "---\ntitle: \"Plugins\"\ndescription: \"Documentation that ships with each plugin\"\nweight: 30\n---\n\nEach plugin keeps its pages in its own `docs/` folder and they are collected here at build time. The plugins model itself is described in [Plugins](/docs/core/Plugins.md), and how this site is put together in [Documentation](/docs/general/Documentation.md).\n"
 	if err := docs_home_write(fmt.tprintf("%s/plugins/_index.md", DOCS_HOME_DIR), transmute([]byte)sec); err != nil {
 		fmt.eprintfln("mh: cannot write plugins/_index.md: %v", err)
 		return false

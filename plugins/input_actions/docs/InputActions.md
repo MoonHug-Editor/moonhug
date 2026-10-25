@@ -1,7 +1,7 @@
 ---
 title: "Input Actions"
 description: "Named actions over keys, mouse and gamepad: an Input Actions asset of mapping contexts with key mappings, a priority stack of contexts that consume the keys below them, per-frame and per-tick values"
-order: 20
+weight: 20
 tags: ["input", "plugins"]
 path: plugins/input_actions
 ---

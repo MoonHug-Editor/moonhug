@@ -1,7 +1,7 @@
 ---
 title: "MCP Bridge"
 description: "Agent access to the running editor over MCP through an editor TCP endpoint and a stdio shim, its protocol and tools"
-order: 190
+weight: 190
 tags: ["mcp", "editor"]
 path: editor
 ---

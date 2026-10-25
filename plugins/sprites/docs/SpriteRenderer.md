@@ -1,7 +1,7 @@
 ---
 title: "SpriteRenderer"
 description: "The SpriteRenderer component with the texture cache, scene view rendering, the asset guid drawer and sprite sorting"
-order: 10
+weight: 10
 tags: ["sprites", "rendering", "components"]
 ---
 

@@ -1,7 +1,7 @@
 ---
 title: "Architecture"
 description: "How MoonHug is put together: the parts, where they live, and how plugins extend them"
-order: 2
+weight: 2
 ---
 
 Read these three in order.

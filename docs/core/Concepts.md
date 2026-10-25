@@ -1,7 +1,7 @@
 ---
 title: "Concepts"
 description: "Glossary of the core runtime types such as world, pools, scenes, transforms and references, plus local id rules"
-order: 5
+weight: 5
 tags: ["engine", "scenes", "components", "serialization"]
 path: engine/data
 ---

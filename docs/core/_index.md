@@ -1,7 +1,7 @@
 ---
 title: "Editor"
 description: "The editor shell and the libs: plugins, prebuild, undo, simulate, inspector, handles, gizmos and the asset pipeline"
-order: 20
+weight: 20
 path: editor
 ---
 

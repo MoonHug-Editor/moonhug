@@ -1,7 +1,7 @@
 ---
 title: "Gizmos"
 description: "The gizmos API that draws debug and editor shapes for gizmo procs, editor handles and in-game debug drawing"
-order: 170
+weight: 170
 tags: ["gizmos", "handles", "engine", "editor"]
 path: editor/scene-view
 ---

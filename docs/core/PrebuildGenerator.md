@@ -1,7 +1,7 @@
 ---
 title: "Prebuild Generator"
 description: "The prebuild step that scans Odin source for attribute markers and emits the generated files the build depends on"
-order: 200
+weight: 200
 tags: ["prebuild", "build"]
 path: editor/extending
 ---

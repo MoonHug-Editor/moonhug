@@ -1,7 +1,7 @@
 ---
 title: "Data"
 description: "The engine's data model: the world, pools and handles, components, and how things reference each other"
-order: 10
+weight: 10
 path: engine/data/_index.md
 ---
 

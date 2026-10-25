@@ -1,7 +1,7 @@
 ---
 title: "Multiselection"
 description: "Multi-selection in the hierarchy, scene view and project view, the single selection model, and multiedit in the inspector"
-order: 130
+weight: 130
 tags: ["selection", "inspector", "editor"]
 path: editor/editing
 ---

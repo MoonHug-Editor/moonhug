@@ -1,7 +1,7 @@
 ---
 title: "Components"
 description: "The component data layer and its narrow access contract: pools, handles, transforms and lifecycle procs"
-order: 10
+weight: 10
 tags: ["components", "engine"]
 path: engine/data
 ---

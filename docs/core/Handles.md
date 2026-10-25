@@ -1,7 +1,7 @@
 ---
 title: "Handles"
 description: "Immediate-mode scene-view handles for editor code that draw through gizmos, report hover and turn drags into offsets"
-order: 160
+weight: 160
 tags: ["handles", "gizmos", "editor"]
 path: editor/scene-view
 ---

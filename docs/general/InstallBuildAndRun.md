@@ -1,7 +1,7 @@
 ---
 title: "Install, Build and Run"
 description: "How to install Odin and SDL3, set up a fresh clone, and build, run and test everything through tools/mh"
-order: 1
+weight: 1
 tags: ["build", "testing", "contributing"]
 path: general
 ---

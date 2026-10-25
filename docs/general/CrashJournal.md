@@ -1,7 +1,7 @@
 ---
 title: "Crash Journal"
 description: "How the process writes a crash log with reason, context and stack trace on fatal signals, panics and failed asserts"
-order: 80
+weight: 80
 tags: ["engine", "editor"]
 path: general/guides
 ---

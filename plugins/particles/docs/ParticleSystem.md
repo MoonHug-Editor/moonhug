@@ -1,7 +1,7 @@
 ---
 title: "ParticleSystem"
 description: "CPU particles as a plugin package: the authored component, the per-frame simulation and rendering through the renderer seam"
-order: 10
+weight: 10
 tags: ["particles", "rendering", "components"]
 ---
 

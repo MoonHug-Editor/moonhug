@@ -1,7 +1,7 @@
 ---
 title: "Inspector"
 description: "How the inspector addresses, draws and edits fields, and how a field picks a reference"
-order: 20
+weight: 20
 path: editor/inspector/_index.md
 ---
 

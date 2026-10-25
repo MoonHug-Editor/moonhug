@@ -1,7 +1,7 @@
 ---
 title: "Materials"
 description: "Material assets for MeshRenderer: a built-in shader with its property block, authoring, guid references and caching"
-order: 90
+weight: 90
 tags: ["materials", "rendering", "assets", "engine", "editor"]
 path: engine/rendering
 ---

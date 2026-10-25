@@ -1,7 +1,7 @@
 ---
 title: "Text"
 description: "Signed-distance-field text for the canvas tree: fonts baked to SDF atlases at import, backend-neutral layout and SDF shading"
-order: 10
+weight: 10
 tags: ["text", "ui", "rendering", "assets"]
 ---
 

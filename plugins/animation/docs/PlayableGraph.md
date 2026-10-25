@@ -1,7 +1,7 @@
 ---
 title: "PlayableGraph"
 description: "The animation evaluation layer: a graph of source, blend and output nodes evaluated by a pull at an explicit time"
-order: 20
+weight: 20
 tags: ["animation", "engine"]
 ---
 

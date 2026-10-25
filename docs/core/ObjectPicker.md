@@ -1,7 +1,7 @@
 ---
 title: "Object Picker"
 description: "The picker popup for inspector reference fields, its Scene and Project tabs, field filters and AssetDB indexes"
-order: 140
+weight: 140
 tags: ["inspector", "assets", "editor"]
 path: editor/inspector
 ---

@@ -1,7 +1,7 @@
 ---
 title: "Script execution order"
 description: "Execution order of engine event procs against a reference event order, with the implementation status of each"
-order: 60
+weight: 60
 tags: ["components", "engine"]
 path: engine/frame
 ---

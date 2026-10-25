@@ -1,7 +1,7 @@
 ---
 title: "Unity Conveniences"
 description: "Unity editor conveniences replicated in MoonHug, such as attribute markers and default and custom IMGUI inspectors"
-order: 70
+weight: 70
 tags: ["inspector", "prebuild", "editor"]
 path: editor
 ---

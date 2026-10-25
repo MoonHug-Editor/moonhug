@@ -1,7 +1,7 @@
 ---
 title: "Views"
 description: "Editor views and the attributes that extend them: windows, view menus, tab bar widgets, the asset a view edits and saving, scene view overlays, the toolbar"
-order: 110
+weight: 110
 tags: ["views", "windows", "attributes", "save", "editor"]
 path: editor
 ---

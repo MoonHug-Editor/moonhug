@@ -1,7 +1,7 @@
 ---
 title: "Style Guide"
 description: "Naming and style conventions for Odin code in the repo, based on Odin's own naming and style convention"
-order: 40
+weight: 40
 tags: ["contributing", "design"]
 path: general/guides
 ---

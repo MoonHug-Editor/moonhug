@@ -1,7 +1,7 @@
 ---
 title: "Shader Graph"
 description: "Node-based surface shaders: a .shadergraph asset of blackboard properties, nodes and links that the importer compiles through the engine's surface template, so a Material uses it like a .glsl"
-order: 10
+weight: 10
 tags: ["rendering", "materials", "plugins"]
 ---
 

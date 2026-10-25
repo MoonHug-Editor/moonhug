@@ -1,7 +1,7 @@
 ---
 title: "Third-Party Notices"
 description: ""
-order: 1005
+weight: 1005
 tags: ["contributing"]
 path: general/legal
 ---

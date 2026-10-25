@@ -1,7 +1,7 @@
 ---
 title: "Groups"
 description: "Named groups of objects: a Groups component holds membership bits, the lifecycle hooks keep alive and active lists per group, the names live in a Group Names asset"
-order: 65
+weight: 65
 tags: ["components", "engine", "editor"]
 path: engine/data
 ---

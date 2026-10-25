@@ -1,7 +1,7 @@
 ---
 title: "SDL3 Renderer"
 description: "Migration from raylib to SDL3 and SDL_GPU, mesh components, and the scene-view features built on the new renderer"
-order: 110
+weight: 110
 tags: ["rendering", "meshes", "gizmos", "engine"]
 path: engine/rendering
 ---

@@ -1,7 +1,7 @@
 ---
 title: "Prefabs Specification"
 description: "Implementation-independent specification of prefab behaviour, stated as rules and observable outcomes"
-order: 30
+weight: 30
 tags: ["prefabs", "scenes", "design", "engine"]
 path: engine/scenes
 ---
