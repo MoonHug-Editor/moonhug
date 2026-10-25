@@ -28,9 +28,9 @@ Texture nodes: Sample Texture decodes its texture from sRGB (a color), Main Text
 
 ## Editor
 
-Assets > Create > Shader Graph writes an empty graph. Double-clicking a `.shadergraph` in the Project view (or Enter on it) opens it in the Shader Graph window (`editor/shadergraph_window.odin`), through the open handler the plugin registers with `asset_open_handler_add`. Selecting it shows the importer settings and an Open Shader Graph button that does the same (`editor/shadergraph_inspector.odin`). The window holds one graph at a time. Opening the graph that is already open keeps its unsaved edits.
+Assets > Create > Shader Graph writes an empty graph. Double-clicking a `.shadergraph` in the Project view (or Enter on it) opens it in the Shader Graph window (`editor/shadergraph_window.odin`), through the open handler the plugin registers with `asset_open_handler_add`. Selecting it shows the importer settings and an Open Shader Graph button that does the same (`editor/shadergraph_inspector.odin`). The window shows one graph at a time and edits its shared asset document, the instance File/Save, the tab menu and undo reach ([Saving and discarding](../../../docs/core/Saving.md)). Unsaved edits stay in the document, so opening another graph and coming back keeps them.
 
-- **Toolbar**: Save, the asset path, and ` *` while the graph has unsaved edits. Save writes the file, reimports it and drops the cached shader, so a material on the graph draws with the new shader at once. A refused link shows a notice here for a few seconds.
+- **Toolbar**: the asset path, and ` *` while the graph has unsaved edits. A save reimports the graph and drops its cached shader, so a material on the graph draws with the new shader at once. A refused link shows a notice here for a few seconds.
 - **Blackboard** (left): one row per property with its name, kind and default value (a drag per component, a color picker for Color, nothing for Texture). A rename lands when the name field is left, and every node that reads the property follows it. An empty or taken name is ignored. Add opens a list of the kinds, the x button removes a property and the nodes that read it.
 - **Node** (left, under the blackboard): the selected node's unlinked inputs as drags by port type (a color picker on the Color node). A linked input shows as linked.
 - **Canvas** (middle): one node per graph node on the shared node canvas (`moonhug/editor/node_canvas`). The title is the kind, the property name for a Property node, `Sample <name>` for a Sample Texture node. Each input is a row with its port and its literal while unlinked, each output a row with its port on the right edge. Ports and links are colored by port type, and a node the generator reports an error for draws red.
@@ -39,7 +39,7 @@ Assets > Create > Shader Graph writes an empty graph. Double-clicking a `.shader
 - Delete or Backspace removes the selected link, else the selected node. The Surface node is never removed.
 - **GLSL** (right): the output of `generate`, or its errors, rebuilt after every recorded edit.
 
-Every edit is one undo step. The window marks the document touched on each edit, and once no widget is active it serializes the graph to JSON and compares it with the last recorded snapshot. A difference pushes one `Shader_Graph_Edit` (`editor/undo_cmd/`) holding both snapshots, so a node drag or a value drag records once on release. Undo and redo load the snapshot back into the window, or write it to the file when the window shows another graph. The command lives in its own package because the generated undo union imports it and a command's package must not import the undo stack.
+Every edit is one undo step. The window marks the document touched on each edit, and once no widget is active it serializes the graph to JSON and compares it with the last recorded snapshot. A difference pushes one undo step on the asset holding both snapshots, so a node drag or a value drag records once on release. Undo and redo replace the document's instance, whichever graph the window shows, and the window regenerates from the new one.
 
 ## Files
 
@@ -49,4 +49,3 @@ Every edit is one undo step. The window marks the document touched on each edit,
 - `editor/shadergraph_importer.odin`: the importer and the reimport on edit
 - `editor/shadergraph_window.odin`: the window
 - `editor/shadergraph_inspector.odin`: the Open Shader Graph button
-- `editor/undo_cmd/`: the undo command

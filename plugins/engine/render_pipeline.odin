@@ -238,8 +238,8 @@ pipeline_parse :: proc(data: []u8) -> (p: Render_Pipeline, ok: bool) {
 	return p, true
 }
 
-pipeline_save_file :: proc(p: ^Render_Pipeline, path: string, guid: Asset_GUID) -> bool {
-	return serialization.write_asset_to_path(path, uuid.Identifier(guid), p^)
+pipeline_save_file :: proc(p: ^Render_Pipeline, path: string) -> bool {
+	return serialization.write_asset_to_path(path, get_guid_by_typeid(Render_Pipeline), p^)
 }
 
 // A deep copy, for the runtime's own copy of the asset. Each entry is copied

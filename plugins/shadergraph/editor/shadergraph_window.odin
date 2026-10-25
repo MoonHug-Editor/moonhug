@@ -4,19 +4,24 @@ package shadergraph_editor
 // blackboard and the selected node's inputs on the left, the node canvas in
 // the middle, the generated GLSL on the right.
 //
-// The window owns one open document. Every edit changes it in place and sets
-// `touched`. Once no widget is active (a drag released, a text field left),
-// the document is serialized and compared with `baseline`, the JSON last
-// recorded on the undo stack. A difference becomes one Shader_Graph_Edit
-// (undo_cmd/) holding both snapshots, so a node drag or a literal drag is one
+// The window edits the graph's shared asset document (editor/inspector,
+// asset_docs.odin), the same instance File/Save, the tab menu and undo reach.
+// It keeps the asset's guid and looks the document up at the start of each
+// frame, since an undo, a redo or a Discard replaces the instance. Every edit
+// changes it in
+// place and sets `touched`. Once no widget is active (a drag released, a text
+// field left), the document is serialized and compared with `baseline`, the
+// JSON last recorded on the undo stack. A difference becomes one undo step on
+// the asset holding both snapshots, so a node drag or a literal drag is one
 // undo step however many frames it took.
 
 import "base:runtime"
-import "core:encoding/json"
+import "core:encoding/uuid"
 import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import asset_pipeline "moonhug:editor/assets"
+import "moonhug:editor/inspector"
 import nc "moonhug:editor/node_canvas"
 import "moonhug:editor/session"
 import "moonhug:editor/undo"
@@ -25,17 +30,18 @@ import wnd "moonhug:editor/window"
 import "moonhug:libs/log"
 import "moonhug:packages/engine"
 import sg "moonhug:packages/shadergraph"
-import sgu "moonhug:packages/shadergraph/editor/undo_cmd"
 
 _SG_State :: struct {
-	path:     string, // heap clone, "" = nothing open
-	guid:     engine.Asset_GUID,
-	graph:    sg.Shader_Graph,
+	guid:     engine.Asset_GUID, // the open graph, {} = nothing open
+	// The graph's shared document and its instance, looked up at the start
+	// of each frame (_sg_fetch). Pointers never survive a frame.
+	asset:    ^inspector.Asset_Doc,
+	graph:    ^sg.Shader_Graph,
+	seen:     rawptr, // the instance the window last worked on: another one means an undo or a Discard replaced it
 	cv:       nc.Node_Canvas,
 	baseline: string, // heap, the document as last recorded on the undo stack
 	touched:  bool,   // an edit happened since the last record
 	label:    string, // the pending edit's undo label (a literal)
-	dirty:    bool,   // edited since the last save
 
 	// The generated shader or the reasons it failed, rebuilt on every
 	// recorded change.
@@ -88,54 +94,62 @@ _SG_PROP_KIND_NAMES := [sg.Prop_Kind]cstring{
 	.Texture = "Texture",
 }
 
-@(init)
-_sg_install_undo :: proc "contextless" () {
-	sgu.load_hook = _sg_undo_load
-}
-
-// Opens the graph at `path` in the window. Reopening the graph already open
-// keeps its unsaved edits.
+// Opens the graph at `path` in the window. Its unsaved edits stay in its
+// document, so reopening it, or opening another graph and coming back, keeps
+// them.
 shader_graph_open :: proc(path: string, guid: engine.Asset_GUID) {
-	if _sg.path != path || _sg.path == "" {
-		if !_sg_load(path, guid) do return
+	if _sg.guid != guid {
+		_sg.guid = guid
+		_sg.seen = nil
+		_sg.touched = false
+		_sg.rename = -1
+		_sg.cv.sel = -1
+		_sg.cv.sel_link = -1
 	}
+	if !_sg_fetch() do return
 	wnd.open("shader_graph")
 }
 
-// Reads the graph at `path` into the window, replacing what it shows. `path`
-// must not be the window's own string, which this frees.
+// Looks up the open graph's shared document, loading it on first use. A new
+// instance (the first frame, an undo, a redo, a Discard) rebuilds what the
+// window derives from it: the recorded baseline, the generated shader, the
+// selection. False when nothing is open or the file is not a shader graph.
 @(private = "file")
-_sg_load :: proc(path: string, guid: engine.Asset_GUID) -> bool {
+_sg_fetch :: proc() -> bool {
 	context.allocator = runtime.default_allocator()
-	g, ok := sg.graph_load_file(path)
-	if !ok {
+	_sg.asset = nil
+	_sg.graph = nil
+	if _sg.guid == {} do return false
+	path, known := engine.asset_db_get_path(uuid.Identifier(_sg.guid))
+	doc := inspector.asset_doc_get(path) if known else nil
+	if doc == nil || doc.data.id != typeid_of(sg.Shader_Graph) {
 		log.errorf("[ShaderGraph] %s is not a shader graph", path)
+		_sg.guid = {}
 		return false
 	}
-	sg.cleanup_Shader_Graph(&_sg.graph)
-	delete(_sg.path)
-	delete(_sg.baseline)
-	_sg.path = strings.clone(path)
-	_sg.guid = guid
-	_sg.graph = g
-	_sg.baseline = _sg_snapshot()
-	_sg.dirty = false
-	_sg.touched = false
-	_sg.rename = -1
-	_sg.cv.sel = -1
-	_sg.cv.sel_link = -1
-	_sg_regen()
+	_sg.asset = doc
+	_sg.graph = (^sg.Shader_Graph)(doc.data.data)
+	if rawptr(_sg.graph) != _sg.seen {
+		_sg.seen = _sg.graph
+		delete(_sg.baseline)
+		_sg.baseline = string(undo.capture_json(_sg.graph, typeid_of(sg.Shader_Graph)))
+		_sg.touched = false
+		_sg.rename = -1
+		_sg.cv.sel_link = -1
+		if sg.graph_find_node(_sg.graph, i32(_sg.cv.sel)) == nil do _sg.cv.sel = -1
+		_sg_regen()
+	}
 	return true
 }
 
 @(editor_window={id="shader_graph", title="Shader Graph", icon="ACCOUNT_TREE", width=1100, height=640})
 shader_graph_window_draw :: proc() {
-	// The window's own state lives across frames on the default allocator.
+	// Edits allocate into the shared document, so they use its allocator.
 	// The undo stack owns what is pushed to it and frees it with the editor's
-	// context allocator, so a command is built with the caller's (_sg_record).
+	// context allocator, so a step is built with the caller's (_sg_record).
 	caller := context.allocator
-	context.allocator = runtime.default_allocator()
-	if _sg.path == "" {
+	context.allocator = inspector.doc_alloc()
+	if !_sg_fetch() {
 		im.TextDisabled("Select a .shadergraph in the Project view and press Open Shader Graph.")
 		return
 	}
@@ -218,7 +232,7 @@ shader_graph_window_draw :: proc() {
 _sg_toolbar :: proc() {
 	// No Save button: the tab menu saves and discards the graph, File/Save
 	// saves it with every other file (session/documents.odin).
-	im.TextUnformatted(fmt.ctprintf("%s%s", _sg.path, _sg.dirty ? " *" : ""))
+	im.TextUnformatted(fmt.ctprintf("%s%s", _sg.asset.path, _sg.asset.dirty ? " *" : ""))
 	if _sg.notice != "" && im.GetTime() < _sg.notice_until {
 		im.SameLine()
 		im.TextColoredUnformatted(im.Vec4{1, 0.6, 0.3, 1}, fmt.ctprintf("%s", _sg.notice))
@@ -247,59 +261,25 @@ _sg_pane_toggle :: proc(label: cstring, hidden: ^bool, tip: cstring) {
 	widgets.tooltip(tip)
 }
 
-// Writes the file, then reimports it and drops the cached shader, so a
-// material on the graph draws with the new one at once.
-@(private = "file")
-_sg_save :: proc() -> bool {
-	if !sg.graph_save_file(&_sg.graph, _sg.path, _sg.guid) {
-		log.errorf("[ShaderGraph] could not write %s", _sg.path)
-		return false
-	}
-	_sg.dirty = false
-	_ = asset_pipeline.asset_pipeline_import_asset(_sg.path)
-	engine.shader_unload(_sg.guid)
-	return true
-}
-
-// --- Open document --------------------------------------------------------------
-// The graph the window shows, as an open document (moonhug:editor/session):
-// File/Save and the tab menu save it, the tab menu discards it, and the tab
-// title carries its star.
-
-SHADER_GRAPH_DOCUMENT :: "shader_graph_window"
-
+// The graph's document is the view's, and a save reimports the graph and
+// drops its cached shader, so a material on it draws with the new one.
 @(provider_install)
 _sg_install_document :: proc() {
-	session.document_owner_add({name = SHADER_GRAPH_DOCUMENT, list = _sg_document_list, save = _sg_document_save, discard = _sg_document_discard})
 	session.view_document_set("shader_graph", _sg_view_document)
-}
-
-@(private = "file")
-_sg_document_list :: proc(out: ^[dynamic]session.Document) {
-	if _sg.path == "" do return
-	append(out, session.Document{path = _sg.path, dirty = _sg.dirty, can_discard = true})
-}
-
-@(private = "file")
-_sg_document_save :: proc(key: rawptr) -> bool {
-	return _sg_save()
-}
-
-// The graph read again from its file. Its undo steps go first, on the
-// caller's allocator like every purge.
-@(private = "file")
-_sg_document_discard :: proc(key: rawptr) {
-	if _sg.path == "" do return
-	undo.purge_asset(undo.get(), _sg.guid)
-	_sg_load(strings.clone(_sg.path, context.temp_allocator), _sg.guid)
+	inspector.doc_saved_register(typeid_of(sg.Shader_Graph), proc(guid: engine.Asset_GUID, path: string) {
+		_ = asset_pipeline.asset_pipeline_import_asset(path)
+		engine.shader_unload(guid)
+	})
 }
 
 @(private = "file")
 _sg_view_document :: proc() -> (owner: string, key: rawptr, ok: bool) {
-	if _sg.path == "" do return "", nil, false
-	return SHADER_GRAPH_DOCUMENT, nil, true
+	doc := inspector.asset_doc_of(_sg.guid) if _sg.guid != {} else nil
+	if doc == nil do return "", nil, false
+	return inspector.ASSET_DOCUMENTS, doc, true
 }
 
+// A message shown in the toolbar for a few seconds, and logged.
 @(private = "file")
 _sg_notify :: proc(msg: string) {
 	_sg.notice = msg
@@ -311,7 +291,7 @@ _sg_notify :: proc(msg: string) {
 
 @(private = "file")
 _sg_blackboard :: proc() {
-	g := &_sg.graph
+	g := _sg.graph
 	im.SeparatorText("Blackboard")
 	if im.Button("Add") do im.OpenPopup("##sg_add_prop")
 	if im.BeginPopup("##sg_add_prop") {
@@ -392,7 +372,7 @@ _sg_blackboard :: proc() {
 @(private = "file")
 _sg_rename_property :: proc(p: ^sg.Graph_Property, name: string) {
 	trimmed := strings.trim_space(name)
-	if trimmed == "" || trimmed == p.name || sg.graph_find_property(&_sg.graph, trimmed) != nil do return
+	if trimmed == "" || trimmed == p.name || sg.graph_find_property(_sg.graph, trimmed) != nil do return
 	for &n in _sg.graph.nodes {
 		if sg.kind_reads_property(n.kind) && n.property == p.name {
 			delete(n.property)
@@ -410,7 +390,7 @@ _sg_rename_property :: proc(p: ^sg.Graph_Property, name: string) {
 @(private = "file")
 _sg_node_panel :: proc() {
 	im.SeparatorText("Node")
-	n := sg.graph_find_node(&_sg.graph, i32(_sg.cv.sel))
+	n := sg.graph_find_node(_sg.graph, i32(_sg.cv.sel))
 	if n == nil {
 		im.TextDisabled("Select a node to edit its inputs.")
 		return
@@ -430,7 +410,7 @@ _sg_node_panel :: proc() {
 		im.PushIDInt(i32(i))
 		defer im.PopID()
 		label := fmt.ctprintf("%s", in_port.name)
-		if _, linked := sg.graph_input_link(&_sg.graph, n.id, i32(i)); linked {
+		if _, linked := sg.graph_input_link(_sg.graph, n.id, i32(i)); linked {
 			im.TextDisabled("%s: linked", label)
 			continue
 		}
@@ -457,7 +437,7 @@ _sg_node_panel :: proc() {
 
 @(private = "file")
 _sg_canvas :: proc() {
-	g := &_sg.graph
+	g := _sg.graph
 	cv := &_sg.cv
 	if nc.canvas_begin(cv, "##sg_canvas") {
 		for l, li in g.links {
@@ -490,7 +470,7 @@ _sg_canvas :: proc() {
 // A finished link drag: rows map back to ports (inputs first, then outputs).
 @(private = "file")
 _sg_link :: proc(edit: nc.Canvas_Edit) {
-	g := &_sg.graph
+	g := _sg.graph
 	from := sg.graph_find_node(g, i32(edit.link_from_node))
 	if from == nil do return
 	fdef, ok := sg.node_def(from.kind)
@@ -506,7 +486,7 @@ _sg_link :: proc(edit: nc.Canvas_Edit) {
 
 @(private = "file")
 _sg_add_node_menu :: proc() {
-	g := &_sg.graph
+	g := _sg.graph
 	has_surface := false
 	for n in g.nodes do if n.kind == sg.SURFACE_KIND do has_surface = true
 
@@ -533,7 +513,7 @@ _sg_add_node_menu :: proc() {
 
 @(private = "file")
 _sg_add_node :: proc(kind, property: string) {
-	id := sg.graph_add_node(&_sg.graph, kind, _sg.menu_pos, property)
+	id := sg.graph_add_node(_sg.graph, kind, _sg.menu_pos, property)
 	if id == 0 do return
 	_sg.cv.sel = int(id)
 	_sg.cv.sel_link = -1
@@ -542,7 +522,7 @@ _sg_add_node :: proc(kind, property: string) {
 
 @(private = "file")
 _sg_delete_selection :: proc() {
-	g := &_sg.graph
+	g := _sg.graph
 	cv := &_sg.cv
 	if cv.sel_link >= 0 && cv.sel_link < len(g.links) {
 		ordered_remove(&g.links, cv.sel_link)
@@ -592,7 +572,7 @@ _sg_node_rows :: proc(n: ^sg.Graph_Node) -> []nc.Canvas_Row {
 	rows := make([dynamic]nc.Canvas_Row, 0, len(def.inputs) + len(def.outputs), context.temp_allocator)
 	for in_port, i in def.inputs {
 		value: cstring
-		if _, linked := sg.graph_input_link(&_sg.graph, n.id, i32(i)); !linked && i < len(n.values) {
+		if _, linked := sg.graph_input_link(_sg.graph, n.id, i32(i)); !linked && i < len(n.values) {
 			value = _sg_literal_text(n.values[i], in_port.type)
 		}
 		append(&rows, nc.Canvas_Row{
@@ -616,7 +596,7 @@ _sg_node_rows :: proc(n: ^sg.Graph_Node) -> []nc.Canvas_Row {
 @(private = "file")
 _sg_out_type :: proc(n: ^sg.Graph_Node, port: int) -> sg.Port_Type {
 	if n.kind == sg.PROPERTY_KIND {
-		if p := sg.graph_find_property(&_sg.graph, n.property); p != nil do return sg.prop_port_type(p.kind)
+		if p := sg.graph_find_property(_sg.graph, n.property); p != nil do return sg.prop_port_type(p.kind)
 	}
 	def, ok := sg.node_def(n.kind)
 	if !ok || port >= len(def.outputs) do return .Dyn
@@ -655,12 +635,14 @@ _sg_glsl_panel :: proc() {
 
 @(private = "file")
 _sg_regen :: proc() {
+	// The window's own state, on the default allocator whoever calls.
+	context.allocator = runtime.default_allocator()
 	delete(_sg.glsl)
 	_sg.glsl = nil
 	for e in _sg.errors do delete(e)
 	clear(&_sg.errors)
 	clear(&_sg.error_nodes)
-	result, ok := sg.generate(&_sg.graph)
+	result, ok := sg.generate(_sg.graph)
 	if ok do _sg.glsl = strings.clone_to_cstring(result.glsl)
 	for e in result.errors {
 		append(&_sg.errors, e.node_id != 0 ? fmt.aprintf("node %d: %s", e.node_id, e.message) : strings.clone(e.message))
@@ -676,73 +658,29 @@ _sg_touch :: proc(label: string) {
 	_sg.label = label
 }
 
-// The document as JSON, heap-allocated: the shape graph_parse reads.
-@(private = "file")
-_sg_snapshot :: proc() -> string {
-	data, err := json.marshal(_sg.graph, {}, runtime.default_allocator())
-	if err != nil {
-		log.errorf("[ShaderGraph] snapshot failed: %v", err)
-		return ""
-	}
-	return string(data)
-}
-
-// Records the edits since the last record as one undo step, when they changed
-// the document. The command and the push use `undo_allocator`, the one the
-// undo stack frees with. The baseline stays the window's own (default
-// allocator), so the command takes copies of it.
+// Records the edits since the last record as one undo step on the asset,
+// when they changed the document. The step's two snapshots use
+// `undo_allocator`, the one the undo stack frees with. The baseline stays the
+// window's own (default allocator).
 @(private = "file")
 _sg_record :: proc(undo_allocator: runtime.Allocator) {
 	_sg.touched = false
-	now := _sg_snapshot()
-	if now == _sg.baseline {
-		delete(now)
-		return
-	}
-	cmd := sgu.Shader_Graph_Edit{
-		path   = strings.clone(_sg.path, undo_allocator),
-		guid   = _sg.guid,
-		before = strings.clone(_sg.baseline, undo_allocator),
-		after  = strings.clone(now, undo_allocator),
-	}
-	delete(_sg.baseline)
-	_sg.baseline = now
-	_sg.dirty = true
+	if _sg.graph == nil do return
+	tid := typeid_of(sg.Shader_Graph)
+	recorded: string
 	{
 		context.allocator = undo_allocator
-		undo.push(undo.get(), cmd, _sg.label)
-	}
-	_sg_regen()
-}
-
-// Undo and redo: a snapshot back into the open document, or into the file
-// when the window shows another graph.
-@(private = "file")
-_sg_undo_load :: proc(path: string, data: string) {
-	context.allocator = runtime.default_allocator()
-	g, ok := sg.graph_parse(transmute([]u8)data)
-	if !ok {
-		log.errorf("[ShaderGraph] undo snapshot for %s does not parse", path)
-		return
-	}
-	if path != _sg.path {
-		defer sg.cleanup_Shader_Graph(&g)
-		guid, gok := engine.asset_db_get_guid(path)
-		if !gok do return
-		if sg.graph_save_file(&g, path, engine.Asset_GUID(guid)) {
-			_ = asset_pipeline.asset_pipeline_import_asset(path)
-			engine.shader_unload(engine.Asset_GUID(guid))
+		now := undo.capture_json(_sg.graph, tid)
+		if string(now) == _sg.baseline {
+			delete(now)
+			return
 		}
-		return
+		recorded = strings.clone(string(now), runtime.default_allocator())
+		before := transmute([]byte)strings.clone(_sg.baseline)
+		undo.push_value(undo.get(), undo.make_asset_target(_sg.guid, tid, .File), before, now, _sg.label)
 	}
-	sg.cleanup_Shader_Graph(&_sg.graph)
-	_sg.graph = g
-	delete(_sg.baseline)
-	_sg.baseline = strings.clone(data)
-	_sg.dirty = true
-	_sg.touched = false
-	_sg.rename = -1
-	_sg.cv.sel_link = -1
-	if sg.graph_find_node(&_sg.graph, i32(_sg.cv.sel)) == nil do _sg.cv.sel = -1
+	delete(_sg.baseline, runtime.default_allocator())
+	_sg.baseline = recorded
+	_sg.asset.dirty = true
 	_sg_regen()
 }

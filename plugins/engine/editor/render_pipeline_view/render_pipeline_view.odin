@@ -21,12 +21,16 @@ package render_pipeline_view
 // the "+" columns and a header's context menu insert steps, the tabs add,
 // rename and remove slots.
 //
-// The window owns one open document. Every edit changes it in place and sets
-// `touched`. Once no widget is active, the document is serialized and
-// compared with `baseline`, the JSON last recorded on the undo stack. A
-// difference becomes one Render_Pipeline_Edit (undo_cmd/) holding both
-// snapshots. Every change also goes to engine.render_pipeline_preview, so the
-// frame follows the document while it is the project's active pipeline.
+// The window edits the pipeline's shared asset document (editor/inspector,
+// asset_docs.odin), the same instance the Project Inspector, File/Save, the
+// tab menu and undo reach. It keeps the asset's guid and looks the document
+// up at the start of each frame, since an undo, a redo or a Discard replaces
+// the instance. Every edit changes it in place and sets `touched`. Once no widget is
+// active, the document is serialized and compared with `baseline`, the JSON
+// last recorded on the undo stack. A difference becomes one undo step on the
+// asset holding both snapshots. Every change also goes to
+// engine.render_pipeline_preview, so the frame follows the document while it
+// is the project's active pipeline.
 
 import "base:runtime"
 import "core:encoding/json"
@@ -47,18 +51,19 @@ import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
 import "moonhug:libs/log"
 import "moonhug:packages/engine"
-import rpu "moonhug:packages/engine/editor/render_pipeline_view/undo_cmd"
 
 _RP_PAYLOAD :: "RP_STEP"
 
 _RP_State :: struct {
-	path:     string, // heap clone, "" = nothing open
-	guid:     engine.Asset_GUID,
-	doc:      engine.Render_Pipeline,
+	guid:     engine.Asset_GUID, // the open pipeline, {} = nothing open
+	// The pipeline's shared document and its instance, looked up at the
+	// start of each frame (_rp_fetch). Pointers never survive a frame.
+	asset:    ^inspector.Asset_Doc,
+	doc:      ^engine.Render_Pipeline,
+	seen:     rawptr, // the instance the window last worked on: another one means an undo or a Discard replaced it
 	baseline: string, // heap, the document as last recorded on the undo stack
 	touched:  bool,   // an edit happened since the last record
 	label:    string, // the pending edit's undo label (a literal)
-	dirty:    bool,   // edited since the last save
 	changed:  bool,   // the document changed this frame, the preview follows
 	preview:  string, // heap, the document as last sent to the preview
 
@@ -118,51 +123,71 @@ Render_Pipeline_Prefs :: struct {
 @(user_settings={name="Render Pipeline"})
 render_pipeline_prefs: Render_Pipeline_Prefs
 
-@(init)
-_rp_install_undo :: proc "contextless" () {
-	rpu.load_hook = _rp_undo_load
-}
 
 @(menu_item={path="Window/Rendering/Render Pipeline", shortcut=""})
 render_pipeline_menu_open :: proc() {
-	if _rp.path == "" do _rp_open_active()
+	if _rp.guid == {} do _rp_open_active()
 	wnd.open("render_pipeline")
 }
 
-// Opens the pipeline at `path` in the window. Reopening the pipeline already
-// open keeps its unsaved edits.
+// Opens the pipeline at `path` in the window. Its unsaved edits stay in its
+// document, so reopening it, or opening another pipeline and coming back,
+// keeps them.
 render_pipeline_open :: proc(path: string, guid: engine.Asset_GUID) {
-	_rp_load(path, guid)
+	_rp_open_guid(guid)
 	wnd.open("render_pipeline")
 }
 
-// Reads the pipeline at `path` into the window. The one already shown stays,
-// unsaved edits and all, unless `force` reads it again (a discard). `path`
-// must not be the window's own string, which this frees.
-_rp_load :: proc(path: string, guid: engine.Asset_GUID, force := false) -> bool {
-	context.allocator = runtime.default_allocator()
-	if !force && _rp.path == path && _rp.path != "" do return true
-	p, ok := engine.pipeline_load_file(path)
-	if !ok {
-		log.errorf("[Render] %s is not a render pipeline", path)
-		return false
-	}
-	engine.cleanup_Render_Pipeline(&_rp.doc)
-	delete(_rp.path)
-	delete(_rp.baseline)
-	delete(_rp.preview)
-	_rp.path = strings.clone(path)
+// Points the window at the pipeline `guid`, its view state reset.
+_rp_open_guid :: proc(guid: engine.Asset_GUID) {
+	if _rp.guid == guid do return
 	_rp.guid = guid
-	_rp.doc = p
-	_rp.baseline = _rp_snapshot()
-	_rp.preview = strings.clone(_rp.baseline)
-	_rp.dirty = false
+	_rp.seen = nil
 	_rp.touched = false
 	_rp.changed = false
 	_rp.write_edit = -1
 	_rp.sel = 0
 	_rp_set_string(&_rp.sel_res, "")
 	_rp.set_stale = true
+}
+
+// Looks up the open pipeline's shared document, loading it on first use. A
+// new instance (the first frame, an undo, a redo, a Discard) rebuilds what the
+// window derives from it: the recorded baseline, the settings panel, the
+// selection, and the frame follows it. False when nothing is open or the file
+// is not a render pipeline.
+_rp_fetch :: proc() -> bool {
+	context.allocator = runtime.default_allocator()
+	_rp.asset = nil
+	_rp.doc = nil
+	if _rp.guid == {} do return false
+	path, known := engine.asset_db_get_path(uuid.Identifier(_rp.guid))
+	doc := inspector.asset_doc_get(path) if known else nil
+	if doc == nil || doc.data.id != typeid_of(engine.Render_Pipeline) {
+		log.errorf("[Render] %s is not a render pipeline", path)
+		_rp.guid = {}
+		return false
+	}
+	_rp.asset = doc
+	_rp.doc = (^engine.Render_Pipeline)(doc.data.data)
+	if rawptr(_rp.doc) != _rp.seen {
+		replaced := _rp.seen != nil
+		_rp.seen = _rp.doc
+		delete(_rp.baseline)
+		_rp.baseline = string(undo.capture_json(_rp.doc, typeid_of(engine.Render_Pipeline)))
+		_rp.touched = false
+		_rp.write_edit = -1
+		_rp.set_stale = true
+		if engine.pipeline_find_step(_rp.doc, _rp.sel) == nil do _rp.sel = 0
+		if replaced {
+			_rp_preview()
+		} else {
+			// Opening sends nothing: the frame already runs this pipeline as
+			// it was last previewed or loaded.
+			delete(_rp.preview)
+			_rp.preview = _rp_snapshot()
+		}
+	}
 	return true
 }
 
@@ -171,25 +196,24 @@ _rp_open_active :: proc() {
 	active := engine.render_pipeline_active()
 	if active.guid == {} || active.guid == _rp.tried_guid do return
 	_rp.tried_guid = active.guid
-	path, ok := engine.asset_db_get_path(uuid.Identifier(active.guid))
-	if !ok do return
-	_rp_load(path, active.guid)
+	if _, ok := engine.asset_db_get_path(uuid.Identifier(active.guid)); !ok do return
+	_rp_open_guid(active.guid)
 }
 
 @(editor_window={id="render_pipeline", title="Render Pipeline", icon="HUB", width=1100, height=600})
 render_pipeline_window_draw :: proc() {
-	// The window's own state lives across frames on the default allocator.
+	// Edits allocate into the shared document, so they use its allocator.
 	// The undo stack owns what is pushed to it and frees it with the editor's
-	// context allocator, so a command is built with the caller's (_rp_record).
+	// context allocator, so a step is built with the caller's (_rp_record).
 	caller := context.allocator
-	context.allocator = runtime.default_allocator()
-	if _rp.path == "" do _rp_open_active()
-	if _rp.path == "" {
+	context.allocator = inspector.doc_alloc()
+	if _rp.guid == {} do _rp_open_active()
+	if !_rp_fetch() {
 		im.TextDisabled("The built-in frame. Create a Render Pipeline asset (Assets > Create > Render Pipeline) and set it in Project Settings > Rendering.")
 		return
 	}
-	if engine.pipeline_find_step(&_rp.doc, _rp.sel) == nil do _rp.sel = 0
-	if _rp.slot == "" || !engine.pipeline_find_slot(&_rp.doc, _rp.slot) {
+	if engine.pipeline_find_step(_rp.doc, _rp.sel) == nil do _rp.sel = 0
+	if _rp.slot == "" || !engine.pipeline_find_slot(_rp.doc, _rp.slot) {
 		first := len(_rp.doc.slots) > 0 ? _rp.doc.slots[0].name : engine.MAIN_SLOT
 		_rp_set_string(&_rp.slot, first)
 	}
@@ -258,7 +282,7 @@ _rp_toolbar :: proc() {
 	}
 	im.SameLine()
 	im.AlignTextToFramePadding()
-	im.TextUnformatted(fmt.ctprintf("%s%s", _rp.path, _rp.dirty ? " *" : ""))
+	im.TextUnformatted(fmt.ctprintf("%s%s", _rp.asset.path, _rp.asset.dirty ? " *" : ""))
 	if engine.render_pipeline_active().guid != _rp.guid {
 		im.SameLine()
 		im.TextDisabled("(not the active pipeline, edits show once Project Settings > Rendering names it)")
@@ -324,56 +348,23 @@ _rp_tabs :: proc() {
 
 _rp_select_slot :: proc(name: string) {
 	_rp_set_string(&_rp.slot, name)
-	if e := engine.pipeline_find_step(&_rp.doc, _rp.sel); e != nil && e.slot != "" && e.slot != name do _rp.sel = 0
+	if e := engine.pipeline_find_step(_rp.doc, _rp.sel); e != nil && e.slot != "" && e.slot != name do _rp.sel = 0
 }
 
-_rp_save :: proc() -> bool {
-	if !engine.pipeline_save_file(&_rp.doc, _rp.path, _rp.guid) {
-		log.errorf("[Render] could not write %s", _rp.path)
-		return false
-	}
-	_rp.dirty = false
-	_ = asset_pipeline.asset_pipeline_import_asset(_rp.path)
-	return true
-}
-
-// --- Open document ----------------------------------------------------------------
-// The pipeline the window shows, as an open document (moonhug:editor/session):
-// File/Save and the tab menu save it, the tab menu discards it, and the tab
-// title carries its star.
-
-RENDER_PIPELINE_DOCUMENT :: "render_pipeline_window"
-
+// The pipeline's document is the view's, and a save reimports the pipeline.
 @(provider_install)
 _rp_install_document :: proc() {
-	session.document_owner_add({name = RENDER_PIPELINE_DOCUMENT, list = _rp_document_list, save = _rp_document_save, discard = _rp_document_discard})
 	session.view_document_set("render_pipeline", _rp_view_document)
-}
-
-@(private = "file")
-_rp_document_list :: proc(out: ^[dynamic]session.Document) {
-	if _rp.path == "" do return
-	append(out, session.Document{path = _rp.path, dirty = _rp.dirty, can_discard = true})
-}
-
-@(private = "file")
-_rp_document_save :: proc(key: rawptr) -> bool {
-	return _rp_save()
-}
-
-// The pipeline read again from its file. Its undo steps go first, on the
-// caller's allocator like every purge.
-@(private = "file")
-_rp_document_discard :: proc(key: rawptr) {
-	if _rp.path == "" do return
-	undo.purge_asset(undo.get(), _rp.guid)
-	_rp_load(strings.clone(_rp.path, context.temp_allocator), _rp.guid, force = true)
+	inspector.doc_saved_register(typeid_of(engine.Render_Pipeline), proc(guid: engine.Asset_GUID, path: string) {
+		_ = asset_pipeline.asset_pipeline_import_asset(path)
+	})
 }
 
 @(private = "file")
 _rp_view_document :: proc() -> (owner: string, key: rawptr, ok: bool) {
-	if _rp.path == "" do return "", nil, false
-	return RENDER_PIPELINE_DOCUMENT, nil, true
+	doc := inspector.asset_doc_of(_rp.guid) if _rp.guid != {} else nil
+	if doc == nil do return "", nil, false
+	return inspector.ASSET_DOCUMENTS, doc, true
 }
 
 // --- Popups -------------------------------------------------------------------------
@@ -410,7 +401,7 @@ _rp_popups :: proc() {
 		im.SameLine()
 		if im.Button("Add") || entered {
 			name := strings.trim_space(string(cstring(&_rp.new_slot[0])))
-			if engine.pipeline_add_slot(&_rp.doc, name) {
+			if engine.pipeline_add_slot(_rp.doc, name) {
 				_rp_select_slot(name)
 				_rp_touch("Add Slot")
 				im.CloseCurrentPopup()
@@ -459,7 +450,7 @@ _rp_add_step_menu :: proc() {
 			if n.pkg != pkg do continue
 			label := n.frame ? fmt.ctprintf("%s (per frame)", n.name) : fmt.ctprintf("%s", n.name)
 			if im.MenuItem(label, nil, false, n.frame == frame) {
-				_rp.sel = engine.pipeline_add_step(&_rp.doc, n.name, _rp.menu_slot, _rp.menu_index)
+				_rp.sel = engine.pipeline_add_step(_rp.doc, n.name, _rp.menu_slot, _rp.menu_index)
 				_rp.scroll_step = true
 				_rp_touch("Add Step")
 			}
@@ -471,7 +462,7 @@ _rp_add_step_menu :: proc() {
 
 // A column header's context menu.
 _rp_step_context_menu :: proc() {
-	e := engine.pipeline_find_step(&_rp.doc, _rp.ctx_id)
+	e := engine.pipeline_find_step(_rp.doc, _rp.ctx_id)
 	if e == nil {
 		im.CloseCurrentPopup()
 		return
@@ -491,14 +482,14 @@ _rp_step_context_menu :: proc() {
 // --- Edits --------------------------------------------------------------------------
 
 _rp_lane_position :: proc(e: ^engine.Pipeline_Entry) -> int {
-	for other, i in engine.pipeline_lane(&_rp.doc, e.slot) do if other.id == e.id do return i
+	for other, i in engine.pipeline_lane(_rp.doc, e.slot) do if other.id == e.id do return i
 	return -1
 }
 
 _rp_delete_step :: proc(id: i32) {
-	if engine.pipeline_find_step(&_rp.doc, id) == nil do return
+	if engine.pipeline_find_step(_rp.doc, id) == nil do return
 	if shown, _, _ := engine.render_inspect_showing(); shown == id do engine.render_inspect_show(0, "")
-	engine.pipeline_remove_step(&_rp.doc, id)
+	engine.pipeline_remove_step(_rp.doc, id)
 	if _rp.sel == id do _rp.sel = 0
 	_rp_touch("Remove Step")
 }
@@ -513,7 +504,7 @@ _rp_set_muted :: proc(e: ^engine.Pipeline_Entry, muted: bool) {
 // end), refusing a per-frame step in a slot or a per-view step in the frame
 // lane. Returns the refusal, "" when the move is allowed.
 _rp_move_check :: proc(id: i32, slot: string) -> string {
-	e := engine.pipeline_find_step(&_rp.doc, id)
+	e := engine.pipeline_find_step(_rp.doc, id)
 	if e == nil do return "the step is gone"
 	n := engine.render_step_find(e.step)
 	if n == nil do return ""
@@ -523,7 +514,7 @@ _rp_move_check :: proc(id: i32, slot: string) -> string {
 }
 
 _rp_move :: proc(id: i32, slot: string, index: int) {
-	e := engine.pipeline_find_step(&_rp.doc, id)
+	e := engine.pipeline_find_step(_rp.doc, id)
 	if e == nil do return
 	at := index
 	if at >= 0 && e.slot == slot {
@@ -532,7 +523,7 @@ _rp_move :: proc(id: i32, slot: string, index: int) {
 		if from == at || from + 1 == at do return // dropped next to itself
 		if from < at do at -= 1
 	}
-	engine.pipeline_move_step(&_rp.doc, id, slot, at)
+	engine.pipeline_move_step(_rp.doc, id, slot, at)
 	_rp_touch("Move Step")
 }
 
@@ -540,7 +531,7 @@ _rp_move :: proc(id: i32, slot: string, index: int) {
 // names are ignored.
 _rp_rename_slot :: proc(old, name: string) {
 	trimmed := strings.trim_space(name)
-	if trimmed == "" || trimmed == old || engine.pipeline_find_slot(&_rp.doc, trimmed) do return
+	if trimmed == "" || trimmed == old || engine.pipeline_find_slot(_rp.doc, trimmed) do return
 	for &s in _rp.doc.slots {
 		if s.name != old do continue
 		for &e in _rp.doc.steps {
@@ -577,12 +568,14 @@ _rp_ask_remove_slot :: proc(name: string) {
 	})
 }
 
+// The confirm dialog's action, run outside the window's draw: the document is
+// looked up again, and the edit allocates into it with its allocator.
 _rp_remove_pending_slot :: proc() {
-	context.allocator = runtime.default_allocator()
-	if _rp.remove_slot == "" do return
-	engine.pipeline_remove_slot(&_rp.doc, _rp.remove_slot)
+	if _rp.remove_slot == "" || !_rp_fetch() do return
+	context.allocator = inspector.doc_alloc()
+	engine.pipeline_remove_slot(_rp.doc, _rp.remove_slot)
 	_rp_set_string(&_rp.remove_slot, "")
-	if engine.pipeline_find_step(&_rp.doc, _rp.sel) == nil do _rp.sel = 0
+	if engine.pipeline_find_step(_rp.doc, _rp.sel) == nil do _rp.sel = 0
 	_rp_touch("Remove Slot")
 }
 
@@ -591,13 +584,13 @@ _rp_remove_pending_slot :: proc() {
 // scene view (Editor when the pipeline declares it, Main otherwise).
 _rp_users :: proc(slot: string) -> string {
 	users := make([dynamic]string, context.temp_allocator)
-	scene_slot := engine.pipeline_find_slot(&_rp.doc, engine.EDITOR_SLOT) ? engine.EDITOR_SLOT : engine.MAIN_SLOT
+	scene_slot := engine.pipeline_find_slot(_rp.doc, engine.EDITOR_SLOT) ? engine.EDITOR_SLOT : engine.MAIN_SLOT
 	if slot == scene_slot do append(&users, "the scene view")
 	if w := engine.ctx_world(); w != nil {
 		it := engine.pool_iterator(engine.cameras(w))
 		for cam in engine.pool_next(&it) {
 			name := cam.slot != "" ? cam.slot : engine.MAIN_SLOT
-			if !engine.pipeline_find_slot(&_rp.doc, name) do name = engine.MAIN_SLOT
+			if !engine.pipeline_find_slot(_rp.doc, name) do name = engine.MAIN_SLOT
 			if name != slot do continue
 			label := "a camera"
 			if t := engine.pool_get(&w.transforms, engine.Handle(cam.owner)); t != nil do label = t.name
@@ -693,6 +686,9 @@ _rp_settings_hint :: proc(e: ^engine.Pipeline_Entry, n: ^engine.Render_Step) -> 
 // Rebuilds the active pipeline from the document when it changed since the
 // last preview.
 _rp_preview :: proc() {
+	// The preview string is the window's own, on the default allocator,
+	// whatever the caller's: the draw runs on the document allocator.
+	context.allocator = runtime.default_allocator()
 	now := _rp_snapshot()
 	if now == _rp.preview {
 		delete(now)
@@ -700,7 +696,7 @@ _rp_preview :: proc() {
 	}
 	delete(_rp.preview)
 	_rp.preview = now
-	engine.render_pipeline_preview(_rp.guid, _rp.doc)
+	engine.render_pipeline_preview(_rp.guid, _rp.doc^)
 }
 
 _rp_touch :: proc(label: string) {
@@ -711,7 +707,7 @@ _rp_touch :: proc(label: string) {
 
 // The document as JSON, heap-allocated: the shape pipeline_parse reads.
 _rp_snapshot :: proc() -> string {
-	data, err := json.marshal(_rp.doc, {}, runtime.default_allocator())
+	data, err := json.marshal(_rp.doc^, {}, runtime.default_allocator())
 	if err != nil {
 		log.errorf("[Render] pipeline snapshot failed: %v", err)
 		return ""
@@ -719,61 +715,29 @@ _rp_snapshot :: proc() -> string {
 	return string(data)
 }
 
-// Records the edits since the last record as one undo step, when they changed
-// the document. The command and the push use `undo_allocator`, the one the
-// undo stack frees with. The baseline stays the window's own (default
-// allocator), so the command takes copies of it.
+// Records the edits since the last record as one undo step on the asset,
+// when they changed the document. The step's two snapshots use
+// `undo_allocator`, the one the undo stack frees with. The baseline stays the
+// window's own (default allocator).
 _rp_record :: proc(undo_allocator: runtime.Allocator) {
 	_rp.touched = false
-	now := _rp_snapshot()
-	if now == _rp.baseline {
-		delete(now)
-		return
-	}
-	cmd := rpu.Render_Pipeline_Edit{
-		path   = strings.clone(_rp.path, undo_allocator),
-		guid   = _rp.guid,
-		before = strings.clone(_rp.baseline, undo_allocator),
-		after  = strings.clone(now, undo_allocator),
-	}
-	delete(_rp.baseline)
-	_rp.baseline = now
-	_rp.dirty = true
+	if _rp.doc == nil do return
+	tid := typeid_of(engine.Render_Pipeline)
+	recorded: string
 	{
 		context.allocator = undo_allocator
-		undo.push(undo.get(), cmd, _rp.label)
-	}
-}
-
-// Undo and redo: a snapshot back into the open document, or into the file
-// when the window shows another pipeline.
-_rp_undo_load :: proc(path: string, data: string) {
-	context.allocator = runtime.default_allocator()
-	p, ok := engine.pipeline_parse(transmute([]u8)data)
-	if !ok {
-		log.errorf("[Render] undo snapshot for %s does not parse", path)
-		return
-	}
-	if path != _rp.path {
-		defer engine.cleanup_Render_Pipeline(&p)
-		guid, gok := engine.asset_db_get_guid(path)
-		if !gok do return
-		if engine.pipeline_save_file(&p, path, engine.Asset_GUID(guid)) {
-			_ = asset_pipeline.asset_pipeline_import_asset(path)
+		now := undo.capture_json(_rp.doc, tid)
+		if string(now) == _rp.baseline {
+			delete(now)
+			return
 		}
-		return
+		recorded = strings.clone(string(now), runtime.default_allocator())
+		before := transmute([]byte)strings.clone(_rp.baseline)
+		undo.push_value(undo.get(), undo.make_asset_target(_rp.guid, tid, .File), before, now, _rp.label)
 	}
-	engine.cleanup_Render_Pipeline(&_rp.doc)
-	_rp.doc = p
-	delete(_rp.baseline)
-	_rp.baseline = strings.clone(data)
-	_rp.dirty = true
-	_rp.touched = false
-	_rp.write_edit = -1
-	_rp.set_stale = true
-	if engine.pipeline_find_step(&_rp.doc, _rp.sel) == nil do _rp.sel = 0
-	_rp.changed = false
-	_rp_preview()
+	delete(_rp.baseline, runtime.default_allocator())
+	_rp.baseline = recorded
+	_rp.asset.dirty = true
 }
 
 // --- Helpers ------------------------------------------------------------------------

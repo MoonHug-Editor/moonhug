@@ -49,7 +49,7 @@ _Model :: struct {
 }
 
 _rp_model :: proc(slot: string) -> _Model {
-	doc := &_rp.doc
+	doc := _rp.doc
 	cols := make([dynamic]_Column, context.temp_allocator)
 	for e, i in engine.pipeline_lane(doc, "") do append(&cols, _Column{entry = e, step = engine.render_step_find(e.step), frame = true, pos = i})
 	n_frame := len(cols)

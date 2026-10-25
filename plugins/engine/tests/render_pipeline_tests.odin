@@ -5,7 +5,10 @@ package engine_tests
 // frame lane once and a slot's lane in canvas order, with each instance's
 // own settings.
 
+import "base:runtime"
 import "core:encoding/json"
+import "core:mem"
+import "core:os"
 import "core:strings"
 import "core:testing"
 
@@ -15,6 +18,8 @@ _settings_json :: proc(key: string, value: f64) -> json.Value {
 	obj[key] = json.Float(value)
 	return obj
 }
+import asset_pipeline "moonhug:editor/assets"
+import "moonhug:editor/inspector"
 import "moonhug:packages/engine"
 import rpv "moonhug:packages/engine/editor/render_pipeline_view"
 import gfx "moonhug:libs/gfx"
@@ -324,7 +329,7 @@ test_render_pipeline_window_optional_reads :: proc(t: ^testing.T) {
 	engine.pipeline_add_slot(&with, engine.MAIN_SLOT)
 	engine.pipeline_add_step(&with, "scene_ssao", engine.MAIN_SLOT)
 	engine.pipeline_add_step(&with, "scene_opaque", engine.MAIN_SLOT)
-	rpv._rp.doc = with
+	rpv._rp.doc = &with
 	m := rpv._rp_model(engine.MAIN_SLOT)
 	ssao := find(m, engine.SSAO_TARGET)
 	testing.expect(t, ssao != nil, "scene_ssao writes ssao")
@@ -337,7 +342,7 @@ test_render_pipeline_window_optional_reads :: proc(t: ^testing.T) {
 	defer engine.cleanup_Render_Pipeline(&without)
 	engine.pipeline_add_slot(&without, engine.MAIN_SLOT)
 	engine.pipeline_add_step(&without, "scene_opaque", engine.MAIN_SLOT)
-	rpv._rp.doc = without
+	rpv._rp.doc = &without
 	m = rpv._rp_model(engine.MAIN_SLOT)
 	testing.expect(t, find(m, engine.SSAO_TARGET) == nil, "no ssao row without its writer")
 	testing.expect(t, find(m, engine.SHADOW_TARGET) == nil, "no shadow row without its writer")
@@ -455,4 +460,60 @@ test_render_pipeline_volume_overrides_settings :: proc(t: ^testing.T) {
 		testing.expect_value(t, _calls[0], "tint:default") // the volume's 0.5
 		testing.expect_value(t, _calls[1], "tint:set")     // the pipeline's 2
 	}
+}
+
+// The Render Pipeline window on a pipeline's shared document: muting a step
+// previews it under the window's draw allocator, which is not the one the
+// preview string lives on. The preview frees that string with its own
+// allocator, so the mute neither crashes nor leaks.
+@(test)
+test_render_pipeline_window_mute_previews :: proc(t: ^testing.T) {
+	dir :: "moonhug/tests/fixtures/_rp_window_tmp"
+	path :: dir + "/Muted.renderpipeline"
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	os.make_directory(dir)
+	defer {
+		_remove_tree(dir)
+		_remove_tree(engine.library_dir())
+	}
+	p: engine.Render_Pipeline
+	defer engine.cleanup_Render_Pipeline(&p)
+	engine.pipeline_add_slot(&p, engine.MAIN_SLOT)
+	engine.pipeline_add_step(&p, "scene_opaque", engine.MAIN_SLOT)
+	testing.expect(t, engine.pipeline_save_file(&p, path), "the pipeline file is written")
+	asset_pipeline.asset_pipeline_init()
+	engine.asset_db_init(dir)
+	defer engine.asset_db_shutdown()
+	defer inspector.asset_docs_shutdown()
+	guid, gok := engine.asset_db_get_guid(path)
+	testing.expect(t, gok, "the pipeline is in the asset db")
+	if !gok do return
+	defer {
+		rpv._rp.guid = {}
+		rpv._rp.seen = nil
+		rpv._rp.doc = nil
+		rpv._rp.asset = nil
+	}
+
+	rpv._rp_open_guid(engine.Asset_GUID(guid))
+	testing.expect(t, rpv._rp_fetch(), "the window looks up the shared document")
+	// In a debug editor the draw runs on the document allocator, the editor's
+	// tracking allocator over the default heap. A tracking allocator of the
+	// same shape plays that part, and must see no free of memory it never
+	// gave out.
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, runtime.default_allocator())
+	defer mem.tracking_allocator_destroy(&track)
+	{
+		context.allocator = mem.tracking_allocator(&track)
+		rpv._rp.doc.steps[0].muted = true
+		rpv._rp_touch("Mute")
+		rpv._rp_preview()
+	}
+	testing.expect_value(t, len(track.bad_free_array), 0)
+	testing.expect(t, rpv._rp.doc.steps[0].muted, "the step stays muted")
 }

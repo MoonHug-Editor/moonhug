@@ -5,8 +5,10 @@ package session
 // holds when asked, so nothing here can go stale. The owners:
 // - scenes, the scene manager's (plugins/engine/editor/scene_views/scene_documents.odin)
 // - asset documents, the inspector's, every serialized asset type
-//   (editor/inspector/asset_doc_owner.odin)
-// - the Shader Graph and Render Pipeline windows, each the file it shows
+//   (editor/inspector/asset_doc_owner.odin). Every view that edits an asset
+//   shares its one document.
+// An editor with its own working copy of a file, applied at once, would add
+// a third.
 //
 // What uses them:
 // - File ▸ Save saves every dirty document.

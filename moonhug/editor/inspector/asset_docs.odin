@@ -67,6 +67,21 @@ doc_preview_register :: proc(tid: typeid, p: Doc_Preview) {
     _doc_previews[tid] = p
 }
 
+// Runs after a document of its type is written: what the file feeds and a
+// save has to refresh, such as a reimport or a runtime cache. Packages
+// register one per asset type that needs it.
+Doc_Saved :: proc(guid: core.Asset_GUID, path: string)
+
+@(private)
+_doc_saved: map[typeid]Doc_Saved
+
+// Process-global registry: never borrows the caller's allocator.
+doc_saved_register :: proc(tid: typeid, p: Doc_Saved) {
+    context.allocator = runtime.default_allocator()
+    if _doc_saved == nil do _doc_saved = make(map[typeid]Doc_Saved)
+    _doc_saved[tid] = p
+}
+
 // The allocator documents live on: their values, and every string a drawer or
 // an undo write puts into them. Drawers and undo's field writes allocate and
 // free with context.allocator, so the editor's main sets this to its own
@@ -77,6 +92,12 @@ doc_allocator: runtime.Allocator
 doc_alloc :: proc() -> runtime.Allocator {
 	if doc_allocator.procedure == nil do return runtime.default_allocator()
 	return doc_allocator
+}
+
+// The loaded document of an asset, nil when none is loaded. Loads nothing.
+asset_doc_of :: proc(guid: core.Asset_GUID) -> ^Asset_Doc {
+    doc, _ := _docs[Doc_Key{guid, .File}]
+    return doc
 }
 
 // The open document for a path — reused if already loaded (unsaved edits
@@ -131,6 +152,7 @@ asset_doc_save :: proc(doc: ^Asset_Doc) -> bool {
     }
     if !ser.save_to_file(doc.path, doc.data) do return false
     doc.dirty = false
+    if saved, has := _doc_saved[doc.data.id]; has do saved(doc.guid, doc.path)
     return true
 }
 

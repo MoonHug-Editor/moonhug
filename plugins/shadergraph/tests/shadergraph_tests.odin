@@ -11,7 +11,7 @@ import sg "moonhug:packages/shadergraph"
 
 // The rim.glsl sample as a graph: emissive = rim_color.rgb * rim_color.w *
 // fresnel(normal, view, rim_power).
-@(private = "file")
+@(private)
 _rim_graph :: proc() -> sg.Shader_Graph {
 	g: sg.Shader_Graph
 	sg.reset_Shader_Graph(&g)
@@ -110,7 +110,7 @@ test_graph_file_round_trip :: proc(t: ^testing.T) {
 	g := _rim_graph()
 	defer sg.cleanup_Shader_Graph(&g)
 	path := "moonhug/tests/fixtures/_test_shader_graph.shadergraph"
-	testing.expect(t, sg.graph_save_file(&g, path, {}))
+	testing.expect(t, sg.graph_save_file(&g, path))
 	loaded, ok := sg.graph_load_file(path)
 	testing.expect(t, ok)
 	defer sg.cleanup_Shader_Graph(&loaded)

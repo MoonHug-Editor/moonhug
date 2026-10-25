@@ -14,7 +14,6 @@ package shadergraph
 // editor: the window, the canvas and undo live in editor/.
 
 import "core:encoding/json"
-import "core:encoding/uuid"
 import "core:fmt"
 import "core:os"
 import "core:strings"
@@ -237,9 +236,10 @@ graph_parse :: proc(data: []u8) -> (g: Shader_Graph, ok: bool) {
 	return g, true
 }
 
-// Writes the asset in the shape the Create menu writes (serialization).
-graph_save_file :: proc(g: ^Shader_Graph, path: string, guid: engine.Asset_GUID) -> bool {
-	return serialization.write_asset_to_path(path, uuid.Identifier(guid), g^)
+// Writes the asset in the shape the Create menu writes (serialization),
+// tagged with the Shader_Graph type guid.
+graph_save_file :: proc(g: ^Shader_Graph, path: string) -> bool {
+	return serialization.write_asset_to_path(path, engine.get_guid_by_typeid(Shader_Graph), g^)
 }
 
 @(private = "file")
