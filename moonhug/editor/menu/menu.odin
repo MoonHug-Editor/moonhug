@@ -502,6 +502,9 @@ _parse_shortcut :: proc(shortcut: string) -> (chord: im.KeyChord, ok: bool) {
                     key = im.Key(cast(int)im.Key.F1 + (n - 1))
                 }
             }
+            else if lower == "space" {
+                key = .Space
+            }
             // Add specific cases here like "Enter", "Escape", "Delete" if needed
         }
     }

@@ -320,6 +320,7 @@ main :: proc() {
         // The tab menu button on views floating outside the dockspace, now
         // that their hosts have begun this frame.
         tab_menu_draw_floating()
+        maximize_after_views()
 
         // Render. Scene/game views already encoded their offscreen passes
         // into this frame's command buffer during the UI calls above; imgui's

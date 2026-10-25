@@ -43,11 +43,15 @@ draw_dockspace :: proc() {
 			_dock_layout_reset = false
 			_dock_build_default_layout(dockspace_id, size)
 		}
-		im.DockSpace(dockspace_id, im.Vec2{0, 0}, {}, nil)
+		// While a view is maximized the dockspace keeps its nodes and shows
+		// nothing (maximize.odin).
+		hidden := maximize_is_on()
+		im.DockSpace(dockspace_id, im.Vec2{0, 0}, {.KeepAliveOnly} if hidden else {}, nil)
 		// Unity's tab context menu button on every node's tab bar.
-		tab_menu_draw_all(im.DockBuilderGetNode(dockspace_id))
+		if !hidden do tab_menu_draw_all(im.DockBuilderGetNode(dockspace_id))
 	}
 	im.End()
+	maximize_frame(pos, size)
 }
 
 // ImGuiDockNodeFlagsPrivate_DockSpace — the DockBuilder docs require it on the

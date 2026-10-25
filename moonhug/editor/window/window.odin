@@ -97,6 +97,12 @@ host_hook: proc(opener, w: ^Window, created: bool)
 @(private = "file")
 _drawing: ^Window
 
+// The instance whose content the mouse was over, and the imgui frame it was.
+@(private = "file")
+_hovered: ^Window
+@(private = "file")
+_hovered_frame: i32
+
 // Declares a dockable editor window whose content the proc draws.
 //
 // `id` identifies it, and its instances, in imgui.ini. `title` and `icon` (a
@@ -187,6 +193,14 @@ open :: proc(id: string, asset := core.Asset_GUID{}) -> ^Window {
 	}
 	_focus_request = w
 	return w
+}
+
+// The open instance under the mouse this frame or the last, nil for none: its
+// content, not its tab. Maximize View acts on it.
+hovered :: proc() -> ^Window {
+	if _hovered == nil || _hovered_frame < im.GetFrameCount() - 1 do return nil
+	for w in _windows do if w == _hovered && w.open do return w
+	return nil
 }
 
 // Focuses an open instance next frame, as open does.
@@ -409,6 +423,10 @@ _draw_instance :: proc(w: ^Window) {
 	visible := im.Begin(session.view_title(_title(w)), &w.open, flags)
 	if r.canvas do im.PopStyleVar()
 	if visible {
+		if im.IsWindowHovered(im.HoveredFlags_ChildWindows) {
+			_hovered = w
+			_hovered_frame = im.GetFrameCount()
+		}
 		r.draw(w)
 		if im.IsWindowHovered(im.HoveredFlags_RootAndChildWindows) && (im.IsMouseClicked(.Left) || im.IsMouseClicked(.Right) || im.IsMouseClicked(.Middle)) {
 			_use_count += 1

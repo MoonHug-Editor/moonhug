@@ -52,6 +52,15 @@ Every dock node's tab bar ends with a ⋮ button, whose menu acts on the visible
 game_gizmos: bool
 ```
 
+## Maximize
+
+Window/Maximize View (Shift+Space) makes the view under the mouse fill the dock area, with its tab, its tab-bar widgets and its ⋮ menu. The same shortcut puts it back in its dock node, at its tab's place, and closing it does too. The shortcut does nothing while a text field is being typed in.
+
+- Every other docked view hides and stays docked: the main dockspace keeps its nodes alive and shows nothing (`ImGuiDockNodeFlags_KeepAliveOnly`), and a second dockspace over the same area shows the view (`editor/maximize.odin`).
+- A hidden placeholder keeps the node the view left. imgui deletes a node when its last window leaves, and its split would close.
+- imgui.ini is written first and not saved while a view is maximized, so quitting then keeps the layout as it was.
+- A view docked in the main dockspace maximizes, a floating one does not. Over a Workspace view's frame, the Workspace view maximizes.
+
 ## Workspaces
 
 The Workspace view (Window/General/Workspace) is a canvas you pan, holding frames. A frame is a group of view tabs at a rectangle, with the chrome a dock node gives a view: its tab-bar widgets and its ⋮ menu. The canvas has no zoom. A view draws its contents the same way in a frame as in its own window, so every view works in a workspace with no code for it.
