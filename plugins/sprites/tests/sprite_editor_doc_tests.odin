@@ -207,3 +207,39 @@ test_sprite_editor_slice_undo_frees_on_the_document_allocator :: proc(t: ^testin
 	inspector.asset_docs_shutdown() // frees every copy and every replaced value
 	testing.expect_value(t, len(track.bad_free_array), 0)
 }
+
+// The slices list removes a slice by its row: the selection stays on its
+// slice, and clears when that is the one removed.
+@(test)
+test_sprite_editor_remove_keeps_the_selection_on_its_slice :: proc(t: ^testing.T) {
+	defer {
+		common.remove_tree(_DIR)
+		common.remove_tree(engine.library_dir())
+	}
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	guid, ok := _fixture(t)
+	if !ok do return
+	defer engine.asset_db_shutdown()
+	defer inspector.asset_docs_shutdown()
+	defer {
+		wnd.close(sprites_editor.SPRITE_EDITOR)
+		wnd.draw_all()
+	}
+
+	sprites_editor.sprite_editor_open(_PNG, guid)
+	sprites_editor.sprite_editor_add_slice({0, 0, 1, 1})
+	sprites_editor.sprite_editor_add_slice({0, 0, 1, 1})
+	sprites_editor.sprite_editor_add_slice({0, 0, 1, 1}) // added last, selected
+	ts := (^engine.TextureSettings)(_copy().data.data)
+	third := ts.sprites[2].id
+
+	sprites_editor.sprite_editor_remove_slice(0)
+	testing.expect_value(t, len(ts.sprites), 2)
+	testing.expect(t, sprites_editor._se.sel == 1 && ts.sprites[1].id == third, "the selection follows its slice")
+	sprites_editor.sprite_editor_remove_slice(1)
+	testing.expect_value(t, sprites_editor._se.sel, -1)
+}

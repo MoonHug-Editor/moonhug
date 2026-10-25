@@ -2,8 +2,9 @@ package sprites_editor
 
 // The Sprite Editor window: a dedicated window over the texture with
 // zoom/pan, a Slice popup (Automatic, Grid By Cell Size, Grid By Cell Count),
-// manual rect editing (Add Slice, drag-create on empty space, drag-move, a
-// fields panel for the selection) and its own Apply/Revert.
+// manual rect editing (drag-create on empty space, drag-move), a slices list
+// (select, Add, remove), a fields panel for the selection and its own
+// Apply/Revert.
 //
 // The slices are edited in a working copy of the texture's import settings
 // (inspector.asset_doc_copy_open), so nothing reaches the .meta until Apply,
@@ -25,6 +26,7 @@ import stbi "vendor:stb/image"
 import "moonhug:packages/engine"
 import gfx "moonhug:libs/gfx"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/icons"
 import "moonhug:editor/inspector"
 import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
@@ -278,12 +280,67 @@ sprite_editor_window_draw :: proc(w: ^wnd.Window) {
 	_se_toolbar(tex)
 	im.Separator()
 
-	// Selected-slice fields panel on the right, canvas takes the rest.
+	// The slices list and the selected slice's fields on the right, the
+	// canvas takes the rest.
 	panel_w := f32(240)
 	avail := im.GetContentRegionAvail()
-	_se_canvas(tex, im.Vec2{avail.x - panel_w - 8, avail.y})
+	spacing := im.GetStyle().ItemSpacing.x
+	_se_canvas(tex, im.Vec2{avail.x - _SE_LIST_W - panel_w - spacing * 2, avail.y})
+	im.SameLine()
+	_se_list(tex)
 	im.SameLine()
 	_se_panel(tex)
+}
+
+_SE_LIST_W :: f32(180)
+
+// The slices list: every slice by name. A click selects it, as a click on its
+// rect does, its delete button removes it, and Add makes a slice over the
+// middle of the texture, half its size: the way to add one when slices leave
+// no empty space to drag on.
+_se_list :: proc(tex: ^engine.Texture2D) {
+	if !im.BeginChild("se_list", {_SE_LIST_W, 0}, {.Borders}) {
+		im.EndChild()
+		return
+	}
+	defer im.EndChild()
+
+	style := im.GetStyle()
+	add_label: cstring = icons.ICON_MD_ADD + " Add"
+	add_w := im.CalcTextSize(add_label).x + style.FramePadding.x * 2
+	im.AlignTextToFramePadding()
+	im.Text("Sprites")
+	im.SameLine(im.GetContentRegionAvail().x + im.GetCursorPosX() - add_w)
+	if im.Button(add_label) {
+		w, h := f32(tex.width), f32(tex.height)
+		sprite_editor_add_slice({math.floor(w / 4), math.floor(h / 4), max(math.floor(w / 2), 1), max(math.floor(h / 2), 1)})
+	}
+	widgets.tooltip("Add a slice over the middle of the texture")
+	im.Separator()
+
+	if len(_se.ts.sprites) == 0 {
+		im.TextWrapped("No slices: the whole texture is one sprite.")
+		return
+	}
+	remove := -1
+	del_label: cstring = icons.ICON_MD_DELETE
+	del_w := im.CalcTextSize(del_label).x + style.FramePadding.x * 2
+	for s, i in _se.ts.sprites {
+		im.PushIDInt(i32(i))
+		name_w := im.GetContentRegionAvail().x - del_w - style.ItemSpacing.x
+		if im.Selectable(strings.clone_to_cstring(s.name, context.temp_allocator), i == _se.sel, {}, {name_w, 0}) {
+			_se_select(i)
+		}
+		im.SameLine()
+		if im.SmallButton(del_label) do remove = i
+		widgets.tooltip("Remove this slice")
+		im.PopID()
+	}
+	if remove >= 0 do sprite_editor_remove_slice(remove)
+
+	if im.IsWindowHovered() && !im.GetIO().WantTextInput && (im.IsKeyPressed(.Delete) || im.IsKeyPressed(.Backspace)) {
+		_se_delete_selected()
+	}
 }
 
 _se_toolbar :: proc(tex: ^engine.Texture2D) {
@@ -293,13 +350,6 @@ _se_toolbar :: proc(tex: ^engine.Texture2D) {
 		im.EndPopup()
 	}
 
-	// A slice over the middle of the texture, half its size: the way to add
-	// one when slices leave no empty space to drag on.
-	im.SameLine()
-	if im.Button("Add Slice") {
-		w, h := f32(tex.width), f32(tex.height)
-		sprite_editor_add_slice({math.floor(w / 4), math.floor(h / 4), max(math.floor(w / 2), 1), max(math.floor(h / 2), 1)})
-	}
 
 	im.SameLine()
 	im.BeginDisabled(!_se.doc.dirty)
@@ -706,11 +756,21 @@ sprite_editor_add_slice :: proc(rect: [4]f32) {
 }
 
 _se_delete_selected :: proc() {
-	if _se.sel < 0 || _se.sel >= len(_se.ts.sprites) do return
+	sprite_editor_remove_slice(_se.sel)
+}
+
+// Removes slice `i`. The selection stays on its slice, and clears when that
+// is the one removed.
+sprite_editor_remove_slice :: proc(i: int) {
+	if i < 0 || i >= len(_se.ts.sprites) do return
 	context.allocator = inspector.doc_alloc()
-	delete(_se.ts.sprites[_se.sel].name)
-	ordered_remove(&_se.ts.sprites, _se.sel)
-	_se.sel = -1
+	delete(_se.ts.sprites[i].name)
+	ordered_remove(&_se.ts.sprites, i)
+	if _se.sel == i {
+		_se.sel = -1
+	} else if _se.sel > i {
+		_se_select(_se.sel - 1)
+	}
 }
 
 // --- Selected-slice panel -------------------------------------------------------
@@ -729,7 +789,7 @@ _se_panel :: proc(tex: ^engine.Texture2D) {
 		im.TextDisabled("%d x %d", tex.width, tex.height)
 		_se_border_fields(&_se.ts.sprite_border, {f32(tex.width), f32(tex.height)})
 		im.Separator()
-		im.TextWrapped("Drag the green lines to set the 9-slice borders. Drag on the image to create slices (Multiple mode). Middle-drag pans, wheel zooms.")
+		im.TextWrapped("Drag the green lines to set the 9-slice borders. Drag on the image or press Add to create slices (Multiple mode). Middle-drag pans, wheel zooms.")
 		return
 	}
 	if _se.sel < 0 || _se.sel >= len(_se.ts.sprites) {
@@ -758,7 +818,4 @@ _se_panel :: proc(tex: ^engine.Texture2D) {
 	inspector.drag_float("Pivot X", &s.pivot.x, 0.01, 0, 1)
 	inspector.drag_float("Pivot Y", &s.pivot.y, 0.01, 0, 1)
 	_se_border_fields(&s.border, {s.rect.z, s.rect.w})
-
-	im.Separator()
-	if im.Button("Delete Slice") do _se_delete_selected()
 }
