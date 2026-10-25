@@ -1,3 +1,11 @@
+## [0.146.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.145.0...v0.146.0) (2026-10-25)
+
+### Features
+
+* @(view_document) names the asset a view edits, and Views.md documents every view attribute in one place ([e4fb279](https://github.com/MoonHug-Editor/moonhug/commit/e4fb279de16c52f1c1657f03a12df821367a4e07))
+* a test whose optional tool is missing skips, and mh test lists the skips under the summary ([9de6afa](https://github.com/MoonHug-Editor/moonhug/commit/9de6afa74e5aa80176119d48342a1c21373a9a70))
+* Save and Discard in a view's tab menu, a star on dirty tabs and project files, File/Save covers every open file, and quitting with unsaved files asks first ([4ec2bd8](https://github.com/MoonHug-Editor/moonhug/commit/4ec2bd8559f5f9356e4ef374f2f4a071f2a2867c))
+
 ## [0.145.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.144.0...v0.145.0) (2026-10-24)
 
 ### Features
