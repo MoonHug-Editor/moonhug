@@ -17,6 +17,7 @@ import "menu"
 import clip "clipboard"
 import "undo"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/workspace"
 import "moonhug:editor/widgets"
 import "moonhug:editor/preview"
 import "moonhug:editor/thumbnails"
@@ -164,6 +165,7 @@ main :: proc() {
         wnd.open_saved({"Scene", "Hierarchy", "Inspector", "Project", "Project Inspector", "Console", "Output"})
     }
     defer wnd.shutdown()
+    defer workspace.shutdown()
     defer preview.shutdown()
     _register_project_settings() // @(project_settings) vars -> settings tabs
     project_plugins_register()   // the Plugins tab: plugins/ with a link toggle each

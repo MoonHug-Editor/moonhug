@@ -1597,7 +1597,7 @@ project_view_draw :: proc(w: ^wnd.Window) {
 
     // Keyboard routes to a pane we track ourselves (imgui child focus is
     // unreliable), but only while the Project window as a whole is focused.
-    window_focused := im.IsWindowFocused(im.FocusedFlags_RootAndChildWindows)
+    window_focused := im.IsWindowFocused({.ChildWindows})
 
     // Left pane: Tree view
     im.BeginChild("TreeView", im.Vec2{tree_w, 0}, {.Borders})

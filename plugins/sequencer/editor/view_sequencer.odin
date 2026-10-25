@@ -749,7 +749,7 @@ sequencer_window_draw :: proc(w: ^wnd.Window) {
 
 	// Keyboard: Delete/Backspace removes the selected clip — unless a text
 	// field owns the keyboard.
-	if im.IsWindowFocused(im.FocusedFlags_RootAndChildWindows) && !im.GetIO().WantTextInput {
+	if im.IsWindowFocused({.ChildWindows}) && !im.GetIO().WantTextInput {
 		if (im.IsKeyPressed(.Delete) || im.IsKeyPressed(.Backspace)) &&
 		   _sq.sel_track >= 0 && _sq.sel_track < len(tracks) {
 			if _sq.sel_clip >= 0 && _sq.sel_clip < len(tracks[_sq.sel_track].clips) {

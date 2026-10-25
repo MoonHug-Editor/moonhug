@@ -158,3 +158,23 @@ test_window_last_and_state :: proc(t: ^testing.T) {
 	wnd.draw_all() // frees both states, no closed proc needed
 	testing.expect(t, wnd.last("state_test") == nil, "no copy is open")
 }
+
+// A hosted instance (a workspace frame's view) opens from its key, never
+// draws as a window of its own, is left out of the saved layout (the
+// workspace saves it), and gets its own window back on release.
+@(test)
+test_window_hosted_instances :: proc(t: ^testing.T) {
+	_fixture_register()
+	w := wnd.host_open("instance_test/7", "workspace")
+	testing.expect(t, w != nil && w.host == "workspace", "the key opens a hosted instance")
+	if w == nil do return
+	testing.expect_value(t, len(wnd.hosted_by("workspace")), 1)
+	for k in wnd.open_keys() do testing.expect(t, k != "instance_test/7", "a hosted instance is not in the saved layout")
+	wnd.draw_all() // draws nothing: there is no imgui frame, so drawing would crash
+	testing.expect(t, wnd.host_open("instance_test/7", "workspace") == w, "opening it again finds it")
+
+	wnd.host_release(w)
+	testing.expect(t, w.host == "" && len(wnd.hosted_by("workspace")) == 0, "released, it is a window of its own")
+	wnd.close(w.key)
+	wnd.draw_all()
+}

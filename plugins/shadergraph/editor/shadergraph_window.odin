@@ -246,7 +246,7 @@ shader_graph_window_draw :: proc(w: ^wnd.Window) {
 	}
 
 	io := im.GetIO()
-	if im.IsWindowFocused(im.FocusedFlags_RootAndChildWindows) && !io.WantTextInput && !im.IsAnyItemActive() {
+	if im.IsWindowFocused({.ChildWindows}) && !io.WantTextInput && !im.IsAnyItemActive() {
 		if im.IsKeyPressed(.Delete, false) || im.IsKeyPressed(.Backspace, false) do _sg_delete_selection()
 	}
 

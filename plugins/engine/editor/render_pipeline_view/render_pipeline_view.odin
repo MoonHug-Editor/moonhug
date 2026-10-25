@@ -292,7 +292,7 @@ render_pipeline_window_draw :: proc(w: ^wnd.Window) {
 	_rp_popups()
 
 	io := im.GetIO()
-	if im.IsWindowFocused(im.FocusedFlags_RootAndChildWindows) && !io.WantTextInput && !im.IsAnyItemActive() {
+	if im.IsWindowFocused({.ChildWindows}) && !io.WantTextInput && !im.IsAnyItemActive() {
 		if im.IsKeyPressed(.Delete, false) || im.IsKeyPressed(.Backspace, false) do _rp_delete_step(_rp.sel)
 		if im.IsKeyPressed(.Escape, false) {
 			_rp.sel = 0

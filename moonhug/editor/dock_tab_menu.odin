@@ -17,6 +17,7 @@ import wnd "moonhug:editor/window"
 import "moonhug:editor/icons"
 import "moonhug:editor/session"
 import "moonhug:editor/widgets"
+import "moonhug:editor/workspace"
 import "core:fmt"
 import "core:slice"
 import "core:strings"
@@ -215,31 +216,11 @@ _close_view :: proc(title: cstring) {
 @(private = "file")
 _tab_menu_contents :: proc(node: ^im.DockNode) {
 	// Acts on the tab the node is showing.
-	active_title: cstring
-	if node.VisibleWindow != nil do active_title = node.VisibleWindow.Name
-
-	if active_title != nil {
-		view := session.view_of(view_key_of(active_title))
-		// The file the view shows first (session/documents.odin): Save, and
-		// Discard after a confirmation. Both are off while it has no unsaved
-		// changes.
-		if d, ok := session.view_document(view.key); ok {
-			im.BeginDisabled(!d.dirty)
-			if im.MenuItem("Save") do session.document_save(d)
-			im.EndDisabled()
-			im.BeginDisabled(!d.dirty || !d.can_discard)
-			if im.MenuItem("Discard") do session.document_discard_ask(d)
-			im.EndDisabled()
-			im.Separator()
-		}
-		// The visible view's OWN options next: they are what this menu is for,
-		// and the tab actions below are the same on every view.
-		if view_menu_draw_items(view) {
-			im.Separator()
-		}
-		if im.MenuItem("Close Tab") {
-			_close_view(active_title)
-		}
+	if node.VisibleWindow != nil {
+		active_title := node.VisibleWindow.Name
+		key := view_key_of(active_title)
+		if tab_menu_view_items(key) do _close_view(active_title)
+		_move_to_workspace_menu(key)
 		im.Separator()
 	}
 
@@ -247,6 +228,57 @@ _tab_menu_contents :: proc(node: ^im.DockNode) {
 		_add_tab_items(node.ID_)
 		im.EndMenu()
 	}
+}
+
+// Move to Workspace: a window instance moves into a new frame of a workspace
+// a Workspace view shows (workspace_view.odin). A built-in view (Game) is no
+// window instance and stays docked.
+@(private = "file")
+_move_to_workspace_menu :: proc(key: string) {
+	inst := wnd.find(key)
+	if inst == nil || inst.host != "" || inst.id == WORKSPACE_VIEW do return
+	views := wnd.instances(WORKSPACE_VIEW)
+	if len(views) == 0 do return
+	if !im.BeginMenu("Move to Workspace") do return
+	defer im.EndMenu()
+	for v in views {
+		e, ok := workspace.find(workspace.view_selection(v.key))
+		if !ok do continue
+		im.PushIDStr(strings.clone_to_cstring(v.key, context.temp_allocator), nil)
+		if im.MenuItem(strings.clone_to_cstring(e.ws.name, context.temp_allocator)) {
+			n := len(e.ws.frames)
+			workspace.frame_add(e.ws, key, {-e.ws.pan.x + 24 + f32(n % 8) * 28, -e.ws.pan.y + 24 + f32(n % 8) * 28, 460, 320})
+			wnd.host_open(key, v.key)
+			workspace.changed(e.ws)
+		}
+		im.PopID()
+	}
+}
+
+// The items a view's tab menu shows for the view `key`, wherever its tab is
+// (a dock node, a workspace frame): Save and Discard for its document, its
+// own @(view_menu) items, Close Tab. True when Close Tab was picked: the
+// caller closes the tab its own way.
+tab_menu_view_items :: proc(key: string) -> (close: bool) {
+	view := session.view_of(key)
+	// The file the view shows first (session/documents.odin): Save, and
+	// Discard after a confirmation. Both are off while it has no unsaved
+	// changes.
+	if d, ok := session.view_document(view.key); ok {
+		im.BeginDisabled(!d.dirty)
+		if im.MenuItem("Save") do session.document_save(d)
+		im.EndDisabled()
+		im.BeginDisabled(!d.dirty || !d.can_discard)
+		if im.MenuItem("Discard") do session.document_discard_ask(d)
+		im.EndDisabled()
+		im.Separator()
+	}
+	// The view's OWN options next: they are what this menu is for, and the
+	// tab actions below are the same on every view.
+	if view_menu_draw_items(view) {
+		im.Separator()
+	}
+	return im.MenuItem("Close Tab")
 }
 
 // --- Add Tab ----------------------------------------------------------------

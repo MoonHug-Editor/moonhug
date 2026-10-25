@@ -1,8 +1,8 @@
 ---
 title: "Views"
-description: "Editor views and the attributes that extend them: windows, view menus, tab bar widgets, the asset a view edits and saving, scene view overlays, the toolbar"
+description: "Editor views and the attributes that extend them: windows, view menus, tab bar widgets, workspaces, the asset a view edits and saving, scene view overlays, the toolbar"
 weight: 110
-tags: ["views", "windows", "attributes", "save", "editor"]
+tags: ["views", "windows", "workspaces", "attributes", "save", "editor"]
 path: editor
 ---
 
@@ -51,6 +51,20 @@ Every dock node's tab bar ends with a ⋮ button, whose menu acts on the visible
 @(view_menu={view="Game", label="Gizmos"})
 game_gizmos: bool
 ```
+
+## Workspaces
+
+The Workspace view (Window/General/Workspace) is a canvas you pan, holding frames. A frame is a group of view tabs at a rectangle, with the chrome a dock node gives a view: its tab-bar widgets and its ⋮ menu. The canvas has no zoom. A view draws its contents the same way in a frame as in its own window, so every view works in a workspace with no code for it.
+
+- Drag the canvas background to pan. Drag a frame's grip to move it, its right or bottom border to resize it. A frame clicked comes to the front.
+- Add View opens a new instance of a view in a new frame. A frame's ⋮ menu has the view's own items, Move to Dock, which gives the view back its own window, and Add Tab. A docked view's tab menu has Move to Workspace, listing the workspaces the open Workspace views show.
+- The toolbar's dropdown lists every workspace every provider holds now. New makes one in a provider of your choice. The view's ⋮ menu renames and deletes the shown one.
+
+A workspace (`editor/workspace`) has a unique id, a name, its pan and its frames. A frame names its views by window instance key (`Console/2`, `shader_graph/<guid>`), so its views reopen from it. Workspaces come from providers: each one lists the workspaces it holds now, saves one after a change, makes and deletes them. User settings and project settings are built in, each in its own `workspaces.json`. A plugin adds a provider with `workspace.provider_add`, for example one that keeps workspaces in a scene: while the scene is open its workspaces are in the dropdown, and when it closes their ids are gone from it. Each Workspace view copy remembers the id of the workspace it shows (UserSettings/workspace_views.json) and says the workspace is not open while no provider holds it. The package needs no engine, so workspaces work with no plugins.
+
+A frame's views are window instances the Workspace view hosts (`wnd.host_open(key, host)`). A hosted instance never draws as a window of its own, is left out of the saved layout (its workspace saves it), and its host draws its contents with `wnd.draw_content`. `wnd.host_release` gives it back its own window. Closing the Workspace view closes its hosted views.
+
+Each frame draws in its own imgui child window. A view that takes keys while focused checks `im.IsWindowFocused({.ChildWindows})`, so it is focused in its own frame and not in every frame of the workspace. `FocusedFlags_RootAndChildWindows` would make every view in a workspace take keys at once.
 
 ## The asset a view edits
 

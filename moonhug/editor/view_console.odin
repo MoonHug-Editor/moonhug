@@ -302,7 +302,7 @@ console_view_draw :: proc(w: ^wnd.Window) {
 
 	// Up/Down select the previous/next visible row (nothing selected: both
 	// start at the newest). Not while a text input owns the keyboard.
-	if im.IsWindowFocused(im.FocusedFlags_RootAndChildWindows) && !im.IsAnyItemActive() && len(visible_ids) > 0 {
+	if im.IsWindowFocused({.ChildWindows}) && !im.IsAnyItemActive() && len(visible_ids) > 0 {
 		if im.IsKeyPressed(im.Key.Escape) {
 			_cv.selected_id = 0
 		}

@@ -51,6 +51,10 @@ Window :: struct {
 	placed: bool,  // drawn once, so its place is imgui's to keep
 	used:   u64,   // when it was last clicked in or opened: the highest is last(id)
 	drawn:  u64,   // the draw pass it was last drawn in, so draw_all skips what draw(id) drew
+	// The key of the view that hosts it (a workspace view), "" for a window
+	// of its own. A hosted instance never draws as a window: its host draws
+	// its content (draw_content) where it places it. Owned.
+	host:   string,
 }
 
 Draw_Proc  :: proc(w: ^Window)
@@ -130,7 +134,7 @@ registered :: proc(allocator := context.temp_allocator) -> []Title_Id {
 // position and size, but not whether the instance existed).
 open_keys :: proc(allocator := context.temp_allocator) -> []string {
 	out := make([dynamic]string, 0, len(_windows), allocator)
-	for w in _windows do if w.open do append(&out, w.key)
+	for w in _windows do if w.open && w.host == "" do append(&out, w.key)
 	return out[:]
 }
 
@@ -231,7 +235,7 @@ is_open :: proc(id: string) -> bool {
 draw :: proc(id: string) {
 	for i := 0; i < len(_windows); i += 1 {
 		w := _windows[i]
-		if w.open && w.id == id do _draw_instance(w)
+		if w.open && w.id == id && w.host == "" do _draw_instance(w)
 	}
 }
 
@@ -251,9 +255,74 @@ draw_all :: proc() {
 	}
 	for i := 0; i < len(_windows); i += 1 {
 		w := _windows[i]
-		if w.open && w.drawn != _pass + 1 do _draw_instance(w)
+		if w.open && w.host == "" && w.drawn != _pass + 1 do _draw_instance(w)
 	}
 	_pass += 1
+}
+
+// --- Hosting ---------------------------------------------------------------
+
+// The instance whose key is `key`, hosted by the view `host`: an open one
+// moves there, a missing one opens from the key (`id`, `id/<asset guid>`,
+// `id/<n>`). nil when the key names no registered window, or an asset that
+// is gone.
+host_open :: proc(key: string, host: string) -> ^Window {
+	context.allocator = runtime.default_allocator()
+	w := find(key)
+	if w == nil {
+		id, asset, ok := _parse_key(key)
+		if !ok do return nil
+		ri := _registered_index(id)
+		if ri < 0 do return nil
+		if asset != {} {
+			if _, known := assets.asset_db_get_path(uuid.Identifier(asset)); !known do return nil
+		}
+		w = _create(ri, asset, key)
+	}
+	if w.host != host {
+		delete(w.host)
+		w.host = strings.clone(host)
+	}
+	return w
+}
+
+// The open instances the view `host` hosts (temp).
+hosted_by :: proc(host: string, allocator := context.temp_allocator) -> []^Window {
+	out := make([dynamic]^Window, allocator)
+	for w in _windows do if w.open && w.host == host do append(&out, w)
+	return out[:]
+}
+
+// Gives a hosted instance back its own window. It docks beside an instance
+// of the same window, as a new one does.
+host_release :: proc(w: ^Window) {
+	context.allocator = runtime.default_allocator()
+	delete(w.host)
+	w.host = ""
+	w.placed = false
+}
+
+// Draws a hosted instance's content into the current window, which its host
+// sized and placed. A canvas window's host gives it no padding and no
+// scrollbars (is_canvas).
+draw_content :: proc(w: ^Window) {
+	w.drawn = _pass + 1
+	_registry[w.reg].draw(w)
+	if im.IsWindowHovered(im.HoveredFlags_ChildWindows) && (im.IsMouseClicked(.Left) || im.IsMouseClicked(.Right) || im.IsMouseClicked(.Middle)) {
+		_use_count += 1
+		w.used = _use_count
+	}
+}
+
+// Whether the instance draws edge to edge (@(editor_window) canvas).
+is_canvas :: proc(w: ^Window) -> bool {
+	return _registry[w.reg].canvas
+}
+
+// The instance's tab title, "<icon> <label>###<key>" with the star while its
+// asset has unsaved changes, for a host's tab bar.
+title :: proc(w: ^Window) -> cstring {
+	return session.view_title(_title(w))
 }
 
 // The instance's state, made from `init` on first use. It lives on the
@@ -379,6 +448,7 @@ _destroy :: proc(i: int) {
 	ordered_remove(&_windows, i)
 	context.allocator = runtime.default_allocator()
 	delete(w.key)
+	delete(w.host)
 	free(w)
 }
 

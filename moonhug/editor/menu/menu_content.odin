@@ -165,6 +165,9 @@ window_menu_project_inspector :: proc() { wnd.open("Project Inspector") }
 @(menu_item={path="Window/General/Console", order=7, shortcut="Ctrl+Shift+C"})
 window_menu_console :: proc() { wnd.open("Console") }
 
+@(menu_item={path="Window/General/Workspace", order=10, shortcut=""})
+window_menu_workspace :: proc() { wnd.open("workspace") }
+
 @(menu_item={path="Window/General/Output", order=8, shortcut=""})
 window_menu_output :: proc() { wnd.open("Output") }
 
