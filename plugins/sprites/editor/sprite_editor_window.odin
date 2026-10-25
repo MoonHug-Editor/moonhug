@@ -8,6 +8,9 @@ package sprites_editor
 // (inspector/import_settings_docs.odin), the same one the import settings
 // inspector shows: an edit here shows there at once, and undo records every
 // finished edit with no code in this file. Apply writes the .meta and reimports.
+// An edit allocates into the document (slice names, the slice list), so it
+// uses the document's allocator (inspector.doc_alloc): undo frees a replaced
+// instance with it.
 
 import "base:runtime"
 import "core:fmt"
@@ -317,7 +320,7 @@ _se_slice_grid :: proc(tex: ^engine.Texture2D, by_count: bool) {
 	}
 	if cw <= 0 || ch <= 0 do return
 
-	context.allocator = runtime.default_allocator()
+	context.allocator = inspector.doc_alloc()
 	old := _se.ts.sprites
 	_se.ts.sprites = {}
 	base := filepath.stem(_se.path)
@@ -361,7 +364,7 @@ _se_slice_automatic :: proc(tex: ^engine.Texture2D) {
 		solid[i] = i32(pixels[i * 4 + 3]) > _se.alpha_min
 	}
 
-	context.allocator = runtime.default_allocator()
+	context.allocator = inspector.doc_alloc()
 	old := _se.ts.sprites
 	_se.ts.sprites = {}
 	base := filepath.stem(_se.path)
@@ -518,15 +521,7 @@ _se_canvas :: proc(tex: ^engine.Texture2D, size: im.Vec2) {
 	}
 	if im.IsItemDeactivated() {
 		if _se.drag == .Create && _se.drag_rect.z >= 1 && _se.drag_rect.w >= 1 {
-			context.allocator = runtime.default_allocator()
-			append(&_se.ts.sprites, engine.Sprite_Rect{
-				id    = _se_mint_id(),
-				name  = fmt.aprintf("%s_%d", filepath.stem(_se.path), len(_se.ts.sprites)),
-				rect  = _se.drag_rect,
-				pivot = _se_pivot_vec[_se.pivot],
-			})
-			_se_select(len(_se.ts.sprites) - 1)
-			_se_slices_added()
+			sprite_editor_add_slice(_se.drag_rect)
 		}
 		_se.drag = .None
 	}
@@ -625,9 +620,24 @@ _se_select :: proc(i: int) {
 	}
 }
 
+// Adds a slice over `rect` (pixels, top-left origin) to the open texture,
+// selects it and makes the texture Multiple: what a drag on empty space does.
+sprite_editor_add_slice :: proc(rect: [4]f32) {
+	if _se.ts == nil do return
+	context.allocator = inspector.doc_alloc()
+	append(&_se.ts.sprites, engine.Sprite_Rect{
+		id    = _se_mint_id(),
+		name  = fmt.aprintf("%s_%d", filepath.stem(_se.path), len(_se.ts.sprites)),
+		rect  = rect,
+		pivot = _se_pivot_vec[_se.pivot],
+	})
+	_se_select(len(_se.ts.sprites) - 1)
+	_se_slices_added()
+}
+
 _se_delete_selected :: proc() {
 	if _se.sel < 0 || _se.sel >= len(_se.ts.sprites) do return
-	context.allocator = runtime.default_allocator()
+	context.allocator = inspector.doc_alloc()
 	delete(_se.ts.sprites[_se.sel].name)
 	ordered_remove(&_se.ts.sprites, _se.sel)
 	_se.sel = -1
@@ -665,7 +675,7 @@ _se_panel :: proc(tex: ^engine.Texture2D) {
 	if im.IsItemDeactivatedAfterEdit() {
 		new_name := string(cstring(raw_data(_se.name_buf[:])))
 		if new_name != "" && new_name != s.name {
-			context.allocator = runtime.default_allocator()
+			context.allocator = inspector.doc_alloc()
 			delete(s.name)
 			s.name = strings.clone(new_name)
 		}
