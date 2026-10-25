@@ -4,7 +4,8 @@ package editor_tests
 // asset, opening the same asset again returns its instance, an asset
 // instance's tab names that asset's document, closing an instance frees its
 // state through the window's closed proc, and saved keys reopen the
-// instances whose window and asset still exist.
+// instances whose window and asset still exist. Add Tab opens numbered
+// instances, each under the lowest free number.
 
 import "core:encoding/uuid"
 import "core:fmt"
@@ -94,5 +95,37 @@ test_window_instances_per_asset :: proc(t: ^testing.T) {
 	testing.expect(t, wnd.find("instance_test") != nil, "the plain instance reopens")
 	testing.expect(t, wnd.find(key_a) == nil, "an instance whose asset is gone does not")
 	wnd.close("instance_test")
+	wnd.draw_all()
+}
+
+@(test)
+test_window_numbered_instances :: proc(t: ^testing.T) {
+	_fixture_register()
+	plain := wnd.open("instance_test")
+	two := wnd.open_another("instance_test")
+	three := wnd.open_another("instance_test")
+	testing.expect(t, plain != nil && two != nil && three != nil, "every open returns its instance")
+	if plain == nil || two == nil || three == nil do return
+	testing.expect_value(t, two.key, "instance_test/2")
+	testing.expect_value(t, three.key, "instance_test/3")
+	testing.expect(t, two.asset == {} && three.asset == {}, "a numbered instance has no asset")
+
+	list := wnd.instances("instance_test")
+	testing.expect(t, len(list) == 3 && list[0] == plain, "the plain instance comes first")
+
+	// A closed number is the next one handed out. draw_all is not called
+	// while instances are open: it would draw them.
+	wnd.close("instance_test/2")
+	again := wnd.open_another("instance_test")
+	testing.expect(t, again != nil && again.key == "instance_test/2", "the lowest free number is reused")
+
+	for w in wnd.instances("instance_test") do wnd.close(w.key)
+	wnd.draw_all()
+	testing.expect(t, !wnd.is_open("instance_test"), "every instance is gone")
+
+	// A saved numbered key reopens.
+	wnd.open_saved({"instance_test/4"})
+	testing.expect(t, wnd.find("instance_test/4") != nil, "a numbered instance reopens")
+	wnd.close("instance_test/4")
 	wnd.draw_all()
 }

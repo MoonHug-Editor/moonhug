@@ -12,7 +12,7 @@ import "core:path/filepath"
 import im "moonhug:external/odin-imgui"
 import engine "moonhug:packages/engine"
 import "moonhug:editor/inspector"
-import "moonhug:editor/menu"
+import wnd "moonhug:editor/window"
 import clip "moonhug:editor/clipboard"
 import undo "moonhug:packages/engine/editor/undo"
 import "moonhug:editor/icons"
@@ -28,27 +28,34 @@ _inspector_transform_open: bool = true
 @(private)
 _inspector_comp_open: map[engine.TypeKey]bool
 
-draw_hierarchy_inspector :: proc() {
-	// Drop a multi-edit pre-image left behind by a drag that never committed
-	// (Escape, selection change). Must run before any field draws, and outside
-	// the Begin early-out so a hidden panel still releases it.
-	// Also drops any pre-drag rotation values a drag left behind without
-	// committing (Escape, selection change).
+// The Inspector windows' per-frame bookkeeping (session.Scene_Views), run
+// every frame whether or not one is visible. Drops a multi-edit pre-image
+// left behind by a drag that never committed (Escape, selection change),
+// before any field draws, and any pre-drag rotation values such a drag left.
+inspector_frame_begin :: proc() {
 	editing := im.IsAnyItemActive()
 	// Closes a row edit whose gesture ended without the row noticing (panel
 	// closed, selection changed mid-drag) — see field_edit.odin.
 	inspector.field_edit_frame_begin(editing)
 	if !editing do _rotation_peer_start_clear()
+}
 
-	if !im.Begin(icons.TITLE_INSPECTOR, &menu.show_inspector, {.NoCollapse}) {
-		im.End()
-		return
-	}
-	defer im.End()
+// The instance being drawn, by its key: "Inspector", or "Inspector/2" from
+// Add Tab. Each instance has its own lock, so its own targets.
+@(private = "file")
+_inspector_view := "Inspector"
+
+// The Inspector window (@(editor_window)): the components of what its
+// instance shows, the selection or what its padlock keeps
+// (editor/inspector_lock.odin).
+@(editor_window={id="Inspector", title="Inspector", icon="TUNE", width=360, height=600})
+scene_inspector_window_draw :: proc(w: ^wnd.Window) {
+	_inspector_view = w.key
+	defer _inspector_view = "Inspector"
 
 	// Through the lock: a pinned inspector keeps drawing what it was pinned
 	// to while the selection moves on (editor/inspector_lock.odin).
-	tH := session.inspected_active()
+	tH := session.inspected_active(_inspector_view)
 	if tH == _HANDLE_NONE {
 		im.TextDisabled("No object selected")
 		return
@@ -63,7 +70,7 @@ draw_hierarchy_inspector :: proc() {
 	// which now multi-edit like anything else, so the only case left is a
 	// destroyed handle — a transient frame that prunes itself. A qualifier that
 	// is always true is noise.
-	sel := session.inspected()
+	sel := session.inspected(_inspector_view)
 	multi := multi_selection_editable(sel)
 	if n := len(sel); n > 1 {
 		im.TextDisabled(strings.clone_to_cstring(fmt.tprintf("%d selected", n), context.temp_allocator))
@@ -586,7 +593,7 @@ _inspector_euler_quat_src: [4]f32
 _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handle, peers: []inspector.Multi_Peer) {
 	// UI nodes show one transform block: the RectTransform inspector draws
 	// position, rotation and scale (view_rect_transform.odin).
-	if rect_transform_covers_selection(tH, session.inspected() if len(peers) > 0 else nil) do return
+	if rect_transform_covers_selection(tH, session.inspected(_inspector_view) if len(peers) > 0 else nil) do return
 	im.SetNextItemOpen(_inspector_transform_open, .Once)
 	if im.CollapsingHeader("Transform", {.DefaultOpen}) {
 		_inspector_transform_open = true

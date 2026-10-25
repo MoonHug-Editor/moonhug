@@ -2,6 +2,7 @@ package menu
 import im "moonhug:external/odin-imgui"
 import "moonhug:libs/log"
 import "moonhug:editor/session"
+import wnd "moonhug:editor/window"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/icons"
 import "core:strings"
@@ -97,8 +98,6 @@ quit_requested := false
 
 show_scene := true
 show_game := true
-show_inspector := true
-show_project_inspector := true
 show_hierarchy := true
 show_project := true
 show_console := true
@@ -119,25 +118,33 @@ _open_window :: proc(show: ^bool, title: cstring) {
 // text after ###, the window's id: the label before it changes, a star while
 // the view's file has unsaved changes.
 view_show_flag :: proc(title: cstring) -> ^bool {
-	views := [?]struct {
-		title: cstring,
-		flag:  ^bool,
-	}{
-		{icons.TITLE_SCENE, &show_scene},
-		{icons.TITLE_GAME, &show_game},
-		{icons.TITLE_INSPECTOR, &show_inspector},
-		{icons.TITLE_PROJECT_INSPECTOR, &show_project_inspector},
-		{icons.TITLE_HIERARCHY, &show_hierarchy},
-		{icons.TITLE_PROJECT, &show_project},
-		{icons.TITLE_CONSOLE, &show_console},
-		{icons.TITLE_OUTPUT, &show_output},
-		{icons.TITLE_HISTORY, &show_history},
-		{icons.TITLE_ANIMATION, &show_animation},
-		{icons.TITLE_PLAYABLE_GRAPH, &show_playable_graph},
-	}
 	id := _window_id(string(title))
-	for v in views do if _window_id(string(v.title)) == id do return v.flag
+	for v in builtin_views() do if _window_id(string(v.title)) == id do return v.flag
 	return nil
+}
+
+// A built-in view: one per editor, opened by its flag. The inspectors and
+// plugin windows are window instances instead (editor/window).
+Builtin_View :: struct {
+	title: cstring,
+	flag:  ^bool,
+}
+
+builtin_views :: proc() -> []Builtin_View {
+	return _builtin_views[:]
+}
+
+@(private = "file")
+_builtin_views := [?]Builtin_View{
+	{icons.TITLE_SCENE, &show_scene},
+	{icons.TITLE_GAME, &show_game},
+	{icons.TITLE_HIERARCHY, &show_hierarchy},
+	{icons.TITLE_PROJECT, &show_project},
+	{icons.TITLE_CONSOLE, &show_console},
+	{icons.TITLE_OUTPUT, &show_output},
+	{icons.TITLE_HISTORY, &show_history},
+	{icons.TITLE_ANIMATION, &show_animation},
+	{icons.TITLE_PLAYABLE_GRAPH, &show_playable_graph},
 }
 
 @(private = "file")
@@ -153,8 +160,12 @@ window_menu_scene :: proc() { _open_window(&show_scene, icons.TITLE_SCENE) }
 @(menu_item={path="Window/General/Game", order=1, shortcut="Ctrl+2"})
 window_menu_game :: proc() { _open_window(&show_game, icons.TITLE_GAME) }
 
-@(menu_item={path="Window/General/Inspector", order=2, shortcut="Ctrl+3"})
-window_menu_inspector :: proc() { _open_window(&show_inspector, icons.TITLE_INSPECTOR) }
+// The inspectors are window instances (editor/window). The scene Inspector
+// is declared by the engine, so the item is off without it.
+@(menu_item={path="Window/General/Inspector", order=2, shortcut="Ctrl+3", enabled=_inspector_registered})
+window_menu_inspector :: proc() { wnd.open("Inspector") }
+
+_inspector_registered :: proc() -> bool { return wnd.is_registered("Inspector") }
 
 @(menu_item={path="Window/General/Hierarchy", order=4, shortcut="Ctrl+4"})
 window_menu_hierarchy :: proc() { _open_window(&show_hierarchy, icons.TITLE_HIERARCHY) }
@@ -163,7 +174,7 @@ window_menu_hierarchy :: proc() { _open_window(&show_hierarchy, icons.TITLE_HIER
 window_menu_project :: proc() { _open_window(&show_project, icons.TITLE_PROJECT) }
 
 @(menu_item={path="Window/General/Project Inspector", order=6, shortcut="Ctrl+Alt+5"})
-window_menu_project_inspector :: proc() { _open_window(&show_project_inspector, icons.TITLE_PROJECT_INSPECTOR) }
+window_menu_project_inspector :: proc() { wnd.open("Project Inspector") }
 
 @(menu_item={path="Window/General/Console", order=7, shortcut="Ctrl+Shift+C"})
 window_menu_console :: proc() { _open_window(&show_console, icons.TITLE_CONSOLE) }

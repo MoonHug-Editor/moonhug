@@ -1,6 +1,6 @@
 package editor
 
-// Unity's tab context menu: a menu button pinned to the right of every dock
+// The tab menu: a menu button pinned to the right of every dock
 // node's tab bar, opening actions for the tab that node is showing.
 //
 // imgui's own dock-node buttons are both off (apply_theme, menu_content.odin):
@@ -243,31 +243,55 @@ _tab_menu_contents :: proc(node: ^im.DockNode) {
 		im.Separator()
 	}
 
-	// The editor keeps one tab per view at a saved place, so this opens a
-	// view rather than adding a tab — it mirrors the main Window menu, minus
-	// the entries that are editor-wide rather than per-tab.
-	if im.BeginMenu("Window") {
-		menu.draw_menu_subtree_except("Window", {"Theme", "Reset Layout"})
+	if im.BeginMenu("Add Tab") {
+		_add_tab_items(node.ID_)
 		im.EndMenu()
-	}
-
-	// The node's own tabs, to switch between them.
-	tab_bar := node.TabBar
-	if tab_bar != nil && tab_bar.Tabs.Size > 1 {
-		im.Separator()
-		tabs := ([^]im.TabItem)(tab_bar.Tabs.Data)[:tab_bar.Tabs.Size]
-		for &tab in tabs {
-			// ImGuiTabItemFlags_Button, private to imgui: a tab acting as a
-			// button, not a window to switch to.
-			if transmute(i32)tab.Flags & _TAB_ITEM_FLAG_BUTTON != 0 do continue
-			name := im.TabBarGetTabName(tab_bar, &tab)
-			if im.Selectable(name, tab.ID_ == tab_bar.SelectedTabId) {
-				im.TabBarQueueFocus(tab_bar, &tab)
-			}
-		}
 	}
 }
 
-// ImGuiTabItemFlags_Button (1<<21) — private to imgui, not in the bindings.
+// --- Add Tab ----------------------------------------------------------------
+
+// Add Tab lists every view, sorted by name. A built-in view moves into the
+// node, since there is one of each. A window (an inspector, a plugin window)
+// opens its plain instance here, or another instance when the plain one
+// already shows somewhere.
 @(private = "file")
-_TAB_ITEM_FLAG_BUTTON :: i32(1 << 21)
+_add_tab_items :: proc(node: im.ID) {
+	Entry :: struct {
+		label: string,
+		title: cstring,      // a built-in view's title
+		flag:  ^bool,        // a built-in view's open flag
+		id:    string,       // a window's id
+	}
+	entries := make([dynamic]Entry, context.temp_allocator)
+	for v in menu.builtin_views() do append(&entries, Entry{label = _plain_label(v.title), title = v.title, flag = v.flag})
+	for w in wnd.registered() do append(&entries, Entry{label = w.title, id = w.id})
+	slice.sort_by(entries[:], proc(a, b: Entry) -> bool { return a.label < b.label })
+	for e in entries {
+		if !im.MenuItem(strings.clone_to_cstring(e.label, context.temp_allocator)) do continue
+		if e.flag != nil {
+			e.flag^ = true
+			_tab_dock(view_key_of(e.title), node)
+			continue
+		}
+		w := wnd.open_another(e.id) if wnd.find(e.id) != nil else wnd.open(e.id)
+		if w != nil do _tab_dock(w.key, node)
+	}
+}
+
+// A title's label: the text between the icon and ###.
+@(private = "file")
+_plain_label :: proc(title: cstring) -> string {
+	s := string(title)
+	if i := strings.last_index(s, "###"); i >= 0 do s = s[:i]
+	if i := strings.index_byte(s, ' '); i >= 0 do s = s[i + 1:]
+	return strings.trim_space(s)
+}
+
+// Docks a view into the node. It only sets the view's dock id (or its
+// imgui.ini entry, for a view not drawn yet), and the view joins the node
+// when it draws later this frame.
+@(private = "file")
+_tab_dock :: proc(key: string, node: im.ID) {
+	im.DockBuilderDockWindow(fmt.ctprintf("###%s", key), node)
+}

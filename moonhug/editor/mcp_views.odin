@@ -105,14 +105,27 @@ _view_windows :: proc() -> []^im.Window {
 		if w.Flags & {.Tooltip, .Popup, .Modal, .DockNodeHost} != {} do continue
 		// imgui marks a docked window as a child of its dock host, in the
 		// dockspace or floating on its own. A child that is part of another
-		// window carries its parent's name ("Parent/Child_ID").
-		if .ChildWindow in w.Flags && w not_in docked && strings.contains(string(w.Name), "/") do continue
+		// window carries its parent's name ("Parent/Child_ID"). A view's key
+		// can hold a slash too ("Inspector/2"), so the check is the ID suffix.
+		if .ChildWindow in w.Flags && w not_in docked && _is_child_name(string(w.Name)) do continue
 		// Begun last frame (the tick runs before NewFrame clears Active).
 		if !w.Active && !w.WasActive do continue
 		if strings.has_prefix(string(w.Name), "##") do continue
 		append(&out, w)
 	}
 	return out[:]
+}
+
+// imgui names a child window "<parent>/<name>_<8 hex digits>", or
+// "<parent>/<8 hex digits>" without a name.
+@(private = "file")
+_is_child_name :: proc(name: string) -> bool {
+	slash := strings.last_index_byte(name, '/')
+	if slash < 0 do return false
+	seg := name[slash + 1:]
+	if len(seg) < 8 || (len(seg) > 8 && seg[len(seg) - 9] != '_') do return false
+	for c in seg[len(seg) - 8:] do if !strings.contains_rune("0123456789ABCDEF", c) do return false
+	return true
 }
 
 // The open window `query` names: its title or id, case ignored, else the

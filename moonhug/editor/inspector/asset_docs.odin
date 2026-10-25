@@ -233,9 +233,7 @@ _doc_replace :: proc(doc: ^Asset_Doc, fresh: any, dirty: bool) {
     doc.data = fresh
     doc.dirty = dirty
     // The inspector may be showing this doc — repoint its view.
-    if inspectorData.doc == doc {
-        inspectorData.fileData = doc.data
-    }
+    for data in _all_data() do if data.doc == doc do data.fileData = doc.data
     // Live preview only syncs the DISPLAYED doc each frame. A document undone
     // while another asset is shown must still reach its runtime cache (the
     // material cache, the clip cache the scrub preview samples from).
@@ -251,11 +249,21 @@ _asset_doc_gone :: proc(guid: core.Asset_GUID, path: string) {
     // caller's, like every purge.
     undo.purge_asset(undo.get(), guid)
     context.allocator = doc_alloc()
-    if inspectorData.filePath == path do unload()
+    for data in _all_data() {
+        if data.filePath != path do continue
+        inspectorData = data
+        unload()
+    }
+    inspectorData = &_primary
     for kind in undo.Doc_Kind {
         doc, found := _docs[Doc_Key{guid, kind}]
         if !found do continue
-        if inspectorData.doc == doc || inspectorData.settingsDoc == doc do unload()
+        for data in _all_data() {
+            if data.doc != doc && data.settingsDoc != doc do continue
+            inspectorData = data
+            unload()
+        }
+        inspectorData = &_primary
         delete_key(&_docs, Doc_Key{guid, kind})
         _asset_doc_free(doc)
     }

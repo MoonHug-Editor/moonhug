@@ -12,6 +12,7 @@ import "core:fmt"
 import "core:math"
 import im "moonhug:external/odin-imgui"
 import "menu"
+import wnd "moonhug:editor/window"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
 
@@ -86,8 +87,7 @@ _dock_build_default_layout :: proc(dockspace_id: im.ID, size: im.Vec2) {
 view_reset_layout_menu :: proc() {
 	_dock_layout_reset = true
 	menu.show_hierarchy = true
-	menu.show_inspector = true
-	menu.show_project_inspector = true
+	for id in ([]string{"Inspector", "Project Inspector"}) do if wnd.is_registered(id) do wnd.open(id)
 	menu.show_scene = true
 	menu.show_game = true
 	menu.show_project = true

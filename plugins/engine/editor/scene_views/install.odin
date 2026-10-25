@@ -13,7 +13,7 @@ import "moonhug:editor/session"
 install_scene_views :: proc() {
 	session.set_scene_views({
 		draw_hierarchy       = draw_hierarchy_view,
-		draw_inspector       = draw_hierarchy_inspector,
+		inspector_frame_begin = inspector_frame_begin,
 		register_menus       = _register_menus,
 		shutdown             = _shutdown,
 		edit_can             = edit_can,

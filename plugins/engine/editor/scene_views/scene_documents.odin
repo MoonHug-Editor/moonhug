@@ -1,8 +1,7 @@
 package scene_views
 
-// Loaded scenes as open documents (moonhug:editor/session, documents.odin).
-// The Hierarchy and the Scene view edit the active scene, so their tab menus
-// save and discard it and their titles carry its star.
+// Loaded scenes as open documents (moonhug:editor/session, documents.odin),
+// so File/Save and the quit prompt cover them.
 
 import "moonhug:editor/session"
 import engine "moonhug:packages/engine"
@@ -38,22 +37,4 @@ _scene_document_save :: proc(key: rawptr) -> bool {
 @(private = "file")
 _scene_document_discard :: proc(key: rawptr) {
 	_hierarchy_discard_scene((^engine.Scene)(key))
-}
-
-@(view_document={view="Hierarchy"})
-hierarchy_document :: proc(view: session.View) -> engine.Asset_GUID {
-	return _active_scene_guid()
-}
-
-@(view_document={view="Scene"})
-scene_view_document :: proc(view: session.View) -> engine.Asset_GUID {
-	return _active_scene_guid()
-}
-
-@(private = "file")
-_active_scene_guid :: proc() -> engine.Asset_GUID {
-	if engine.ctx_get() == nil do return {}
-	scene := engine.sm_scene_get_active()
-	if scene == nil do return {}
-	return scene.asset_guid
 }

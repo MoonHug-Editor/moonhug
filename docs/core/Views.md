@@ -6,11 +6,11 @@ tags: ["views", "windows", "attributes", "save", "editor"]
 path: editor
 ---
 
-A view is a dockable editor window: the built-in ones (Scene, Game, Hierarchy, Inspector, Project, Console and the rest) and the windows a plugin declares. Plugins extend views through attributes, which the prebuild turns into registrations in the editor. The view itself needs no code for any of them.
+A view is a dockable editor window: the built-in ones (Scene, Game, Hierarchy, Project, Console and the rest) and the windows declared with `@(editor_window)`, the two inspectors and every plugin window. Plugins extend views through attributes, which the prebuild turns into registrations in the editor. The view itself needs no code for any of them.
 
 ## View ids
 
-Every view's imgui title is `"<icon> <label>###<key>"`. imgui keys the window, its dock place and the saved layout on the key after `###`, so the icon and the label can change, a star appears while the view's asset has unsaved changes, and the tab never moves. A view's key is its id (`"Scene"`, `"Animation"`), and a window instance opened for an asset adds the asset's guid (`"shader_graph/<guid>"`). Every attribute on this page names a view by its id, the key up to its first `/`, so all instances of a window share its menu and tab bar items. The procs behind those items receive the view they act for as a `session.View`, its key and its id, so each instance answers for itself. A plugin window finds its instance with `wnd.find(view.key)`.
+Every view's imgui title is `"<icon> <label>###<key>"`. imgui keys the window, its dock place and the saved layout on the key after `###`, so the icon and the label can change, a star appears while the view's asset has unsaved changes, and the tab never moves. A view's key is its id (`"Scene"`, `"Animation"`). A window instance opened for an asset adds the asset's guid (`"shader_graph/<guid>"`), and another plain instance adds a number (`"Inspector/2"`). Every attribute on this page names a view by its id, the key up to its first `/`, so all instances of a window share its menu and tab bar items. The procs behind those items receive the view they act for as a `session.View`, its key and its id, so each instance answers for itself. A plugin window finds its instance with `wnd.find(view.key)`.
 
 ## Editor windows
 
@@ -32,7 +32,7 @@ open_physics_debug :: proc() {
 ```
 
 - `title` defaults to the id. `icon` names a Material Symbols glyph from `editor/icons` without the `ICON_MD_` prefix (default `EXTENSION`). `width` and `height` are the first-shown size, applied only while imgui.ini has no entry for the instance. Once the user resizes or docks it, imgui.ini wins.
-- A window opens as instances. `wnd.open(id)` shows its plain instance, `wnd.open(id, asset)` the instance for that asset, so two assets are edited side by side. Opening an open instance focuses it. Any code can call it, a button or a context menu as well as a menu item.
+- A window opens as instances. `wnd.open(id)` shows its plain instance, `wnd.open(id, asset)` the instance for that asset, so two assets are edited side by side. Opening an open instance focuses it. Any code can call it, a button or a context menu as well as a menu item. `wnd.open_another(id)` opens another plain instance under the lowest free number, which is what Add Tab does when the plain instance is open.
 - The draw proc receives its instance (`wnd.Window`) and keeps that instance's state in `w.data`. The attribute's `closed` field names a proc that frees it when the instance closes: `closed=draw_physics_debug_closed`. Window state lives there, not in globals, so a window can have several instances.
 - An asset instance's tab shows the asset's name, and its tab menu offers Save and Discard for that asset, with the star while it has unsaved changes, with no `@(view_document)`. A new asset instance with nothing saved docks beside an open instance of the same window.
 - The editor reopens the open instances after a restart. Each one's dock place and size persist in imgui.ini by its key. `editor/imgui_ini_migrate.odin` renames `[Window][<title>]` entries to the id on startup, for layouts saved before titles carried icons.
@@ -40,10 +40,10 @@ open_physics_debug :: proc() {
 
 ## Menu and tab bar
 
-Every dock node's tab bar ends with a ⋮ button, whose menu acts on the visible view. Both attributes below land in `editor/view_chrome_generated.odin` (view_chrome_gen).
+Every dock node's tab bar ends with a ⋮ button, whose menu acts on the visible view. It ends with Add Tab, which lists every view by name and opens the one picked in that node: a built-in view moves there, and a window opens its plain instance there, or a numbered one when the plain one is open. Both attributes below land in `editor/view_chrome_generated.odin` (view_chrome_gen).
 
 - **`@(view_menu={view, label, order, enabled, checked})`** adds an item to that menu. On a `proc(view: session.View)` it is an action, on a bool variable a toggle. `label` is a path in the view's menu, so `"Display/Grid"` makes a submenu. `order`, `enabled` and `checked` work as on `@(menu_item)`, and the predicates take the view too. A toggle's bool is shared by every instance of the view. Two declarations of one label in one view stop the build. The bridge invokes them as `View/<view>/<label>` ([MCP Bridge](McpBridge.md)).
-- **`@(view_tab_bar={view, order})`** adds a widget left of the ⋮ button: a `proc(view: session.View)` that draws it with imgui for that view, at a width that does not change with its state. The padlock on both inspectors is one (`editor/inspector_lock.odin`).
+- **`@(view_tab_bar={view, order})`** adds a widget left of the ⋮ button: a `proc(view: session.View)` that draws it with imgui for that view, at a width that does not change with its state. The padlock is one: each inspector instance has its own lock (`editor/inspector_lock.odin`).
 
 ```odin
 @(view_menu={view="Game", label="Gizmos"})
@@ -52,7 +52,7 @@ game_gizmos: bool
 
 ## The asset a view edits
 
-A view whose asset changes while it stays open names it with `@(view_document)` on a public proc, which takes the view and returns the asset's guid, or `{}` while the view edits none. The view's tab menu then starts with Save and Discard for that asset, and its tab carries a star while the asset has unsaved changes. A locked view returns its locked asset. The Project Inspector, the Hierarchy, the Scene view and the Animation window have one. A window instance opened for an asset needs none, as the Shader Graph and Render Pipeline windows show, and a view with neither has no Save, Discard or star on its tab.
+A view whose asset changes while it stays open names it with `@(view_document)` on a public proc, which takes the view and returns the asset's guid, or `{}` while the view edits none. The view's tab menu then starts with Save and Discard for that asset, and its tab carries a star while the asset has unsaved changes. A locked view returns its locked asset. The Project Inspector and the Animation window have one. A window instance opened for an asset needs none, as the Shader Graph and Render Pipeline windows show, and a view with neither has no Save, Discard or star on its tab.
 
 ```odin
 @(view_document={view="Animation"})

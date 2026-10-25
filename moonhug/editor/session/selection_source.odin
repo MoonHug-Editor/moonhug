@@ -28,10 +28,11 @@ Selection_Source :: struct {
 	is_selected:      proc(tH: core.Transform_Handle) -> bool,
 	// Drops handles whose objects no longer exist.
 	prune:            proc(),
-	// What the Inspector shows: the selection, or what it keeps while locked
-	// or while the project holds the selection.
-	inspected:        proc() -> []core.Transform_Handle,
-	inspected_active: proc() -> core.Transform_Handle,
+	// What the Inspector instance `view` shows (its key, "Inspector" for the
+	// first one): the selection, or what it keeps while locked or while the
+	// project holds the selection.
+	inspected:        proc(view: string) -> []core.Transform_Handle,
+	inspected_active: proc(view: string) -> core.Transform_Handle,
 	// The scene view frames the selection.
 	frame_selected:   proc(),
 	// The project view's active path, "" when none.
@@ -97,14 +98,15 @@ prune :: proc() {
 	if _selection_source.prune != nil do _selection_source.prune()
 }
 
-inspected :: proc() -> []core.Transform_Handle {
+// What the Inspector instance `view` shows, the first one by default.
+inspected :: proc(view := "Inspector") -> []core.Transform_Handle {
 	if _selection_source.inspected == nil do return {}
-	return _selection_source.inspected()
+	return _selection_source.inspected(view)
 }
 
-inspected_active :: proc() -> core.Transform_Handle {
+inspected_active :: proc(view := "Inspector") -> core.Transform_Handle {
 	if _selection_source.inspected_active == nil do return {}
-	return _selection_source.inspected_active()
+	return _selection_source.inspected_active(view)
 }
 
 frame_selected :: proc() {

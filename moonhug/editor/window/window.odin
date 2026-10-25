@@ -5,9 +5,10 @@ package window
 // content-draw proc, which prebuild registers here, and OPENED by id, usually
 // from a @(menu_item) proc.
 //
-// A window opens as instances. open(id) shows its plain instance, and
-// open(id, asset) the instance for that asset, so two assets are edited side
-// by side. Each instance has its own imgui id (`<id>`, or `<id>/<asset guid>`)
+// A window opens as instances. open(id) shows its plain instance, open(id,
+// asset) the instance for that asset, so two assets are edited side by side,
+// and open_another(id) one more plain instance, as Add Tab does. Each
+// instance has its own imgui id (`<id>`, `<id>/<asset guid>`, or `<id>/<n>`)
 // and so its own dock place and size in imgui.ini, and its own state: the
 // draw proc receives the instance and keeps what it needs in `data`, which the
 // `closed` proc frees when the instance closes. A new asset instance with
@@ -27,6 +28,7 @@ import "base:runtime"
 import "core:encoding/uuid"
 import "core:fmt"
 import "core:path/filepath"
+import "core:strconv"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:libs/assets"
@@ -37,7 +39,7 @@ import "moonhug:editor/session"
 // One open instance of a registered window.
 Window :: struct {
 	id:     string,          // the registered window's id, shared by its instances
-	key:    string,          // the instance's imgui id: `id`, or `id/<asset guid>` for an asset's instance. Owned
+	key:    string,          // the instance's imgui id: `id`, `id/<asset guid>` for an asset's instance, `id/<n>` for another plain one. Owned
 	asset:  core.Asset_GUID, // the asset it is open for, {} for the plain instance
 	// The window's own state for this instance: its draw proc sets it, its
 	// closed proc frees it.
@@ -131,7 +133,7 @@ open_saved :: proc(keys: []string) {
 		if asset != {} {
 			if _, known := assets.asset_db_get_path(uuid.Identifier(asset)); !known do continue
 		}
-		if _find(ri, asset) == nil do _create(ri, asset)
+		if find(key) == nil do _create(ri, asset, key)
 	}
 }
 
@@ -148,6 +150,36 @@ open :: proc(id: string, asset := core.Asset_GUID{}) -> ^Window {
 	if w == nil do w = _create(ri, asset)
 	_focus_request = w
 	return w
+}
+
+// Opens one more plain instance of the window declared under `id`, as Add
+// Tab does: `id/2`, `id/3` and so on, the lowest number not open. Returns it,
+// nil for an unknown id.
+open_another :: proc(id: string) -> ^Window {
+	ri := _registered_index(id)
+	if ri < 0 {
+		log.errorf("editor_window: unknown id %q (declare it with @(editor_window={{id=...}}))", id)
+		return nil
+	}
+	n := 2
+	for find(fmt.tprintf("%s/%d", id, n)) != nil do n += 1
+	w := _create(ri, {}, fmt.tprintf("%s/%d", id, n))
+	_focus_request = w
+	return w
+}
+
+// Whether a window is declared under `id`: the plugin that declares it may
+// be absent.
+is_registered :: proc(id: string) -> bool {
+	return _registered_index(id) >= 0
+}
+
+// The open instances of the window declared under `id`, plain first.
+instances :: proc(id: string, allocator := context.temp_allocator) -> []^Window {
+	out := make([dynamic]^Window, allocator)
+	for w in _windows do if w.open && w.id == id && w.key == id do append(&out, w)
+	for w in _windows do if w.open && w.id == id && w.key != id do append(&out, w)
+	return out[:]
 }
 
 // Closes the instance whose key is `key`.
@@ -179,14 +211,14 @@ is_open :: proc(id: string) -> bool {
 }
 
 // One call per editor frame, after the built-in views. Removal happens here,
-// the frame after the close button flips `open`.
+// the frame after the close button flips `open`. Instances draw in the order
+// they opened, so an earlier one has its place when a later one looks for a
+// sibling to dock beside.
 draw_all :: proc() {
-	for i := len(_windows) - 1; i >= 0; i -= 1 {
+	for i := len(_windows) - 1; i >= 0; i -= 1 do if !_windows[i].open do _destroy(i)
+	for i := 0; i < len(_windows); i += 1 {
 		w := _windows[i]
-		if !w.open {
-			_destroy(i)
-			continue
-		}
+		if !w.open do continue
 		r := &_registry[w.reg]
 		if r.default_size != {} {
 			im.SetNextWindowSize(r.default_size, .FirstUseEver)
@@ -229,24 +261,29 @@ _registered_index :: proc(id: string) -> int {
 	return -1
 }
 
+// The plain instance (key `id`) without an asset, the asset's instance with one.
 @(private = "file")
 _find :: proc(ri: int, asset: core.Asset_GUID) -> ^Window {
-	for w in _windows do if w.open && w.reg == ri && w.asset == asset do return w
+	for w in _windows {
+		if !w.open || w.reg != ri || w.asset != asset do continue
+		if asset != {} || w.key == w.id do return w
+	}
 	return nil
 }
 
+// A new instance. `key` defaults to `id`, or `id/<asset guid>` for an asset.
 @(private = "file")
-_create :: proc(ri: int, asset: core.Asset_GUID) -> ^Window {
+_create :: proc(ri: int, asset: core.Asset_GUID, key := "") -> ^Window {
 	context.allocator = runtime.default_allocator()
 	r := &_registry[ri]
 	w := new(Window)
 	w^ = {id = r.id, reg = ri, asset = asset, open = true}
-	if asset == {} {
-		w.key = strings.clone(r.id)
-	} else {
-		w.key = fmt.aprintf("%s/%s", r.id, uuid.to_string(uuid.Identifier(asset), context.temp_allocator))
-		session.view_asset_set(w.key, asset)
+	switch {
+	case key != "":   w.key = strings.clone(key)
+	case asset == {}: w.key = strings.clone(r.id)
+	case:             w.key = fmt.aprintf("%s/%s", r.id, uuid.to_string(uuid.Identifier(asset), context.temp_allocator))
 	}
+	if asset != {} do session.view_asset_set(w.key, asset)
 	append(&_windows, w)
 	return w
 }
@@ -257,7 +294,8 @@ _create :: proc(ri: int, asset: core.Asset_GUID) -> ^Window {
 _destroy :: proc(i: int) {
 	w := _windows[i]
 	if closed := _registry[w.reg].closed; closed != nil do closed(w)
-	if w.asset != {} do session.view_asset_clear(w.key)
+	// An instance reopened under the same key keeps the mapping.
+	if w.asset != {} && find(w.key) == nil do session.view_asset_clear(w.key)
 	if _focus_request == w do _focus_request = nil
 	ordered_remove(&_windows, i)
 	context.allocator = runtime.default_allocator()
@@ -293,12 +331,14 @@ _title :: proc(w: ^Window) -> cstring {
 	return fmt.ctprintf("%s %s###%s", r.icon, label, w.key)
 }
 
-// A key's window id and asset: `id`, or `id/<asset guid>`.
+// A key's window id and asset: `id`, `id/<asset guid>`, or `id/<n>` for
+// another plain instance, which has no asset.
 @(private = "file")
 _parse_key :: proc(key: string) -> (id: string, asset: core.Asset_GUID, ok: bool) {
 	slash := strings.index_byte(key, '/')
 	if slash < 0 do return key, {}, true
-	g, err := uuid.read(key[slash + 1:])
-	if err != nil do return "", {}, false
-	return key[:slash], core.Asset_GUID(g), true
+	suffix := key[slash + 1:]
+	if g, err := uuid.read(suffix); err == nil do return key[:slash], core.Asset_GUID(g), true
+	if _, is_number := strconv.parse_int(suffix); is_number do return key[:slash], {}, true
+	return "", {}, false
 }

@@ -155,8 +155,12 @@ main :: proc() {
     // load_editor_settings and EditorInit.
     simulate_init()
     defer simulate_shutdown()
-    // Reopen what was open last session — declarations must exist first.
+    // Reopen what was open last session — declarations must exist first. A
+    // first run opens the two inspectors the default layout docks.
     wnd.open_saved(editor_settings.open_window_ids[:])
+    if !editor_settings.has_view_state {
+        for id in ([]string{"Inspector", "Project Inspector"}) do if wnd.is_registered(id) do wnd.open(id)
+    }
     defer wnd.shutdown()
     defer preview.shutdown()
     _register_project_settings() // @(project_settings) vars -> settings tabs
@@ -202,7 +206,7 @@ main :: proc() {
         // Once per frame rather than at every mutation site: selection moves
         // from clicks, picking, pending-select and undo restore alike.
         core.inspector_set_active_selection(sel_scene_active())
-        core.inspector_set_inspected_selection(inspector_active_target())
+        core.inspector_set_inspected_selection(inspector_active_target("Inspector"))
 
         // Thumbnail generation before ANY view draws: scene previews spawn and
         // destroy live content within this call, so nothing leaks into the
@@ -255,14 +259,11 @@ main :: proc() {
         sim_tick(gfx.delta_time())
         input.set_game_scope(false)
 
-        // ImGui UI
-        if menu.show_inspector {
-            session.inspector_draw()
-        }
-
-        if menu.show_project_inspector {
-            inspector.view_inspector_draw(&menu.show_project_inspector)
-        }
+        // ImGui UI. The inspectors are window instances, drawn with the
+        // other windows (wnd.draw_all). Their per-frame bookkeeping runs here,
+        // whether or not one is visible.
+        session.inspector_frame_begin()
+        inspector_locks_prune()
 
         if menu.show_project {
             draw_project_view()

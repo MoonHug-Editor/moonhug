@@ -23,7 +23,9 @@ Edit_Op :: enum {
 
 Scene_Views :: struct {
 	draw_hierarchy:       proc(),
-	draw_inspector:       proc(),
+	// The Inspector windows' per-frame bookkeeping, run every frame whether
+	// or not one is visible (the windows themselves draw as window instances).
+	inspector_frame_begin: proc(),
 	// The Component menu and the components' overflow menu entries, once the menus exist.
 	register_menus:       proc(),
 	shutdown:             proc(),
@@ -60,8 +62,8 @@ hierarchy_draw :: proc() {
 	if _scene_views.draw_hierarchy != nil do _scene_views.draw_hierarchy()
 }
 
-inspector_draw :: proc() {
-	if _scene_views.draw_inspector != nil do _scene_views.draw_inspector()
+inspector_frame_begin :: proc() {
+	if _scene_views.inspector_frame_begin != nil do _scene_views.inspector_frame_begin()
 }
 
 scene_views_register_menus :: proc() {

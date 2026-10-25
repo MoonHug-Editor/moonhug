@@ -15,7 +15,6 @@ import asset_pipeline "moonhug:editor/assets"
 import clip "../clipboard"
 import undo "moonhug:editor/undo"
 import "moonhug:editor/icons"
-import "moonhug:editor/session"
 
 InspectorMode :: enum {
     Asset,
@@ -30,7 +29,9 @@ InspectorMode :: enum {
 // for one type is used.
 @(extension_point={attribute="property_drawer", target="proc", fields="type priority"})
 mapPropertyDrawer: MapPropertyDrawer
-inspectorData: InspectorData
+// The Project Inspector instance being drawn or routed to, the first one
+// otherwise (project_inspector_window.odin).
+inspectorData: ^InspectorData = &_primary
 inspector_changed: bool
 
 // Set by the inspector loop before invoking a property drawer, so drawers can
@@ -170,8 +171,7 @@ shutdown_registries :: proc() {
     delete(inspector_buttons)
     decorators_shutdown()
     // The load procs pin the default allocator: the shown file outlives frames.
-    delete(inspectorData.filePath, runtime.default_allocator())
-    delete(inspectorData.packageName, runtime.default_allocator())
+    _data_free(&_primary)
     asset_docs_shutdown()
 }
 
@@ -286,8 +286,10 @@ get_file_path :: proc() -> string {
 // (the console/history splitter pattern).
 _preview_split_ratio: f32 = 0.3
 
-view_inspector_draw :: proc(p_open: ^bool) {
-    if im.Begin(session.view_title(icons.TITLE_PROJECT_INSPECTOR), p_open, {.NoCollapse}) {
+// The Project Inspector's content for the instance `inspectorData` points at.
+// The window host draws Begin, End and the tab (project_inspector_window.odin).
+_draw_project_inspector :: proc() {
+    {
         // A registered preview pins to the window's bottom — the mode content
         // scrolls in a child above it.
         preview := _asset_preview_drawer()
@@ -321,7 +323,6 @@ view_inspector_draw :: proc(p_open: ^bool) {
             preview(inspectorData.filePath)
         }
     }
-    im.End()
 }
 
 _asset_preview_drawer :: proc() -> proc(path: string) {

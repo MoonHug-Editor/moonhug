@@ -39,8 +39,6 @@ EditorSettings :: struct {
     open_scene_guids:         [dynamic]string,
     recent_scene_guids:       [dynamic]string,          // File/Recent Scenes, newest first (recent_scenes.odin)
     open_window_ids:          [dynamic]string,          // plugin editor windows open last session (window/window.odin)
-    show_inspector:           bool,
-    show_project_inspector:   bool,
     show_project:             bool,
     show_console:             bool,
     show_scene:               bool,
@@ -108,8 +106,6 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
             if editor_settings.scene_2d do _scene_2d_pending = true
             scene_view_mode = editor_settings.scene_mode
             if editor_settings.has_view_state {
-                menu.show_inspector         = editor_settings.show_inspector
-                menu.show_project_inspector = editor_settings.show_project_inspector
                 menu.show_project           = editor_settings.show_project
                 menu.show_console           = editor_settings.show_console
                 menu.show_scene             = editor_settings.show_scene
@@ -150,8 +146,6 @@ save_editor_settings :: proc() {
     editor_settings.y      = pos.y
     editor_settings.theme  = menu.active_theme
 
-    editor_settings.show_inspector         = menu.show_inspector
-    editor_settings.show_project_inspector = menu.show_project_inspector
     editor_settings.show_project           = menu.show_project
     editor_settings.show_console           = menu.show_console
     editor_settings.show_scene             = menu.show_scene

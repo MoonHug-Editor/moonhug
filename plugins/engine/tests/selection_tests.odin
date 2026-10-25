@@ -210,3 +210,35 @@ test_undo_restores_the_inspectors_kept_object :: proc(t: ^testing.T) {
 	testing.expect(t, editor.sel_in_project(), "the asset is selected again")
 	testing.expect(t, editor.sel_scene_inspected_active() == a, "the Inspector shows A again")
 }
+
+// Each Inspector instance has its own lock: a locked instance keeps the
+// objects it showed while the others follow the selection, and a closed
+// instance's lock goes with it.
+@(test)
+test_inspector_instances_lock_apart :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	_selection_reset()
+	defer _selection_reset()
+	defer editor.inspector_lock_shutdown()
+
+	a := engine.transform_new("A")
+	b := engine.transform_new("B")
+	editor.sel_scene_only(a)
+	editor.inspector_lock_set("Inspector/2", true)
+	editor.sel_scene_only(b)
+
+	first := editor.inspector_targets("Inspector")
+	second := editor.inspector_targets("Inspector/2")
+	testing.expect(t, len(first) == 1 && first[0] == b, "the first Inspector follows the selection")
+	testing.expect(t, len(second) == 1 && second[0] == a, "the locked Inspector keeps A")
+	testing.expect(t, editor.inspector_active_target("Inspector/2") == a, "the locked Inspector draws A")
+
+	// No window is open under "Inspector/2", so the prune drops its lock.
+	editor.inspector_locks_prune()
+	second = editor.inspector_targets("Inspector/2")
+	testing.expect(t, len(second) == 1 && second[0] == b, "a closed Inspector's lock is gone")
+}
