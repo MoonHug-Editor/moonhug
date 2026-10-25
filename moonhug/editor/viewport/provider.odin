@@ -23,7 +23,9 @@ Viewport_Provider :: struct {
 	pick:                proc(view: core.Render_View, px, py: f32) -> (core.Transform_Handle, bool),
 	pick_all:            proc(view: core.Render_View, px, py: f32) -> []core.Transform_Handle, // temp-allocated, nearest first
 	band_query:          proc(view: core.Render_View, vmin, vmax: [2]f32) -> []core.Transform_Handle, // temp-allocated
-	// The tools' frame, after handles.frame_begin: selection outline, scene handles, the transform tool.
+	// The selection outline for `view`. Draw only: every Scene view copy records its own.
+	outline:             proc(view: core.Render_View),
+	// The handles' frame, after handles.frame_begin: the scene handles, the transform tool. Once per frame, in one copy.
 	tools_frame:         proc(view: core.Render_View),
 	tools_consume_mouse: proc() -> bool,
 	tools_dragging:      proc() -> bool,
@@ -87,6 +89,10 @@ pick_all :: proc(view: core.Render_View, px, py: f32) -> []core.Transform_Handle
 band_query :: proc(view: core.Render_View, vmin, vmax: [2]f32) -> []core.Transform_Handle {
 	if _provider.band_query == nil do return {}
 	return _provider.band_query(view, vmin, vmax)
+}
+
+outline :: proc(view: core.Render_View) {
+	if _provider.outline != nil do _provider.outline(view)
 }
 
 tools_frame :: proc(view: core.Render_View) {

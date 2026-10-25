@@ -43,12 +43,12 @@ Channels say who a shape is for, and draw in this order:
 
 A view draws depth-tested shapes first, then the ones drawn over everything, each channel in that order, so tools always paint over gizmos, whatever order they were recorded in.
 
-The editor's gizmo pass (editor/gizmo_pass.odin) records once per frame, after the sim tick and before any view renders:
+The editor records gizmos after the sim tick (editor/gizmo_pass.odin):
 
-- The selection outline, the `@(comp_on_scene_handles)` procs and then the transform gizmo record first, into `.Tools`, while the scene view is on screen. An edit from a handle or the gizmo then shows in the same frame's gizmos and render.
-- The `@(comp_on_draw_gizmos)` procs record once per view that shows gizmos, with that view's camera: into `.Editor` for the scene view, into `.Editor_Game` for the game view. Pixel sizes and camera-facing parts fit the view that shows them, and the scene view never affects what the game view shows. With both views showing gizmos the procs run twice a frame, so code with side effects (a log) sees both runs. The game view has gizmos with the scene view closed, and none without a camera.
+- Each Scene view copy, right before its render, records the selection outline into `.Tools` and the `@(comp_on_draw_gizmos)` procs into `.Editor`, with its own camera. The two channels hold one copy's shapes at a time: each copy clears them, records and renders.
+- The `@(comp_on_scene_handles)` procs and then the transform gizmo record into `.Tools` once per frame, in one Scene copy: the one under the pointer, else the one clicked in last. Another copy shows the outline and gizmos without handles. The copy stays while a drag that began in it goes on (a handle, the transform gizmo, a box select, an orbit, a flythrough), so a drag that crosses into another copy keeps its camera. The handles record before the gizmo procs, so an edit from a handle or the gizmo shows in the same frame's gizmos and render.
+- The `@(comp_on_draw_gizmos)` procs record once per view that shows gizmos, with that view's camera: into `.Editor` for each Scene copy, into `.Editor_Game` for the game view before any view draws. Pixel sizes and camera-facing parts fit the view that shows them, and the scene view never affects what the game view shows. The procs run once per view each frame, so code with side effects (a log) sees every run. The game view has gizmos with the scene view closed, and none without a camera.
 - Gameplay code (update, fixed ticks) records once, measured against the game camera: the editor sets its view before the sim tick, the standalone app before its update. The scene view shows those shapes too.
-- With several Scene view copies open, the `.Tools` and `.Editor` shapes record once, for the active copy: the one under the pointer, else the one clicked in last. Every copy draws them, so their pixel sizes and camera-facing parts fit the active copy, and the handles answer in it.
 
 ## Scopes
 

@@ -456,6 +456,12 @@ labels :: proc(channels: bit_set[core.Gizmo_Channel]) -> []core.Gizmo_Label {
 	return out[:]
 }
 
+// Drops this frame's shapes of `channels`, so a view can record them again
+// with its own camera: each Scene view copy records .Tools and .Editor.
+clear_channels :: proc(channels: bit_set[core.Gizmo_Channel]) {
+	core.gizmo_buffer_clear_channels(_buffer(), channels)
+}
+
 // Ends the frame now: its shapes go, timed shapes whose clock has passed go,
 // and keys record into a new frame. The buffer does this by itself when a
 // new gfx frame starts, so only code that runs no gfx frames needs it (tests).

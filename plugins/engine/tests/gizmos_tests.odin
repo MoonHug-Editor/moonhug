@@ -691,11 +691,11 @@ test_gizmo_key :: proc(t: ^testing.T) {
 
 // --- Gizmo pass: the scene view branch, game view labels ------------------------------------
 
-// With the scene view on screen (it rendered last frame), the pass records
-// the selection outline and the transform gizmo into the scene-only .Tools
-// channel, and publishes the handles frame with the scene camera.
+// A Scene copy records the selection outline and, in the copy the handles
+// run in, the transform gizmo into the scene-only .Tools channel, right
+// before its render, and publishes the handles frame with its camera.
 @(test)
-test_gizmo_pass_records_tools_for_the_scene_view :: proc(t: ^testing.T) {
+test_scene_copy_records_tools :: proc(t: ^testing.T) {
 	tc := new(TestCtx)
 	defer free(tc)
 	setup(tc)
@@ -706,13 +706,9 @@ test_gizmo_pass_records_tools_for_the_scene_view :: proc(t: ^testing.T) {
 	defer editor.sel_scene_clear()
 
 	prev_game := menu.show_game
-	prev_frame, prev_rendered, prev_size := gfx.frame_index, editor._sv.rendered_frame, editor._sv.view_size
 	prev_cam, prev_target, prev_mode := editor._sv.cam_pos, editor._sv.cam_target, viewport.gizmo_mode
 	defer {
 		menu.show_game = prev_game
-		gfx.frame_index = prev_frame
-		editor._sv.rendered_frame = prev_rendered
-		editor._sv.view_size = prev_size
 		editor._sv.cam_pos = prev_cam
 		editor._sv.cam_target = prev_target
 		viewport.gizmo_mode = prev_mode
@@ -721,13 +717,11 @@ test_gizmo_pass_records_tools_for_the_scene_view :: proc(t: ^testing.T) {
 	editor._sv.cam_pos = {0, 0, 10}
 	editor._sv.cam_target = {0, 0, 0}
 	viewport.gizmo_mode = .Translate
-	gfx.frame_index += 1
-	editor._sv.rendered_frame = gfx.frame_index - 1
-	editor._sv.view_size = {800, 600}
 
 	obj := engine.transform_new("Obj")
 	editor.sel_scene_only(obj)
-	editor.gizmo_pass()
+	editor.gizmo_pass() // picks the copy the handles run in: the only one
+	editor.scene_gizmos_record(editor.scene_render_view(800, 600))
 	testing.expect(t, _count(tc, .Tools) > 0, "the outline and the transform gizmo record into .Tools")
 	f := handles.frame()
 	testing.expect(t, f.valid && f.view.width == 800 && f.view.height == 600, "the handles frame is the scene view's")
@@ -764,24 +758,17 @@ test_gizmos_record_per_camera :: proc(t: ^testing.T) {
 	defer editor.sel_scene_clear()
 
 	prev_game, prev_toggle := menu.show_game, editor.game_gizmos
-	prev_frame, prev_rendered, prev_size := gfx.frame_index, editor._sv.rendered_frame, editor._sv.view_size
 	prev_cam, prev_target, prev_rt := editor._sv.cam_pos, editor._sv.cam_target, editor.game_rt
 	defer {
 		menu.show_game = prev_game
 		editor.game_gizmos = prev_toggle
-		gfx.frame_index = prev_frame
-		editor._sv.rendered_frame = prev_rendered
-		editor._sv.view_size = prev_size
 		editor._sv.cam_pos = prev_cam
 		editor._sv.cam_target = prev_target
 		editor.game_rt = prev_rt
 	}
-	// The scene view on screen, its camera 10 away.
+	// The scene view, its camera 10 away.
 	editor._sv.cam_pos = {0, 0, 10}
 	editor._sv.cam_target = {0, 0, 0}
-	gfx.frame_index += 1
-	editor._sv.rendered_frame = gfx.frame_index - 1
-	editor._sv.view_size = {800, 600}
 	// The game view showing gizmos, its camera 30 away.
 	menu.show_game = true
 	editor.game_gizmos = true
@@ -800,15 +787,65 @@ test_gizmos_record_per_camera :: proc(t: ^testing.T) {
 	editor.sel_scene_only(sun)
 
 	editor.gizmo_pass()
-	extent :: proc(tc: ^TestCtx, ch: engine.Gizmo_Channel) -> (r: f32) {
-		for depth in ([2]bool{true, false}) {
-			for p in _prims(tc, ch = ch, depth_tested = depth) do r = max(r, linalg.length(p.p[0].xy), linalg.length(p.p[1].xy))
-		}
-		return
-	}
-	scene, game := extent(tc, .Editor), extent(tc, .Editor_Game)
+	editor.scene_gizmos_record(editor.scene_render_view(800, 600))
+	scene, game := _extent(tc, .Editor), _extent(tc, .Editor_Game)
 	testing.expect(t, scene > 0 && game > 0, "both views recorded the rays")
 	testing.expectf(t, game > scene * 2, "each built for its own camera: %v in the scene view, %v in the game view", scene, game)
+	gizmos.frame_end()
+}
+
+// The farthest point of a channel's lines from the view axis.
+@(private = "file")
+_extent :: proc(tc: ^TestCtx, ch: engine.Gizmo_Channel) -> (r: f32) {
+	for depth in ([2]bool{true, false}) {
+		for p in _prims(tc, ch = ch, depth_tested = depth) do r = max(r, linalg.length(p.p[0].xy), linalg.length(p.p[1].xy))
+	}
+	return
+}
+
+// Each Scene copy records the gizmo procs with its own camera, and the
+// handles run only in the copy they were picked for: another copy leaves the
+// handles frame alone.
+@(test)
+test_scene_copies_record_their_own_gizmos :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	ictx := im.CreateContext()
+	defer im.DestroyContext(ictx)
+	defer editor.sel_scene_clear()
+
+	prev_sv := editor._sv
+	prev_cam, prev_target := editor._sv.cam_pos, editor._sv.cam_target
+	defer {
+		editor._sv = prev_sv
+		editor._sv.cam_pos = prev_cam
+		editor._sv.cam_target = prev_target
+	}
+	sun := engine.transform_new("Sun")
+	_, raw := engine.transform_add_comp(sun, .Light)
+	l := cast(^engine.Light)raw
+	l.enabled = true
+	l.type = .Directional
+	editor.sel_scene_only(sun)
+
+	// The copy the handles run in, its camera 10 away.
+	editor._sv.cam_pos = {0, 0, 10}
+	editor._sv.cam_target = {0, 0, 0}
+	editor.gizmo_pass()
+	editor.scene_gizmos_record(editor.scene_render_view(800, 600))
+	near := _extent(tc, .Editor)
+	testing.expect_value(t, handles.frame().view.width, 800)
+
+	// Another copy, its camera 30 away.
+	other := editor.Scene_View{cam_pos = {0, 0, 30}, cam_target = {0, 0, 0}, cam_dist = 30}
+	editor._sv = &other
+	editor.scene_gizmos_record(editor.scene_render_view(640, 480))
+	far := _extent(tc, .Editor)
+	testing.expectf(t, near > 0 && far > near * 2, "each copy builds the rays for its own camera: %v near, %v far", near, far)
+	testing.expect_value(t, handles.frame().view.width, 800)
 	gizmos.frame_end()
 }
 

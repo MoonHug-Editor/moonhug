@@ -1,26 +1,27 @@
 package editor
 
-// The editor's gizmo pass (docs/core/Gizmos.md): once per frame, after the sim tick
-// and the preview pose, before any view renders. It records what the scene
-// and game views then draw:
+// The editor's gizmo recording (docs/core/Gizmos.md), after the sim tick and
+// inside the preview pose:
 //
-// - The selection outline, the selection's @(comp_on_scene_handles) procs and the
-//   transform gizmo, into .Tools, while the scene view is on screen. They run
-//   before the gizmo hooks, so an edit shows in this frame's gizmos and
-//   render. The draw order does not depend on it:
-//   .Tools always draws over .Editor.
-// - Every @(comp_on_draw_gizmos) proc, once per view that shows gizmos (its
-//   Gizmos toggle, gizmos.scene_gizmos and game_gizmos): into .Editor with the scene camera,
-//   into .Editor_Game with the game camera. Pixel sizes and camera-facing
-//   parts fit each view, and the game view has gizmos with the scene view
-//   closed. With both views showing gizmos the procs run twice a frame. The
-//   gizmo settings apply per component type.
+// - gizmo_pass, once per frame before any view draws: it picks the Scene copy
+//   the handles run in (_scene_handles_update) and records every
+//   @(comp_on_draw_gizmos) proc into .Editor_Game with the game camera, for
+//   the game view when its Gizmos toggle is on.
+// - scene_gizmos_record, in each Scene copy right before its render: the
+//   selection outline into .Tools and the @(comp_on_draw_gizmos) procs into
+//   .Editor, with that copy's camera, so pixel sizes and camera-facing parts
+//   fit every copy. In the copy the handles run in, the selection's
+//   @(comp_on_scene_handles) procs and the transform gizmo record into .Tools
+//   too, once per frame. They run before the gizmo procs, so an edit shows
+//   in this frame's gizmos and render. .Tools always draws over .Editor.
+//
+// With several views showing gizmos the gizmo procs run once per view each
+// frame. The gizmo settings apply per component type.
 
 import "base:runtime"
 import "core:math"
 import "menu"
 import core "moonhug:libs/core"
-import gfx "moonhug:libs/gfx"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/handles"
 import "moonhug:editor/viewport"
@@ -37,51 +38,61 @@ import "moonhug:libs/gizmos"
 @(extension_point={attribute="comp_on_draw_gizmos", target="proc", fields="component"})
 gizmo_pass :: proc() {
 	sel_scene_prune()
-	// The handles and gizmos are recorded once, for the active Scene copy
-	// (the one under the pointer, else the one clicked in last). Every copy
-	// draws them, so their pixel sizes fit the active copy's camera.
-	_sv = _scene_active()
-	scene_live := _sv.rendered_frame + 1 == gfx.frame_index && _sv.view_size.x > 0 && _sv.view_size.y > 0
-	game_live := menu.show_game && game_gizmos
-	if !scene_live && !game_live do return
-
 	viewport.marks_rebuild()
-	if scene_live {
-		// The camera's focus animation (F) steps first, so the handles and
-		// the render see the same camera.
-		_update_frame_tween(im.GetIO().DeltaTime)
-		view := scene_render_view(_sv.view_size.x, _sv.view_size.y)
-		// The pointer in scene-image pixels, from the image's place last frame.
-		mp := im.GetMousePos()
-		io := im.GetIO()
-		snapping := _gizmo_snap_active()
-		handles.frame_begin(view, handles.Input{
-			mouse      = {mp.x - _sv.img_min.x, mp.y - _sv.img_min.y},
-			hovered    = _sv.hovered,
-			down       = im.IsMouseDown(.Left),
-			clicked    = im.IsMouseClicked(.Left),
-			alt        = io.KeyAlt,
-			shift      = io.KeyShift,
-			snap       = snap_translate_step() if snapping else 0,
-			snap_angle = _gizmo_snap_angle() if snapping else 0,
-		})
-		gizmos.set_view(view)
-		gizmos.with_channel(.Tools)
-		viewport.tools_frame(view)
-		if gizmos.scene_gizmos {
-			gizmos.with_channel(.Editor)
-			viewport.draw_gizmos()
-		}
-	}
-	// The same procs again with the game camera, for the game view: each view
-	// gets gizmos built for its own camera, pixel sizes included. With no
-	// camera the game view shows none.
-	if game_live {
+	_scene_handles_update()
+	// The gizmo procs with the game camera, for the game view: each view gets
+	// gizmos built for its own camera, pixel sizes included. With no camera
+	// the game view shows none.
+	if menu.show_game && game_gizmos {
 		if v, ok := _game_gizmo_view(); ok {
 			gizmos.with_view(v)
 			gizmos.with_channel(.Editor_Game)
 			viewport.draw_gizmos()
 		}
+	}
+}
+
+// Picks the Scene copy the handles run in this frame: the one under the
+// pointer, else the one clicked in last. It stays while a drag that began in
+// it goes on (a handle, the transform gizmo, a box select, an orbit, a
+// flythrough), so a drag that crosses into another copy keeps its camera.
+@(private = "file")
+_scene_handles_update :: proc() {
+	if sv := _scene_handles; sv != nil && (handles.dragging() || viewport.tools_dragging() || sv.band_active || sv.orbit_active || sv.flythrough_active) do return
+	_scene_handles = _scene_pick()
+}
+
+// The current Scene copy's gizmos, right before its render (render_scene_rt).
+// The .Tools and .Editor channels hold one copy's shapes at a time: each copy
+// clears them, records them with its own camera, and renders. The handles
+// record only in the copy they run in (_scene_handles), once per frame.
+scene_gizmos_record :: proc(view: core.Render_View) {
+	gizmos.clear_channels({.Tools, .Editor})
+	gizmos.set_view(view)
+	{
+		gizmos.with_channel(.Tools)
+		viewport.outline(view)
+		if _sv == _scene_handles {
+			// The pointer in scene-image pixels, from the image's place last frame.
+			mp := im.GetMousePos()
+			io := im.GetIO()
+			snapping := _gizmo_snap_active()
+			handles.frame_begin(view, handles.Input{
+				mouse      = {mp.x - _sv.img_min.x, mp.y - _sv.img_min.y},
+				hovered    = _sv.hovered,
+				down       = im.IsMouseDown(.Left),
+				clicked    = im.IsMouseClicked(.Left),
+				alt        = io.KeyAlt,
+				shift      = io.KeyShift,
+				snap       = snap_translate_step() if snapping else 0,
+				snap_angle = _gizmo_snap_angle() if snapping else 0,
+			})
+			viewport.tools_frame(view)
+		}
+	}
+	if gizmos.scene_gizmos {
+		gizmos.with_channel(.Editor)
+		viewport.draw_gizmos()
 	}
 }
 

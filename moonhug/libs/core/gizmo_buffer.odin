@@ -234,6 +234,14 @@ gizmo_batch_clear :: proc(b: ^Gizmo_Batch) {
 	clear(&b.icons)
 }
 
+// This frame's shapes of `channels` go, for a view that records them again
+// with its own camera (each Scene view copy).
+gizmo_buffer_clear_channels :: proc(buf: ^Gizmo_Buffer, channels: bit_set[Gizmo_Channel]) {
+	for ch in channels {
+		for &b in buf.batches[.Frame][ch] do gizmo_batch_clear(&b)
+	}
+}
+
 gizmo_buffer_clear_lifetime :: proc(buf: ^Gizmo_Buffer, lifetime: Gizmo_Lifetime) {
 	for &per_channel in buf.batches[lifetime] {
 		for &b in per_channel do gizmo_batch_clear(&b)

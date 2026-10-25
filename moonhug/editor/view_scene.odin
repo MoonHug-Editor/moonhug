@@ -112,13 +112,24 @@ _sv_plain: Scene_View
 // which the gizmo pass, menu actions and the bridge act on.
 _sv: ^Scene_View = &_sv_plain
 
-// The copy the pointer was over last frame, else the copy clicked in last,
-// else the first copy's state. The gizmo pass records handles for it.
+// The copy the handles run in this frame, picked once per frame by the gizmo
+// pass (_scene_handles_update).
 @(private)
-_scene_active :: proc() -> ^Scene_View {
+_scene_handles: ^Scene_View
+
+// The copy the pointer was over last frame, else the copy clicked in last,
+// else the first copy's state.
+@(private)
+_scene_pick :: proc() -> ^Scene_View {
 	for w in wnd.instances(SCENE) do if sv := _scene_view(w); sv.hovered do return sv
 	if last := wnd.last(SCENE); last != nil do return _scene_view(last)
 	return &_sv_plain
+}
+
+// The copy the handles run in, which the bridge and menu actions act on too.
+@(private)
+_scene_active :: proc() -> ^Scene_View {
+	return _scene_handles if _scene_handles != nil else _scene_pick()
 }
 
 @(private = "file")
@@ -160,6 +171,7 @@ scene_view_closed :: proc(w: ^wnd.Window) {
 	sv := (^Scene_View)(w.data)
 	if sv == nil do return
 	if _sv == sv do _sv = &_sv_plain
+	if _scene_handles == sv do _scene_handles = nil
 	_scene_view_free(sv)
 	free(sv, runtime.default_allocator())
 	w.data = nil
@@ -420,13 +432,15 @@ render_scene_rt :: proc(w, h: i32) {
 	if w < 1 || h < 1 do return
 	gfx.rt_resize(_sv.rt, w, h)
 
+	// The camera's focus animation (F) steps first, so the handles and the
+	// render see the same camera.
+	_update_frame_tween(im.GetIO().DeltaTime)
 	view := scene_render_view(f32(w), f32(h))
-	// The gizmo pass (gizmo_pass.odin) recorded the outline, the handles, the
-	// transform gizmo and the gizmo hooks before this render. The next pass reads the view's size
-	// and the frame it rendered in.
 	_sv.rendered_frame = gfx.frame_index
 	_sv.view_size = {f32(w), f32(h)}
-	gizmos.set_view(view)
+	// This copy's outline, gizmos and, in the copy they run in, handles
+	// (gizmo_pass.odin).
+	scene_gizmos_record(view)
 	_sv.view_last = view
 	// The engine's render pipeline owns the passes: the grid and axes draw
 	// under the scene, the gizmos over it, both from scene passes that share

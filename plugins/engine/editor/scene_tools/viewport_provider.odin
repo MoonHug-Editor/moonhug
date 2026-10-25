@@ -16,6 +16,7 @@ install_viewport_provider :: proc() {
 		pick                = scene_view_pick,
 		pick_all            = _vp_pick_all,
 		band_query          = scene_view_band_query,
+		outline             = scene_outline,
 		tools_frame         = scene_tools_frame,
 		tools_consume_mouse = scene_tools_consume_mouse,
 		tools_dragging      = scene_tools_dragging,
