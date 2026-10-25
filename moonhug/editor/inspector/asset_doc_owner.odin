@@ -6,6 +6,7 @@ package inspector
 // through Apply and go back through Revert. The Project Inspector's document
 // is the asset it shows.
 
+import core "moonhug:libs/core"
 import "moonhug:editor/session"
 
 ASSET_DOCUMENTS :: "asset_documents"
@@ -13,14 +14,13 @@ ASSET_DOCUMENTS :: "asset_documents"
 @(provider_install)
 _install_asset_documents :: proc() {
 	session.document_owner_add({name = ASSET_DOCUMENTS, list = _asset_documents_list, save = _asset_document_save, discard = _asset_document_discard})
-	session.view_document_set("Project Inspector", _project_inspector_document)
 }
 
 @(private = "file")
 _asset_documents_list :: proc(out: ^[dynamic]session.Document) {
 	for _, doc in _docs {
 		if doc.kind != .File do continue
-		append(out, session.Document{key = doc, path = doc.path, dirty = doc.dirty, can_discard = true})
+		append(out, session.Document{key = doc, guid = doc.guid, path = doc.path, dirty = doc.dirty, can_discard = true})
 	}
 }
 
@@ -34,9 +34,10 @@ _asset_document_discard :: proc(key: rawptr) {
 	asset_doc_discard((^Asset_Doc)(key))
 }
 
-@(private = "file")
-_project_inspector_document :: proc() -> (owner: string, key: rawptr, ok: bool) {
+// The asset the Project Inspector shows, locked or not.
+@(view_document={view="Project Inspector"})
+project_inspector_document :: proc() -> core.Asset_GUID {
 	doc := inspectorData.doc
-	if inspectorData.mode != .Asset || doc == nil || doc.kind != .File do return "", nil, false
-	return ASSET_DOCUMENTS, doc, true
+	if inspectorData.mode != .Asset || doc == nil || doc.kind != .File do return {}
+	return doc.guid
 }

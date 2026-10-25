@@ -922,18 +922,12 @@ _pv_draw_toolbar :: proc(clip: ^anim.AnimationClip, length: f32) {
 	// saves it with every other file (session/documents.odin).
 }
 
-// The clip the view edits is its document: the tab menu saves and discards
-// it, and the tab title carries its star.
-@(provider_install)
-_pv_install_document :: proc() {
-	session.view_document_set("Animation", _pv_view_document)
-}
-
-@(private = "file")
-_pv_view_document :: proc() -> (owner: string, key: rawptr, ok: bool) {
+// The clip the view edits: the tab menu saves and discards it, and the tab
+// title carries its star.
+@(view_document={view="Animation"})
+animation_view_document :: proc() -> engine.Asset_GUID {
 	doc, _ := _pv_doc()
-	if doc == nil do return "", nil, false
-	return inspector.ASSET_DOCUMENTS, doc, true
+	return doc.guid if doc != nil else {}
 }
 
 // Header of the property column: the clip picker, stretched to the column

@@ -298,7 +298,7 @@ disk — Save persists, like unsaved live-preview edits always worked.
 
 A document lives as long as its asset. Save writes to the asset's current path, looked up by guid, so a renamed or moved asset saves where it is now. A file that is gone from disk is never written back. Deleting an asset drops its document and its undo steps (`purge_asset`, through the asset-gone hook), and the Project Inspector lets go of it. Without that, undo or File/Save would bring the file back without its `.meta`, as a different asset.
 
-Discard reads the document again from its file and drops its undo steps with `purge_asset`, after a confirmation, so it cannot be undone ([Saving and discarding](Saving.md)).
+Discard reads the document again from its file and drops its undo steps with `purge_asset`, after a confirmation, so it cannot be undone ([Views](Views.md), The asset a view edits).
 
 ## Import settings (project inspector, Sprite Editor)
 

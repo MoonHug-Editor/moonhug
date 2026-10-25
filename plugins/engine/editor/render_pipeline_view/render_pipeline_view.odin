@@ -45,7 +45,6 @@ import im "moonhug:external/odin-imgui"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/inspector"
 import "moonhug:editor/script_editor"
-import "moonhug:editor/session"
 import "moonhug:editor/undo"
 import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
@@ -351,20 +350,18 @@ _rp_select_slot :: proc(name: string) {
 	if e := engine.pipeline_find_step(_rp.doc, _rp.sel); e != nil && e.slot != "" && e.slot != name do _rp.sel = 0
 }
 
-// The pipeline's document is the view's, and a save reimports the pipeline.
+// The pipeline the window edits, for its tab menu and the star on its tab.
+@(view_document={view="render_pipeline"})
+render_pipeline_view_document :: proc() -> engine.Asset_GUID {
+	return _rp.guid
+}
+
+// A save reimports the pipeline.
 @(provider_install)
 _rp_install_document :: proc() {
-	session.view_document_set("render_pipeline", _rp_view_document)
 	inspector.doc_saved_register(typeid_of(engine.Render_Pipeline), proc(guid: engine.Asset_GUID, path: string) {
 		_ = asset_pipeline.asset_pipeline_import_asset(path)
 	})
-}
-
-@(private = "file")
-_rp_view_document :: proc() -> (owner: string, key: rawptr, ok: bool) {
-	doc := inspector.asset_doc_of(_rp.guid) if _rp.guid != {} else nil
-	if doc == nil do return "", nil, false
-	return inspector.ASSET_DOCUMENTS, doc, true
 }
 
 // --- Popups -------------------------------------------------------------------------

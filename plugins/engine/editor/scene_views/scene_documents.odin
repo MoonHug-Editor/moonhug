@@ -1,7 +1,7 @@
 package scene_views
 
 // Loaded scenes as open documents (moonhug:editor/session, documents.odin).
-// The Hierarchy and the Scene view show the active scene, so their tab menus
+// The Hierarchy and the Scene view edit the active scene, so their tab menus
 // save and discard it and their titles carry its star.
 
 import "moonhug:editor/session"
@@ -12,8 +12,6 @@ SCENE_DOCUMENTS :: "scenes"
 @(provider_install)
 _install_scene_documents :: proc() {
 	session.document_owner_add({name = SCENE_DOCUMENTS, list = _scene_documents_list, save = _scene_document_save, discard = _scene_document_discard})
-	session.view_document_set("Hierarchy", _active_scene_document)
-	session.view_document_set("Scene", _active_scene_document)
 }
 
 // Every loaded scene. Discard needs a file to read back and no simulation
@@ -27,7 +25,7 @@ _scene_documents_list :: proc(out: ^[dynamic]session.Document) {
 	for i in 0 ..< sm.count {
 		scene := sm.loaded[i]
 		if scene == nil || !engine.sm_scene_is_valid(scene) do continue
-		append(out, session.Document{key = scene, path = scene.path, dirty = scene.dirty, can_discard = len(scene.path) > 0 && !playing})
+		append(out, session.Document{key = scene, guid = scene.asset_guid, path = scene.path, dirty = scene.dirty, can_discard = len(scene.path) > 0 && !playing})
 	}
 }
 
@@ -42,10 +40,20 @@ _scene_document_discard :: proc(key: rawptr) {
 	_hierarchy_discard_scene((^engine.Scene)(key))
 }
 
+@(view_document={view="Hierarchy"})
+hierarchy_document :: proc() -> engine.Asset_GUID {
+	return _active_scene_guid()
+}
+
+@(view_document={view="Scene"})
+scene_view_document :: proc() -> engine.Asset_GUID {
+	return _active_scene_guid()
+}
+
 @(private = "file")
-_active_scene_document :: proc() -> (owner: string, key: rawptr, ok: bool) {
-	if engine.ctx_get() == nil do return "", nil, false
+_active_scene_guid :: proc() -> engine.Asset_GUID {
+	if engine.ctx_get() == nil do return {}
 	scene := engine.sm_scene_get_active()
-	if scene == nil do return "", nil, false
-	return SCENE_DOCUMENTS, scene, true
+	if scene == nil do return {}
+	return scene.asset_guid
 }

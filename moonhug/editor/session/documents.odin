@@ -12,9 +12,9 @@ package session
 //
 // What uses them:
 // - File ▸ Save saves every dirty document.
-// - A view names the document it shows (view_document_set). Its tab menu
-//   offers Save and Discard for it, and its title carries a star while the
-//   document is dirty (view_title).
+// - A view names the asset it edits (@(view_document)). Its tab menu offers
+//   Save and Discard for that asset's document, and its title carries a star
+//   while the document is dirty (view_title).
 // - The project window marks dirty files with a star.
 // - Quitting with dirty documents asks first (editor/quit_prompt.odin).
 //
@@ -25,11 +25,13 @@ import "base:runtime"
 import "core:fmt"
 import "core:path/filepath"
 import "core:strings"
+import core "moonhug:libs/core"
 import "moonhug:libs/log"
 
 Document :: struct {
 	owner:       int,    // index of its owner, filled by `documents`
 	key:         rawptr, // the owner's handle for it, nil for an owner with one document
+	guid:        core.Asset_GUID, // the asset it is, {} for a scene never saved
 	path:        string, // its file, "" for a scene never saved. Borrowed for the frame
 	dirty:       bool,
 	// Discard can run now. False for a scene with no file or while a
@@ -47,9 +49,8 @@ Document_Owner :: struct {
 	discard: proc(key: rawptr),
 }
 
-// The document a view shows: its owner's name and key. ok=false when the
-// view shows none right now.
-View_Document_Proc :: proc() -> (owner: string, key: rawptr, ok: bool)
+// The asset a view edits right now, {} when it edits none.
+View_Document_Proc :: proc() -> core.Asset_GUID
 
 @(private = "file") _owners: [dynamic]Document_Owner
 @(private = "file") _view_documents: map[string]View_Document_Proc
@@ -62,9 +63,12 @@ document_owner_add :: proc(o: Document_Owner) {
 	append(&_owners, o)
 }
 
-// The document the view with id `view` shows (the text after ### in its
-// title). Called once per view from a @(provider_install) proc.
-view_document_set :: proc(view: string, p: View_Document_Proc) {
+// Names the asset the view with id `view` edits (the text after ### in its
+// title). The generated registrations call it, one per @(view_document) proc
+// (prebuild/view_chrome_gen): the editor's _register_view_chrome and the
+// tests' register_view_documents.
+@(extension_point={attribute="view_document", target="proc", fields="view"})
+view_document_add :: proc(view: string, p: View_Document_Proc) {
 	context.allocator = runtime.default_allocator()
 	if view in _view_documents do panic(fmt.tprintf("view %q names its document twice", view))
 	_view_documents[strings.clone(view)] = p
@@ -100,9 +104,10 @@ document_find :: proc(owner: string, key: rawptr) -> (Document, bool) {
 view_document :: proc(view: string) -> (Document, bool) {
 	p, has := _view_documents[view]
 	if !has do return {}, false
-	owner, key, ok := p()
-	if !ok do return {}, false
-	return document_find(owner, key)
+	guid := p()
+	if guid == {} do return {}, false
+	for d in documents(context.temp_allocator) do if d.guid == guid do return d, true
+	return {}, false
 }
 
 document_owner_name :: proc(d: Document) -> string {

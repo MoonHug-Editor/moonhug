@@ -250,55 +250,9 @@ Rules:
 - A wrapper that calls `draw` inherits undo, multiedit and prefab-override behavior — the default drawing owns that machinery. Skipping `draw` (replace) takes over that responsibility.
 - Declarative tags stay the front door for common cases (`inspect:`, `ext:`, `decor:button()`, `@(inspector_button)`). Wrappers are for structural changes those cannot express.
 
-## Editor windows
+## Views
 
-A plugin declares a dockable editor window with an attribute and opens it by id, the way Unity's `[MenuItem]` calls `EditorWindow.GetWindow`:
-
-```odin
-import wnd "moonhug:editor/window"
-
-@(editor_window={id="physics2d", title="Physics 2D", icon="TUNE", width=420, height=240})
-draw_physics_debug :: proc() {
-    // window CONTENT only — Begin/End, the close button and the open flag
-    // belong to the host
-}
-
-@(menu_item={path="Window/Physics 2D", shortcut=""})
-open_physics_debug :: proc() {
-    wnd.open("physics2d")
-}
-```
-
-- `title` defaults to the id. `icon` names a Material Symbols glyph from `editor/icons` without the `ICON_MD_` prefix and draws before the tab label (default `EXTENSION`). `width`/`height` are the first-shown size, applied only while imgui.ini has no entry for the id (`FirstUseEver`) — once the user resizes or docks it, imgui.ini wins.
-- `open` focuses the window if it is already open. Any code path can call it — a button or context menu works as well as a menu item.
-- The open list is process-lifetime (reopen from the menu after a restart); dock position and size persist in imgui.ini by id. The imgui title is `"<icon> <title>###<id>"`, so icon and title changes never move a window. `editor/imgui_ini_migrate.odin` renames `[Window][<title>]` entries to the id on startup for layouts saved with title-keyed windows.
-- Declarations land in `editor/editor_windows_generated.odin` (editor_window_gen). `packages/plugin_example/editor` carries a working demo.
-
-## Scene view overlays
-
-`@(scene_overlay={id="Tools", order=N})` on a `proc(vertical: bool)` adds an item to a scene view overlay (dock.odin). Items sharing an id sit in one overlay and sort by order. The proc draws imgui widgets and calls `SameLine` between its own widgets when `vertical` is false.
-
-An overlay sits in one of three kinds of place, and the user drags it between them by its grip:
-
-- **A toolbar strip** along the left, right, top or bottom edge. A strip reserves its own space, so the view image shrinks beside it instead of being covered. A strip is only as thick as the items it holds: an overlay in a strip drops its own panel and its grip shrinks to the item height, so the strip hugs the buttons. An empty strip has zero thickness and draws nothing. The top and bottom strips take the corners and span the full width; the side strips run between them.
-- **A floating corner or side** inside the image, drawn over the render.
-- **Free floating** anywhere inside the image.
-
-While an overlay drags, every zone highlights and the one under the cursor takes an accent. The outermost band on each edge is the strip, and the floating zones sit just inside it. The top and bottom bands are taller and span the full width, taking the corners, so the side bands run only between them — the same split the drawn strips use. Placement persists per overlay in `UserSettings/editor_settings.json`.
-
-An overlay whose items draw nothing shows no background, grip or hover, and costs its strip no space. A conditional overlay therefore vanishes with its content and returns the moment an item draws again.
-
-A view opts in by taking the strip space before it sizes its image: `overlays_measure_bars`, then `overlay_bar_insets` for the four thicknesses, then `overlays_draw` with both the image rect and the full content rect.
-
-## Game view toolbar
-
-The Game view draws a toolbar above its image with Unity's controls (view_game.odin):
-
-- **Size**: Free Aspect fills the view, an aspect letterboxes to that ratio, and a fixed resolution renders exactly those pixels, scaled down when it does not fit. The list is built in.
-- **Flip**: swaps the selected size's width and height, for portrait targets. Disabled on Free Aspect, which has no ratio to swap.
-- **Scale**: zooms the rendered rect. 1x is the size's actual pixels and the maximum is 5x. The minimum is 1x, or the zoom that fits the size in the view when its pixels are larger, so the game is never cropped. Parking the slider at that floor means "match the view": the zoom follows the floor as the view resizes. A 1x button returns to actual pixels, and zoom is disabled on Free Aspect, which already fills the view.
-
-The rendered rect is centered in the area under the toolbar. When the zoom makes it larger than the area, the area scrolls: a scrollbar appears on each axis that overflows, the rect stays centered on an axis that fits, and the mouse wheel stays the game's input, so the bars are dragged. The input viewport follows the rect as it scrolls, so game mouse coordinates stay correct at any size, scale or scroll. Size, flip and scale persist in `UserSettings/editor_settings.json`.
+A plugin's windows and what it adds to other views are attributes, all in [Views](Views.md): `@(editor_window)` for a window, `@(view_menu)` and `@(view_tab_bar)` for a view's menu and tab bar, `@(view_document)` for the asset a view edits, `@(scene_overlay)` for the scene view's overlays and `@(toolbar)` for the editor toolbar.
 
 ## Editor startup hook
 

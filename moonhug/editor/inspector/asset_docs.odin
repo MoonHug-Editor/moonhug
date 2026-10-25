@@ -94,12 +94,6 @@ doc_alloc :: proc() -> runtime.Allocator {
 	return doc_allocator
 }
 
-// The loaded document of an asset, nil when none is loaded. Loads nothing.
-asset_doc_of :: proc(guid: core.Asset_GUID) -> ^Asset_Doc {
-    doc, _ := _docs[Doc_Key{guid, .File}]
-    return doc
-}
-
 // The open document for a path — reused if already loaded (unsaved edits
 // survive clicking away and back), loaded from disk otherwise. nil on load
 // failure or when the file isn't in the asset db.

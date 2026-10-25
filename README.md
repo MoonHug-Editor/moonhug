@@ -104,6 +104,7 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 - [Crash Journal](docs/general/CrashJournal.md) - signal-safe crash log with a symbolized stack and a breadcrumb of what the editor was doing (`logs/crash_<pid>.log`)
 - [MCP Bridge](docs/core/McpBridge.md) - agent access to the running editor (scene dumps, menu invocation) over MCP, zero external dependencies
 - [Undo](docs/core/Undo.md) - editor undo feature
+- [Views](docs/core/Views.md) - editor windows and the attributes that extend views: view menus, tab bar widgets, the asset a view edits with Save, Discard, the dirty star and the quit prompt, scene view overlays, the editor toolbar
 - [Simulate](docs/core/Simulate.md) - play the open scene inside the editor with everything still inspectable: Simulate/Pause/Step controls, snapshot+restore on stop, sim-host dropdown picking which game's update code runs. Separate from the Play button, which builds and launches the game as its own process
 
 ### Views

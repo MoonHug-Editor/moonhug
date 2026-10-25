@@ -33,7 +33,7 @@ The pane on the right holds three sections, each shown or hidden by its toolbar 
 - **The pass:** its summary, its inputs as their writers left them and its outputs as it left them, as thumbnails from the running frame, "Show in scene view" per output, its settings, mute, open code, remove, its port bindings, and what it drew (objects, meshes, materials, textures: a click selects the object or pings the asset).
 - **Resource List** and **Pass List:** every row and column with its details, searchable. The Filter button hides scratch resources (written by one pass and read by none, such as bloom's blur textures), the `scene` row and muted passes.
 
-The window edits the pipeline's shared asset document, the same instance the Project Inspector shows ([Saving and discarding](../../../docs/core/Saving.md)). Edits render as they are made (`render_pipeline_preview`), undo is one step per edit, and a save reimports the asset.
+The window edits the pipeline's shared asset document, the same instance the Project Inspector shows ([Views](../../../docs/core/Views.md)). Edits render as they are made (`render_pipeline_preview`), undo is one step per edit, and a save reimports the asset.
 
 ## Inspecting a frame
 

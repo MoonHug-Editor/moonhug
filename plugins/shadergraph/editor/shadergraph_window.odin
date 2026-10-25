@@ -23,7 +23,6 @@ import im "moonhug:external/odin-imgui"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/inspector"
 import nc "moonhug:editor/node_canvas"
-import "moonhug:editor/session"
 import "moonhug:editor/undo"
 import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
@@ -261,22 +260,20 @@ _sg_pane_toggle :: proc(label: cstring, hidden: ^bool, tip: cstring) {
 	widgets.tooltip(tip)
 }
 
-// The graph's document is the view's, and a save reimports the graph and
-// drops its cached shader, so a material on it draws with the new one.
+// The graph the window edits, for its tab menu and the star on its tab.
+@(view_document={view="shader_graph"})
+shader_graph_view_document :: proc() -> engine.Asset_GUID {
+	return _sg.guid
+}
+
+// A save reimports the graph and drops its cached shader, so a material on
+// it draws with the new one.
 @(provider_install)
 _sg_install_document :: proc() {
-	session.view_document_set("shader_graph", _sg_view_document)
 	inspector.doc_saved_register(typeid_of(sg.Shader_Graph), proc(guid: engine.Asset_GUID, path: string) {
 		_ = asset_pipeline.asset_pipeline_import_asset(path)
 		engine.shader_unload(guid)
 	})
-}
-
-@(private = "file")
-_sg_view_document :: proc() -> (owner: string, key: rawptr, ok: bool) {
-	doc := inspector.asset_doc_of(_sg.guid) if _sg.guid != {} else nil
-	if doc == nil do return "", nil, false
-	return inspector.ASSET_DOCUMENTS, doc, true
 }
 
 // A message shown in the toolbar for a few seconds, and logged.
