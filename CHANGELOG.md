@@ -1,3 +1,10 @@
+## [0.149.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.148.0...v0.149.0) (2026-10-26)
+
+### Features
+
+* **animation:** UAL1 demo character, model clips read-only in Animation window ([1dd9ccb](https://github.com/MoonHug-Editor/moonhug/commit/1dd9ccb9f00ff024601743c53b232baff5400640))
+* Maximize in view_menu, workspace "save in" setting, frame view keep tab order ([756d166](https://github.com/MoonHug-Editor/moonhug/commit/756d1665001bcd207edf3c7d061fef442ffd71a7))
+
 ## [0.148.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.147.0...v0.148.0) (2026-10-26)
 
 ### Features
