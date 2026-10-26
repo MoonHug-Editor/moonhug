@@ -14,12 +14,14 @@ package animation
 
 import "base:runtime"
 import "core:encoding/json"
+import "core:fmt"
 import "moonhug:packages/engine"
 import "core:encoding/uuid"
 import "core:math"
 import "core:math/linalg"
 import "core:os"
 import "core:strings"
+import "moonhug:libs/log"
 
 // Once clamps at length and stops; Loop wraps.
 Animation_Wrap :: enum u8 {
@@ -125,6 +127,11 @@ reset_AnimationClip :: proc(c: ^AnimationClip) {
 animation_clip_cache: map[engine.PPtr]AnimationClip
 _animation_clip_cache_ready: bool
 
+// Clips that failed to load, each logged once. A failed clip is not read
+// again every frame: a reimport of its asset clears the mark.
+@(private = "file")
+_animation_clip_failed: map[engine.PPtr]bool
+
 // ImportersInit is the asset-layer init phase both binaries run (the editor
 // via phase_editor_run, the app via app_init) — same slot the audio package
 // uses for its importer.
@@ -136,6 +143,7 @@ animation_package_init :: proc() {
 
 animation_clip_cache_init :: proc() {
 	animation_clip_cache = make(map[engine.PPtr]AnimationClip)
+	_animation_clip_failed = make(map[engine.PPtr]bool)
 	_animation_clip_cache_ready = true
 }
 
@@ -145,6 +153,8 @@ animation_clip_cache_shutdown :: proc() {
 	}
 	delete(animation_clip_cache)
 	animation_clip_cache = nil
+	delete(_animation_clip_failed)
+	_animation_clip_failed = nil
 	_animation_clip_cache_ready = false
 }
 
@@ -156,7 +166,8 @@ animation_clip_load :: proc(ref: engine.PPtr) -> (^AnimationClip, bool) {
 	if clip, ok := &animation_clip_cache[ref]; ok {
 		return clip, true
 	}
-	if !_animation_clip_cache_ready do return nil, false
+	if !_animation_clip_cache_ready || engine.asset_guid_is_empty(ref.guid) do return nil, false
+	if ref in _animation_clip_failed do return nil, false
 
 	// A CACHE ENTRY OUTLIVES THE CALL, so it never borrows the caller's
 	// allocator. A clip first loaded under a temp allocator left the cache
@@ -175,28 +186,49 @@ animation_clip_load :: proc(ref: engine.PPtr) -> (^AnimationClip, bool) {
 	// (engine.artifact_sub_path). Either way a missing artifact asks for an import, which is
 	// editor-only (asset_pipeline_request_import is nil in a game binary, so
 	// a missing artifact there is a load error).
+	// A game cannot import, so a file its export left out fails here and says
+	// so. Every failure is logged once, with the asset's path.
+	src, src_ok := engine.asset_db_get_path(uuid.Identifier(ref.guid))
+	if !src_ok {
+		_clip_fail(ref, fmt.tprintf("[Animation] clip %s (id %d): no asset has this guid", uuid.to_string(uuid.Identifier(ref.guid), context.temp_allocator), ref.local_id))
+		return nil, false
+	}
 	path, path_ok := engine.asset_pipeline_artifact_path(ref.guid)
 	if !path_ok {
-		src, src_ok := engine.asset_db_get_path(uuid.Identifier(ref.guid))
-		if !src_ok do return nil, false
 		_ = engine.asset_pipeline_request_import(src, force = false)
 		path, path_ok = engine.asset_pipeline_artifact_path(ref.guid)
-		if !path_ok do return nil, false
+		if !path_ok {
+			_clip_fail(ref, fmt.tprintf("[Animation] %s has no artifact", src))
+			return nil, false
+		}
 	}
 	if ref.local_id != 0 {
-		if _, iok := engine.mesh_clip_index(ref.guid, ref.local_id); !iok do return nil, false
+		if _, iok := engine.mesh_clip_index(ref.guid, ref.local_id); !iok {
+			_clip_fail(ref, fmt.tprintf("[Animation] %s has no clip %d (gone from the model, or an orphan to remap)", src, ref.local_id))
+			return nil, false
+		}
 		path = engine.artifact_sub_path(path, ref.local_id, context.temp_allocator)
 	}
 	data, read_err := os.read_entire_file(path, context.temp_allocator)
-	if read_err != nil do return nil, false
+	if read_err != nil {
+		_clip_fail(ref, fmt.tprintf("[Animation] %s (clip %d): %s is missing or unreadable", src, ref.local_id, path))
+		return nil, false
+	}
 
 	clip: AnimationClip
 	if json.unmarshal(data, &clip, .JSON, context.allocator) != nil {
 		cleanup_AnimationClip(&clip)
+		_clip_fail(ref, fmt.tprintf("[Animation] %s (clip %d): %s does not parse as a clip", src, ref.local_id, path))
 		return nil, false
 	}
 	animation_clip_cache[ref] = clip
 	return &animation_clip_cache[ref], true
+}
+
+@(private = "file")
+_clip_fail :: proc(ref: engine.PPtr, message: string) {
+	log.errorf("%s", message)
+	_animation_clip_failed[ref] = true
 }
 
 animation_clip_unload :: proc(ref: engine.PPtr) {
@@ -249,6 +281,7 @@ animation_clip_path_changed :: proc(path: string) {
 	if !strings.has_suffix(path, ".anim") do return
 	if guid, ok := engine.asset_db_get_guid(path); ok {
 		animation_clip_unload(engine.PPtr{guid = engine.Asset_GUID(guid)})
+		delete_key(&_animation_clip_failed, engine.PPtr{guid = engine.Asset_GUID(guid)})
 	}
 }
 
@@ -260,6 +293,10 @@ animation_clip_reimported :: proc(guid: engine.Asset_GUID) {
 	owned := make([dynamic]engine.PPtr, context.temp_allocator)
 	for k in animation_clip_cache do if k.guid == guid do append(&owned, k)
 	for k in owned do animation_clip_unload(k)
+	// A failed clip of the asset gets its next try.
+	clear(&owned)
+	for k in _animation_clip_failed do if k.guid == guid do append(&owned, k)
+	for k in owned do delete_key(&_animation_clip_failed, k)
 }
 
 // Frees what a clip owns and leaves it zeroed (plugins/engine/docs/Components.md,

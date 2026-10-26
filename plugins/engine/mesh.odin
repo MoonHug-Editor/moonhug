@@ -361,6 +361,16 @@ _mesh_artifact_read :: proc(key: Mesh_Key) -> (blob: []byte, header: Mesh_Artifa
         return
     }
     if !asset_pipeline_request_import(source_path, force = true) {
+        // A game has no importer, so a file its export left out ends here.
+        // In the editor the failed import has said why already.
+        switch {
+        case whole == "":
+            log.errorf("[Mesh] %s has no artifact", source_path)
+        case !part_ok:
+            log.errorf("[Mesh] %s has no part %d", source_path, key.part)
+        case:
+            log.errorf("[Mesh] %s (part %d): %s is missing or unreadable", source_path, key.part, artifact)
+        }
         _mesh_failed[key] = true
         return
     }

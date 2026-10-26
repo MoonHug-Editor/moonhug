@@ -128,6 +128,9 @@ asset_load :: proc(uuid: u128, $T: typeid) -> (^T, bool) {
     return asset, true
 }
 ```
+
+In the editor a missing or stale artifact is imported on the spot. A game has no importer, so a missing file is a load error, and the mesh and clip loaders log it once, naming the asset, the sub-asset id and the file: `[Animation] <model> (clip 44): <file> is missing or unreadable`. Without that line, a mesh would draw nothing and a clip would hold the rest pose with no hint why. A failed load is not retried every frame. A reimport of the asset gives it its next try.
+
 ## Asset catalog and builds
 
 A catalog is one dictionary file mapping asset guids to their source path, artifact key and baked import settings, the content catalog idea of addressable-asset systems, reduced to what the catalog pipeline needs. Assets read straight from source (scenes, materials, clips) carry an empty artifact key. Nothing about it is user-facing:
