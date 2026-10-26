@@ -243,7 +243,7 @@ _move_to_workspace_menu :: proc(key: string) {
 	defer im.EndMenu()
 	for v in views {
 		e, ok := workspace.find(workspace.view_selection(v.key))
-		if !ok do continue
+		if !ok || workspace_view_owner(e.ws.id) != v.key do continue
 		im.PushIDStr(strings.clone_to_cstring(v.key, context.temp_allocator), nil)
 		if im.MenuItem(strings.clone_to_cstring(e.ws.name, context.temp_allocator)) {
 			n := len(e.ws.frames)

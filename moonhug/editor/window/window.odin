@@ -354,6 +354,12 @@ draw_content :: proc(w: ^Window) {
 	_drawing = w
 	_registry[w.reg].draw(w)
 	_drawing = prev
+	// Over its host, which counted as hovered when it began: the hosted
+	// instance is the one under the mouse.
+	if im.IsWindowHovered(im.HoveredFlags_ChildWindows) {
+		_hovered = w
+		_hovered_frame = im.GetFrameCount()
+	}
 	if im.IsWindowHovered(im.HoveredFlags_ChildWindows) && (im.IsMouseClicked(.Left) || im.IsMouseClicked(.Right) || im.IsMouseClicked(.Middle)) {
 		_use_count += 1
 		w.used = _use_count

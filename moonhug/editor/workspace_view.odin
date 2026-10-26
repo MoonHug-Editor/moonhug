@@ -78,14 +78,27 @@ workspace_view_draw :: proc(w: ^wnd.Window) {
 	v := wnd.state(w, _WS_View{})
 	_ws_toolbar(w, v)
 	e, ok := workspace.find(workspace.view_selection(w.key))
-	if !ok {
-		msg: cstring = "Pick a workspace, or make one with New." if workspace.view_selection(w.key) == "" else "This workspace is not open: the source that holds it does not have it now."
+	owner := ""
+	if ok do owner = workspace_view_owner(e.ws.id)
+	if !ok || owner != w.key {
+		msg: cstring = "Pick a workspace, or make one with New."
+		if ok do msg = "This workspace is open in another Workspace view: pick another one here."
+		else if workspace.view_selection(w.key) != "" do msg = "This workspace is not open: the source that holds it does not have it now."
 		im.SetCursorPos(im.GetCursorPos() + {12, 12})
 		im.TextDisabled(msg)
 		return
 	}
 	_ws_rename_popup(v, e.ws)
 	_ws_canvas(w, v, e.ws)
+}
+
+// The key of the Workspace view that shows the workspace `id`: the first one
+// open that picked it, "" for none. Only that one draws it and hosts its
+// views, so two Workspace views never fight over them.
+@(private)
+workspace_view_owner :: proc(id: string) -> string {
+	for inst in wnd.instances(WORKSPACE_VIEW) do if workspace.view_selection(inst.key) == id do return inst.key
+	return ""
 }
 
 // Closing the view closes the views it hosts. One with unapplied edits asks
@@ -132,7 +145,10 @@ _ws_toolbar :: proc(w: ^wnd.Window, v: ^_WS_View) {
 		for en, i in entries {
 			im.PushIDInt(i32(i))
 			label := fmt.ctprintf("%s  (%s)", en.ws.name, provs[en.provider].name)
-			if im.Selectable(label, en.ws.id == selected) do workspace.view_select(w.key, en.ws.id)
+			owner := workspace_view_owner(en.ws.id)
+			elsewhere := owner != "" && owner != w.key
+			if im.Selectable(label, en.ws.id == selected, {.Disabled} if elsewhere else {}) do workspace.view_select(w.key, en.ws.id)
+			if elsewhere do widgets.tooltip("Open in another Workspace view", im.HoveredFlags_AllowWhenDisabled)
 			im.PopID()
 		}
 		if len(entries) == 0 do im.TextDisabled("No workspaces yet")
@@ -355,6 +371,33 @@ _ws_apply_reveal :: proc(v: ^_WS_View, ws: ^workspace.Workspace, canvas: [2]f32)
 	workspace.changed(ws)
 }
 
+// Shows the view `key` in its frame of the Workspace view `host` next frame,
+// and brings that Workspace view forward.
+@(private)
+workspace_view_reveal :: proc(host, key: string) {
+	hv := wnd.find(host)
+	if hv == nil || hv.id != WORKSPACE_VIEW do return
+	v := wnd.state(hv, _WS_View{})
+	delete(v.reveal, runtime.default_allocator())
+	v.reveal = strings.clone(key, runtime.default_allocator())
+	wnd.focus(hv)
+}
+
+// Takes the view `key` out of its frame in the workspace the Workspace view
+// `host` shows: it closed while away from it.
+@(private)
+workspace_view_forget :: proc(host, key: string) {
+	e, ok := workspace.find(workspace.view_selection(host))
+	if !ok do return
+	fi := _ws_frame_of(e.ws, key)
+	if fi < 0 do return
+	for t, ti in e.ws.frames[fi].tabs do if t == key {
+		workspace.tab_remove(e.ws, fi, ti)
+		workspace.changed(e.ws)
+		return
+	}
+}
+
 // The window registry's host hook (window.host_hook). A window opened while a
 // frame's view draws opens chained to that frame. A view already in a frame
 // is shown there, and its Workspace view comes forward.
@@ -362,12 +405,7 @@ _ws_apply_reveal :: proc(v: ^_WS_View, ws: ^workspace.Workspace, canvas: [2]f32)
 _ws_host_hook :: proc(opener, w: ^wnd.Window, created: bool) {
 	context.allocator = runtime.default_allocator()
 	if !created {
-		hv := wnd.find(w.host)
-		if hv == nil || hv.id != WORKSPACE_VIEW do return
-		v := wnd.state(hv, _WS_View{})
-		delete(v.reveal)
-		v.reveal = strings.clone(w.key)
-		wnd.focus(hv)
+		workspace_view_reveal(w.host, w.key)
 		return
 	}
 	if opener == nil do return
@@ -437,10 +475,12 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 
 	// The active view and the width of its tab-bar widgets, measured before
 	// the grip: the measure draws them off to the side, and the tab group
-	// below goes on the grip's line.
-	active := wnd.host_open(f.tabs[f.active], w.key) if !_ws_closing(v, f.tabs[f.active]) else wnd.find(f.tabs[f.active])
+	// below goes on the grip's line. A view maximized out of its frame
+	// (maximize.odin) is left be until it comes back.
+	away := f.tabs[f.active] == maximize_key()
+	active := wnd.host_open(f.tabs[f.active], w.key) if !_ws_closing(v, f.tabs[f.active]) && !away else wnd.find(f.tabs[f.active])
 	active_view := session.view_of(f.tabs[f.active])
-	widgets_w := view_tab_bar_width(active_view) if active != nil else 0
+	widgets_w := view_tab_bar_width(active_view) if active != nil && !away else 0
 
 	// Grip: drag to move the frame's chain, by the frame heading it.
 	im.InvisibleButton("##grip", {bar_h * 0.6, bar_h})
@@ -477,7 +517,7 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 		if im.BeginTabBar("##bar", {.Reorderable, .FittingPolicyShrink}) {
 			for t := 0; t < len(f.tabs); t += 1 {
 				key := f.tabs[t]
-				inst := wnd.find(key) if _ws_closing(v, key) else wnd.host_open(key, w.key)
+				inst := wnd.find(key) if _ws_closing(v, key) || key == maximize_key() else wnd.host_open(key, w.key)
 				label: cstring = wnd.title(inst) if inst != nil else fmt.ctprintf("%s %s###%s", icons.ICON_MD_WARNING, key, key)
 				open := true
 				if im.BeginTabItem(label, &open, {}) {
@@ -490,7 +530,7 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 		}
 	}
 	im.EndChild()
-	if active != nil && widgets_w > 0 {
+	if active != nil && widgets_w > 0 && !away {
 		im.SameLine()
 		view_tab_bar_draw(active_view)
 	}
@@ -505,6 +545,10 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 	// gets no scrollbars, as its own window would.
 	if active == nil {
 		im.TextDisabled("This view's window or asset is missing: its plugin is not installed, or the asset is gone.")
+		return
+	}
+	if away {
+		im.TextDisabled("Maximized. Shift+Space puts it back here.")
 		return
 	}
 	canvas := wnd.is_canvas(active)
