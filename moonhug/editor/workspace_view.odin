@@ -10,7 +10,9 @@ package editor
 // provider no longer holds it (its scene closed) shows as not open.
 //
 // - Drag the canvas background to pan. Drag a frame's grip to move its
-//   chain, its right or bottom border to resize it.
+//   chain, its right or bottom border to resize it. A child frame's up and
+//   down arrows, beside its grip, move it one place among its parent's
+//   children, or with Shift to the top or the bottom.
 // - A tab dragged up or down out of its frame's tab bar drops onto another
 //   frame, joining its tabs, or onto empty canvas, where it gets a frame of
 //   its own (its frame moves there when it was the only tab). Along the bar a
@@ -86,6 +88,10 @@ _WS_View :: struct {
 		from: u32,    // its frame
 	},
 	moves:      [dynamic]_WS_Move, // tabs dropped, moved next frame
+	reorder:    struct {
+		id: u32, // a child moving to another place among its siblings, 0 for none
+		to: int, // that place, applied next frame
+	},
 	map_frozen: _WS_Map,  // the mini-map's scale while a drag in it pans, so it holds still
 	map_corner: [2]f32,   // the corner a resize drags: -1 the left or top, 1 the right or bottom
 	map_start:  [4]f32,   // the mini-map's rect at the press of a resize
@@ -272,6 +278,10 @@ _ws_canvas :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace) {
 	}
 	_ws_apply_moves(v, ws)
 	_ws_apply_pending(v, ws)
+	if v.reorder.id != 0 {
+		workspace.sibling_move(ws, v.reorder.id, v.reorder.to)
+		v.reorder = {}
+	}
 	if workspace.fix(ws) do workspace.changed(ws)
 	if workspace.layout(ws, v.touched) && !im.IsMouseDown(.Left) do workspace.changed(ws)
 	_ws_apply_reveal(v, ws, size)
@@ -364,6 +374,53 @@ _ws_links :: proc(dl: ^im.DrawList, ws: ^workspace.Workspace, at: im.Vec2, scale
 		b := at + im.Vec2{f.rect.x, f.rect.y + y} * scale
 		k := (b.x - a.x) * 0.6
 		im.DrawList_AddBezierCubic(dl, a, a + {k, 0}, b - {k, 0}, b, col, thickness)
+	}
+}
+
+// A child frame's up and down arrows, stacked in one bar's height: a click
+// moves it one place among its parent's children, Shift+click to the top or
+// the bottom. An arrow with nowhere to go is off.
+@(private = "file")
+_ws_order_arrows :: proc(v: ^_WS_View, ws: ^workspace.Workspace, f: workspace.Frame, bar_h: f32) {
+	at := workspace.sibling_index(ws, f.id)
+	count := 0
+	for g in ws.frames do if g.parent == f.parent do count += 1
+	shift := im.GetIO().KeyShift
+	// Both arrows on the same whole-pixel column: after the grip the cursor x
+	// is fractional, and a new line in the group would truncate it, which
+	// would shift one arrow against the other.
+	p0 := im.GetCursorScreenPos()
+	p0 = {math.floor(p0.x), math.floor(p0.y)}
+	size := im.Vec2{math.floor(bar_h * 0.6), math.floor(bar_h * 0.5)}
+	cx := p0.x + math.floor(size.x * 0.5)
+	r := math.floor(min(size.x, size.y) * 0.3) + 0.5
+	dl := im.GetWindowDrawList()
+	// Stacked with no gap, so the pair is exactly one bar high.
+	im.PushStyleVarImVec2(.ItemSpacing, {im.GetStyle().ItemSpacing.x, 0})
+	defer im.PopStyleVar()
+	im.BeginGroup()
+	defer im.EndGroup()
+	for up, k in ([2]bool{true, false}) {
+		off := up ? at <= 0 : at >= count - 1
+		top := p0.y + f32(k) * size.y
+		im.SetCursorScreenPos({p0.x, top})
+		im.BeginDisabled(off)
+		pressed := im.InvisibleButton("##up" if up else "##down", size)
+		hot := im.IsItemHovered()
+		im.EndDisabled()
+		if hot && !off do im.DrawList_AddRectFilled(dl, {p0.x, top}, {p0.x + size.x, top + size.y}, im.GetColorU32(.ButtonHovered), 2)
+		// A small triangle pointing up or down, centred on the column.
+		c := im.Vec2{cx, top + math.floor(size.y * 0.5)}
+		col := im.GetColorU32(.TextDisabled if off else .Text)
+		if up do im.DrawList_AddTriangleFilled(dl, c + {-r, r * 0.6}, c + {r, r * 0.6}, c + {0, -r * 0.6}, col)
+		else do im.DrawList_AddTriangleFilled(dl, c + {-r, -r * 0.6}, c + {0, r * 0.6}, c + {r, -r * 0.6}, col)
+		if up do widgets.tooltip("Move up among its parent's children. Shift+click: to the top", im.HoveredFlags_AllowWhenDisabled)
+		else do widgets.tooltip("Move down among its parent's children. Shift+click: to the bottom", im.HoveredFlags_AllowWhenDisabled)
+		if pressed && !off {
+			to := (0 if shift else at - 1) if up else (count - 1 if shift else at + 1)
+			v.reorder = {f.id, to}
+			v.touched = f.parent
+		}
 	}
 }
 
@@ -600,7 +657,7 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 		v.drag_frame = root.id
 		v.drag_from = im.GetMousePos()
 		v.drag_start = {root.rect.x, root.rect.y}
-		v.touched = f.id
+		v.touched = root.id
 	}
 	if v.drag == .Move && v.drag_grip == f.id {
 		if r := workspace.frame_index(ws, v.drag_frame); r >= 0 && im.IsItemActive() {
@@ -614,7 +671,11 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 	gmin := im.GetItemRectMin()
 	gsz := im.CalcTextSize(icons.ICON_MD_DRAG_INDICATOR)
 	im.DrawList_AddText(im.GetWindowDrawList(), gmin + (im.Vec2{bar_h * 0.6, bar_h} - gsz) * 0.5, im.GetColorU32(.Text if grip_hot else .TextDisabled), icons.ICON_MD_DRAG_INDICATOR)
-	widgets.tooltip("Drag to move the frame with its parent and children")
+	widgets.tooltip("Drag to move the frame with its parent and children" if f.parent != 0 else "Drag to move the frame with its children")
+	if f.parent != 0 {
+		im.SameLine(0, 0)
+		_ws_order_arrows(v, ws, f^, bar_h)
+	}
 
 	// The tab group, in a child as wide as the bar leaves, then the active
 	// view's widgets and its menu at the bar's right end.

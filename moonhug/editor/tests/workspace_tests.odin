@@ -155,3 +155,39 @@ test_workspace_chain_edits :: proc(t: ^testing.T) {
 	testing.expect_value(t, ws.frames[1].parent, u32(0))
 	testing.expect_value(t, ws.frames[0].rect, before)
 }
+
+// A child moves among its siblings, and the layout stacks it in its new place.
+@(test)
+test_workspace_sibling_move :: proc(t: ^testing.T) {
+	ws := workspace.make_workspace("Order")
+	defer workspace.workspace_free(ws)
+	a := workspace.frame_add(ws, "A", {0, 0, 100, 50})
+	b := workspace.frame_add(ws, "B", {0, 0, 80, 40}, a)
+	x := workspace.frame_add(ws, "X", {800, 0, 100, 50})
+	c := workspace.frame_add(ws, "C", {0, 0, 80, 60}, a)
+	d := workspace.frame_add(ws, "D", {0, 0, 80, 30}, a)
+	testing.expect_value(t, workspace.sibling_index(ws, d), 2)
+	testing.expect_value(t, workspace.sibling_index(ws, x), -1)
+
+	workspace.sibling_move(ws, d, 0)
+	order :: proc(ws: ^workspace.Workspace, p: u32) -> [3]u32 {
+		out: [3]u32
+		n := 0
+		for f in ws.frames do if f.parent == p && n < 3 { out[n] = f.id; n += 1 }
+		return out
+	}
+	testing.expect_value(t, order(ws, a), [3]u32{d, b, c})
+	workspace.sibling_move(ws, d, 2)
+	testing.expect_value(t, order(ws, a), [3]u32{b, c, d})
+	workspace.sibling_move(ws, b, 1)
+	testing.expect_value(t, order(ws, a), [3]u32{c, b, d})
+
+	workspace.layout(ws, a)
+	y := [3]f32{}
+	for f in ws.frames do switch f.id {
+	case c: y[0] = f.rect.y
+	case b: y[1] = f.rect.y
+	case d: y[2] = f.rect.y
+	}
+	testing.expect_value(t, y, [3]f32{0, 60 + workspace.CHAIN_ROW_GAP, 60 + 40 + 2 * workspace.CHAIN_ROW_GAP})
+}

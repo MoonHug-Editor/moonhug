@@ -172,6 +172,38 @@ chain :: proc(ws: ^Workspace, id: u32, parent: u32) {
 	}
 }
 
+// The place of the chained frame `id` among its siblings (the frames chained
+// to the same parent, in list order), -1 for a frame chained to nothing.
+sibling_index :: proc(ws: ^Workspace, id: u32) -> int {
+	i := frame_index(ws, id)
+	if i < 0 || ws.frames[i].parent == 0 do return -1
+	n := 0
+	for g in ws.frames[:i] do if g.parent == ws.frames[i].parent do n += 1
+	return n
+}
+
+// Moves the chained frame `id` to place `to` among its siblings: the layout
+// stacks it there.
+sibling_move :: proc(ws: ^Workspace, id: u32, to: int) {
+	context.allocator = runtime.default_allocator()
+	i := frame_index(ws, id)
+	if i < 0 || ws.frames[i].parent == 0 || sibling_index(ws, id) == to do return
+	f := ws.frames[i]
+	ordered_remove(&ws.frames, i)
+	// Before the sibling now at place `to`, or after the last one.
+	at, n := -1, 0
+	for g, gi in ws.frames {
+		if g.parent != f.parent do continue
+		if n == to {
+			at = gi
+			break
+		}
+		n += 1
+		at = gi + 1
+	}
+	inject_at(&ws.frames, at if at >= 0 else i, f)
+}
+
 // Makes the frames valid, whatever a provider loaded: every frame gets a
 // unique id, and a parent that is missing, itself, or chained is dropped.
 // True when it changed something.
