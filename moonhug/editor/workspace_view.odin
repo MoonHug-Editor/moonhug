@@ -424,6 +424,36 @@ _ws_order_arrows :: proc(v: ^_WS_View, ws: ^workspace.Workspace, f: workspace.Fr
 	}
 }
 
+// A tab dragged along its frame's bar: imgui shows the new order, and the
+// frame takes it, so it is saved, with the same tab active. `ids` are the
+// frame's tabs' imgui ids, in the frame's order.
+@(private = "file")
+_ws_sync_tab_order :: proc(ws: ^workspace.Workspace, f: ^workspace.Frame, ids: []im.ID) {
+	bar := im.GetCurrentTabBar()
+	if bar == nil || len(f.tabs) < 2 || len(ids) != len(f.tabs) do return
+	shown := ([^]im.TabItem)(bar.Tabs.Data)[:bar.Tabs.Size]
+	// The frame's tab indices in the order the bar shows them.
+	order := make([dynamic]int, 0, len(ids), context.temp_allocator)
+	for tab in shown {
+		for id, i in ids do if id == tab.ID_ {
+			append(&order, i)
+			break
+		}
+	}
+	if len(order) != len(ids) do return // a tab the bar has not taken yet
+	moved := false
+	for i, k in order do if i != k do moved = true
+	if !moved do return
+	active := f.tabs[clamp(f.active, 0, len(f.tabs) - 1)]
+	keys := make([]string, len(order), context.temp_allocator)
+	for i, k in order do keys[k] = f.tabs[i]
+	for key, k in keys {
+		f.tabs[k] = key
+		if key == active do f.active = k
+	}
+	workspace.changed(ws)
+}
+
 // The tab just submitted as a drag source, once the mouse leaves its bar up
 // or down: along the bar imgui reorders the tabs, and stops while a drag and
 // drop is under way.
@@ -686,12 +716,14 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 		bar_min := im.GetWindowPos()
 		bar_max := bar_min + im.GetWindowSize()
 		if im.BeginTabBar("##bar", {.Reorderable, .FittingPolicyShrink}) {
+			ids := make([]im.ID, len(f.tabs), context.temp_allocator)
 			for t := 0; t < len(f.tabs); t += 1 {
 				key := f.tabs[t]
 				inst := wnd.find(key) if _ws_closing(v, key) || key == maximize_key() else wnd.host_open(key, w.key)
 				label: cstring = wnd.title(inst) if inst != nil else fmt.ctprintf("%s %s###%s", icons.ICON_MD_WARNING, key, key)
 				open := true
 				selected := im.BeginTabItem(label, &open, {})
+				ids[t] = im.GetItemID()
 				if inst != nil do _ws_tab_drag(w, v, f.id, key, label, bar_min, bar_max)
 				if selected {
 					f.active = t
@@ -699,6 +731,7 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 				}
 				if !open do _ws_close_tab(v, key)
 			}
+			_ws_sync_tab_order(ws, f, ids)
 			im.EndTabBar()
 		}
 	}
@@ -1061,7 +1094,25 @@ _WS_ANCHORS := [?]struct {
 @(phase={key=core.Phase.EditorInit, order=1, mode=Editor})
 workspace_view_install :: proc() {
 	view_menu_add_dynamic(WORKSPACE_VIEW, "Mini-map", _ws_minimap_menu, order = 10)
+	view_menu_add_dynamic(WORKSPACE_VIEW, "Save In", _ws_save_in_menu, order = 5)
 	wnd.host_hook = _ws_host_hook
+}
+
+// The view menu's Save In submenu: the providers the shown workspace can
+// move to, the one holding it checked. It keeps its id, so this view and any
+// other goes on showing it.
+@(private = "file")
+_ws_save_in_menu :: proc(view: session.View) {
+	e, ok := workspace.find(workspace.view_selection(view.key))
+	if !ok {
+		im.TextDisabled("No workspace shown")
+		return
+	}
+	for p, i in workspace.providers() {
+		here := i == e.provider
+		label := strings.clone_to_cstring(p.name, context.temp_allocator)
+		if im.MenuItem(label, nil, here, here || workspace.can_move_to(e.ws, i)) && !here do workspace.move_to(e.ws, i)
+	}
 }
 
 @(private = "file")

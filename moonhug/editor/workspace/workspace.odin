@@ -50,13 +50,17 @@ CHAIN_SPACING :: f32(40)
 
 // Where workspaces live. `list` appends the workspaces it holds now, `save`
 // writes `ws` after a change, `create` makes a new empty one (nil when it
-// cannot, say with no scene open), `remove` deletes one.
+// cannot, say with no scene open), `remove` deletes one. `detach` lets one
+// go without freeing it and `adopt` takes one in, which move_to uses to save
+// a workspace somewhere else: nil when the provider cannot.
 Provider :: struct {
 	name:   string,
 	list:   proc(out: ^[dynamic]^Workspace),
 	save:   proc(ws: ^Workspace),
 	create: proc(name: string) -> ^Workspace,
 	remove: proc(ws: ^Workspace),
+	detach: proc(ws: ^Workspace),
+	adopt:  proc(ws: ^Workspace) -> bool,
 }
 
 @(private)
@@ -102,6 +106,30 @@ changed :: proc(ws: ^Workspace) {
 	if e, ok := find(ws.id); ok {
 		if p := _providers[e.provider]; p.save != nil do p.save(ws)
 	}
+}
+
+// Moves the workspace `ws` to the provider `to` (an index into providers),
+// keeping its id, name and frames: a Workspace view showing it goes on
+// showing it. False when it is there already, or a provider cannot.
+move_to :: proc(ws: ^Workspace, to: int) -> bool {
+	e, ok := find(ws.id)
+	if !ok || to < 0 || to >= len(_providers) || e.provider == to do return false
+	from, dst := _providers[e.provider], _providers[to]
+	if from.detach == nil || dst.adopt == nil do return false
+	from.detach(ws)
+	if !dst.adopt(ws) {
+		// Back where it was: a workspace never ends up in no provider.
+		if from.adopt == nil || !from.adopt(ws) do panic("workspace.move_to: neither provider holds the workspace")
+		return false
+	}
+	return true
+}
+
+// Whether the workspace `ws` can move to the provider `to`.
+can_move_to :: proc(ws: ^Workspace, to: int) -> bool {
+	e, ok := find(ws.id)
+	if !ok || to < 0 || to >= len(_providers) || e.provider == to do return false
+	return _providers[e.provider].detach != nil && _providers[to].adopt != nil
 }
 
 // A new workspace with a fresh id, for a provider's `create`.
@@ -391,6 +419,25 @@ _store_remove :: proc(s: ^_File_Store, ws: ^Workspace) {
 }
 
 @(private = "file")
+_store_detach :: proc(s: ^_File_Store, ws: ^Workspace) {
+	for w, i in s.list {
+		if w != ws do continue
+		ordered_remove(&s.list, i)
+		_store_save(s)
+		return
+	}
+}
+
+@(private = "file")
+_store_adopt :: proc(s: ^_File_Store, ws: ^Workspace) -> bool {
+	_store_load(s)
+	context.allocator = runtime.default_allocator()
+	append(&s.list, ws)
+	_store_save(s)
+	return true
+}
+
+@(private = "file")
 _store_list :: proc(s: ^_File_Store, out: ^[dynamic]^Workspace) {
 	_store_load(s)
 	for ws in s.list do append(out, ws)
@@ -405,6 +452,8 @@ _register_file_providers :: proc "contextless" () {
 		save   = proc(ws: ^Workspace) { _store_save(&_user) },
 		create = proc(name: string) -> ^Workspace { return _store_create(&_user, name) },
 		remove = proc(ws: ^Workspace) { _store_remove(&_user, ws) },
+		detach = proc(ws: ^Workspace) { _store_detach(&_user, ws) },
+		adopt  = proc(ws: ^Workspace) -> bool { return _store_adopt(&_user, ws) },
 	})
 	provider_add({
 		name   = "Project",
@@ -412,6 +461,8 @@ _register_file_providers :: proc "contextless" () {
 		save   = proc(ws: ^Workspace) { _store_save(&_project) },
 		create = proc(name: string) -> ^Workspace { return _store_create(&_project, name) },
 		remove = proc(ws: ^Workspace) { _store_remove(&_project, ws) },
+		detach = proc(ws: ^Workspace) { _store_detach(&_project, ws) },
+		adopt  = proc(ws: ^Workspace) -> bool { return _store_adopt(&_project, ws) },
 	})
 }
 

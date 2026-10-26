@@ -278,6 +278,7 @@ tab_menu_view_items :: proc(key: string) -> (close: bool) {
 	if view_menu_draw_items(view) {
 		im.Separator()
 	}
+	if im.MenuItem("Maximize", "Shift+Space", maximize_view_is(key)) do maximize_view(key)
 	return im.MenuItem("Close Tab")
 }
 

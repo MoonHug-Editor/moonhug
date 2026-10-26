@@ -16,6 +16,12 @@ _store: struct {
 	saves:      int,
 }
 
+// A second store, and a provider that takes nothing in, for moves.
+@(private = "file")
+_store_b: struct {
+	list: [dynamic]^workspace.Workspace,
+}
+
 @(private = "file")
 _provider_register :: proc() {
 	if _store.registered do return
@@ -36,7 +42,46 @@ _provider_register :: proc() {
 				return
 			}
 		},
+		detach = proc(ws: ^workspace.Workspace) {
+			for w, i in _store.list do if w == ws {
+				ordered_remove(&_store.list, i)
+				return
+			}
+		},
+		adopt  = proc(ws: ^workspace.Workspace) -> bool {
+			append(&_store.list, ws)
+			return true
+		},
 	})
+	workspace.provider_add({
+		name   = "Test B",
+		list   = proc(out: ^[dynamic]^workspace.Workspace) { for ws in _store_b.list do append(out, ws) },
+		save   = proc(ws: ^workspace.Workspace) {},
+		remove = proc(ws: ^workspace.Workspace) {
+			for w, i in _store_b.list do if w == ws {
+				ordered_remove(&_store_b.list, i)
+				workspace.workspace_free(ws)
+				return
+			}
+		},
+		detach = proc(ws: ^workspace.Workspace) {
+			for w, i in _store_b.list do if w == ws {
+				ordered_remove(&_store_b.list, i)
+				return
+			}
+		},
+		adopt  = proc(ws: ^workspace.Workspace) -> bool {
+			append(&_store_b.list, ws)
+			return true
+		},
+	})
+	workspace.provider_add({name = "Test Fixed", list = proc(out: ^[dynamic]^workspace.Workspace) {}})
+}
+
+@(private = "file")
+_provider_index :: proc(name: string) -> int {
+	for p, i in workspace.providers() do if p.name == name do return i
+	return -1
 }
 
 @(test)
@@ -190,4 +235,33 @@ test_workspace_sibling_move :: proc(t: ^testing.T) {
 	case d: y[2] = f.rect.y
 	}
 	testing.expect_value(t, y, [3]f32{0, 60 + workspace.CHAIN_ROW_GAP, 60 + 40 + 2 * workspace.CHAIN_ROW_GAP})
+}
+
+// Save In: a workspace moves to another provider with its id, name and
+// frames, so a Workspace view showing it goes on showing it. A provider that
+// takes nothing in is refused, and the workspace stays where it was.
+@(test)
+test_workspace_moves_between_providers :: proc(t: ^testing.T) {
+	_provider_register()
+	defer {
+		delete(_store.list)
+		_store.list = nil
+		delete(_store_b.list)
+		_store_b.list = nil
+	}
+	a, b, fixed := _provider_index("Test"), _provider_index("Test B"), _provider_index("Test Fixed")
+	ws := workspace.providers()[a].create("Moving")
+	id := ws.id
+	workspace.frame_add(ws, "Console/2", {0, 0, 300, 200})
+	testing.expect(t, workspace.can_move_to(ws, b), "it can move to B")
+	testing.expect(t, !workspace.can_move_to(ws, a), "it is in A already")
+	testing.expect(t, !workspace.can_move_to(ws, fixed), "that provider takes nothing in")
+	testing.expect(t, !workspace.move_to(ws, fixed), "a refused move does nothing")
+
+	testing.expect(t, workspace.move_to(ws, b), "it moves to B")
+	e, ok := workspace.find(id)
+	testing.expect(t, ok && e.ws == ws && workspace.providers()[e.provider].name == "Test B", "found by its id, in B")
+	testing.expect(t, len(ws.frames) == 1 && ws.name == "Moving", "with its frames and name")
+	testing.expect(t, len(_store.list) == 0 && len(_store_b.list) == 1, "A let it go, B holds it")
+	workspace.providers()[b].remove(ws)
 }

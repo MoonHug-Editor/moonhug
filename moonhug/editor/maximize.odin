@@ -1,12 +1,15 @@
 package editor
 
-// Maximize View (Window menu, Shift+Space): the view under the mouse fills
-// the dockspace's area, and the same shortcut puts it back where it was. The
-// dock layout stays as it is:
+// Maximize (Shift+Space, and Maximize in a view's tab menu): the view under
+// the mouse, or the one whose tab menu it is, fills the dockspace's area, and
+// the same shortcut or menu item puts it back where it was. No main menu item:
+// a menu is clicked with the mouse away from every view. The dock layout
+// stays as it is:
 // - The main dockspace keeps its nodes but shows nothing (KeepAliveOnly), so
 //   every docked view hides and stays docked.
 // - The view docks into a second dockspace over the same area, which gives it
-//   its tab, its tab-bar widgets and its ⋮ menu (tab_menu_draw_all).
+//   its tab, and tab_menu_draw_floating gives it its tab-bar widgets and its
+//   ⋮ menu, as it does every dock tree but the main one.
 // - A hidden placeholder holds the node the view left: imgui deletes a node
 //   when its last window leaves, and the split would close. Back in its node,
 //   the view takes its tab's place again and the placeholder leaves.
@@ -35,7 +38,7 @@ _max: struct {
 	// that frame's views, Focus at the frame after.
 	state:      enum {None, Enter, On, Leave, Unplace, Focus},
 	name:       cstring, // owned, "###<key>": the view's imgui window by its id, whatever its label shows
-	key:        string,  // owned, its window instance key, "" for the Game view
+	key:        string,  // owned, its view key (_MAX_GAME for the Game view)
 	node:       im.ID,   // the dock node it left, 0 for a frame's view
 	host:       string,  // owned, the Workspace view whose frame it left, "" for a docked view
 	tab:        int,     // its tab's place in that node, -1 for unknown
@@ -45,17 +48,49 @@ _max: struct {
 	ini:        cstring, // io.IniFilename while saving is paused
 }
 
-@(menu_item={path="Window/Maximize View", order=19, shortcut="Shift+Space", checked=maximize_is_on})
-maximize_toggle :: proc() {
+// The Game view's key: it is no registered window.
+@(private = "file")
+_MAX_GAME :: "Game"
+
+// Shift+Space, every frame from the main loop: puts the maximized view back,
+// or maximizes the view under the mouse.
+maximize_shortcut :: proc() {
+	if !im.Shortcut(im.KeyChord(im.Key.ImGuiMod_Shift) | im.KeyChord(im.Key.Space), {.RouteGlobal}) do return
+	if _max.state == .On {
+		_max.state = .Leave
+		return
+	}
+	if key, ok := _max_hovered_view(); ok do maximize_view(key)
+}
+
+// Whether the view `key` is the one maximized: its tab menu's Maximize is
+// checked.
+maximize_view_is :: proc(key: string) -> bool {
+	return maximize_is_on() && _max.key == key
+}
+
+// Maximizes the view `key` (_MAX_GAME for the Game view), or puts it back
+// when it is the one maximized.
+maximize_view :: proc(key: string) {
 	#partial switch _max.state {
 	case .On:
-		_max.state = .Leave
+		if _max.key == key do _max.state = .Leave
 	case .None:
-		name, key, dock, ok := _max_hovered_view()
-		if !ok do return
-		if w := wnd.find(key); w != nil && w.host != "" {
+		name: string
+		dock: im.ID
+		host: string
+		if key == _MAX_GAME {
+			if !menu.show_game do return
+			name, dock = string(icons.TITLE_GAME), game_view_hover.dock
+		} else {
+			w := wnd.find(key)
+			if w == nil do return
+			name, dock, host = fmt.tprintf("###%s", key), w.dock, w.host
+		}
+		if host != "" {
 			// A frame's view: a window of its own until it goes back.
-			_max.host = strings.clone(w.host, runtime.default_allocator())
+			w := wnd.find(key)
+			_max.host = strings.clone(host, runtime.default_allocator())
 			wnd.host_release(w)
 			w.placed = true
 		} else {
@@ -107,7 +142,8 @@ maximize_frame :: proc(pos, size: im.Vec2) {
 		_max.state = .On
 	case .On:
 		// A closed view puts the layout back.
-		if (_max.key != "" && wnd.find(_max.key) == nil) || (_max.key == "" && !menu.show_game) {
+		game := _max.key == _MAX_GAME
+		if (!game && wnd.find(_max.key) == nil) || (game && !menu.show_game) {
 			_max.state = .Leave
 			_max_restore()
 			return
@@ -179,8 +215,9 @@ _max_space :: proc(pos, size: im.Vec2) -> im.ID {
 	flags := im.WindowFlags{.NoTitleBar, .NoResize, .NoMove, .NoScrollbar, .NoCollapse, .NoNavFocus, .NoDocking, .NoSavedSettings}
 	if im.Begin("##MaximizeHost", nil, flags) {
 		id = im.GetID("MaximizeSpace")
+		// Its tab menu and tab-bar widgets come from tab_menu_draw_floating,
+		// which covers every dock tree but the main one.
 		im.DockSpace(id, {0, 0}, {.NoDockingSplit, .NoUndocking}, nil)
-		tab_menu_draw_all(im.DockBuilderGetNode(id))
 	}
 	im.End()
 	return id
@@ -196,15 +233,10 @@ _max_tab_index :: proc(node: ^im.DockNode, name: cstring) -> int {
 	return -1
 }
 
-// The view under the mouse: its imgui window name, its instance key ("" for
-// the Game view) and its dock node.
+// The key of the view under the mouse (_MAX_GAME for the Game view).
 @(private = "file")
-_max_hovered_view :: proc() -> (name, key: string, dock: im.ID, ok: bool) {
-	if w := wnd.hovered(); w != nil && (w.dock != 0 || w.host != "") {
-		return fmt.tprintf("###%s", w.key), w.key, w.dock, true
-	}
-	if game_view_hover.frame >= im.GetFrameCount() - 1 && game_view_hover.dock != 0 {
-		return string(icons.TITLE_GAME), "", game_view_hover.dock, true
-	}
+_max_hovered_view :: proc() -> (key: string, ok: bool) {
+	if w := wnd.hovered(); w != nil && (w.dock != 0 || w.host != "") do return w.key, true
+	if game_view_hover.frame >= im.GetFrameCount() - 1 && game_view_hover.dock != 0 do return _MAX_GAME, true
 	return
 }

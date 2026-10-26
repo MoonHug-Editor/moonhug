@@ -295,8 +295,8 @@ _draw_game_toolbar :: proc(area: im.Vec2) {
 	widgets.tooltip("Render statistics over the last 60 frames")
 }
 
-// The Game view under the mouse: the imgui frame it was and its dock node.
-// Maximize View acts on it (maximize.odin).
+// The imgui frame the Game view was last under the mouse, and its dock node.
+// Maximize acts on it (maximize.odin).
 game_view_hover: struct {
 	frame: i32,
 	dock:  im.ID,
@@ -309,7 +309,8 @@ draw_game_view :: proc() {
 	open := im.Begin(icons.TITLE_GAME, &menu.show_game, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse})
 	im.PopStyleVar()
 	if open {
-		if im.IsWindowHovered(im.HoveredFlags_ChildWindows) do game_view_hover = {im.GetFrameCount(), im.GetWindowDockID()}
+		game_view_hover.dock = im.GetWindowDockID()
+		if im.IsWindowHovered(im.HoveredFlags_ChildWindows) do game_view_hover.frame = im.GetFrameCount()
 		content_min := im.GetCursorScreenPos()
 		full := im.GetContentRegionAvail()
 

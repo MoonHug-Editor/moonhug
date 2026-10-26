@@ -241,6 +241,7 @@ main :: proc() {
         draw_dockspace()
 
         _process_undo_shortcuts()
+        maximize_shortcut()
         _process_simulate_shortcuts()
 
         // A Play requested LAST frame starts here: the frame in between let

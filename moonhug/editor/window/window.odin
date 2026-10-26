@@ -196,7 +196,7 @@ open :: proc(id: string, asset := core.Asset_GUID{}) -> ^Window {
 }
 
 // The open instance under the mouse this frame or the last, nil for none: its
-// content, not its tab. Maximize View acts on it.
+// content, not its tab. Maximize acts on it (maximize.odin).
 hovered :: proc() -> ^Window {
 	if _hovered == nil || _hovered_frame < im.GetFrameCount() - 1 do return nil
 	for w in _windows do if w == _hovered && w.open do return w
