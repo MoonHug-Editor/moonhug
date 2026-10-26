@@ -1219,7 +1219,10 @@
       },
       "convex": true,
       "density": 3.8299999200000001,
-      "hull_set": 3737427108111913568,
+      "hulls": {
+        "guid": "eb28d9ed-803a-446b-bc76-1ff01e138527",
+        "local_id": 3737427108111913568
+      },
       "is_trigger": false,
       "layer_overrides": {
         "exclude": 0,
@@ -1290,7 +1293,10 @@
       },
       "convex": true,
       "density": 4.0999999000000003,
-      "hull_set": 0,
+      "hulls": {
+        "guid": "00000000-0000-0000-0000-000000000000",
+        "local_id": 0
+      },
       "is_trigger": false,
       "layer_overrides": {
         "exclude": 0,

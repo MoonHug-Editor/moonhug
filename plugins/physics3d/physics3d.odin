@@ -509,12 +509,12 @@ _sync_mesh_colliders :: proc(w: ^engine.World) {
 		if !has do continue
 		// A convex decomposition has its hulls and needs no geometry. It must
 		// be of the collider's mesh: the hulls are in that mesh's space.
-		is_set := c.convex && c.hull_set != 0
+		is_set := c.convex && c.hulls.local_id != 0
 		if is_set {
-			set, found := engine.mesh_hull_set_of(engine.PPtr{guid = ref.guid, local_id = c.hull_set})
-			if !found {
+			set, found := engine.mesh_hull_set_of(c.hulls)
+			if !found || c.hulls.guid != ref.guid {
 				c.build_failed = true
-				log.errorf("[Physics3D] MeshCollider on %q: its model has no convex decomposition %d any more, pick another in Hulls", _owner_name(w, c.owner), c.hull_set)
+				log.errorf("[Physics3D] MeshCollider on %q: its model has no convex decomposition %d any more, pick another in Hulls", _owner_name(w, c.owner), c.hulls.local_id)
 				continue
 			}
 			if set.part != ref.local_id {
@@ -538,7 +538,7 @@ _sync_mesh_colliders :: proc(w: ^engine.World) {
 		if !ok do continue
 		def := _shape_def(c.density, c.material, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 		if is_set {
-			hulls, state := mesh_hulls(ref.guid, c.hull_set)
+			hulls, state := mesh_hulls(c.hulls.guid, c.hulls.local_id)
 			if state == .Pending {
 				// The editor is still computing it: the world waits, so the
 				// body never falls without its collider.

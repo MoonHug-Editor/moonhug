@@ -103,7 +103,7 @@ physics3d_decomposition_carries_a_u :: proc(t: ^testing.T) {
 	mc := cast(^physics3d.MeshCollider)mc_ptr
 	mc.mesh = engine.PPtr{guid = guid}
 	mc.convex = true
-	mc.hull_set = _SET_A
+	mc.hulls = engine.PPtr{guid = guid, local_id = _SET_A}
 	// The set is also a sub-asset of the model.
 	_, is_set := engine.mesh_hull_set_of(engine.PPtr{guid = guid, local_id = _SET_A})
 	testing.expect(t, is_set, "a reference to the set names a convex decomposition")
@@ -147,7 +147,7 @@ physics3d_decomposition_carries_a_u :: proc(t: ^testing.T) {
 	mc2 := cast(^physics3d.MeshCollider)mc2_ptr
 	mc2.mesh = engine.PPtr{guid = guid, local_id = parts[0].id}
 	mc2.convex = true
-	mc2.hull_set = _SET_A
+	mc2.hulls = engine.PPtr{guid = guid, local_id = _SET_A}
 	physics3d.physics_step(1.0 / 60.0)
 	testing.expect(t, mc2.build_failed, "a set of another mesh fails the build")
 }

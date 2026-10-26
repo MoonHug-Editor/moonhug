@@ -270,6 +270,39 @@ _artifact_key_path :: proc(key: string, allocator := context.allocator) -> strin
     return fmt.aprintf("%s/%s/%s.bin", artifacts_dir(), key[:2], key, allocator = allocator)
 }
 
+// "<artifact minus .bin>_s<id>.bin": the file of ONE sub-asset, named by the
+// local id a reference to it carries (PPtr{guid, id}). An export ships it
+// only when a reference names that id (moonhug:libs/catalog,
+// docs/core/AssetPipeline.md "Sub-asset files"), so it holds only what that
+// sub-asset needs. Data several sub-assets share stays in the main artifact.
+// Id 0 means no local id: the asset itself, whose data is the main artifact.
+artifact_sub_path :: proc(artifact_path: string, id: core.Local_ID, allocator := context.allocator) -> string {
+    assert(id != 0, "local id 0 names the asset itself, which has no sub-asset file")
+    return fmt.aprintf("%s_s%d.bin", strings.trim_suffix(artifact_path, ".bin"), id, allocator = allocator)
+}
+
+// The main artifact and every fan-out file beside it (<key>_<suffix>.bin),
+// main first. The import driver moves them together.
+artifact_files :: proc(artifact_path: string, allocator := context.allocator) -> []string {
+    out := make([dynamic]string, allocator)
+    append(&out, strings.clone(artifact_path, allocator))
+    prefix := strings.concatenate({strings.trim_suffix(filepath.base(artifact_path), ".bin"), "_"}, context.temp_allocator)
+    dir: string
+    {
+        context.allocator = context.temp_allocator
+        dir = filepath.dir(artifact_path)
+    }
+    handle, err := os.open(dir)
+    if err != nil do return out[:]
+    defer os.close(handle)
+    entries, _ := os.read_dir(handle, -1, context.temp_allocator)
+    for e in entries {
+        if !strings.has_prefix(e.name, prefix) || !strings.has_suffix(e.name, ".bin") do continue
+        append(&out, strings.concatenate({dir, "/", e.name}, allocator))
+    }
+    return out[:]
+}
+
 _ensure_artifact_dir :: proc(artifact_path: string) {
     // Create every missing segment — os.make_directory is non-recursive, so a
     // bare "library/artifacts" fails outright when "library" itself is absent
@@ -285,8 +318,8 @@ _ensure_artifact_dir :: proc(artifact_path: string) {
 // Garbage collection: an artifact file no index entry references is dead —
 // delete it. Files sitting directly in Artifacts/ predate the fan-out layout
 // and are never referenced, so they collect the same way. Fan-out files
-// ("<key>_m<i>.bin" mesh parts, "<key>_a<i>.bin" baked clips) live and die
-// with their primary key.
+// ("<key>_<suffix>.bin": sub-asset files such as mesh parts and baked clips)
+// live and die with their primary key.
 _cleanup_stale_artifacts :: proc() {
     referenced := make(map[string]bool, len(_artifact_index), context.temp_allocator)
     for _, e in _artifact_index {
@@ -313,7 +346,7 @@ _cleanup_stale_artifacts :: proc() {
             // Keys are hex digests and never contain '_', so anything after
             // one is a fan-out suffix, whichever kind. Matching a named suffix
             // instead is what deleted every baked clip at startup, since only
-            // "_m" was known.
+            // the mesh part suffix was known.
             if i := strings.index_byte(key, '_'); i >= 0 {
                 key = key[:i]
             }

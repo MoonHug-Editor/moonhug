@@ -159,7 +159,7 @@ mesh_parts :: proc(guid: Asset_GUID) -> []Mesh_Part {
     return out
 }
 
-// Resolves a part id to its FILE-ORDER index (the _m<i>.bin artifact).
+// Resolves a part id to its FILE-ORDER index, the glTF mesh it is (Mesh_Key.part - 1).
 mesh_part_index :: proc(guid: Asset_GUID, id: Local_ID) -> (i32, bool) {
     for p, i in mesh_parts(guid) {
         if p.id == id do return i32(i), true
@@ -251,8 +251,9 @@ mesh_new_sub_id :: proc(guid: Asset_GUID, taken: []Local_ID = nil) -> Local_ID {
     }
 }
 
-// Resolves a clip id to its FILE-ORDER index (the _a<i>.bin artifact). Orphans
-// have no artifact and sit after every real clip, so they never resolve.
+// Resolves a clip id to its position in the model's clip list: real clips in
+// glTF file order, orphans after. Orphans have no artifact, so they never
+// resolve.
 mesh_clip_index :: proc(guid: Asset_GUID, id: Local_ID) -> (i32, bool) {
     for c, i in mesh_clips(guid) {
         if c.id == id do return i32(i), !c.orphan
@@ -325,6 +326,16 @@ mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
     return &mesh_cache[key], true
 }
 
+// The file of a part: the whole model's artifact for part 0, else the part's
+// own file, named by its id. ok=false when the model lists no such part.
+@(private = "file")
+_mesh_part_file :: proc(whole: string, key: Mesh_Key) -> (string, bool) {
+    if key.part == 0 do return whole, true
+    parts := mesh_parts(key.guid)
+    if int(key.part) > len(parts) do return "", false
+    return artifact_sub_path(whole, parts[key.part - 1].id, context.temp_allocator), true
+}
+
 // The artifact of one part, read and parsed. The slices point into `blob`,
 // temp-allocated. A missing or stale artifact (fresh clone, cleaned library,
 // format bump) is imported from source and read once more, and every failure
@@ -333,17 +344,16 @@ mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
 _mesh_artifact_read :: proc(key: Mesh_Key) -> (blob: []byte, header: Mesh_Artifact_Header, vertices: []gfx.Vertex, indices: []u32, submeshes: []Mesh_Submesh, ok: bool) {
     whole := _artifact_path(uuid.Identifier(key.guid))
     defer delete(whole)
-    artifact := whole
-    if key.part > 0 {
-        artifact = mesh_part_artifact_path(whole, int(key.part - 1), context.temp_allocator)
-    }
+    artifact, part_ok := _mesh_part_file(whole, key)
 
     read_err: os.Error
-    blob, read_err = os.read_entire_file(artifact, context.temp_allocator)
-    if read_err == nil {
-        header, vertices, indices, submeshes, ok = _mesh_artifact_parse(blob)
+    if part_ok {
+        blob, read_err = os.read_entire_file(artifact, context.temp_allocator)
+        if read_err == nil {
+            header, vertices, indices, submeshes, ok = _mesh_artifact_parse(blob)
+        }
+        if ok do return
     }
-    if ok do return
 
     source_path, path_ok := asset_db_get_path(uuid.Identifier(key.guid))
     if !path_ok {
@@ -357,9 +367,11 @@ _mesh_artifact_read :: proc(key: Mesh_Key) -> (blob: []byte, header: Mesh_Artifa
     // The import gave the asset its artifact, so its path is known only now.
     delete(whole)
     whole = _artifact_path(uuid.Identifier(key.guid))
-    artifact = whole
-    if key.part > 0 {
-        artifact = mesh_part_artifact_path(whole, int(key.part - 1), context.temp_allocator)
+    artifact, part_ok = _mesh_part_file(whole, key)
+    if !part_ok {
+        log.errorf("[Mesh] %v has no part %d after re-import", key.guid, key.part)
+        _mesh_failed[key] = true
+        return
     }
     blob, read_err = os.read_entire_file(artifact, context.temp_allocator)
     if read_err != nil {

@@ -128,8 +128,9 @@ cleanup_CapsuleCollider :: proc(comp: ^CapsuleCollider) {
 // `convex` builds the convex hull of the vertices, reduced to the most box3d
 // holds (HULL_MAX_VERTICES): the shape a Rigidbody can carry. A convex
 // collider can take one of its model's convex decompositions for that mesh
-// instead (`hull_set`, an engine.Mesh_Hull_Set id, mesh_hulls.odin): several
-// hulls that follow a concave shape, one hull shape each. Not convex, the
+// instead (`hulls`, PPtr{model guid, engine.Mesh_Hull_Set id}, mesh_hulls.odin):
+// several hulls that follow a concave shape, one hull shape each. The set
+// must be of the collider's mesh, since the hulls are in that mesh's space. Not convex, the
 // triangles collide as they are, which box3d allows on a static body only,
 // so it needs no Rigidbody above it. Transform scale applies per axis.
 @(component={menu="Physics/MeshCollider"})
@@ -138,7 +139,7 @@ MeshCollider :: struct {
 	using base:  engine.CompData `inspect:"-"`,
 	// Drawn by the editor as the Mesh row and the Hulls dropdown.
 	mesh:        engine.PPtr `inspect:"-"`,
-	hull_set:    engine.Local_ID `inspect:"-"`,
+	hulls:       engine.PPtr `inspect:"-"`,
 	convex:      bool `decor:tooltip(desc="Collide as a convex shape, the only kind a Rigidbody can carry: the convex hull of the mesh, or one of its model's convex decompositions picked in Hulls. Off, the triangles collide as they are, on a collider without a Rigidbody only.")`,
 	density:     f32 `decor:tooltip(desc="Weight of this collider against the others on the same Rigidbody, in kilograms per cubic metre. The Rigidbody's Mass is the total: density shares it among its colliders, which places the center of mass and sets how the body turns. No effect with one collider or without a Rigidbody.")`,
 	// How the surface slides and bounces (physics_material.odin). Unset is a

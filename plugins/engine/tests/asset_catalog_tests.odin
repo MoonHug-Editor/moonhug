@@ -248,14 +248,13 @@ test_asset_catalog_export_ships_dependency_closure :: proc(t: ^testing.T) {
 	testing.expect(t, !os.exists(unused_artifact), "unreferenced asset ships nothing")
 }
 
-// A model's clips ship only when referenced: a scene that plays one clip of
-// a three-clip model, and shows one of its mesh parts, ships that clip's
-// fan-out and every mesh part, and leaves the other two clips out. A bare
-// reference to the model uses it whole, so every clip ships. Synthetic
-// catalog and artifacts, no import: the rule is the export's alone.
+// Sub-asset files (<key>_s<id>.bin) ship only when a reference names their
+// id, the main artifact only when a reference names the asset itself or an
+// id with no file of its own, and an asset used whole ships everything.
+// Synthetic catalog and artifacts, no import: the rule is the export's alone.
 @(test)
-test_asset_catalog_export_ships_only_referenced_clips :: proc(t: ^testing.T) {
-	src_dir :: "moonhug/tests/fixtures/_catalog_clips_tmp"
+test_asset_catalog_export_ships_used_sub_asset_files :: proc(t: ^testing.T) {
+	src_dir :: "moonhug/tests/fixtures/_catalog_subs_tmp"
 	lib :: src_dir + "/library"
 	data_dir :: src_dir + "_data"
 	defer {
@@ -264,57 +263,75 @@ test_asset_catalog_export_ships_only_referenced_clips :: proc(t: ^testing.T) {
 	}
 
 	MODEL :: "11111111-2222-4333-8444-555555555555"
-	CLIP_SCENE :: "22222222-2222-4333-8444-555555555555"
-	BARE_SCENE :: "33333333-2222-4333-8444-555555555555"
-	KEY :: "ab0123456789abcdef0123456789abcd"
-	model := src_dir + "/model.glb"
-	clip_scene := src_dir + "/clip.scene"
-	bare_scene := src_dir + "/bare.scene"
+	TEXTURE :: "22222222-2222-4333-8444-555555555555"
+	RES_MODEL :: "33333333-2222-4333-8444-555555555555"
+	MODEL_KEY :: "ab0123456789abcdef0123456789abcd"
+	TEXTURE_KEY :: "cd0123456789abcdef0123456789abcd"
+	RES_KEY :: "ef0123456789abcdef0123456789abcd"
 
-	catalog.ensure_parent_dirs(model)
-	testing.expect(t, os.write_entire_file(model, transmute([]byte)string("glb")) == nil)
-	// The clip with id 6 is the second in the model's list, so its file is _a1.
-	// Pretty-printed the way scenes are, the mesh part compact the way settings are.
-	clip_text := `{"clip": {
-  "guid": "` + MODEL + `",
-  "local_id": 6
-}, "mesh": {"guid":"` + MODEL + `","local_id":1}}`
-	testing.expect(t, os.write_entire_file(clip_scene, transmute([]byte)clip_text) == nil)
-	testing.expect(t, os.write_entire_file(bare_scene, transmute([]byte)string(`{"model": "` + MODEL + `"}`)) == nil)
-
-	artifact := lib + "/artifacts/ab/" + KEY + ".bin"
+	// A model with a part (1), three clips (5, 6, 7), a convex decomposition
+	// (900) and one shared fan-out file. A texture whose slices have no files.
 	files := [?]string{
-		artifact,
-		engine.mesh_part_artifact_path(artifact, 0, context.temp_allocator),
-		engine.mesh_clip_artifact_path(artifact, 0, context.temp_allocator),
-		engine.mesh_clip_artifact_path(artifact, 1, context.temp_allocator),
-		engine.mesh_clip_artifact_path(artifact, 2, context.temp_allocator),
+		"ab/" + MODEL_KEY + ".bin", "ab/" + MODEL_KEY + "_s1.bin", "ab/" + MODEL_KEY + "_s5.bin",
+		"ab/" + MODEL_KEY + "_s6.bin", "ab/" + MODEL_KEY + "_s7.bin", "ab/" + MODEL_KEY + "_s900.bin",
+		"ab/" + MODEL_KEY + "_shared.bin",
+		"cd/" + TEXTURE_KEY + ".bin",
+		"ef/" + RES_KEY + ".bin", "ef/" + RES_KEY + "_s1.bin", "ef/" + RES_KEY + "_s2.bin",
 	}
 	for f in files {
+		path := strings.concatenate({lib, "/artifacts/", f}, context.temp_allocator)
+		catalog.ensure_parent_dirs(path)
+		testing.expect(t, os.write_entire_file(path, transmute([]byte)string("bin")) == nil)
+	}
+	sources := [?]string{src_dir + "/model.glb", src_dir + "/tex.png", src_dir + "/resources/res.glb"}
+	for f in sources {
 		catalog.ensure_parent_dirs(f)
-		testing.expect(t, os.write_entire_file(f, transmute([]byte)string("bin")) == nil)
+		testing.expect(t, os.write_entire_file(f, transmute([]byte)string("src")) == nil)
 	}
 
 	cf := catalog.File{version = catalog.VERSION}
 	cf.assets = make(map[string]catalog.Entry, context.temp_allocator)
-	cf.assets[MODEL] = {path = model, artifact = KEY, settings = `{"clips":[{"id":5,"name":"A"},{"id":6,"name":"B"},{"id":7,"name":"C"}],"parts":[{"id":1,"name":"Body"}]}`}
-	cf.assets[CLIP_SCENE] = {path = clip_scene}
-	cf.assets[BARE_SCENE] = {path = bare_scene}
+	cf.assets[MODEL] = {path = sources[0], artifact = MODEL_KEY}
+	cf.assets[TEXTURE] = {path = sources[1], artifact = TEXTURE_KEY}
+	cf.assets[RES_MODEL] = {path = sources[2], artifact = RES_KEY}
 
-	shipped :: proc(data_dir, name: string) -> bool {
-		return os.exists(strings.concatenate({data_dir, "/artifacts/ab/", name}, context.temp_allocator))
+	// Each scene is a boot scene of its own export.
+	scene :: proc(cf: ^catalog.File, guid, path, text: string) {
+		catalog.ensure_parent_dirs(path)
+		_ = os.write_entire_file(path, transmute([]byte)text)
+		cf.assets[guid] = {path = path}
+	}
+	shipped :: proc(data_dir, dir, name: string) -> bool {
+		return os.exists(strings.concatenate({data_dir, "/artifacts/", dir, "/", name}, context.temp_allocator))
 	}
 
-	testing.expect(t, catalog.export(&cf, lib, data_dir, boot_scene = clip_scene), "export from the clip scene")
-	testing.expect(t, shipped(data_dir, KEY + ".bin"), "the model's artifact ships")
-	testing.expect(t, shipped(data_dir, KEY + "_m0.bin"), "mesh parts ship")
-	testing.expect(t, shipped(data_dir, KEY + "_a1.bin"), "the referenced clip ships")
-	testing.expect(t, !shipped(data_dir, KEY + "_a0.bin"), "an unreferenced clip does not ship")
-	testing.expect(t, !shipped(data_dir, KEY + "_a2.bin"), "an unreferenced clip does not ship")
+	// Sub-assets only: a clip pretty-printed with the guid first, the part
+	// compact, the set with its local id first, a slice of the texture.
+	subs := src_dir + "/subs.scene"
+	scene(&cf, "44444444-2222-4333-8444-555555555555", subs, `{"clip": {
+  "guid": "` + MODEL + `",
+  "local_id": 6
+}, "mesh": {"guid":"` + MODEL + `","local_id":1}, "hulls": {"local_id": 900, "guid": "` + MODEL + `"},
+"sprite": {"guid": "` + TEXTURE + `", "local_id": 42}}`)
+	testing.expect(t, catalog.export(&cf, lib, data_dir, boot_scene = subs), "export the sub-asset scene")
+	testing.expect(t, shipped(data_dir, "ab", MODEL_KEY + "_s1.bin"), "the referenced part ships")
+	testing.expect(t, shipped(data_dir, "ab", MODEL_KEY + "_s6.bin"), "the referenced clip ships")
+	testing.expect(t, shipped(data_dir, "ab", MODEL_KEY + "_s900.bin"), "the referenced set ships, local id written first")
+	testing.expect(t, !shipped(data_dir, "ab", MODEL_KEY + "_s5.bin"), "an unreferenced clip does not ship")
+	testing.expect(t, !shipped(data_dir, "ab", MODEL_KEY + "_s7.bin"), "an unreferenced clip does not ship")
+	testing.expect(t, !shipped(data_dir, "ab", MODEL_KEY + ".bin"), "the whole model does not ship when only its sub-assets are used")
+	testing.expect(t, shipped(data_dir, "ab", MODEL_KEY + "_shared.bin"), "a fan-out without the sub-asset marker always ships")
+	testing.expect(t, shipped(data_dir, "cd", TEXTURE_KEY + ".bin"), "a slice has no file of its own, so its texture ships")
+	testing.expect(t, shipped(data_dir, "ef", RES_KEY + "_s1.bin") && shipped(data_dir, "ef", RES_KEY + "_s2.bin") && shipped(data_dir, "ef", RES_KEY + ".bin"), "an asset under resources ships whole")
 
-	testing.expect(t, catalog.export(&cf, lib, data_dir, boot_scene = bare_scene), "export from the bare scene")
-	for name in ([]string{KEY + "_a0.bin", KEY + "_a1.bin", KEY + "_a2.bin"}) {
-		testing.expect(t, shipped(data_dir, name), "a model referenced whole ships every clip")
+	// The asset itself: a PPtr with id 0, and a guid that is no PPtr's even
+	// with a "local_id" key after it.
+	itself := src_dir + "/itself.scene"
+	scene(&cf, "55555555-2222-4333-8444-555555555555", itself, `{"mesh": {"guid": "` + MODEL + `", "local_id": 0}, "model": "` + MODEL + `", "local_id": 5}`)
+	testing.expect(t, catalog.export(&cf, lib, data_dir, boot_scene = itself), "export the whole-model scene")
+	testing.expect(t, shipped(data_dir, "ab", MODEL_KEY + ".bin"), "a reference with no local id ships the main artifact")
+	for name in ([]string{MODEL_KEY + "_s1.bin", MODEL_KEY + "_s5.bin", MODEL_KEY + "_s6.bin", MODEL_KEY + "_s7.bin", MODEL_KEY + "_s900.bin"}) {
+		testing.expect(t, !shipped(data_dir, "ab", name), "the asset itself ships no sub-asset file")
 	}
 }
 

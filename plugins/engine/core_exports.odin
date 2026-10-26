@@ -265,6 +265,8 @@ artifacts_dir                     :: assets.artifacts_dir
 asset_pipeline_get_settings       :: assets.asset_pipeline_get_settings
 asset_pipeline_artifact_key       :: assets.asset_pipeline_artifact_key
 asset_pipeline_artifact_path      :: assets.asset_pipeline_artifact_path
+artifact_sub_path                 :: assets.artifact_sub_path
+artifact_files                    :: assets.artifact_files
 asset_pipeline_add_reimport_hook  :: assets.asset_pipeline_add_reimport_hook
 asset_pipeline_set_import_request :: assets.asset_pipeline_set_import_request
 asset_pipeline_request_import     :: assets.asset_pipeline_request_import

@@ -24,14 +24,14 @@ _MESH_TMP :: "moonhug/tests/fixtures/_mesh_import_tmp"
 test_mesh_import_cube_glb :: proc(t: ^testing.T) {
 	artifact := _MESH_TMP + "/cube_test.bin"
 	defer _remove_tree(_MESH_TMP)
-	part0 := engine.mesh_part_artifact_path(artifact, 0, context.temp_allocator)
+	// A bare import mints the first mesh's part id as 1, the file's name.
+	part0 := engine.artifact_sub_path(artifact, 1, context.temp_allocator)
 
 	ok := importers._import_mesh(CUBE_GLB, artifact, nil)
 	testing.expect(t, ok, "cube.glb import failed")
 
-	// Import also writes one node-local PART artifact per glTF mesh
-	// (MeshFilter.part = index + 1). The single-mesh cube's part matches the
-	// whole model.
+	// Import also writes one node-local PART artifact per glTF mesh, named by
+	// its part id. The single-mesh cube's part matches the whole model.
 	part_blob, part_err := os.read_entire_file(part0, context.temp_allocator)
 	testing.expect(t, part_err == nil, "part artifact not written")
 	if part_err == nil {

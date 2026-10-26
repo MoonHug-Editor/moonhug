@@ -51,8 +51,8 @@ draw_mesh_collider_wires :: proc(c: ^MeshCollider, color: [4]f32) {
 	if !has do return
 	gizmos.with_color(color)
 	gizmos.in_local_space(c.owner)
-	if c.convex && c.hull_set != 0 {
-		for e in _hull_wire(engine.PPtr{guid = ref.guid, local_id = c.hull_set}, nil) do gizmos.line(e[0], e[1])
+	if c.convex && c.hulls.local_id != 0 {
+		for e in _hull_wire(c.hulls, nil) do gizmos.line(e[0], e[1])
 		return
 	}
 	geom, ok := engine.mesh_geometry_of(ref)

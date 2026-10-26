@@ -2,11 +2,13 @@ package engine
 
 // glTF mesh importer (plugins/engine/docs/SDL3Renderer.md #5, plugins/engine/docs/Meshes.md). One import
 // writes:
-// - the WHOLE-MODEL artifact (<guid>.bin): every node's world transform baked
-//   into one vertex blob — what MeshFilter.part == 0 draws;
-// - one PART artifact per glTF mesh (<guid>_m<i>.bin): vertices left in
-//   node-local space, so a transform hierarchy (extracted scene, animation)
-//   positions them at draw time — MeshFilter.part == i+1.
+// - the WHOLE-MODEL artifact (<key>.bin): every node's world transform baked
+//   into one vertex blob — what a reference with no local id draws;
+// - one PART artifact per glTF mesh (<key>_s<part id>.bin, artifact_sub_path):
+//   vertices left in node-local space, so a transform hierarchy (extracted
+//   scene, animation) positions them at draw time;
+// - one CLIP artifact per glTF animation (<key>_s<clip id>.bin), baked by
+//   the animation package.
 // Indices are grouped BY MATERIAL into submeshes (Unity model: primitives
 // sharing a glTF material merge into one submesh, ordered by first
 // appearance — across the file for the whole model, within the mesh for a
@@ -16,9 +18,6 @@ package engine
 
 import gfx "moonhug:libs/gfx"
 import "core:encoding/json"
-import "core:fmt"
-import "core:os"
-import "core:strings"
 
 // One glTF mesh of the model (Unity's Mesh sub-asset). MeshFilter references
 // a part as PPtr{model guid, part id} — the id is the persistent identity,
@@ -31,7 +30,7 @@ Mesh_Part :: struct {
 }
 
 // A clip inside a model: one glTF animation, baked to its own artifact
-// (mesh_clip_artifact_path). A sub-asset of the model: a `clip: PPtr` field
+// (artifact_sub_path with the clip's id). A sub-asset of the model: a `clip: PPtr` field
 // names it as {model guid, clip id}, the way it names a standalone .anim as
 // {its guid, 0}. Ids share the model's sub-asset id space with parts and
 // hull sets and, like parts, are matched by name across reimports, so a clip
@@ -79,7 +78,8 @@ MESH_HULL_REMESH_MAX :: 100
 MeshSettings :: struct {
     scale: f32, // uniform import scale
     // Importer-maintained id table, one entry per glTF mesh IN FILE ORDER
-    // (entry i names part artifact _m<i>.bin). First mint is index + 1.
+    // (entry i is glTF mesh i, its artifact named by the id). First mint is
+    // index + 1.
     parts: [dynamic]Mesh_Part,
     // Identity table, not a setting: shown and edited through the selected
     // clip's own section (the animation package, editor/model_clips.odin).
@@ -156,43 +156,11 @@ Mesh_Submesh :: struct #packed {
     index_count: u32,
 }
 
-// "<artifact minus .bin>_m<i>.bin" — the per-glTF-mesh part artifact.
-mesh_part_artifact_path :: proc(artifact_path: string, mesh_index: int, alloc := context.allocator) -> string {
-    base := strings.trim_suffix(artifact_path, ".bin")
-    return fmt.aprintf("%s_m%d.bin", base, mesh_index, allocator = alloc)
-}
-
-// The clip fan-out beside the parts: <key>_a<i>.bin, `i` the glTF animation
-// index. The catalog export probes the same pattern and copies the clips a
-// reference names (all of them for a model used whole).
-mesh_clip_artifact_path :: proc(artifact_path: string, clip_index: int, alloc := context.allocator) -> string {
-    base := strings.trim_suffix(artifact_path, ".bin")
-    return fmt.aprintf("%s_a%d.bin", base, clip_index, allocator = alloc)
-}
-
-// Every artifact file one model import wrote: the main artifact first, then
-// its part and clip fan-outs. The import driver moves them together when the
+// Every artifact file one model import wrote: the whole model first, then
+// its part and clip files. The import driver moves them together when the
 // mesh importer refines its settings.
 mesh_artifacts :: proc(artifact_path: string, allocator := context.allocator) -> []string {
-    out := make([dynamic]string, allocator)
-    append(&out, strings.clone(artifact_path, allocator))
-    for i := 0; ; i += 1 {
-        part := mesh_part_artifact_path(artifact_path, i, allocator)
-        if !os.exists(part) {
-            delete(part, allocator)
-            break
-        }
-        append(&out, part)
-    }
-    for i := 0; ; i += 1 {
-        clip := mesh_clip_artifact_path(artifact_path, i, allocator)
-        if !os.exists(clip) {
-            delete(clip, allocator)
-            break
-        }
-        append(&out, clip)
-    }
-    return out[:]
+    return artifact_files(artifact_path, allocator)
 }
 
 // Validates an artifact blob and returns views into it (no copies) — shared

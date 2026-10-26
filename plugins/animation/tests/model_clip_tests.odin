@@ -1,11 +1,11 @@
 package animation_tests
 
 // Clips inside a model (plugins/animation/docs/AnimationComponent.md "Clips inside a model"):
-// the mesh importer bakes every glTF animation to the model's _a<i>.bin
-// fan-out and lists it in the model's settings with a stable id and its own
-// guid, the AssetDB resolves that guid to the model, the clip loader reads
-// the fan-out, and the catalog carries the identity so a build and an export
-// resolve it too. Nothing is extracted.
+// the mesh importer bakes every glTF animation to a sub-asset file beside the
+// model's artifact, named by the clip's stable id, and lists it in the
+// model's settings. The clip loader reads that file for {model guid, clip id},
+// and the catalog carries the identity so a build and an export resolve it
+// too. Nothing is extracted.
 
 import "base:runtime"
 import "core:encoding/json"
@@ -31,7 +31,6 @@ test_mesh_import_bakes_clips_with_stable_identity :: proc(t: ^testing.T) {
 	// mesh and a clip file per animation, more than the test names.
 	tmp :: "moonhug/tests/fixtures/_model_clip_import_tmp"
 	artifact := tmp + "/box_anim.bin"
-	clip0 := engine.mesh_clip_artifact_path(artifact, 0, context.temp_allocator)
 	defer common.remove_tree(tmp)
 
 	importers.gltf_clip_baker = animation_editor.bake_gltf_clip
@@ -39,7 +38,7 @@ test_mesh_import_bakes_clips_with_stable_identity :: proc(t: ^testing.T) {
 	testing.expect(t, importers._import_mesh(BOX_ANIM_GLTF, artifact, &ms), "import failed")
 	testing.expect(t, len(ms.clips) >= 1, "the animated box lists at least one clip")
 	if len(ms.clips) == 0 do return
-	testing.expect(t, os.exists(clip0), "clip 0 baked to the _a0 fan-out")
+	testing.expect(t, os.exists(engine.artifact_sub_path(artifact, ms.clips[0].id, context.temp_allocator)), "clip 0 baked to its sub-asset file, named by its id")
 	testing.expect(t, ms.clips[0].id != 0, "a clip gets an id")
 
 	// One id space for parts and clips: a sub-asset id is unique within its model.
@@ -68,7 +67,7 @@ test_mesh_import_bakes_clips_with_stable_identity :: proc(t: ^testing.T) {
 		testing.expect(t, ms2.clips[0].name == first.name && ms2.clips[0].id == 9 && !ms2.clips[0].orphan, "the real clip keeps its identity, first")
 		testing.expect(t, ms2.clips[1].name == "Ghost" && ms2.clips[1].id == 7 && ms2.clips[1].orphan, "the lost clip stays as an orphan, last")
 	}
-	baked, berr := os.read_entire_file(clip0, context.temp_allocator)
+	baked, berr := os.read_entire_file(engine.artifact_sub_path(artifact, 9, context.temp_allocator), context.temp_allocator)
 	testing.expect(t, berr == nil && strings.contains(string(baked), "\"wrap\": 1"), "the entry's wrap setting is baked into the clip")
 }
 
@@ -137,7 +136,7 @@ test_model_clip_resolves_loads_and_exports :: proc(t: ^testing.T) {
 
 	// An export whose boot scene references the clip ships the model and its clip fan-out.
 	testing.expect(t, catalog.export_from(engine.asset_catalog_path(), data_dir, boot_scene = scene), "export succeeds")
-	shipped := strings.concatenate({data_dir, "/artifacts/", model_key[:2], "/", model_key, "_a0.bin"}, context.temp_allocator)
+	shipped := strings.concatenate({data_dir, "/artifacts/", model_key[:2], "/", model_key, fmt.tprintf("_s%d.bin", clips[0].id)}, context.temp_allocator)
 	testing.expect(t, os.exists(shipped), "the referenced clip's fan-out ships with its model")
 	cat_bytes, cerr := os.read_entire_file(data_dir + "/catalog.json", context.temp_allocator)
 	testing.expect(t, cerr == nil)
@@ -238,8 +237,8 @@ test_model_clip_list_refreshes_after_reimport :: proc(t: ^testing.T) {
 // The startup import ends with a sweep that deletes artifact files the index
 // does not reference. A baked clip is a fan-out of its model's key, so it
 // must survive, like a mesh part. The failure it guards: the sweep knew only
-// the "_m" suffix and deleted every clip at each launch, so every model clip
-// loaded as nothing and its preview stayed in the rest pose.
+// one fan-out suffix and deleted every clip at each launch, so every model
+// clip loaded as nothing and its preview stayed in the rest pose.
 @(test)
 test_stale_artifact_sweep_keeps_clip_fan_out :: proc(t: ^testing.T) {
 	src_dir :: "moonhug/tests/fixtures/_model_clip_sweep_tmp"
@@ -267,8 +266,8 @@ test_stale_artifact_sweep_keeps_clip_fan_out :: proc(t: ^testing.T) {
 	testing.expect(t, wok)
 	if !wok do return
 	whole = strings.clone(whole, context.temp_allocator)
-	clip0 := engine.mesh_clip_artifact_path(whole, 0, context.temp_allocator)
-	part0 := engine.mesh_part_artifact_path(whole, 0, context.temp_allocator)
+	clip0 := engine.artifact_sub_path(whole, engine.mesh_clips(engine.Asset_GUID(raw))[0].id, context.temp_allocator)
+	part0 := engine.artifact_sub_path(whole, engine.mesh_parts(engine.Asset_GUID(raw))[0].id, context.temp_allocator)
 	testing.expect(t, os.exists(clip0), "the import bakes clip 0")
 
 	engine._cleanup_stale_artifacts()

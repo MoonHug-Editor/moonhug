@@ -171,8 +171,8 @@ animation_clip_load :: proc(ref: engine.PPtr) -> (^AnimationClip, bool) {
 	// into it, so the runtime never opens a meta.
 	//
 	// A clip inside a model (engine.Mesh_Clip) has no artifact of its own:
-	// its bytes are the model's _a<i>.bin fan-out, indexed by the clip's file
-	// order. Either way a missing artifact asks for an import, which is
+	// its bytes are the model's sub-asset file for the clip's id
+	// (engine.artifact_sub_path). Either way a missing artifact asks for an import, which is
 	// editor-only (asset_pipeline_request_import is nil in a game binary, so
 	// a missing artifact there is a load error).
 	path, path_ok := engine.asset_pipeline_artifact_path(ref.guid)
@@ -184,9 +184,8 @@ animation_clip_load :: proc(ref: engine.PPtr) -> (^AnimationClip, bool) {
 		if !path_ok do return nil, false
 	}
 	if ref.local_id != 0 {
-		idx, iok := engine.mesh_clip_index(ref.guid, ref.local_id)
-		if !iok do return nil, false
-		path = engine.mesh_clip_artifact_path(path, int(idx), context.temp_allocator)
+		if _, iok := engine.mesh_clip_index(ref.guid, ref.local_id); !iok do return nil, false
+		path = engine.artifact_sub_path(path, ref.local_id, context.temp_allocator)
 	}
 	data, read_err := os.read_entire_file(path, context.temp_allocator)
 	if read_err != nil do return nil, false

@@ -12,8 +12,8 @@ import "moonhug:packages/engine"
 import assets "moonhug:libs/assets"
 import asset_pipeline "moonhug:editor/assets"
 
-// Bakes one glTF animation of `data` to `out_path`, the model's _a<i>.bin
-// fan-out. Installed by the animation package's editor half at
+// Bakes one glTF animation of `data` to `out_path`, the clip's sub-asset
+// file beside the model's artifact. Installed by the animation package's editor half at
 // ImportersInit: the clip format is that package's, and this one stays
 // plugin-agnostic. nil = the mesh importer lists clips but bakes none.
 Gltf_Clip_Baker :: proc(data: ^cgltf.data, an: ^cgltf.animation, settings: json.Value, out_path: string) -> bool
@@ -53,7 +53,7 @@ register_builtin_importers :: proc() {
 	})
 	asset_pipeline.importer_register({
 		name         = "mesh",
-		version      = 7, // 2: artifacts carry skin data. 3: clips baked to the _a<i> fan-out. 4: re-bake the clips the startup sweep deleted. 5: vertex tangents. 6: a second uv set. 7: the clips listed as subs in the meta
+		version      = 8, // 2: artifacts carry skin data. 3: clips baked to a fan-out. 4: re-bake the clips the startup sweep deleted. 5: vertex tangents. 6: a second uv set. 7: the clips listed as subs in the meta. 8: part and clip files named by id (_s<id>)
 		extensions   = _MESH_EXTS,
 		settings_tid = typeid_of(engine.MeshSettings),
 		run          = _import_mesh,

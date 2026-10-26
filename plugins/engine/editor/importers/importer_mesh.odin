@@ -2,11 +2,12 @@ package importers
 
 // glTF mesh importer (plugins/engine/docs/SDL3Renderer.md #5, plugins/engine/docs/Meshes.md). One import
 // writes:
-// - the WHOLE-MODEL artifact (<guid>.bin): every node's world transform baked
-//   into one vertex blob — what MeshFilter.part == 0 draws;
-// - one PART artifact per glTF mesh (<guid>_m<i>.bin): vertices left in
+// - the WHOLE-MODEL artifact (<key>.bin): every node's world transform baked
+//   into one vertex blob — what a reference with no local id draws;
+// - one PART artifact per glTF mesh (<key>_s<part id>.bin): vertices left in
 //   node-local space, so a transform hierarchy (extracted scene, animation)
-//   positions them at draw time — MeshFilter.part == i+1.
+//   positions them at draw time;
+// - one CLIP artifact per glTF animation (<key>_s<clip id>.bin).
 // Indices are grouped BY MATERIAL into submeshes (Unity model: primitives
 // sharing a glTF material merge into one submesh, ordered by first
 // appearance — across the file for the whole model, within the mesh for a
@@ -18,7 +19,6 @@ package importers
 // engine (asset_importer_mesh.odin) — runtime mesh loading reads it.
 
 import cgltf "vendor:cgltf"
-import "core:encoding/json"
 import "core:fmt"
 import "core:math/linalg"
 import "core:os"
@@ -79,6 +79,13 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
     fmt.printf("[Pipeline] Imported mesh: %s -> %s (%d verts, %d submeshes)\n",
         source_path, artifact_path, len(whole.vertices), len(whole.buckets))
 
+    // The id tables come first: every part and clip file is named by its id
+    // (engine.artifact_sub_path). A bare import (no settings) mints the same
+    // ids a first import does.
+    bare := engine.default_mesh_settings()
+    ms := settings != nil ? cast(^engine.MeshSettings)settings : &bare
+    _mesh_refresh_ids(ms, data)
+
     // Parts: one artifact per glTF mesh in NODE-LOCAL space (identity
     // transform) — a MeshFilter part reference draws it under its own
     // transform. Meshes several nodes share import once.
@@ -96,86 +103,90 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
         if part_skin != nil do _mesh_take_skin(&part, part_skin, scale)
         if !_mesh_append_mesh(&part, &mesh, linalg.MATRIX4F32_IDENTITY, scale, source_path, part_skin) do return false
         if len(part.vertices) == 0 do continue
-        part_path := engine.mesh_part_artifact_path(artifact_path, mi, context.temp_allocator)
+        part_path := engine.artifact_sub_path(artifact_path, ms.parts[mi].id, context.temp_allocator)
         if !_mesh_write_artifact(part_path, &part) do return false
     }
 
-    // Maintain the part id table in the settings (the driver persists the
-    // refinement to the meta): file order, ids preserved by NAME across
-    // reimports so DCC reorders never retarget a MeshFilter. First mint is
-    // index + 1, new names continue past the highest id. The settings
-    // instance lives on the import call's temp allocator
-    // (_read_import_meta) — the refined table does too, and the driver
-    // marshals it to the meta right after the run.
     // One artifact per glTF animation, through the animation package's baker
     // (importer_registry.odin). A model with clips and no baker still lists
-    // them below, so their guids exist and references keep resolving.
+    // them, so their ids exist and references keep resolving. The real clips
+    // lead the table in file order, so entry `ai` is animation `ai`.
     if gltf_clip_baker != nil {
         for &an, ai in data.animations {
-            out := engine.mesh_clip_artifact_path(artifact_path, ai, context.temp_allocator)
-            // The clip's settings from the meta, matched by name (the list is
-            // rebuilt below, so this reads the incoming one).
-            clip_settings: json.Value
-            if settings != nil {
-                name := an.name != nil ? string(an.name) : fmt.tprintf("anim_%d", ai)
-                for c in (cast(^engine.MeshSettings)settings).clips do if c.name == name { clip_settings = c.settings; break }
-            }
-            if !gltf_clip_baker(data, &an, clip_settings, out) {
+            out := engine.artifact_sub_path(artifact_path, ms.clips[ai].id, context.temp_allocator)
+            if !gltf_clip_baker(data, &an, ms.clips[ai].settings, out) {
                 fmt.printf("[Pipeline] Failed to bake clip %d of %s\n", ai, source_path)
                 return false
             }
         }
     }
+    return true
+}
 
-    if settings != nil {
-        ms := cast(^engine.MeshSettings)settings
-        old := ms.parts
-        old_clips := ms.clips
-        ms.parts = make([dynamic]engine.Mesh_Part, context.temp_allocator)
-        ms.clips = make([dynamic]engine.Mesh_Clip, context.temp_allocator)
-        // Parts and clips share one id space (a sub-asset id must be unique
-        // within its model), so both allocate above everything already used.
-        max_id := engine.Local_ID(0)
-        for p in old do max_id = max(max_id, p.id)
-        for c in old_clips do max_id = max(max_id, c.id)
-        for &mesh, mi in data.meshes {
-            name := mesh.name != nil ? string(mesh.name) : fmt.tprintf("mesh_%d", mi)
-            id := engine.Local_ID(0)
-            for p in old do if p.name == name { id = p.id; break }
-            if id == 0 {
-                id = len(old) == 0 && len(old_clips) == 0 ? engine.Local_ID(mi + 1) : max_id + 1
-                max_id = max(max_id, id)
-            }
-            append(&ms.parts, engine.Mesh_Part{id = id, name = strings.clone(name, context.temp_allocator)})
-        }
-        // Clips keep id AND settings by name: the id is what scenes
-        // reference, and it must survive every reimport. Real clips first, in
-        // file order (mesh_clip_index relies on it), orphans after.
-        matched := make([]bool, len(old_clips), context.temp_allocator)
-        for &an, ai in data.animations {
-            name := an.name != nil ? string(an.name) : fmt.tprintf("anim_%d", ai)
-            entry := engine.Mesh_Clip{name = strings.clone(name, context.temp_allocator)}
-            for c, ci in old_clips do if c.name == name {
-                entry.id, entry.settings = c.id, c.settings
-                matched[ci] = true
-                break
-            }
-            if entry.id == 0 {
-                max_id += 1
-                entry.id = max_id
-            }
-            append(&ms.clips, entry)
-        }
-        // A clip the model lost keeps its entry as an orphan, so references
-        // to it still name something and it can be remapped to a renamed clip.
-        for c, ci in old_clips {
-            if matched[ci] do continue
-            o := c
-            o.orphan = true
-            append(&ms.clips, o)
+// Maintain the part and clip id tables in the settings (the driver persists
+// the refinement to the meta): file order, ids preserved by NAME across
+// reimports so DCC reorders never retarget a reference. First mint of a part
+// is index + 1, every later id continues past the highest one. The settings
+// instance lives on the import call's temp allocator (_read_import_meta) —
+// the refined tables do too, and the driver marshals them to the meta right
+// after the run.
+@(private = "file")
+_mesh_refresh_ids :: proc(ms: ^engine.MeshSettings, data: ^cgltf.data) {
+    old := ms.parts
+    old_clips := ms.clips
+    ms.parts = make([dynamic]engine.Mesh_Part, context.temp_allocator)
+    ms.clips = make([dynamic]engine.Mesh_Clip, context.temp_allocator)
+    // Parts, clips and hull sets share one id space (a sub-asset id must be
+    // unique within its model, and it names the sub-asset's file), so new
+    // ids go above every part and clip id and skip the hull sets' ones.
+    max_id := engine.Local_ID(0)
+    for p in old do max_id = max(max_id, p.id)
+    for c in old_clips do max_id = max(max_id, c.id)
+    next :: proc(ms: ^engine.MeshSettings, max_id: ^engine.Local_ID) -> engine.Local_ID {
+        for {
+            max_id^ += 1
+            taken := false
+            for h in ms.hull_sets do if h.id == max_id^ do taken = true
+            if !taken do return max_id^
         }
     }
-    return true
+    for &mesh, mi in data.meshes {
+        name := mesh.name != nil ? string(mesh.name) : fmt.tprintf("mesh_%d", mi)
+        id := engine.Local_ID(0)
+        for p in old do if p.name == name { id = p.id; break }
+        if id == 0 {
+            if len(old) == 0 && len(old_clips) == 0 {
+                id = engine.Local_ID(mi + 1)
+                max_id = max(max_id, id)
+            } else {
+                id = next(ms, &max_id)
+            }
+        }
+        append(&ms.parts, engine.Mesh_Part{id = id, name = strings.clone(name, context.temp_allocator)})
+    }
+    // Clips keep id AND settings by name: the id is what scenes reference,
+    // and it must survive every reimport. Real clips first, in file order (the
+    // bake reads entry i for animation i), orphans after.
+    matched := make([]bool, len(old_clips), context.temp_allocator)
+    for &an, ai in data.animations {
+        name := an.name != nil ? string(an.name) : fmt.tprintf("anim_%d", ai)
+        entry := engine.Mesh_Clip{name = strings.clone(name, context.temp_allocator)}
+        for c, ci in old_clips do if c.name == name {
+            entry.id, entry.settings = c.id, c.settings
+            matched[ci] = true
+            break
+        }
+        if entry.id == 0 do entry.id = next(ms, &max_id)
+        append(&ms.clips, entry)
+    }
+    // A clip the model lost keeps its entry as an orphan, so references to it
+    // still name something and it can be remapped to a renamed clip.
+    for c, ci in old_clips {
+        if matched[ci] do continue
+        o := c
+        o.orphan = true
+        append(&ms.clips, o)
+    }
 }
 
 @(private = "file")

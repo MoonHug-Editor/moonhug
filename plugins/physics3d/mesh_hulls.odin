@@ -4,16 +4,16 @@ package physics3d
 // carries. A model lists them in its import settings (engine.Mesh_Hull_Set:
 // which mesh, how many hulls, how concave), the editor computes each one
 // after the import (editor/hull_jobs.odin) and saves it beside the model's
-// artifact as <artifact key>_h<set id>.bin, and in the model's .meta, which
-// is committed: a fresh clone or a reimport restores every set whose mesh
-// and settings did not change from the meta, and computes only the rest.
-// The file shares the artifact's key, so the catalog export ships it with
-// the model. A game only reads the files.
+// artifact as the set's sub-asset file (engine.artifact_sub_path with the
+// set id), and in the model's .meta, which is committed: a fresh clone or a
+// reimport restores every set whose mesh and settings did not change from
+// the meta, and computes only the rest. A MeshCollider names its set as
+// PPtr{model guid, set id}, so the catalog export ships the file of each set
+// a scene uses. A game only reads the files.
 
 import "base:runtime"
 import "core:bytes"
 import "core:encoding/endian"
-import "core:fmt"
 import "core:hash/xxhash"
 import "core:os"
 import "core:strings"
@@ -63,8 +63,8 @@ mesh_hulls :: proc(guid: engine.Asset_GUID, set: engine.Local_ID) -> ([][][3]f32
 	return nil, .Missing
 }
 
-// "<model artifact minus .bin>_h<set id>.bin". Temp-allocated. ok=false
-// when the model has no artifact.
+// The set's sub-asset file beside the model's artifact. Temp-allocated.
+// ok=false when the model has no artifact.
 mesh_hulls_path :: proc(guid: engine.Asset_GUID, set: engine.Local_ID) -> (string, bool) {
 	artifact, ok := engine.asset_pipeline_artifact_path(guid)
 	if !ok do return "", false
@@ -73,7 +73,7 @@ mesh_hulls_path :: proc(guid: engine.Asset_GUID, set: engine.Local_ID) -> (strin
 
 // The same, beside a given artifact path.
 mesh_hulls_path_of :: proc(artifact: string, set: engine.Local_ID) -> string {
-	return fmt.tprintf("%s_h%d.bin", strings.trim_suffix(artifact, ".bin"), set)
+	return engine.artifact_sub_path(artifact, set, context.temp_allocator)
 }
 
 // What a set's hulls are computed from: the mesh's positions and triangles,

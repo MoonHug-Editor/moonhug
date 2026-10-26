@@ -62,9 +62,7 @@ part):
 
 ## Artifact format
 
-`library/artifacts/<xx>/<key>.bin` (whole model, content-addressed — see the
-README's library section) and a sibling `<key>_m<i>.bin` per part (part =
-glTF mesh i), little-endian, same layout (see `asset_importer_mesh.odin`):
+`library/artifacts/<xx>/<key>.bin` (whole model, content-addressed — see the README's library section) and a sibling `<key>_s<part id>.bin` per part (the part's sub-asset file, see [Sub-asset files](../../../docs/core/AssetPipeline.md#sub-asset-files)), little-endian, same layout (see `asset_importer_mesh.odin`):
 
 ```
 "MHMESH2\0" | vertex_count u32 | index_count u32 | submesh_count u32 |

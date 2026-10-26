@@ -334,7 +334,7 @@ clip actually had there and nothing pays for it at runtime.
 
 ## Clips inside a model
 
-A glTF file's animations play without being extracted. The mesh importer bakes each one to the model's own artifact fan-out, `<key>_a<i>.bin` beside the `<key>_m<i>.bin` mesh parts, and lists it in the model's settings:
+A glTF file's animations play without being extracted. The mesh importer bakes each one to its own sub-asset file beside the model's artifact, `<key>_s<clip id>.bin` (see [Sub-asset files](../../../docs/core/AssetPipeline.md#sub-asset-files)), and lists it in the model's settings:
 
 ```json
 "clips": [
@@ -343,7 +343,7 @@ A glTF file's animations play without being extracted. The mesh importer bakes e
 ]
 ```
 
-A clip is a sub-asset of its model, named as `{model guid, clip id}`: that is what a `clip: PPtr` field stores, and a standalone `.anim` is `{its guid, 0}`, so one field takes both. The id is minted at first import and kept across reimports by matching the clip's name, the way part ids are. The runtime reads the model's `_a<i>.bin` fan-out at the clip's file order (`mesh_clip_index`), from the clip list the model's settings carry, so a build and an export resolve it the same way. An export ships the model with its mesh parts and only the clips something references: the animation sample plays 5 of UAL1's 43 clips and ships those 5. A model referenced whole (its bare guid, or under a `resources` folder) ships every clip. Parts, clips and convex decompositions share one id space, since a sub-asset id must be unique within its model.
+A clip is a sub-asset of its model, named as `{model guid, clip id}`: that is what a `clip: PPtr` field stores, and a standalone `.anim` is `{its guid, 0}`, so one field takes both. The id is minted at first import and kept across reimports by matching the clip's name, the way part ids are. The runtime reads the clip's file by its id, once the clip list the model's settings carry confirms the clip (`mesh_clip_index`), so a build and an export resolve it the same way. An export ships only the clips something references: the animation sample plays 5 of UAL1's 43 clips and ships those 5. A model under a `resources` folder ships every clip. Parts, clips and convex decompositions share one id space, since a sub-asset id must be unique within its model.
 
 What lands in the repository is the model and a few lines of its `.meta`. The curve data stays in `library/`, rebuilt from the model on any machine.
 
