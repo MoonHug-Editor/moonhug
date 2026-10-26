@@ -1,3 +1,16 @@
+## [0.148.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.147.0...v0.148.0) (2026-10-26)
+
+### Features
+
+* a Workspace view lays out views in frames on a canvas you pan, each frame with its views' tab bar and menu, and workspaces come from providers (user and project settings built in) by unique id ([89b29ab](https://github.com/MoonHug-Editor/moonhug/commit/89b29ab03df394c77b4ed04afe1a7ea80fdbd7e1))
+* child frames reorder with up and down arrows beside their grip, Shift+click to the top or the bottom ([57814d3](https://github.com/MoonHug-Editor/moonhug/commit/57814d39e3f50e9ede480248e886e2e7d552dddf))
+* one Workspace view shows a workspace at a time, and Maximize View works for floating views and for a single view in a workspace frame ([796eae8](https://github.com/MoonHug-Editor/moonhug/commit/796eae8daf39ab612e9b5ac8807f95d4e6d43264))
+* Shift+Space (Window/Maximize View) maximizes the view under the mouse ([3603346](https://github.com/MoonHug-Editor/moonhug/commit/3603346015a67e8c56ee08a27c5ee1078ceeafb6))
+* sprite editor zoom, improve UX ([81857aa](https://github.com/MoonHug-Editor/moonhug/commit/81857aa965289696d649a185077765486e50f67e))
+* workspace minimap ([feab58a](https://github.com/MoonHug-Editor/moonhug/commit/feab58a78abc341c41619bd8c54f762230d61243))
+* workspace parenting and layout ([0994b40](https://github.com/MoonHug-Editor/moonhug/commit/0994b40db8c19c3120e6695db72caf2ac853aff9))
+* workspace tabs drag between frames and onto the canvas, and a Scene view in a frame renders inside the animation preview pose ([c4224b7](https://github.com/MoonHug-Editor/moonhug/commit/c4224b750362aab73c770141e7e1258c5c873b4b))
+
 ## [0.147.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.146.0...v0.147.0) (2026-10-25)
 
 ### Features
