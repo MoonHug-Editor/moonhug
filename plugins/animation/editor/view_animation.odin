@@ -438,10 +438,15 @@ _pv_clip_name :: proc(g: engine.PPtr) -> string {
 
 // The selected clip's asset document — the edit target. Refetched every frame:
 // undo/redo swaps the document payload, so pointers never survive a frame.
+// A clip inside a model is baked from the model and has no document: it comes
+// back as the cached clip with a nil doc, which the view shows read-only.
 @(private = "file")
 _pv_doc :: proc() -> (doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
-	// A clip inside a model is baked from the model: it has no document.
-	if _pv.clip == {} || _pv.clip.local_id != 0 do return nil, nil
+	if _pv.clip == {} do return nil, nil
+	if _pv.clip.local_id != 0 {
+		c, _ := anim.animation_clip_load(_pv.clip)
+		return nil, c
+	}
 	path, ok := engine.asset_db_get_path(uuid.Identifier(_pv.clip.guid))
 	if !ok do return nil, nil
 	d := inspector.asset_doc_get(path)
@@ -555,6 +560,7 @@ _pv_ch_label :: proc(ch: ^anim.Animation_Channel) -> (label: cstring, resolved: 
 // key never changes the curve's shape.
 @(private = "file")
 _pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx: int, t: f32) {
+	if doc == nil do return // read-only clip
 	if ch_idx < 0 || ch_idx >= len(clip.channels) do return
 	ch := &clip.channels[ch_idx]
 	t := clamp(t, 0, clip.length)
@@ -583,7 +589,7 @@ _pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx
 // goes with them: a keyless channel animates nothing, so the property row
 // disappears rather than lingering empty.
 _pv_delete_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
-	if !_pv_sel_valid(clip) do return
+	if doc == nil || !_pv_sel_valid(clip) do return
 	_pv_sel_prune(clip)
 	if len(_av.sel) == 0 do return
 
@@ -746,6 +752,7 @@ _pv_add_channel_property :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.Animatio
 
 @(private = "file")
 _pv_append_channel :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch: anim.Animation_Channel, v: [4]f32) {
+	if doc == nil do return // read-only clip
 	ch := ch
 	_pv_edit_begin(doc)
 	ch.times = make([dynamic]f32)
@@ -841,12 +848,12 @@ animation_view_draw :: proc(w: ^wnd.Window) {
 	doc, clip := _pv_doc()
 	length := clip != nil ? max(clip.length, 0.0001) : 0.0001
 
-	_pv_draw_toolbar(clip, length)
+	_pv_draw_toolbar(clip, length, read_only = doc == nil)
 
 	if clip == nil {
 		// The picker still draws, so a broken clip is not a dead end.
 		_pv_draw_sheet_header(doc, nil, clips, _av.left_w)
-		im.TextDisabled("The clip has no document (missing or unreadable .anim).")
+		im.TextDisabled("The clip is missing or unreadable.")
 		return
 	}
 	// Undo may have shrunk the clip since the selection was made.
@@ -889,14 +896,14 @@ animation_view_draw :: proc(w: ^wnd.Window) {
 	// Push this frame's edits into the engine cache the preview samples from.
 	if _pv.sync {
 		_pv.sync = false
-		if d2, c2 := _pv_doc(); c2 != nil {
+		if d2, c2 := _pv_doc(); d2 != nil && c2 != nil {
 			anim.animation_clip_preview(engine.PPtr{guid = d2.guid}, c2^)
 		}
 	}
 }
 
 @(private = "file")
-_pv_draw_toolbar :: proc(clip: ^anim.AnimationClip, length: f32) {
+_pv_draw_toolbar :: proc(clip: ^anim.AnimationClip, length: f32, read_only: bool) {
 	fps := anim.animation_clip_frame_rate(clip)
 
 	// Preview toggle. The pop must match the state at push time — the click
@@ -917,11 +924,15 @@ _pv_draw_toolbar :: proc(clip: ^anim.AnimationClip, length: f32) {
 	// playhead. Drawn in red like a record light, lit while armed.
 	// The record light is red whether armed or not, brighter while armed. The
 	// Text push is what colors the glyph the shared button draws.
+	// A read-only clip has nothing to record into.
 	im.SameLine()
+	if read_only do _pv.recording = false
 	rec := _pv.recording
 	im.PushStyleColorImVec4(.Text, rec ? im.Vec4{0.95, 0.25, 0.25, 1} : im.Vec4{0.75, 0.35, 0.35, 1})
+	im.BeginDisabled(read_only)
 	armed := widgets.icon_button(icons.ICON_MD_RECORD, "##rec",
 		"Record: an edited animated field keys itself at the playhead", active = rec)
+	im.EndDisabled()
 	im.PopStyleColor()
 	if armed {
 		_pv.recording = !_pv.recording
@@ -981,6 +992,12 @@ _pv_draw_toolbar :: proc(clip: ^anim.AnimationClip, length: f32) {
 	im.SameLine()
 	im.TextDisabled(fmt.ctprintf("/ %d", i32(math.round(length * fps))))
 
+	if read_only {
+		im.SameLine(0, 16)
+		im.TextDisabled(icons.ICON_MD_LOCK + " Read-Only")
+		widgets.tooltip("A clip inside a model is read-only. Assets/Extract Assets makes an editable .anim")
+	}
+
 	// No Save button: the tab menu saves and discards the clip, File/Save
 	// saves it with every other file (session/documents.odin).
 }
@@ -1005,7 +1022,9 @@ _pv_draw_sheet_header :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationCl
 	cur := strings.clone_to_cstring(_pv_clip_name(_pv.clip), context.temp_allocator)
 	if im.BeginCombo("##pv_clip", cur) {
 		for c in clips {
-			name := strings.clone_to_cstring(_pv_clip_name(c), context.temp_allocator)
+			// A clip inside a model has no document to edit. The list marks it,
+			// the toolbar marks the open one.
+			name := fmt.ctprintf("%s (Read-Only)" if c.local_id != 0 else "%s", _pv_clip_name(c))
 			if im.Selectable(name, c == _pv.clip) && c != _pv.clip {
 				_pv_teardown()
 				_pv_deselect()
@@ -1330,7 +1349,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 		im.OpenPopup("##anim_ch_ctx")
 	}
 	if im.BeginPopup("##anim_ch_ctx") {
-		if im.MenuItem("Remove Property") && _av.sel_ch >= 0 && _av.sel_ch < len(clip.channels) {
+		if im.MenuItem("Remove Property", nil, false, doc != nil) && _av.sel_ch >= 0 && _av.sel_ch < len(clip.channels) {
 			_pv_edit_begin(doc)
 			_pv_channel_remove(clip, _av.sel_ch)
 			_pv_deselect()
@@ -1395,7 +1414,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 
 	// Key context menu (opened by the mode-specific right-click handling).
 	if im.BeginPopup("##anim_key_ctx") {
-		can_delete := _pv_sel_valid(clip)
+		can_delete := doc != nil && _pv_sel_valid(clip)
 		label: cstring = len(_av.sel) > 1 ? fmt.ctprintf("Delete %d Keys", len(_av.sel)) : "Delete Key"
 		if im.MenuItem(label, nil, false, can_delete) do _pv_delete_key(doc, clip)
 		im.EndPopup()
@@ -1561,6 +1580,7 @@ _pv_sheet_dopesheet :: proc(
 // started, so the move is one delta applied to the group.
 @(private = "file")
 _pv_drag_begin :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, from: f32, comp: int) {
+	if doc == nil do return // read-only: the press only selects
 	_pv_edit_begin(doc)
 	_av.drag_key = true
 	_av.drag_comp = comp
@@ -1710,6 +1730,10 @@ _pv_sheet_curves :: proc(
 _pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	ch := &clip.channels[_av.sel_ch]
 	k := _av.sel_key
+
+	// A read-only clip shows the key's values without letting them change.
+	im.BeginDisabled(doc == nil)
+	defer im.EndDisabled()
 
 	im.AlignTextToFramePadding()
 	im.TextUnformatted(fmt.ctprintf("Key %d   t", k))

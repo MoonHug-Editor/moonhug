@@ -12,6 +12,7 @@ import "core:testing"
 import "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
 import common "moonhug:tests/common"
+import cgltf "vendor:cgltf"
 
 // A layer holding one blend with `children` clips placed at 0, 1, 2... on the axis.
 @(private = "file")
@@ -278,13 +279,10 @@ test_animation_demo_scene_loads :: proc(t: ^testing.T) {
 	anim.animation_clip_cache_init()
 	defer anim.animation_clip_cache_shutdown()
 
-	// The test asset DB does not scan the samples folder, so the blend's clips
+	// The test asset DB does not scan the model's plugin, so the blend's clips
 	// would never load and the posing assertion below would pass on a blend
 	// that poses nothing.
-	CHAR :: "plugins/animation/samples/animation_sample/assets/character/"
-	_load_sample_clip(CHAR + "Character3D_walking.anim")
-	_load_sample_clip(CHAR + "Character3D_runing.anim")
-	_load_sample_clip(CHAR + "Character3D_idle_01.anim")
+	_load_model_clips("plugins/essentials/assets/meshes/characters/UAL1_Standard.glb", {"Walk_Loop", "Jog_Fwd_Loop", "Idle_Loop"})
 
 	PATH :: "plugins/animation/samples/animation_sample/assets/animation_demo.scene"
 	s := engine.scene_load_single_path(PATH)
@@ -293,7 +291,7 @@ test_animation_demo_scene_loads :: proc(t: ^testing.T) {
 	tc.scene = s
 
 	root := engine.Transform_Handle(s.root.handle)
-	char := _find_child_named(tc, root, "Character3D")
+	char := _find_child_named(tc, root, "UAL1")
 	testing.expect(t, char != {}, "the character is in the scene")
 	if char == {} do return
 	_, a := engine.transform_get_comp(char, anim.Animation)
@@ -327,14 +325,14 @@ test_animation_demo_scene_loads :: proc(t: ^testing.T) {
 	// path, which is the thing a bad clip target or a broken entry would break.
 	a.enabled = true
 	a.started = true
-	barriga := _find_child_named(tc, char, "BARRIGA")
-	testing.expect(t, barriga != {}, "the armature is intact")
-	if barriga == {} do return
-	before := engine.pool_get(&tc.world.transforms, engine.Handle(barriga)).rotation
+	arm := _find_child_named(tc, char, "upperarm_l")
+	testing.expect(t, arm != {}, "the armature is intact")
+	if arm == {} do return
+	before := engine.pool_get(&tc.world.transforms, engine.Handle(arm)).rotation
 
 	anim.animation_play_entry(a, blend_id)
 	anim.animation_tick(0.2)
-	after := engine.pool_get(&tc.world.transforms, engine.Handle(barriga)).rotation
+	after := engine.pool_get(&tc.world.transforms, engine.Handle(arm)).rotation
 	testing.expectf(t, before != after, "the blend poses the rig, rotation stayed %v", after)
 }
 
@@ -531,22 +529,40 @@ test_clip_cycle_offset_shifts_a_loop :: proc(t: ^testing.T) {
 		"Once ignores the offset, got %v", anim.animation_clip_sample_time(&once, 0))
 }
 
+// Bakes the named clips of the model at `path` from its .glb into the clip
+// cache, under {the model's guid, the clip's id}: the reference a scene holds.
 @(private = "file")
-// Read a .anim and its .meta straight into the clip cache, bypassing the asset
-// DB. Only for tests that load shipped sample assets by path.
-_load_sample_clip :: proc(path: string) {
-	meta_path := strings.concatenate({path, ".meta"}, context.temp_allocator)
-	meta_bytes, merr := os.read_entire_file(meta_path, context.temp_allocator)
+_load_model_clips :: proc(path: string, names: []string) {
+	Meta_Clip :: struct {
+		id:   engine.Local_ID,
+		name: string,
+	}
+	Meta :: struct {
+		guid:     string,
+		settings: struct {
+			clips: []Meta_Clip,
+		},
+	}
+	meta_bytes, merr := os.read_entire_file(strings.concatenate({path, ".meta"}, context.temp_allocator), context.temp_allocator)
 	if merr != nil do return
-	Meta :: struct { guid: string }
 	meta: Meta
 	if json.unmarshal(meta_bytes, &meta, .JSON, context.temp_allocator) != nil do return
 	id, err := uuid.read(meta.guid)
 	if err != nil do return
-
-	data, derr := os.read_entire_file(path, context.temp_allocator)
-	if derr != nil do return
-	clip: anim.AnimationClip
-	if json.unmarshal(data, &clip, .JSON, context.allocator) != nil do return
-	anim.animation_clip_cache[engine.PPtr{guid = engine.Asset_GUID(id)}] = clip
+	path_c := strings.clone_to_cstring(path, context.temp_allocator)
+	data, res := cgltf.parse_file({}, path_c)
+	if res != .success do return
+	defer cgltf.free(data)
+	if cgltf.load_buffers({}, data, path_c) != .success do return
+	for &an in data.animations {
+		name := string(an.name)
+		for n in names do if n == name {
+			for c in meta.settings.clips do if c.name == name {
+				if clip, ok := anim.animation_clip_from_gltf(data, &an); ok {
+					anim.animation_clip_cache[engine.PPtr{guid = engine.Asset_GUID(id), local_id = c.id}] = clip
+				}
+			}
+		}
+	}
 }
+

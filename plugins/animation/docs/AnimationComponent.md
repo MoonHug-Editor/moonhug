@@ -282,9 +282,7 @@ plays and the Playable Graph window shows the real topology.
 ## Sample
 
 `packages/animation/samples/animation_sample` (installed as the
-`packages/animation_sample` symlink) ships `animation_demo.scene`: an imported
-glTF character, a skinned mesh posed by `SkinnedMeshRenderer`, and one layer
-holding a `Locomotion` blend over walk and run plus Idle, Jump and Death.
+`packages/animation_sample` symlink) ships `animation_demo.scene`: the essentials plugin's UAL1 character (`meshes/characters/UAL1_Standard.glb`), a skinned mesh posed by `SkinnedMeshRenderer`, and one layer holding a `Locomotion` blend over walk and run plus Idle, Jump and Death. The states play the model's own clips, referenced by the model's guid and the clip's id, so no clip is extracted.
 
 `animation_demo.odin` is the part a game writes. It plays states BY NAME and
 pushes its `blend` field into the Locomotion blend every frame, the way a
@@ -365,6 +363,8 @@ system behind them:
   rather than add.
 
 ### The Animation window
+
+A clip inside a model opens read-only: the window shows its keys and curves, previews, plays and scrubs it, and selects keys to show their values, but adds, moves and deletes nothing, and Record is off. The clip has no document to edit. The model's file is its source, and the clip is rebuilt from it on every import. The toolbar shows Read-Only and the clip list marks such clips. Assets/Extract Assets makes an editable standalone `.anim`.
 
 Playback respects the clip's `wrap`: a Once clip plays through and stops, a Loop
 clip cycles. The window reads the IMPORTED clip for that, not the document it is

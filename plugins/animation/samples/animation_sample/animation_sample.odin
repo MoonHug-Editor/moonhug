@@ -2,14 +2,14 @@ package animation_sample
 
 // Sample content for the Animation component (plugins/animation/docs/AnimationComponent.md) and
 // SkinnedMeshRenderer:
-// assets/animation_demo.scene is an imported glTF character — a skinned mesh
-// deformed by its armature, and an Animation component whose layer holds a
-// Locomotion blend over walk and run plus Idle, Jump and Death.
+// assets/animation_demo.scene is the essentials plugin's UAL1 character
+// (meshes/characters/UAL1_Standard.glb) — a skinned mesh deformed by its
+// armature, and an Animation component whose layer holds a Locomotion blend
+// over walk and run plus Idle, Jump and Death, playing the model's own clips.
 // animation_demo.odin plays those states by name and drives the blend.
 //
-// assets/character/ is the import itself: the .gltf and its buffer, the
-// material, the extracted clips, and Character3D.scene — the hierarchy the
-// importer produces, which the demo scene wraps in a camera and a light.
+// The scene holds the model's node hierarchy, as the engine's scene_from_gltf
+// writes it, wrapped in a camera, a light and a floor.
 //
 // The sequencer and TimelineAnimator samples are the sibling timeline_sample
 // package.
