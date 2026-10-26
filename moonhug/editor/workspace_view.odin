@@ -11,6 +11,10 @@ package editor
 //
 // - Drag the canvas background to pan. Drag a frame's grip to move its
 //   chain, its right or bottom border to resize it.
+// - A tab dragged up or down out of its frame's tab bar drops onto another
+//   frame, joining its tabs, or onto empty canvas, where it gets a frame of
+//   its own (its frame moves there when it was the only tab). Along the bar a
+//   drag reorders the tabs.
 // - Frames form chains (workspace.layout): a frame chained to another sits
 //   right of it, linked by a curve. A window a frame's view opens joins that
 //   frame's chain (window.host_hook), and a view already in a frame is shown
@@ -42,6 +46,21 @@ import "moonhug:editor/workspace"
 
 WORKSPACE_VIEW :: "workspace"
 
+// The drag-and-drop type of a frame's tab. The payload is the Workspace view
+// it comes from (^wnd.Window), whose state names the tab (_WS_View.dragging).
+@(private = "file")
+_WS_TAB_PAYLOAD :: "WS_TAB"
+
+// A tab dropped somewhere: its view key (owned), the frame it leaves, and the
+// frame it joins, or 0 for a new frame at `at` on the canvas.
+@(private = "file")
+_WS_Move :: struct {
+	key:  string,
+	from: u32,
+	to:   u32,
+	at:   [2]f32,
+}
+
 // A view to add as a chained frame: its key (owned) and the frame it is
 // chained to.
 @(private = "file")
@@ -62,6 +81,11 @@ _WS_View :: struct {
 	touched:    u32,      // the frame last moved, resized, clicked or opened in: its chain stays when chains part
 	reveal:     string,   // owned, a view key to show next frame: its tab picked, its frame brought into view
 	pending:    [dynamic]_WS_Pending, // chained frames to add next frame
+	dragging:   struct {
+		key:  string, // owned, the tab being dragged out of its frame, "" for none
+		from: u32,    // its frame
+	},
+	moves:      [dynamic]_WS_Move, // tabs dropped, moved next frame
 	map_frozen: _WS_Map,  // the mini-map's scale while a drag in it pans, so it holds still
 	map_corner: [2]f32,   // the corner a resize drags: -1 the left or top, 1 the right or bottom
 	map_start:  [4]f32,   // the mini-map's rect at the press of a resize
@@ -111,6 +135,9 @@ workspace_view_closed :: proc(w: ^wnd.Window) {
 	delete(v.closing)
 	for p in v.pending do delete(p.key, runtime.default_allocator())
 	delete(v.pending)
+	for m in v.moves do delete(m.key, runtime.default_allocator())
+	delete(v.moves)
+	delete(v.dragging.key, runtime.default_allocator())
 	delete(v.reveal, runtime.default_allocator())
 	free(v, runtime.default_allocator())
 	w.data = nil
@@ -239,6 +266,11 @@ _ws_canvas :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace) {
 	size := im.GetContentRegionAvail()
 	dl := im.GetWindowDrawList()
 
+	if v.dragging.key != "" && im.GetDragDropPayload() == nil {
+		delete(v.dragging.key, runtime.default_allocator())
+		v.dragging = {}
+	}
+	_ws_apply_moves(v, ws)
 	_ws_apply_pending(v, ws)
 	if workspace.fix(ws) do workspace.changed(ws)
 	if workspace.layout(ws, v.touched) && !im.IsMouseDown(.Left) do workspace.changed(ws)
@@ -268,6 +300,15 @@ _ws_canvas :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace) {
 		v.drag = .Pan
 		v.drag_from = im.GetMousePos()
 		v.drag_start = ws.pan
+	}
+	// A tab dropped on empty canvas gets a frame there. Over a frame, that
+	// frame's smaller target wins.
+	if v.dragging.key != "" && im.BeginDragDropTarget() {
+		if p := im.AcceptDragDropPayload(_WS_TAB_PAYLOAD, {.AcceptNoDrawDefaultRect}); p != nil && (^^wnd.Window)(p.Data)^ == w {
+			at := im.GetMousePos() - origin - ws.pan - {24, im.GetFrameHeight() * 0.5}
+			append(&v.moves, _WS_Move{strings.clone(v.dragging.key, runtime.default_allocator()), v.dragging.from, 0, at})
+		}
+		im.EndDragDropTarget()
 	}
 	if v.drag == .Pan {
 		if im.IsItemActive() {
@@ -323,6 +364,62 @@ _ws_links :: proc(dl: ^im.DrawList, ws: ^workspace.Workspace, at: im.Vec2, scale
 		b := at + im.Vec2{f.rect.x, f.rect.y + y} * scale
 		k := (b.x - a.x) * 0.6
 		im.DrawList_AddBezierCubic(dl, a, a + {k, 0}, b - {k, 0}, b, col, thickness)
+	}
+}
+
+// The tab just submitted as a drag source, once the mouse leaves its bar up
+// or down: along the bar imgui reorders the tabs, and stops while a drag and
+// drop is under way.
+@(private = "file")
+_ws_tab_drag :: proc(w: ^wnd.Window, v: ^_WS_View, frame: u32, key: string, label: cstring, bar_min, bar_max: im.Vec2) {
+	if !im.IsItemActive() do return
+	ours := v.dragging.key == key
+	mouse := im.GetMousePos()
+	if !ours && mouse.y >= bar_min.y - 6 && mouse.y <= bar_max.y + 6 do return
+	if !im.BeginDragDropSource({}) do return
+	defer im.EndDragDropSource()
+	src := w
+	im.SetDragDropPayload(_WS_TAB_PAYLOAD, &src, size_of(src))
+	if !ours {
+		delete(v.dragging.key, runtime.default_allocator())
+		v.dragging = {strings.clone(key, runtime.default_allocator()), frame}
+	}
+	text := string(label)
+	if i := strings.index(text, "###"); i >= 0 do text = text[:i]
+	im.TextUnformatted(strings.clone_to_cstring(text, context.temp_allocator))
+}
+
+// Moves the tabs dropped since the last frame (_WS_Move). A tab that was its
+// frame's only one onto empty canvas moves the frame itself, out of its chain.
+@(private = "file")
+_ws_apply_moves :: proc(v: ^_WS_View, ws: ^workspace.Workspace) {
+	context.allocator = runtime.default_allocator()
+	if len(v.moves) == 0 do return
+	defer clear(&v.moves)
+	for m in v.moves {
+		defer delete(m.key)
+		fi := workspace.frame_index(ws, m.from)
+		if fi < 0 do continue
+		ti := -1
+		for t, i in ws.frames[fi].tabs do if t == m.key do ti = i
+		if ti < 0 || (m.to != 0 && workspace.frame_index(ws, m.to) < 0) do continue
+		size := [2]f32{ws.frames[fi].rect.z, ws.frames[fi].rect.w}
+		switch {
+		case m.to == 0 && len(ws.frames[fi].tabs) == 1:
+			workspace.chain(ws, m.from, 0)
+			ws.frames[fi].rect.x, ws.frames[fi].rect.y = m.at.x, m.at.y
+			v.touched = m.from
+		case m.to == 0:
+			workspace.tab_remove(ws, fi, ti)
+			v.touched = workspace.frame_add(ws, m.key, {m.at.x, m.at.y, size.x, size.y})
+		case:
+			workspace.tab_remove(ws, fi, ti)
+			to := &ws.frames[workspace.frame_index(ws, m.to)]
+			append(&to.tabs, strings.clone(m.key))
+			to.active = len(to.tabs) - 1
+			v.touched = m.to
+		}
+		workspace.changed(ws)
 	}
 }
 
@@ -461,6 +558,17 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 	wbg := im.GetStyleColorVec4(.WindowBg)^
 	wbg.w = 1
 	im.DrawList_AddRectFilled(im.GetWindowDrawList(), im.GetWindowPos(), im.GetWindowPos() + im.GetWindowSize(), im.GetColorU32ImVec4(wbg), im.GetStyle().ChildRounding)
+	// A dragged tab drops onto the frame. Back onto its own frame, nothing
+	// moves.
+	if v.dragging.key != "" {
+		fmin := im.GetWindowPos()
+		if im.BeginDragDropTargetCustom({fmin, fmin + im.GetWindowSize()}, im.GetID("##tab_drop")) {
+			if p := im.AcceptDragDropPayload(_WS_TAB_PAYLOAD); p != nil && (^^wnd.Window)(p.Data)^ == w && v.dragging.from != f.id {
+				append(&v.moves, _WS_Move{strings.clone(v.dragging.key, runtime.default_allocator()), v.dragging.from, f.id, {}})
+			}
+			im.EndDragDropTarget()
+		}
+	}
 	if im.IsWindowFocused({.ChildWindows}) do v.focused = i
 	clicked = im.IsWindowHovered(im.HoveredFlags_ChildWindows) && (im.IsMouseClicked(.Left) || im.IsMouseClicked(.Right) || im.IsMouseClicked(.Middle))
 	// The border drag resizes the child: the frame follows it.
@@ -514,13 +622,17 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 	im.SameLine(0, 0)
 	tabs_w := max(im.GetContentRegionAvail().x - widgets_w - menu_w - style.ItemSpacing.x * 2, 40)
 	if im.BeginChild("##tabs", {tabs_w, bar_h}, {}, {.NoScrollbar, .NoScrollWithMouse}) {
+		bar_min := im.GetWindowPos()
+		bar_max := bar_min + im.GetWindowSize()
 		if im.BeginTabBar("##bar", {.Reorderable, .FittingPolicyShrink}) {
 			for t := 0; t < len(f.tabs); t += 1 {
 				key := f.tabs[t]
 				inst := wnd.find(key) if _ws_closing(v, key) || key == maximize_key() else wnd.host_open(key, w.key)
 				label: cstring = wnd.title(inst) if inst != nil else fmt.ctprintf("%s %s###%s", icons.ICON_MD_WARNING, key, key)
 				open := true
-				if im.BeginTabItem(label, &open, {}) {
+				selected := im.BeginTabItem(label, &open, {})
+				if inst != nil do _ws_tab_drag(w, v, f.id, key, label, bar_min, bar_max)
+				if selected {
 					f.active = t
 					im.EndTabItem()
 				}
@@ -766,6 +878,13 @@ _ws_minimap :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, orig
 	// with the key held the map takes either button.
 	moving := im.GetIO().KeyCtrl || im.GetIO().KeySuper
 	if v.drag == .Map_Move || (moving && v.drag == .None && im.IsWindowHovered({})) do im.SetMouseCursor(.ResizeAll)
+
+	// A tab dropped on the map stays where it was: without this target the
+	// canvas would give it a frame under the map.
+	if v.dragging.key != "" && im.BeginDragDropTargetCustom({cmin, cmin + size}, im.GetID("##map_drop")) {
+		im.AcceptDragDropPayload(_WS_TAB_PAYLOAD, {.AcceptNoDrawDefaultRect})
+		im.EndDragDropTarget()
+	}
 
 	// Every corner resizes it, and the opposite corner stays put. First, so a
 	// corner wins over the body where they meet.

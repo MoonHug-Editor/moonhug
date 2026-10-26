@@ -287,6 +287,7 @@ main :: proc() {
         // renders: every view draws the same shapes (gizmo_pass.odin).
         gizmo_pass()
         wnd.draw("Scene")
+        scene_views_render_hosted()
 
         if menu.show_game {
             draw_game_view()

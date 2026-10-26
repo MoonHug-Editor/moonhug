@@ -96,6 +96,11 @@ Scene_View :: struct {
 	// The gfx frame the copy last rendered in, and its image size then.
 	rendered_frame: u64,
 	view_size:      [2]f32,
+	// The gfx frame its draw last ran in, and the image size it wanted: a
+	// copy in a Workspace view's frame renders from these, inside the preview
+	// pose (scene_views_render_hosted).
+	drawn_frame:    u64,
+	want_size:      [2]i32,
 
 	// The right-click context menu and the Cmd+right-click pick menu.
 	ctx_click_pending: bool,
@@ -547,6 +552,23 @@ draw_axis_lines :: proc() {
 	gfx.draw_line({0, 0, 0}, {0, 0, 5}, {0, 0.47, 0.95, 1}, depth_write = true)   // Z blue
 }
 
+// A copy in a Workspace view's frame draws with its Workspace view, after the
+// preview pose is restored (main.odin). Its render runs here instead, inside
+// the pose, right after the docked copies draw, at the size its frame gave it
+// last frame, and its draw shows that render. Input lags the render by one
+// frame as in a docked copy, which renders before it handles input. A copy
+// whose Workspace view did not draw last frame renders nothing here.
+scene_views_render_hosted :: proc() {
+	defer _sv = _scene_active()
+	for w in wnd.instances(SCENE) {
+		if w.host == "" do continue
+		sv := _scene_view(w)
+		if sv.drawn_frame + 1 != gfx.frame_index || sv.want_size.x < 1 || sv.want_size.y < 1 do continue
+		_sv = sv
+		render_scene_rt(sv.want_size.x, sv.want_size.y)
+	}
+}
+
 // Drawn at a set point of the frame (wnd.draw in main.odin): after the gizmo
 // pass, inside the preview pose. A canvas window: no padding, so the render
 // target fills it edge to edge, and no scrollbar, since overlays draw ON the
@@ -575,8 +597,11 @@ scene_view_draw :: proc(w: ^wnd.Window) {
 		rw := i32(avail.x)
 		rh := i32(avail.y)
 
+		_sv.drawn_frame = gfx.frame_index
+		_sv.want_size = {rw, rh}
 		if rw > 0 && rh > 0 {
-			render_scene_rt(rw, rh)
+			// Rendered already this frame when it is a copy in a frame.
+			if _sv.rendered_frame != gfx.frame_index do render_scene_rt(rw, rh)
 			tex_id := im.TextureID(uintptr(gfx.rt_imgui_id(_sv.rt)))
 			im.SetCursorScreenPos({content_min.x + bar_l, content_min.y + bar_t})
 			im.Image(im.TextureRef{_TexID = tex_id}, avail)
