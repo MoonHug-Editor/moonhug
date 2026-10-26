@@ -19,6 +19,7 @@ import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:slice"
+import "core:strconv"
 import "core:strings"
 
 VERSION :: 2
@@ -85,6 +86,10 @@ save :: proc(cf: ^File, path: string) -> bool {
 // not ship. With no boot scene there is no root to walk from, and the whole
 // catalog ships.
 //
+// A MODEL'S CLIPS ship only when something references them (see _Uses): a
+// scene that plays one clip of an animation library ships that clip's
+// fan-out file, not the library.
+//
 // - `root` prefixes reads of entry sources: "" when entry paths are valid
 //   from the cwd (the editor), "moonhug" when invoked from the repo root the
 //   way run configs are.
@@ -132,7 +137,8 @@ export :: proc(src: ^File, src_dir: string, data_dir: string, boot_scene := "", 
 		}
 	}
 
-	ship, cok := _closure(src, boot_guid, root, extra_roots)
+	uses: _Uses
+	ship, cok := _closure(src, boot_guid, root, extra_roots, &uses)
 	if !cok do return false
 
 	// Stage into an EMPTY dir, so the export is exactly the closure and not
@@ -154,7 +160,7 @@ export :: proc(src: ^File, src_dir: string, data_dir: string, boot_scene := "", 
 	out := File{version = VERSION, relocatable = true, boot_scene = boot_guid}
 	out.assets = make(map[string]Entry, len(ship), context.temp_allocator)
 
-	copied := 0
+	copied, skipped := 0, 0
 	for guid_str in ship {
 		entry := src.assets[guid_str]
 		src_path := _rooted(root, entry.path)
@@ -185,11 +191,16 @@ export :: proc(src: ^File, src_dir: string, data_dir: string, boot_scene := "", 
 			copied += 1
 			fan_dir := strings.concatenate({src_dir, "/artifacts/", entry.artifact[:2]}, context.temp_allocator)
 			prefix := strings.concatenate({entry.artifact, "_"}, context.temp_allocator)
+			clips, all_clips := _used_clips(guid_str, entry, &uses)
 			if handle, oerr := os.open(fan_dir); oerr == nil {
 				defer os.close(handle)
 				files, _ := os.read_dir(handle, -1, context.temp_allocator)
 				for f in files {
 					if !strings.has_prefix(f.name, prefix) || !strings.has_suffix(f.name, ".bin") do continue
+					if !all_clips && !_clip_used(f.name[len(prefix):len(f.name) - len(".bin")], clips) {
+						skipped += 1
+						continue
+					}
 					frel := strings.concatenate({"artifacts/", entry.artifact[:2], "/", f.name}, context.temp_allocator)
 					if !_copy_file(strings.concatenate({src_dir, "/", frel}, context.temp_allocator), strings.concatenate({data_dir, "/", frel}, context.temp_allocator)) do return false
 					copied += 1
@@ -202,7 +213,7 @@ export :: proc(src: ^File, src_dir: string, data_dir: string, boot_scene := "", 
 
 	catalog_path := strings.concatenate({data_dir, "/catalog.json"}, context.temp_allocator)
 	if !save(&out, catalog_path) do return false
-	fmt.printfln("[Catalog] exported %s (%d of %d assets, %d files)", data_dir, len(out.assets), len(src.assets), copied)
+	fmt.printfln("[Catalog] exported %s (%d of %d assets, %d files, %d unreferenced clips left out)", data_dir, len(out.assets), len(src.assets), copied, skipped)
 	return true
 }
 
@@ -355,10 +366,15 @@ RESOURCES_DIR :: "resources"
 //
 // `boot_guid == ""` means no root, and the whole catalog ships.
 @(private = "file")
-_closure :: proc(src: ^File, boot_guid: string, root: string, extra_roots: []string = nil) -> (ship: [dynamic]string, ok: bool) {
+_closure :: proc(src: ^File, boot_guid: string, root: string, extra_roots: []string, uses: ^_Uses) -> (ship: [dynamic]string, ok: bool) {
 	ship = make([dynamic]string, context.temp_allocator)
+	uses.whole = make(map[string]bool, len(src.assets), context.temp_allocator)
+	uses.ids = make(map[string][dynamic]i64, context.temp_allocator)
 	if boot_guid == "" {
-		for guid_str in src.assets do append(&ship, guid_str)
+		for guid_str in src.assets {
+			append(&ship, guid_str)
+			uses.whole[guid_str] = true
+		}
 		return ship, true
 	}
 
@@ -372,9 +388,13 @@ _closure :: proc(src: ^File, boot_guid: string, root: string, extra_roots: []str
 	path_to_guid := make(map[string]string, len(src.assets), context.temp_allocator)
 	for guid_str, entry in src.assets do path_to_guid[entry.path] = guid_str
 
+	// A root is used whole: nothing names which of its sub-assets it needs.
 	push(&ship, &seen, boot_guid)
+	uses.whole[boot_guid] = true
 	for guid_str, entry in src.assets {
-		if _under_resources(entry.path) do push(&ship, &seen, guid_str)
+		if !_under_resources(entry.path) do continue
+		push(&ship, &seen, guid_str)
+		uses.whole[guid_str] = true
 	}
 	for extra in extra_roots {
 		path := _rooted(root, extra)
@@ -383,7 +403,7 @@ _closure :: proc(src: ^File, boot_guid: string, root: string, extra_roots: []str
 			fmt.eprintfln("[Catalog] export: cannot read %s", path)
 			return ship, false
 		}
-		_harvest_guids(string(data), src, &ship, &seen)
+		_harvest_guids(string(data), src, &ship, &seen, uses)
 	}
 
 	// Breadth-first over `ship` itself: it grows while it is walked.
@@ -396,9 +416,9 @@ _closure :: proc(src: ^File, boot_guid: string, root: string, extra_roots: []str
 				fmt.eprintfln("[Catalog] export: cannot read %s", src_path)
 				return ship, false
 			}
-			_harvest_guids(string(data), src, &ship, &seen)
+			_harvest_guids(string(data), src, &ship, &seen, uses)
 		}
-		_harvest_guids(entry.settings, src, &ship, &seen)
+		_harvest_guids(entry.settings, src, &ship, &seen, uses)
 	}
 
 	// Ancestor folders of everything shipped.
@@ -426,20 +446,98 @@ GUID_LEN :: 36
 
 // Appends every catalog guid that appears in `text` as a 8-4-4-4-12 hex
 // string. Guids are written lowercase everywhere (core:encoding/uuid), so the
-// match is exact.
+// match is exact. Each occurrence is also recorded in `uses`.
 @(private = "file")
-_harvest_guids :: proc(text: string, src: ^File, ship: ^[dynamic]string, seen: ^map[string]bool) {
+_harvest_guids :: proc(text: string, src: ^File, ship: ^[dynamic]string, seen: ^map[string]bool, uses: ^_Uses) {
 	if len(text) < GUID_LEN do return
 	for i := 0; i + GUID_LEN <= len(text); i += 1 {
-		if !_is_guid(text[i:i + GUID_LEN]) do continue
-		if _, has := src.assets[text[i:i + GUID_LEN]]; has {
-			if text[i:i + GUID_LEN] not_in seen {
-				seen[text[i:i + GUID_LEN]] = true
-				append(ship, text[i:i + GUID_LEN])
+		g := text[i:i + GUID_LEN]
+		if !_is_guid(g) do continue
+		if _, has := src.assets[g]; has {
+			if g not_in seen {
+				seen[g] = true
+				append(ship, g)
+			}
+			if id := _local_id_after(text, i + GUID_LEN); id != 0 {
+				if g not_in uses.ids do uses.ids[g] = make([dynamic]i64, context.temp_allocator)
+				append(&uses.ids[g], id)
+			} else {
+				uses.whole[g] = true
 			}
 		}
 		i += GUID_LEN - 1
 	}
+}
+
+// How the export walk saw each asset referenced. A sub-asset reference is a
+// PPtr, written `{"guid": "<g>", "local_id": <id>}` by every serializer here
+// (struct field order, and sorted keys put guid first too), so an id right
+// after the guid names one sub-asset. Every other occurrence of the guid —
+// bare, with local id 0, or as a root — uses the asset WHOLE. A guid that
+// appears both ways is used whole, so the rule can only ship too much.
+@(private = "file")
+_Uses :: struct {
+	whole: map[string]bool,
+	ids:   map[string][dynamic]i64,
+}
+
+// The local id of a PPtr whose guid string ends at `at` (just before its
+// closing quote), or 0 when no `"local_id": <n>` follows it.
+@(private = "file")
+_local_id_after :: proc(text: string, at: int) -> i64 {
+	ws :: proc(text: string, i: int) -> int {
+		i := i
+		for i < len(text) && (text[i] == ' ' || text[i] == '\t' || text[i] == '\n' || text[i] == '\r') do i += 1
+		return i
+	}
+	KEY :: `"local_id"`
+	i := at
+	if i >= len(text) || text[i] != '"' do return 0
+	i = ws(text, i + 1)
+	if i >= len(text) || text[i] != ',' do return 0
+	i = ws(text, i + 1)
+	if !strings.has_prefix(text[i:], KEY) do return 0
+	i = ws(text, i + len(KEY))
+	if i >= len(text) || text[i] != ':' do return 0
+	i = ws(text, i + 1)
+	j := i
+	for j < len(text) && text[j] >= '0' && text[j] <= '9' do j += 1
+	id, _ := strconv.parse_i64(text[i:j])
+	return id
+}
+
+// Which clip fan-out files (`<key>_a<i>.bin`, i = the clip's position in the
+// model's settings `clips` list, see engine.mesh_clip_artifact_path) a shipped
+// asset needs. `all` for an asset used whole and for one that lists no clips.
+@(private = "file")
+_used_clips :: proc(guid_str: string, entry: Entry, uses: ^_Uses) -> (keep: map[int]bool, all: bool) {
+	if uses.whole[guid_str] || entry.settings == "" do return nil, true
+	v, err := json.parse(transmute([]byte)entry.settings, .JSON, true, context.temp_allocator)
+	if err != nil do return nil, true
+	obj, _ := v.(json.Object)
+	list, has := obj["clips"].(json.Array)
+	if !has do return nil, true
+	keep = make(map[int]bool, context.temp_allocator)
+	for c, i in list {
+		co, _ := c.(json.Object)
+		id: i64
+		#partial switch n in co["id"] {
+		case json.Integer: id = n
+		case json.Float:   id = i64(n)
+		}
+		for want in uses.ids[guid_str] do if want == id do keep[i] = true
+	}
+	return keep, false
+}
+
+// Whether the fan-out file with this suffix (the name between `<key>_` and
+// `.bin`) ships, given the clips in use. Only clip files are left out.
+@(private = "file")
+_clip_used :: proc(suffix: string, clips: map[int]bool) -> bool {
+	if len(suffix) < 2 || suffix[0] != 'a' do return true
+	idx, ok := strconv.parse_int(suffix[1:], 10)
+	if !ok do return true
+	return clips[idx]
 }
 
 @(private = "file")

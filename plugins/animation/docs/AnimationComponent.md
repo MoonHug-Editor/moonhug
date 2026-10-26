@@ -343,7 +343,7 @@ A glTF file's animations play without being extracted. The mesh importer bakes e
 ]
 ```
 
-A clip is a sub-asset of its model, named as `{model guid, clip id}`: that is what a `clip: PPtr` field stores, and a standalone `.anim` is `{its guid, 0}`, so one field takes both. The id is minted at first import and kept across reimports by matching the clip's name, the way part ids are. The runtime reads the model's `_a<i>.bin` fan-out at the clip's file order (`mesh_clip_index`), from the clip list the model's settings carry, so a build and an export resolve it the same way. An export that references a clip harvests the model's guid and ships the model with its fan-outs. Parts, clips and convex decompositions share one id space, since a sub-asset id must be unique within its model.
+A clip is a sub-asset of its model, named as `{model guid, clip id}`: that is what a `clip: PPtr` field stores, and a standalone `.anim` is `{its guid, 0}`, so one field takes both. The id is minted at first import and kept across reimports by matching the clip's name, the way part ids are. The runtime reads the model's `_a<i>.bin` fan-out at the clip's file order (`mesh_clip_index`), from the clip list the model's settings carry, so a build and an export resolve it the same way. An export ships the model with its mesh parts and only the clips something references: the animation sample plays 5 of UAL1's 43 clips and ships those 5. A model referenced whole (its bare guid, or under a `resources` folder) ships every clip. Parts, clips and convex decompositions share one id space, since a sub-asset id must be unique within its model.
 
 What lands in the repository is the model and a few lines of its `.meta`. The curve data stays in `library/`, rebuilt from the model on any machine.
 
@@ -357,24 +357,22 @@ A knob that does nothing is worse than a missing one, so these wait for the
 system behind them:
 
 - **Mirror** needs a left/right bone mapping. There is no avatar.
-- **Root motion** — bake into pose, orientation and Y/XZ offsets, height from
-  feet — needs a root-motion system.
-- **Additive reference pose** needs additive layers. Layers here override
-  rather than add.
+- **Root motion** — bake into pose, orientation and Y/XZ offsets, height from feet — needs a root-motion system.
+- **Additive reference pose** needs additive layers. Layers here override rather than add.
 
 ### The Animation window
 
 A clip inside a model opens read-only: the window shows its keys and curves, previews, plays and scrubs it, and selects keys to show their values, but adds, moves and deletes nothing, and Record is off. The clip has no document to edit. The model's file is its source, and the clip is rebuilt from it on every import. The toolbar shows Read-Only and the clip list marks such clips. Assets/Extract Assets makes an editable standalone `.anim`.
 
-Playback respects the clip's `wrap`: a Once clip plays through and stops, a Loop
-clip cycles. The window reads the IMPORTED clip for that, not the document it is
-editing — the document holds keys, the meta holds wrap.
+By default playback respects the clip's `wrap`: a Once clip plays through and stops, a Loop clip cycles. The window reads the IMPORTED clip for that, not the document it is editing — the document holds keys, the meta holds wrap.
 
-This is a deliberate choice, and not the common one: clip editors usually loop
-their preview unconditionally, treating it as a scrubber rather than a
-simulation. Respecting wrap means the preview shows what the clip will actually
-do when something plays it, which is the question being asked while authoring
-one.
+The playback toggle after the transport buttons overrides it. A click steps through three states:
+
+- **Match the clip's wrap setting** (the default): plays as described above.
+- **Play once**: plays through and stops, even a Loop clip, to look at its end pose.
+- **Loop**: cycles, even a Once clip, to watch its motion over and over.
+
+The state is a per-developer preference in `UserSettings/animation.json`, next to Play Ends on Last Frame, which decides where a Once playback comes to rest in every state.
 
 ## Non-goals
 

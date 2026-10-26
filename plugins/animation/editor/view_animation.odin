@@ -980,6 +980,23 @@ _pv_draw_toolbar :: proc(clip: ^anim.AnimationClip, length: f32, read_only: bool
 		_pv.active = true
 	}
 
+	// Playback: once, loop, or as the clip's wrap setting. A click steps to the
+	// next state, and the tooltip names the one a click gives.
+	im.SameLine()
+	glyph, tip: cstring
+	switch anim_view_prefs.playback {
+	case .Once:
+		glyph, tip = icons.ICON_MD_REPEAT_ONE, "Play once, then stop\nClick: loop"
+	case .Loop:
+		glyph, tip = icons.ICON_MD_REPEAT, "Loop\nClick: match the clip's wrap setting"
+	case .Clip:
+		glyph = icons.ICON_MD_EVENT_REPEAT
+		tip = fmt.ctprintf("Match the clip's wrap setting (%v)\nClick: play once", _pv_clip_wrap())
+	}
+	if widgets.icon_button(glyph, "##playback", tip) {
+		anim_view_prefs.playback = Anim_Playback((int(anim_view_prefs.playback) + 1) % len(Anim_Playback))
+	}
+
 	// The playhead as a frame number, with the clip's frame count beside it.
 	im.SameLine()
 	im.SetNextItemWidth(58)
@@ -1095,6 +1112,16 @@ Anim_View_Prefs :: struct {
 	// Where the playhead lands when a Once clip finishes: the last frame, or
 	// back at the first. Off by default, which is how it has always behaved.
 	ends_on_last_frame: bool,
+	// The toolbar's playback toggle.
+	playback: Anim_Playback,
+}
+
+// How the transport plays a clip. Saved as an integer: Clip stays zero, so a
+// settings file without the field follows the clip.
+Anim_Playback :: enum {
+	Clip, // as the clip's wrap setting says, which is what the component does
+	Once, // plays through and stops, even a Loop clip
+	Loop, // cycles, even a Once clip
 }
 
 @(user_settings={name="Animation"})
@@ -1112,20 +1139,30 @@ anim_ends_on_last_frame :: proc(view: session.View) -> bool {
 	return anim_view_prefs.ends_on_last_frame
 }
 
-// Advance the playhead while the transport runs, wrapping the way the clip
-// itself does so playback matches what the component will do.
+// The IMPORTED clip's wrap, not the edited document's: wrap is authored in the
+// .meta and baked into the artifact, so the document has none.
+@(private = "file")
+_pv_clip_wrap :: proc() -> anim.Animation_Wrap {
+	if imported, ok := anim.animation_clip_load(_pv.clip); ok do return imported.wrap
+	return .Once
+}
+
+// Advance the playhead while the transport runs. By default it wraps the way
+// the clip itself does, so playback matches what the component will do — a
+// Once clip plays through and stops, a Loop clip cycles. The playback toggle
+// can force either.
 @(private = "file")
 _pv_advance :: proc(clip: ^anim.AnimationClip, length: f32) {
 	if !_pv.playing do return
 	gfx.keep_awake()
 	_pv.time += gfx.delta_time()
 	if _pv.time < length do return
-	// The IMPORTED clip's wrap, not the edited document's: wrap is authored in
-	// the .meta and baked into the artifact, so the document has none. Playback
-	// here then matches what the clip does at runtime — a Once clip plays
-	// through and stops, a Loop clip cycles.
-	wrap := anim.Animation_Wrap.Once
-	if imported, ok := anim.animation_clip_load(_pv.clip); ok do wrap = imported.wrap
+	wrap := _pv_clip_wrap()
+	switch anim_view_prefs.playback {
+	case .Clip:
+	case .Once: wrap = .Once
+	case .Loop: wrap = .Loop
+	}
 	switch wrap {
 	case .Loop:
 		_pv.time -= length * math.floor(_pv.time / length)

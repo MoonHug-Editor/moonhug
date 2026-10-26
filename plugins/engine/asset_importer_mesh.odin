@@ -163,7 +163,8 @@ mesh_part_artifact_path :: proc(artifact_path: string, mesh_index: int, alloc :=
 }
 
 // The clip fan-out beside the parts: <key>_a<i>.bin, `i` the glTF animation
-// index. The catalog export copies these by probing the same pattern.
+// index. The catalog export probes the same pattern and copies the clips a
+// reference names (all of them for a model used whole).
 mesh_clip_artifact_path :: proc(artifact_path: string, clip_index: int, alloc := context.allocator) -> string {
     base := strings.trim_suffix(artifact_path, ".bin")
     return fmt.aprintf("%s_a%d.bin", base, clip_index, allocator = alloc)

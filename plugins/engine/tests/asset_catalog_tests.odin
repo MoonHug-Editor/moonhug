@@ -248,6 +248,76 @@ test_asset_catalog_export_ships_dependency_closure :: proc(t: ^testing.T) {
 	testing.expect(t, !os.exists(unused_artifact), "unreferenced asset ships nothing")
 }
 
+// A model's clips ship only when referenced: a scene that plays one clip of
+// a three-clip model, and shows one of its mesh parts, ships that clip's
+// fan-out and every mesh part, and leaves the other two clips out. A bare
+// reference to the model uses it whole, so every clip ships. Synthetic
+// catalog and artifacts, no import: the rule is the export's alone.
+@(test)
+test_asset_catalog_export_ships_only_referenced_clips :: proc(t: ^testing.T) {
+	src_dir :: "moonhug/tests/fixtures/_catalog_clips_tmp"
+	lib :: src_dir + "/library"
+	data_dir :: src_dir + "_data"
+	defer {
+		_remove_tree(src_dir)
+		_remove_tree(data_dir)
+	}
+
+	MODEL :: "11111111-2222-4333-8444-555555555555"
+	CLIP_SCENE :: "22222222-2222-4333-8444-555555555555"
+	BARE_SCENE :: "33333333-2222-4333-8444-555555555555"
+	KEY :: "ab0123456789abcdef0123456789abcd"
+	model := src_dir + "/model.glb"
+	clip_scene := src_dir + "/clip.scene"
+	bare_scene := src_dir + "/bare.scene"
+
+	catalog.ensure_parent_dirs(model)
+	testing.expect(t, os.write_entire_file(model, transmute([]byte)string("glb")) == nil)
+	// The clip with id 6 is the second in the model's list, so its file is _a1.
+	// Pretty-printed the way scenes are, the mesh part compact the way settings are.
+	clip_text := `{"clip": {
+  "guid": "` + MODEL + `",
+  "local_id": 6
+}, "mesh": {"guid":"` + MODEL + `","local_id":1}}`
+	testing.expect(t, os.write_entire_file(clip_scene, transmute([]byte)clip_text) == nil)
+	testing.expect(t, os.write_entire_file(bare_scene, transmute([]byte)string(`{"model": "` + MODEL + `"}`)) == nil)
+
+	artifact := lib + "/artifacts/ab/" + KEY + ".bin"
+	files := [?]string{
+		artifact,
+		engine.mesh_part_artifact_path(artifact, 0, context.temp_allocator),
+		engine.mesh_clip_artifact_path(artifact, 0, context.temp_allocator),
+		engine.mesh_clip_artifact_path(artifact, 1, context.temp_allocator),
+		engine.mesh_clip_artifact_path(artifact, 2, context.temp_allocator),
+	}
+	for f in files {
+		catalog.ensure_parent_dirs(f)
+		testing.expect(t, os.write_entire_file(f, transmute([]byte)string("bin")) == nil)
+	}
+
+	cf := catalog.File{version = catalog.VERSION}
+	cf.assets = make(map[string]catalog.Entry, context.temp_allocator)
+	cf.assets[MODEL] = {path = model, artifact = KEY, settings = `{"clips":[{"id":5,"name":"A"},{"id":6,"name":"B"},{"id":7,"name":"C"}],"parts":[{"id":1,"name":"Body"}]}`}
+	cf.assets[CLIP_SCENE] = {path = clip_scene}
+	cf.assets[BARE_SCENE] = {path = bare_scene}
+
+	shipped :: proc(data_dir, name: string) -> bool {
+		return os.exists(strings.concatenate({data_dir, "/artifacts/ab/", name}, context.temp_allocator))
+	}
+
+	testing.expect(t, catalog.export(&cf, lib, data_dir, boot_scene = clip_scene), "export from the clip scene")
+	testing.expect(t, shipped(data_dir, KEY + ".bin"), "the model's artifact ships")
+	testing.expect(t, shipped(data_dir, KEY + "_m0.bin"), "mesh parts ship")
+	testing.expect(t, shipped(data_dir, KEY + "_a1.bin"), "the referenced clip ships")
+	testing.expect(t, !shipped(data_dir, KEY + "_a0.bin"), "an unreferenced clip does not ship")
+	testing.expect(t, !shipped(data_dir, KEY + "_a2.bin"), "an unreferenced clip does not ship")
+
+	testing.expect(t, catalog.export(&cf, lib, data_dir, boot_scene = bare_scene), "export from the bare scene")
+	for name in ([]string{KEY + "_a0.bin", KEY + "_a1.bin", KEY + "_a2.bin"}) {
+		testing.expect(t, shipped(data_dir, name), "a model referenced whole ships every clip")
+	}
+}
+
 @(test)
 test_asset_catalog_export_rejects_unknown_boot_scene :: proc(t: ^testing.T) {
 	src_dir :: "moonhug/tests/fixtures/_catalog_boot_tmp"
