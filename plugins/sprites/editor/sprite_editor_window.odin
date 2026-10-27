@@ -9,6 +9,10 @@ package sprites_editor
 // The list and the panel resize by their splitters and show or hide by the
 // toolbar's toggles, saved per developer (sprite_editor_prefs).
 //
+// Several copies of the window can be open. Each has its own view (_SE_View:
+// zoom, pan, drag, panes), and all of them show and edit the one texture and
+// its working copy (_se).
+//
 // The slices are edited in a working copy of the texture's import settings
 // (inspector.asset_doc_copy_open), so nothing reaches the .meta until Apply,
 // which writes it and reimports. Undo records every finished edit on the copy
@@ -85,19 +89,8 @@ _SE_State :: struct {
 	// answered (sprite_editor_open).
 	pending_path: string, // heap clone
 	pending_guid: engine.Asset_GUID,
+	// The selected slice, shared by every copy: it indexes the shared slices.
 	sel:    int, // -1 = none
-
-	zoom: f32,
-	pan:  im.Vec2, // image px
-	// Last frame's canvas size and the lowest zoom then (the Scale slider's
-	// floor): 1, or less when the texture does not fit the canvas.
-	canvas_size: im.Vec2,
-	zoom_floor:  f32,
-
-	drag:        _SE_Drag,
-	drag_from:   im.Vec2, // image px at press
-	drag_rect:   [4]f32,  // Create: the rect being rubber-banded
-	drag_border: int,     // Border: 0 left, 1 bottom, 2 right, 3 top
 
 	name_buf: [128]u8,
 
@@ -116,7 +109,6 @@ _SE_State :: struct {
 
 _se := _SE_State{
 	sel       = -1,
-	zoom      = 1,
 	cols      = 4,
 	rows      = 4,
 	cell_w    = 32,
@@ -127,7 +119,8 @@ _se := _SE_State{
 
 // Which side panes the window shows and their widths, saved per developer.
 // The toolbar's Sprites and Properties toggles flip them, and the canvas
-// takes the space.
+// takes the space. A new copy of the window starts from these, and a toggle
+// or a splitter drag in any copy updates them.
 Sprite_Editor_Prefs :: struct {
 	hide_list:  bool, // the slices list
 	hide_panel: bool, // the selected slice's properties
@@ -137,6 +130,47 @@ Sprite_Editor_Prefs :: struct {
 
 @(user_settings={name="Sprite Editor"})
 sprite_editor_prefs: Sprite_Editor_Prefs
+
+// One Sprite Editor copy's own state: how it shows the texture. The texture,
+// its working copy, the selection and the Slice popup's parameters are _se's,
+// shared by every copy, so all copies edit the same slices.
+_SE_View :: struct {
+	zoom: f32, // 0 = fit on the next frame
+	pan:  im.Vec2, // image px
+	// Last frame's canvas size and the zoom range then (the Scale slider's
+	// range, see _se_fit).
+	canvas_size: im.Vec2,
+	zoom_floor:  f32,
+	zoom_top:    f32,
+
+	drag:        _SE_Drag,
+	drag_from:   im.Vec2, // image px at press
+	drag_rect:   [4]f32,  // Create: the rect being rubber-banded
+	drag_border: int,     // Border: 0 left, 1 bottom, 2 right, 3 top
+
+	// This copy's side panes, taken from sprite_editor_prefs on its first
+	// frame (panes_set).
+	panes:     Sprite_Editor_Prefs,
+	panes_set: bool,
+}
+
+// The copy being drawn, and outside a draw the copy clicked in last. With no
+// copy open it points at a spare state, so a write lands nowhere.
+@(private = "file")
+_sv: ^_SE_View = &_sv_none
+
+@(private = "file")
+_sv_none: _SE_View
+
+@(private = "file")
+_se_view :: proc(w: ^wnd.Window) -> ^_SE_View {
+	v := wnd.state(w, _SE_View{})
+	if !v.panes_set {
+		v.panes = sprite_editor_prefs
+		v.panes_set = true
+	}
+	return v
+}
 
 _SE_LIST_W   :: f32(180) // the side panes' default widths
 _SE_PANEL_W  :: f32(240)
@@ -173,9 +207,13 @@ _se_switch :: proc(path: string, guid: engine.Asset_GUID) {
 	_se.path = strings.clone(path)
 	_se.guid = guid
 	_se.sel = -1
-	_se.drag = .None
-	_se.zoom = 0 // fit on first frame
-	_se.pan = {}
+	// Every copy fits the new texture on its next frame.
+	for w in wnd.instances(SPRITE_EDITOR) {
+		v := _se_view(w)
+		v.drag = .None
+		v.zoom = 0
+		v.pan = {}
+	}
 	if _se_resolve() do _se_heal_ids()
 }
 
@@ -273,9 +311,15 @@ _se_apply :: proc() {
 	if _se_resolve() do inspector.asset_doc_copy_apply(_se.copy)
 }
 
-// The last Sprite Editor tab closing ends the working copy. A close with
-// unapplied edits asked first (the editor's view close prompt).
+// A Sprite Editor tab closing frees its view, and the last one closing ends
+// the working copy. A close with unapplied edits asked first (the editor's
+// view close prompt).
 sprite_editor_window_closed :: proc(w: ^wnd.Window) {
+	if v := (^_SE_View)(w.data); v != nil {
+		if _sv == v do _sv = &_sv_none
+		free(v, runtime.default_allocator())
+		w.data = nil
+	}
 	if wnd.is_open(SPRITE_EDITOR) do return
 	inspector.asset_doc_copy_close(_se.copy)
 	_se.copy = 0
@@ -287,6 +331,11 @@ SPRITE_EDITOR :: "sprite_editor"
 
 @(editor_window={id="sprite_editor", title="Sprite Editor", icon="CROP", width=940, height=640, closed=sprite_editor_window_closed})
 sprite_editor_window_draw :: proc(w: ^wnd.Window) {
+	_sv = _se_view(w)
+	defer {
+		last := wnd.last(SPRITE_EDITOR)
+		_sv = _se_view(last) if last != nil else &_sv_none
+	}
 	if _se.path == "" {
 		im.TextDisabled("Select a texture in the Project view and press Sprite Editor.")
 		return
@@ -306,40 +355,56 @@ sprite_editor_window_draw :: proc(w: ^wnd.Window) {
 
 	// Canvas | slices list | properties, split by the shared splitter. The
 	// side panes keep their widths when the window resizes, and give way to
-	// the canvas when the window gets too narrow for all three.
-	prefs := &sprite_editor_prefs
-	show_list := !prefs.hide_list
-	show_panel := !prefs.hide_panel
+	// the canvas when the window gets too narrow for all three: first down to
+	// their minimum, then below it, so the canvas keeps _SE_MIN_MID.
+	panes := &_sv.panes
+	show_list := !panes.hide_list
+	show_panel := !panes.hide_panel
 	avail := im.GetContentRegionAvail()
-	list_w := show_list ? (prefs.list_w > 0 ? prefs.list_w : _SE_LIST_W) : 0
-	panel_w := show_panel ? (prefs.panel_w > 0 ? prefs.panel_w : _SE_PANEL_W) : 0
+	list_w := show_list ? (panes.list_w > 0 ? panes.list_w : _SE_LIST_W) : 0
+	panel_w := show_panel ? (panes.panel_w > 0 ? panes.panel_w : _SE_PANEL_W) : 0
 	splitters := f32(int(show_list) + int(show_panel)) * widgets.SPLITTER_SIZE
 	mid_w := avail.x - splitters - list_w - panel_w
 	if mid_w < _SE_MIN_MID {
 		short := _SE_MIN_MID - mid_w
-		give := min(short, max(panel_w - _SE_MIN_SIDE, 0))
-		panel_w -= give
-		short -= give
-		list_w -= min(short, max(list_w - _SE_MIN_SIDE, 0))
-		mid_w = avail.x - splitters - list_w - panel_w
+		for floor in ([2]f32{_SE_MIN_SIDE, 1}) {
+			give := min(short, max(panel_w - floor, 0)) if show_panel else 0
+			panel_w -= give
+			short -= give
+			give = min(short, max(list_w - floor, 0)) if show_list else 0
+			list_w -= give
+			short -= give
+		}
+		mid_w = max(avail.x - splitters - list_w - panel_w, _SE_MIN_MID)
 	}
 
 	_se_canvas(tex, im.Vec2{mid_w, avail.y})
+	// A squeezed pane is below the splitter's minimum, so the minimum passed
+	// is the smaller of the two: a drag never snaps it wider.
+	min_list := min(list_w, _SE_MIN_SIDE)
+	min_panel := min(panel_w, _SE_MIN_SIDE)
 	if show_list {
 		im.SameLine(0, 0)
-		if widgets.splitter("##se_split_list", true, &mid_w, &list_w, _SE_MIN_MID, _SE_MIN_SIDE) do prefs.list_w = list_w
+		if widgets.splitter("##se_split_list", true, &mid_w, &list_w, _SE_MIN_MID, min_list) {
+			panes.list_w = list_w
+			sprite_editor_prefs.list_w = list_w
+		}
 		im.SameLine(0, 0)
 		_se_list(tex, list_w)
 	}
 	if show_panel {
 		im.SameLine(0, 0)
+		changed: bool
 		if show_list {
-			if widgets.splitter("##se_split_panel", true, &list_w, &panel_w, _SE_MIN_SIDE, _SE_MIN_SIDE) {
-				prefs.list_w = list_w
-				prefs.panel_w = panel_w
-			}
+			changed = widgets.splitter("##se_split_panel", true, &list_w, &panel_w, min_list, min_panel)
 		} else {
-			if widgets.splitter("##se_split_panel", true, &mid_w, &panel_w, _SE_MIN_MID, _SE_MIN_SIDE) do prefs.panel_w = panel_w
+			changed = widgets.splitter("##se_split_panel", true, &mid_w, &panel_w, _SE_MIN_MID, min_panel)
+		}
+		if changed {
+			if show_list do panes.list_w = list_w
+			panes.panel_w = panel_w
+			sprite_editor_prefs.list_w = panes.list_w
+			sprite_editor_prefs.panel_w = panel_w
 		}
 		im.SameLine(0, 0)
 		_se_panel(tex)
@@ -405,8 +470,8 @@ _se_list :: proc(tex: ^engine.Texture2D, width: f32) {
 }
 
 // Apply and Revert, the texture, the Scale slider (as the Game view's: 1 is
-// the texture's pixels, the floor fits it in the canvas), and the pane
-// toggles at the right end.
+// the texture's pixels, the floor is 1 or the zoom that fits a larger texture
+// in the canvas), and the pane toggles at the right end.
 _se_toolbar :: proc(tex: ^engine.Texture2D) {
 	im.BeginDisabled(!_se.doc.dirty)
 	if im.Button("Apply") do _se_apply()
@@ -432,40 +497,41 @@ _se_toolbar :: proc(tex: ^engine.Texture2D) {
 	im.SameLine()
 	// The slider takes the rest of the toolbar, as the Game view's does. It
 	// zooms about the canvas centre.
-	floor := _se.zoom_floor > 0 ? _se.zoom_floor : 1
-	top := _se_zoom_top(floor)
-	z := clamp(_se.zoom, floor, top)
+	floor := _sv.zoom_floor > 0 ? _sv.zoom_floor : 1
+	top := _sv.zoom_top > 0 ? _sv.zoom_top : _SE_ZOOM_MAX
+	z := clamp(_sv.zoom, floor, top)
 	slider_w := max(im.GetContentRegionAvail().x - w_list - w_panel - style.ItemSpacing.x * 2, widgets.slider_width_for_track(40))
-	if widgets.slider_float("##se_scale", &z, floor, top, "%.2f", slider_w) && _se.zoom > 0 {
-		centre := _se.canvas_size * 0.5
-		at := centre / _se.zoom - _se.pan
-		_se.zoom = z
-		_se.pan = centre / _se.zoom - at
+	if widgets.slider_float("##se_scale", &z, floor, top, "%.2f", slider_w) && _sv.zoom > 0 {
+		centre := _sv.canvas_size * 0.5
+		at := centre / _sv.zoom - _sv.pan
+		_sv.zoom = z
+		_sv.pan = centre / _sv.zoom - at
 	}
-	widgets.tooltip("Zoom the texture. 1x is its actual pixels. At the lowest value it fits the canvas and follows its size. Wheel zooms at the mouse")
+	widgets.tooltip("Zoom the texture. 1x is its actual pixels. The lowest value is 1x, or the zoom that fits a larger texture in the canvas, and there the texture follows the canvas size. Wheel zooms at the mouse")
 
 	im.SameLine()
-	_se_pane_toggle("Sprites", &sprite_editor_prefs.hide_list, "Show the slices list")
+	if _se_pane_toggle("Sprites", &_sv.panes.hide_list, "Show the slices list") {
+		sprite_editor_prefs.hide_list = _sv.panes.hide_list
+	}
 	im.SameLine()
-	_se_pane_toggle("Properties", &sprite_editor_prefs.hide_panel, "Show the selected slice's properties")
+	if _se_pane_toggle("Properties", &_sv.panes.hide_panel, "Show the selected slice's properties") {
+		sprite_editor_prefs.hide_panel = _sv.panes.hide_panel
+	}
 }
 
-// The highest zoom: _SE_ZOOM_MAX, or twice the fit for a texture so small its
-// fit is beyond that.
+// A toolbar button lit while its pane shows, true when clicked. The tint is
+// pushed for the state before the click, so the pop matches it.
 @(private = "file")
-_se_zoom_top :: proc(floor: f32) -> f32 {
-	return max(_SE_ZOOM_MAX, floor * 2)
-}
-
-// A toolbar button lit while its pane shows. The tint is pushed for the state
-// before the click, so the pop matches it.
-@(private = "file")
-_se_pane_toggle :: proc(label: cstring, hidden: ^bool, tip: cstring) {
+_se_pane_toggle :: proc(label: cstring, hidden: ^bool, tip: cstring) -> (clicked: bool) {
 	lit := !hidden^
 	if lit do im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
-	if im.Button(label) do hidden^ = !hidden^
+	if im.Button(label) {
+		hidden^ = !hidden^
+		clicked = true
+	}
 	if lit do im.PopStyleColor()
 	widgets.tooltip(tip)
+	return
 }
 
 _se_slice_popup :: proc(tex: ^engine.Texture2D) {
@@ -637,8 +703,59 @@ _se_slice_automatic :: proc(tex: ^engine.Texture2D) {
 
 // --- Canvas ---------------------------------------------------------------------
 
+// One frame's placement of the texture in the canvas (_se_fit).
+_SE_Fit :: struct {
+	zoom:    f32,
+	floor:   f32,     // the lowest zoom: 1, or less when the texture does not fit at 1
+	top:     f32,     // the highest zoom: _SE_ZOOM_MAX, or the fit when that is larger
+	pan:     [2]f32,  // image px
+	need:    [2]bool, // a scrollbar on x, on y
+	view:    [2]f32,  // the canvas minus the scrollbars' strips
+	content: [2]f32,  // the zoomed texture's size
+}
+
+// The texture's zoom, pan and scrollbars for a canvas `region` px large, from
+// the view's last zoom, floor and pan. No imgui calls.
+//
+// The floor is 1, or the zoom that fits a texture larger than the canvas, as
+// the Game view's Scale has (game_min_scale). Opened (zoom 0), the texture
+// sits at the floor, and while it does it follows the canvas as it resizes: a
+// pane shown, hidden or dragged rescales a large texture with it. Zoomed in
+// it stays put, and zoomed back out to the floor it follows again.
+//
+// A scrollbar shows on each axis the zoomed texture is larger than the canvas
+// on, as a scrolled window has, taking its `bar` px strip from the canvas.
+// One bar can make the other axis too small, so the need is checked again. On
+// a scrolled axis pan is clamped so the texture covers the view, on the other
+// the texture sits centred.
+_se_fit :: proc(tex_size, region: [2]f32, bar: f32, zoom, prev_floor: f32, pan: [2]f32) -> (f: _SE_Fit) {
+	fit := min(region.x / tex_size.x, region.y / tex_size.y)
+	f.floor = min(1, fit)
+	f.top = max(_SE_ZOOM_MAX, fit)
+	parked := zoom == 0 || zoom <= prev_floor + 0.0001
+	f.zoom = clamp(f.floor if parked else zoom, f.floor, f.top)
+
+	f.content = tex_size * f.zoom
+	need := [2]bool{f.content.x > region.x + 0.5, f.content.y > region.y + 0.5}
+	for _ in 0 ..< 2 do need = {f.content.x > region.x - (need.y ? bar : 0) + 0.5, f.content.y > region.y - (need.x ? bar : 0) + 0.5}
+	f.need = need
+	f.view = region - {need.y ? bar : 0, need.x ? bar : 0}
+	f.pan = pan
+	for k in 0 ..< 2 {
+		if need[k] do f.pan[k] = clamp(pan[k], (f.view[k] - f.content[k]) / f.zoom, 0)
+		else do f.pan[k] = (f.view[k] / f.zoom - tex_size[k]) * 0.5
+	}
+	return
+}
+
+// A scrollbar's position in whole screen px for a pan (image px), rounded so
+// a pan that came from a scroll value maps back to the same value.
+_se_scroll_from_pan :: proc(pan, zoom: f32) -> i64 {
+	return i64(math.round(-pan * zoom))
+}
+
 _se_screen :: proc(origin: im.Vec2, img: im.Vec2) -> im.Vec2 {
-	return origin + (img + _se.pan) * _se.zoom
+	return origin + (img + _sv.pan) * _sv.zoom
 }
 
 _se_canvas :: proc(tex: ^engine.Texture2D, size: im.Vec2) {
@@ -653,32 +770,15 @@ _se_canvas :: proc(tex: ^engine.Texture2D, size: im.Vec2) {
 		return
 	}
 
-	// The zoom floor fits the texture in the canvas. Opened, the texture sits
-	// there, and while it does it stays fitted and centred as the canvas
-	// resizes: a pane shown, hidden or dragged resizes the texture with it.
-	// Zoomed in it stays put, and zoomed back out to the floor it follows
-	// again.
 	tex_size := im.Vec2{f32(max(tex.width, 1)), f32(max(tex.height, 1))}
-	floor := min(region.x / tex_size.x, region.y / tex_size.y)
-	parked := _se.zoom == 0 || _se.zoom <= _se.zoom_floor + 0.0001
-	if parked do _se.zoom = floor
-	_se.zoom = clamp(_se.zoom, floor, _se_zoom_top(floor))
-	_se.zoom_floor = floor
-
-	// A scrollbar on each axis the zoomed texture is larger than the canvas
-	// on, as a scrolled window has, taking its strip from the canvas. One bar
-	// can make the other axis too small, so the need is checked again. On a
-	// scrolled axis the texture covers the view, on the other it sits centred.
 	bar := im.GetStyle().ScrollbarSize
-	content := tex_size * _se.zoom
-	need := [2]bool{content.x > region.x + 0.5, content.y > region.y + 0.5}
-	for _ in 0 ..< 2 do need = {content.x > region.x - (need.y ? bar : 0) + 0.5, content.y > region.y - (need.x ? bar : 0) + 0.5}
-	view := region - {need.y ? bar : 0, need.x ? bar : 0}
-	for k in 0 ..< 2 {
-		if need[k] do _se.pan[k] = clamp(_se.pan[k], (view[k] - content[k]) / _se.zoom, 0)
-		else do _se.pan[k] = (view[k] / _se.zoom - tex_size[k]) * 0.5
-	}
-	_se.canvas_size = view
+	fit := _se_fit(tex_size, region, bar, _sv.zoom, _sv.zoom_floor, _sv.pan)
+	_sv.zoom = fit.zoom
+	_sv.pan = fit.pan
+	_sv.zoom_floor = fit.floor
+	_sv.zoom_top = fit.top
+	_sv.canvas_size = fit.view
+	need, view, content := fit.need, fit.view, fit.content
 
 	dl := im.GetWindowDrawList()
 	// Clipped to the view, so nothing shows under the scrollbars.
@@ -702,52 +802,52 @@ _se_canvas :: proc(tex: ^engine.Texture2D, size: im.Vec2) {
 			im.DrawList_AddLine(dl, _se_screen(origin, a), _se_screen(origin, b), _SE_BORDER, 1.5)
 		}
 	}
-	if _se.drag == .Create {
-		r0 := _se_screen(origin, {_se.drag_rect.x, _se.drag_rect.y})
-		r1 := _se_screen(origin, {_se.drag_rect.x + _se.drag_rect.z, _se.drag_rect.y + _se.drag_rect.w})
+	if _sv.drag == .Create {
+		r0 := _se_screen(origin, {_sv.drag_rect.x, _sv.drag_rect.y})
+		r1 := _se_screen(origin, {_sv.drag_rect.x + _sv.drag_rect.z, _sv.drag_rect.y + _sv.drag_rect.w})
 		im.DrawList_AddRect(dl, r0, r1, _SE_CREATE)
 	}
 	im.PopClipRect()
 
 	// Interaction surface.
 	im.SetCursorScreenPos(origin)
-	if need.x {
-		scroll := i64(-_se.pan.x * _se.zoom)
-		hb := im.Rect{origin + {0, view.y}, origin + {view.x, view.y + bar}}
-		im.ScrollbarEx(hb, im.GetID("##se_hscroll"), .X, &scroll, i64(view.x), i64(content.x))
-		_se.pan.x = -f32(scroll) / _se.zoom
-	}
-	if need.y {
-		scroll := i64(-_se.pan.y * _se.zoom)
-		vb := im.Rect{origin + {view.x, 0}, origin + {view.x + bar, view.y}}
-		im.ScrollbarEx(vb, im.GetID("##se_vscroll"), .Y, &scroll, i64(view.y), i64(content.y))
-		_se.pan.y = -f32(scroll) / _se.zoom
+	// The scrollbars work in whole screen pixels. Pan is written back only
+	// when a bar moved, so a frame with no input leaves it exact.
+	for k in 0 ..< 2 do if need[k] {
+		scroll := _se_scroll_from_pan(_sv.pan[k], _sv.zoom)
+		before := scroll
+		bb := im.Rect{origin + {0, view.y}, origin + {view.x, view.y + bar}} if k == 0 else im.Rect{origin + {view.x, 0}, origin + {view.x + bar, view.y}}
+		id := im.GetID("##se_hscroll") if k == 0 else im.GetID("##se_vscroll")
+		axis: im.Axis = .X if k == 0 else .Y
+		if im.ScrollbarEx(bb, id, axis, &scroll, i64(math.round(view[k])), i64(math.round(content[k]))) && scroll != before {
+			_sv.pan[k] = -f32(scroll) / _sv.zoom
+		}
 	}
 	im.InvisibleButton("##se_bg", view)
 	mouse := im.GetMousePos()
-	img := (mouse - origin) / _se.zoom - _se.pan // mouse in image px
+	img := (mouse - origin) / _sv.zoom - _sv.pan // mouse in image px
 
 	if im.IsItemActivated() { // left press: a border line, a slice, or empty space
-		_se.drag_from = img
+		_sv.drag_from = img
 		if k := _se_hit_border(tex, img); k >= 0 {
-			_se.drag = .Border
-			_se.drag_border = k
+			_sv.drag = .Border
+			_sv.drag_border = k
 		} else {
 			hit := _se_hit_slice(img)
 			_se_select(hit)
-			_se.drag = hit >= 0 ? .Move : .None
+			_sv.drag = hit >= 0 ? .Move : .None
 		}
 	}
 	if im.IsItemActive() && im.IsMouseDragging(.Left, 2) {
-		if _se.drag == .None { // drag on empty space rubber-bands a new rect
-			_se.drag = .Create
+		if _sv.drag == .None { // drag on empty space rubber-bands a new rect
+			_sv.drag = .Create
 		}
-		switch _se.drag {
+		switch _sv.drag {
 		case .Border:
 			if rect, border, has := _se_active_sprite(tex); has {
 				// The dragged line follows the mouse, whole pixels, never past
 				// the opposite border.
-				switch _se.drag_border {
+				switch _sv.drag_border {
 				case 0: border.x = clamp(math.round(img.x - rect.x), 0, rect.z - border.z)
 				case 2: border.z = clamp(math.round(rect.x + rect.z - img.x), 0, rect.z - border.x)
 				case 3: border.w = clamp(math.round(img.y - rect.y), 0, rect.w - border.y)
@@ -756,40 +856,40 @@ _se_canvas :: proc(tex: ^engine.Texture2D, size: im.Vec2) {
 			}
 		case .Move:
 			if _se.sel >= 0 {
-				delta := im.GetIO().MouseDelta / _se.zoom
+				delta := im.GetIO().MouseDelta / _sv.zoom
 				r := &_se.ts.sprites[_se.sel].rect
 				r.x = clamp(r.x + delta.x, 0, f32(tex.width) - r.z)
 				r.y = clamp(r.y + delta.y, 0, f32(tex.height) - r.w)
 			}
 		case .Create:
-			lo_x, hi_x := min(_se.drag_from.x, img.x), max(_se.drag_from.x, img.x)
-			lo_y, hi_y := min(_se.drag_from.y, img.y), max(_se.drag_from.y, img.y)
+			lo_x, hi_x := min(_sv.drag_from.x, img.x), max(_sv.drag_from.x, img.x)
+			lo_y, hi_y := min(_sv.drag_from.y, img.y), max(_sv.drag_from.y, img.y)
 			lo_x = clamp(lo_x, 0, f32(tex.width))
 			hi_x = clamp(hi_x, 0, f32(tex.width))
 			lo_y = clamp(lo_y, 0, f32(tex.height))
 			hi_y = clamp(hi_y, 0, f32(tex.height))
-			_se.drag_rect = {math.floor(lo_x), math.floor(lo_y), math.ceil(hi_x - lo_x), math.ceil(hi_y - lo_y)}
+			_sv.drag_rect = {math.floor(lo_x), math.floor(lo_y), math.ceil(hi_x - lo_x), math.ceil(hi_y - lo_y)}
 		case .None:
 		}
 	}
 	if im.IsItemDeactivated() {
-		if _se.drag == .Create && _se.drag_rect.z >= 1 && _se.drag_rect.w >= 1 {
-			sprite_editor_add_slice(_se.drag_rect)
+		if _sv.drag == .Create && _sv.drag_rect.z >= 1 && _sv.drag_rect.w >= 1 {
+			sprite_editor_add_slice(_sv.drag_rect)
 		}
-		_se.drag = .None
+		_sv.drag = .None
 	}
 
 	// Move-drag snaps to whole pixels on release via the panel's ints; keep
 	// live values fractional while dragging for smoothness.
 	if im.IsWindowHovered(im.HoveredFlags_ChildWindows) {
 		if im.IsMouseDragging(.Middle, 0) {
-			_se.pan += im.GetIO().MouseDelta / _se.zoom
+			_sv.pan += im.GetIO().MouseDelta / _sv.zoom
 		}
 		wheel := im.GetIO().MouseWheel
 		if wheel != 0 {
-			world := (mouse - origin) / _se.zoom - _se.pan
-			_se.zoom = clamp(_se.zoom * math.pow(f32(1.15), wheel), _se.zoom_floor, _se_zoom_top(_se.zoom_floor))
-			_se.pan = (mouse - origin) / _se.zoom - world
+			world := (mouse - origin) / _sv.zoom - _sv.pan
+			_sv.zoom = clamp(_sv.zoom * math.pow(f32(1.15), wheel), _sv.zoom_floor, _sv.zoom_top)
+			_sv.pan = (mouse - origin) / _sv.zoom - world
 		}
 		if im.IsKeyPressed(.Delete) || im.IsKeyPressed(.Backspace) {
 			_se_delete_selected()
@@ -828,7 +928,7 @@ _se_border_line :: proc(rect: [4]f32, b: [4]f32, k: int) -> (a, c: im.Vec2) {
 _se_hit_border :: proc(tex: ^engine.Texture2D, img: im.Vec2) -> int {
 	rect, border, has := _se_active_sprite(tex)
 	if !has do return -1
-	tol := 5 / _se.zoom
+	tol := 5 / _sv.zoom
 	if img.x < rect.x - tol || img.x > rect.x + rect.z + tol || img.y < rect.y - tol || img.y > rect.y + rect.w + tol do return -1
 	for k in 0 ..< 4 {
 		a, _ := _se_border_line(rect, border^, k)

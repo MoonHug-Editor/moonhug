@@ -848,7 +848,10 @@ animation_view_draw :: proc(w: ^wnd.Window) {
 	doc, clip := _pv_doc()
 	length := clip != nil ? max(clip.length, 0.0001) : 0.0001
 
-	_pv_draw_toolbar(clip, length, read_only = doc == nil)
+	// Read-only is a clip inside a model. A missing or unreadable .anim has no
+	// document either, and the edit guards stop on that, but it is not marked
+	// Read-Only: the sheet says the clip is missing.
+	_pv_draw_toolbar(clip, length, read_only = _pv.clip.local_id != 0)
 
 	if clip == nil {
 		// The picker still draws, so a broken clip is not a dead end.
@@ -984,7 +987,7 @@ _pv_draw_toolbar :: proc(clip: ^anim.AnimationClip, length: f32, read_only: bool
 	// next state, and the tooltip names the one a click gives.
 	im.SameLine()
 	glyph, tip: cstring
-	switch anim_view_prefs.playback {
+	switch _anim_playback() {
 	case .Once:
 		glyph, tip = icons.ICON_MD_REPEAT_ONE, "Play once, then stop\nClick: loop"
 	case .Loop:
@@ -1124,6 +1127,15 @@ Anim_Playback :: enum {
 	Loop, // cycles, even a Once clip
 }
 
+// The saved playback state. A settings file can hold an integer out of the
+// enum's range, which reads as Clip and is stored back as Clip.
+@(private = "file")
+_anim_playback :: proc() -> Anim_Playback {
+	p := anim_view_prefs.playback
+	if p < min(Anim_Playback) || p > max(Anim_Playback) do anim_view_prefs.playback = .Clip
+	return anim_view_prefs.playback
+}
+
 @(user_settings={name="Animation"})
 anim_view_prefs: Anim_View_Prefs
 
@@ -1155,25 +1167,34 @@ _pv_clip_wrap :: proc() -> anim.Animation_Wrap {
 _pv_advance :: proc(clip: ^anim.AnimationClip, length: f32) {
 	if !_pv.playing do return
 	gfx.keep_awake()
-	_pv.time += gfx.delta_time()
-	if _pv.time < length do return
-	wrap := _pv_clip_wrap()
-	switch anim_view_prefs.playback {
+	_pv.time, _pv.playing = anim_playback_step(_pv.time, gfx.delta_time(), length,
+		_pv_clip_wrap(), _anim_playback(), anim_view_prefs.ends_on_last_frame)
+}
+
+// One transport step of a running playhead: `time` advanced by `dt`, and
+// past `length` wrapped by `playback`, which keeps `clip_wrap` (Clip) or
+// forces Once or Loop. A Once playback stops there (playing false). No gfx
+// or imgui calls.
+anim_playback_step :: proc(time, dt, length: f32, clip_wrap: anim.Animation_Wrap, playback: Anim_Playback, ends_on_last_frame: bool) -> (new_time: f32, playing: bool) {
+	new_time = time + dt
+	if new_time < length do return new_time, true
+	wrap := clip_wrap
+	switch playback {
 	case .Clip:
 	case .Once: wrap = .Once
 	case .Loop: wrap = .Loop
 	}
 	switch wrap {
 	case .Loop:
-		_pv.time -= length * math.floor(_pv.time / length)
+		return new_time - length * math.floor(new_time / length), true
 	case .Once:
 		// Where a Once clip comes to rest. Ending ON the last frame is what you
 		// want when the pose it lands in is the thing being authored — a death,
 		// a landing, anything whose final frame is the point. Rewinding is what
 		// you want when you are watching the motion over and over.
-		_pv.time = anim_view_prefs.ends_on_last_frame ? length : 0
-		_pv.playing = false
+		return ends_on_last_frame ? length : 0, false
 	}
+	return new_time, true
 }
 
 // --- Record ------------------------------------------------------------------------

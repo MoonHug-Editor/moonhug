@@ -6,6 +6,10 @@ package editor_tests
 // with its last tab. A test provider keeps them in memory, so no settings
 // file is written.
 
+import "base:runtime"
+import "core:os"
+import "core:path/filepath"
+import "core:strings"
 import "core:testing"
 import "moonhug:editor/workspace"
 
@@ -168,6 +172,7 @@ test_workspace_fix :: proc(t: ^testing.T) {
 	ws := workspace.make_workspace("Fix")
 	defer workspace.workspace_free(ws)
 	append(&ws.frames, workspace.Frame{id = 0}, workspace.Frame{id = 5}, workspace.Frame{id = 5}, workspace.Frame{id = 7, parent = 5}, workspace.Frame{id = 8, parent = 7}, workspace.Frame{id = 9, parent = 42})
+	for &f in ws.frames do append(&f.tabs, _clone("View"))
 	testing.expect(t, workspace.fix(ws), "it repairs")
 	for f, i in ws.frames {
 		testing.expect(t, f.id != 0, "every frame has an id")
@@ -264,4 +269,73 @@ test_workspace_moves_between_providers :: proc(t: ^testing.T) {
 	testing.expect(t, len(ws.frames) == 1 && ws.name == "Moving", "with its frames and name")
 	testing.expect(t, len(_store.list) == 0 && len(_store_b.list) == 1, "A let it go, B holds it")
 	workspace.providers()[b].remove(ws)
+}
+
+// Removing a tab keeps the same tab active: one before it shifts the active
+// index down, the active one itself leaves the next one active.
+@(test)
+test_workspace_tab_remove_keeps_active :: proc(t: ^testing.T) {
+	ws := workspace.make_workspace("Tabs")
+	defer workspace.workspace_free(ws)
+	workspace.frame_add(ws, "A", {0, 0, 100, 50})
+	f := &ws.frames[0]
+	append(&f.tabs, "B", "C", "D")
+	for &k in f.tabs[1:] do k = _clone(k)
+	f.active = 2 // C
+	workspace.tab_remove(ws, 0, 0)
+	testing.expect_value(t, f.tabs[f.active], "C")
+	workspace.tab_remove(ws, 0, 2) // D, after it
+	testing.expect_value(t, f.tabs[f.active], "C")
+	workspace.tab_remove(ws, 0, f.active) // C itself: the last tab, the one before it shows
+	testing.expect_value(t, f.tabs[f.active], "B")
+}
+
+// A tab key the workspace owns: it frees them on the default allocator.
+@(private = "file")
+_clone :: proc(s: string) -> string {
+	return strings.clone(s, runtime.default_allocator())
+}
+
+// fix drops a frame with no tabs, and the frames chained to it head their
+// own chains.
+@(test)
+test_workspace_fix_drops_empty_frames :: proc(t: ^testing.T) {
+	ws := workspace.make_workspace("Empty")
+	defer workspace.workspace_free(ws)
+	append(&ws.frames, workspace.Frame{id = 1})
+	c := workspace.frame_add(ws, "C", {0, 0, 100, 50})
+	ws.frames[1].parent = 1
+	testing.expect(t, workspace.fix(ws), "it repairs")
+	testing.expect_value(t, len(ws.frames), 1)
+	testing.expect_value(t, ws.frames[0].id, c)
+	testing.expect_value(t, ws.frames[0].parent, u32(0))
+}
+
+// A workspaces file that does not parse loads no workspaces and is never
+// written over: the store is broken and refuses to save. A good file loads.
+@(test)
+test_workspace_file_store_malformed :: proc(t: ^testing.T) {
+	dir, derr := os.temp_directory(context.temp_allocator)
+	testing.expect(t, derr == nil, "a temp directory")
+	if derr != nil do return
+	path, _ := filepath.join({dir, "moonhug_workspaces_test.json"}, context.temp_allocator)
+	defer os.remove(path)
+	BAD :: `{"workspaces": [{"id": "x", "name": `
+	testing.expect(t, os.write_entire_file(path, transmute([]u8)string(BAD)) == nil, "the file is written")
+
+	s := workspace.File_Store{path = path}
+	defer workspace.file_store_free(&s)
+	workspace.file_store_load(&s)
+	testing.expect(t, s.broken, "the store is broken")
+	testing.expect_value(t, len(s.list), 0)
+	testing.expect(t, !workspace.file_store_save(&s), "a broken store is not saved")
+	bytes, rerr := os.read_entire_file(path, context.temp_allocator)
+	testing.expect(t, rerr == nil && string(bytes) == BAD, "the file stays as it was")
+
+	GOOD :: `{"workspaces": [{"id": "x", "name": "Good", "frames": [{"id": 1, "tabs": ["Console"]}]}]}`
+	testing.expect(t, os.write_entire_file(path, transmute([]u8)string(GOOD)) == nil, "the file is written")
+	workspace.file_store_free(&s)
+	workspace.file_store_load(&s)
+	testing.expect(t, !s.broken && len(s.list) == 1 && s.list[0].name == "Good", "a good file loads")
+	testing.expect(t, workspace.file_store_save(&s), "and saves")
 }

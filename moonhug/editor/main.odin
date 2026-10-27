@@ -474,6 +474,8 @@ editor_shutdown :: proc() {
     menu.shutdown_menu()
     view_chrome_shutdown()
     inspector_lock_shutdown()
+    maximize_shutdown()
+    workspace_view_shutdown()
     log.info("Editor Shutdown")
     log.shutdown()
 }

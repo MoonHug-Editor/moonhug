@@ -38,6 +38,13 @@ glTF mesh:
   so animated node transforms move real geometry. "Extract Assets" writes a
   .scene wiring mesh nodes to their parts.
 
+Each part and clip has an id, its sub-asset id, kept in the model's import settings:
+
+- ids match by name across reimports, each old entry at most once, so meshes or animations that share a name keep their own ids in file order
+- a first import gives part i the id i + 1, every later new part or clip takes `MeshSettings.next_id`, which only grows: an id a removed part or clip held is never given to another one, so a reference to it stays broken instead of naming a newcomer
+- a meta written before `next_id` starts it above every part and clip id it lists
+- a mesh with no triangles (points or lines only) still gets its part file, with zero vertices, indices and submeshes. It loads and draws nothing
+
 In both, indices are grouped **by glTF material** into submeshes (primitives
 sharing a material merge into one submesh, ordered by first appearance — the
 Unity model; across the file for the whole model, within the mesh for a
@@ -80,10 +87,6 @@ vertex data on the CPU).
 
 ## Runtime
 
-`mesh_load(guid, part)` (plugins/engine/mesh.odin) mirrors the texture cache:
-artifact → GPU buffers + submesh table, cached by (guid, part). A missing OR
-stale artifact
-(fresh clone, cleaned `library/`, format bump) triggers reimport from the
-source glTF. Headless contexts (tests) get a graceful `false` — no GPU device
+`mesh_load(guid, part)` (plugins/engine/mesh.odin) mirrors the texture cache: artifact → GPU buffers + submesh table, cached by (guid, part). A missing whole-model artifact or a stale file (fresh clone, cleaned `library/`, format bump) triggers a reimport from the source glTF. A part file missing beside a present whole-model artifact is reported once and not reimported (see [Reading artifacts](../../../docs/core/AssetPipeline.md#reading-artifacts)). An empty part returns false without a report. Headless contexts (tests) get a graceful `false` — no GPU device
 required to load scenes that contain mesh components. Rendering draws each
 submesh as an index-range `gfx.draw_mesh` with its own material state.

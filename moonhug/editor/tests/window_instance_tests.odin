@@ -178,3 +178,54 @@ test_window_hosted_instances :: proc(t: ^testing.T) {
 	wnd.close(w.key)
 	wnd.draw_all()
 }
+
+// One host at a time: a second host's host_open gets nil while the first
+// claims the instance each draw pass. A hosted instance no host claims in a
+// pass gets its own window back at the end of draw_all, unless its host is
+// open and did not draw (a hidden tab). No host here is a drawn window: a
+// host that drew is marked as draw_content marks it.
+@(test)
+test_window_host_ownership :: proc(t: ^testing.T) {
+	_fixture_register()
+	a := wnd.host_open("instance_test/11", "host_a")
+	testing.expect(t, a != nil && a.host == "host_a", "host A holds it")
+	if a == nil do return
+	testing.expect(t, wnd.host_open("instance_test/11", "host_b") == nil, "host B gets nil")
+	testing.expect(t, wnd.host_held_elsewhere("instance_test/11", "host_b"), "B sees it held elsewhere")
+	testing.expect(t, !wnd.host_held_elsewhere("instance_test/11", "host_a"), "A does not")
+	wnd.draw_all() // A claimed it this pass: it stays hosted
+	testing.expect_value(t, a.host, "host_a")
+	testing.expect(t, wnd.host_open("instance_test/11", "host_b") == nil, "claimed last pass, B still gets nil")
+
+	// A pass where A does not claim it, and A is no open window (it closed):
+	// released, it is a window of its own, so any host may take it.
+	wnd.draw_all()
+	testing.expect_value(t, a.host, "")
+	testing.expect(t, wnd.host_open("instance_test/11", "host_b") == a && a.host == "host_b", "B takes it")
+	wnd.close(a.key)
+	wnd.draw_all() // removes it: a window of its own would draw, and there is no imgui frame
+
+	// A host that is an open instance (hosted itself, so nothing draws it
+	// here) and did not draw keeps what it holds.
+	h := wnd.host_open("instance_test/12", "outer")
+	testing.expect(t, h != nil, "the host opens")
+	if h == nil do return
+	c := wnd.host_open("instance_test/13", h.key)
+	testing.expect(t, c != nil, "the host holds a view")
+	defer {
+		wnd.close(h.key)
+		if c != nil do wnd.close(c.key)
+		wnd.draw_all()
+	}
+	if c == nil do return
+	wnd.host_open(h.key, "outer")
+	wnd.draw_all()
+	wnd.host_open(h.key, "outer")
+	wnd.draw_all()
+	testing.expect_value(t, c.host, h.key) // its host did not draw: kept
+	// The host draws and no longer claims it: released.
+	wnd.host_open(h.key, "outer")
+	h.ran = wnd._pass + 1
+	wnd.draw_all()
+	testing.expect_value(t, c.host, "")
+}

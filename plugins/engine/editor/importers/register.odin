@@ -53,7 +53,7 @@ register_builtin_importers :: proc() {
 	})
 	asset_pipeline.importer_register({
 		name         = "mesh",
-		version      = 8, // 2: artifacts carry skin data. 3: clips baked to a fan-out. 4: re-bake the clips the startup sweep deleted. 5: vertex tangents. 6: a second uv set. 7: the clips listed as subs in the meta. 8: part and clip files named by id (_s<id>)
+		version      = 9, // 2: artifacts carry skin data. 3: clips baked to a fan-out. 4: re-bake the clips the startup sweep deleted. 5: vertex tangents. 6: a second uv set. 7: the clips listed as subs in the meta. 8: part and clip files named by id (_s<id>). 9: a part with no triangles gets an empty file, ids are never reused (next_id)
 		extensions   = _MESH_EXTS,
 		settings_tid = typeid_of(engine.MeshSettings),
 		run          = _import_mesh,

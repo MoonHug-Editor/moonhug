@@ -3,8 +3,14 @@ package assets
 // Reading artifacts. Every loader reads its asset's files through these procs,
 // so a missing or bad file is handled one way for every asset type
 // (docs/core/AssetPipeline.md "Reading artifacts"):
-// - the editor imports a missing file on the spot, and reimports a bad one
-//   once (an older format after an artifact bump)
+// - the editor imports an asset whose main artifact is missing on the spot,
+//   and reimports a bad file once (an older format after an artifact bump).
+//   A missing sub-asset file beside a present main artifact is reported, not
+//   imported: the import that wrote the main artifact is the one that would
+//   have written it
+// - a reimport a read asked for that leaves the file missing or bad is not
+//   asked for again until something else reimports the asset, so two broken
+//   files of one asset never reimport it in turn every frame
 // - a game has no importer, so there a missing or bad file is a load error.
 //   It is logged once, naming the asset, the sub-asset and the file. In an
 //   export, a missing file was left out because nothing referenced it, and
@@ -22,10 +28,25 @@ import "core:os"
 import core "moonhug:libs/core"
 import "moonhug:libs/log"
 
-// The files that failed, reported once each. Cleared per asset on reimport
-// and whole when the database shuts down.
+// The files that failed, reported once each. Every artifact-file failure of
+// every loader is recorded here and nowhere else (a loader's own map holds
+// only failures that are not about a file, such as a GPU upload). Cleared per
+// asset on reimport and whole when the database shuts down.
 @(private = "file")
 _artifact_failed: map[core.PPtr]bool
+
+// Assets a reimport asked for by a read did not repair: the file stayed
+// missing or bad. A read does not ask again until another reimport of the
+// asset (an edit, an Apply) clears the entry. Without it, a reimport for one
+// broken file clears the mark of another broken file of the same asset, whose
+// next read reimports again, every frame.
+@(private = "file")
+_artifact_reimport_futile: map[core.Asset_GUID]bool
+
+// The asset a read is reimporting right now: its own reimport must not clear
+// its futile entry.
+@(private = "file")
+_artifact_reimporting: core.Asset_GUID
 
 // The file of an asset (sub 0) or of one of its sub-assets, present on disk.
 // `import_missing` false is for files something other than the importer makes, such
@@ -47,13 +68,21 @@ artifact_file :: proc(guid: core.Asset_GUID, sub: core.Local_ID = 0, import_miss
 		}
 		return "", false
 	}
-	if import_missing && asset_pipeline_request_import(source, force = true) {
+	// Only a missing main artifact asks for an import. A sub-asset file the
+	// import should have written beside a present main artifact would not
+	// appear by importing again.
+	main, main_ok := _artifact_file_path(guid, 0)
+	main_missing := !main_ok || !os.exists(main)
+	if import_missing && main_missing && _artifact_reimport(guid, source) {
 		if p, pok := _artifact_file_path(guid, sub); pok && os.exists(p) do return p, true
+		_artifact_reimport_futile_mark(guid)
 	}
 	p, _ := _artifact_file_path(guid, sub)
 	if asset_db.exported {
 		named := sub == 0 ? "the asset itself" : fmt.tprintf("sub-asset %d", sub)
 		_artifact_report(ref, fmt.tprintf("%s is not in this export: no reference the export followed names %s. Reference it with a PPtr, or put the asset under a resources folder", _artifact_name(source, sub), named))
+	} else if import_missing && !main_missing && _import_request != nil && asset_db.pipeline != .Catalog {
+		_artifact_report(ref, fmt.tprintf("%s: %s is missing, reimport the asset to write it again", _artifact_name(source, sub), p))
 	} else {
 		_artifact_report(ref, fmt.tprintf("%s: %s is missing", _artifact_name(source, sub), p))
 	}
@@ -80,9 +109,10 @@ artifact_load :: proc(guid: core.Asset_GUID, sub: core.Local_ID, what: string, o
 	data := artifact_read(guid, sub) or_return
 	if parse(data, out) do return true
 	source, _ := asset_db_get_path(uuid.Identifier(guid))
-	if asset_pipeline_request_import(source, force = true) {
+	if _artifact_reimport(guid, source) {
 		data = artifact_read(guid, sub) or_return
 		if parse(data, out) do return true
+		_artifact_reimport_futile_mark(guid)
 	}
 	p, _ := _artifact_file_path(guid, sub)
 	_artifact_report(core.PPtr{guid = guid, local_id = sub}, fmt.tprintf("%s: %s does not load as a %s", _artifact_name(source, sub), p, what))
@@ -104,9 +134,12 @@ artifact_written :: proc(guid: core.Asset_GUID, sub: core.Local_ID = 0) {
 	delete_key(&_artifact_failed, core.PPtr{guid = guid, local_id = sub})
 }
 
-// An import rewrote the asset's files: each of them gets its next try.
+// An import rewrote the asset's files: each of them gets its next try. A
+// reimport other than the one a read is running also lets reads ask for
+// reimports of the asset again.
 @(private)
 _artifact_failed_forget :: proc(guid: core.Asset_GUID) {
+	if guid != _artifact_reimporting do delete_key(&_artifact_reimport_futile, guid)
 	if len(_artifact_failed) == 0 do return
 	gone := make([dynamic]core.PPtr, context.temp_allocator)
 	for ref in _artifact_failed do if ref.guid == guid do append(&gone, ref)
@@ -117,6 +150,24 @@ _artifact_failed_forget :: proc(guid: core.Asset_GUID) {
 _artifact_failed_reset :: proc() {
 	delete(_artifact_failed)
 	_artifact_failed = nil
+	delete(_artifact_reimport_futile)
+	_artifact_reimport_futile = nil
+}
+
+// A forced reimport of the asset for a read, unless an earlier one left a file
+// of it broken. true when the import ran.
+@(private = "file")
+_artifact_reimport :: proc(guid: core.Asset_GUID, source: string) -> bool {
+	if _import_request == nil || guid in _artifact_reimport_futile do return false
+	_artifact_reimporting = guid
+	defer _artifact_reimporting = {}
+	return asset_pipeline_request_import(source, force = true)
+}
+
+@(private = "file")
+_artifact_reimport_futile_mark :: proc(guid: core.Asset_GUID) {
+	context.allocator = runtime.default_allocator()
+	_artifact_reimport_futile[guid] = true
 }
 
 @(private = "file")

@@ -4,6 +4,7 @@ package animation_tests
 // entry tree, the 1D weight rule, and the shared phase that keeps children of
 // different lengths in step.
 
+import "base:runtime"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
@@ -277,12 +278,17 @@ test_animation_demo_scene_loads :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 	anim.animation_clip_cache_init()
-	defer anim.animation_clip_cache_shutdown()
+	// The cache entries are default-allocator memory (animation_clip_preview),
+	// so the shutdown frees them with that allocator, not the test's tracking one.
+	defer {
+		context.allocator = runtime.default_allocator()
+		anim.animation_clip_cache_shutdown()
+	}
 
 	// The test asset DB does not scan the model's plugin, so the blend's clips
 	// would never load and the posing assertion below would pass on a blend
 	// that poses nothing.
-	_load_model_clips("plugins/essentials/assets/meshes/characters/UAL1_Standard.glb", {"Walk_Loop", "Jog_Fwd_Loop", "Idle_Loop"})
+	_load_model_clips(t, "plugins/essentials/assets/meshes/characters/UAL1_Standard.glb", {"Walk_Loop", "Jog_Fwd_Loop", "Idle_Loop"})
 
 	PATH :: "plugins/animation/samples/animation_sample/assets/animation_demo.scene"
 	s := engine.scene_load_single_path(PATH)
@@ -531,8 +537,11 @@ test_clip_cycle_offset_shifts_a_loop :: proc(t: ^testing.T) {
 
 // Bakes the named clips of the model at `path` from its .glb into the clip
 // cache, under {the model's guid, the clip's id}: the reference a scene holds.
+// The cache owns its entries, so each clip goes in as a default-allocator deep
+// copy (animation_clip_preview). A model that does not load, or a requested
+// clip missing from the .glb or its .meta, fails the test.
 @(private = "file")
-_load_model_clips :: proc(path: string, names: []string) {
+_load_model_clips :: proc(t: ^testing.T, path: string, names: []string) {
 	Meta_Clip :: struct {
 		id:   engine.Local_ID,
 		name: string,
@@ -544,25 +553,28 @@ _load_model_clips :: proc(path: string, names: []string) {
 		},
 	}
 	meta_bytes, merr := os.read_entire_file(strings.concatenate({path, ".meta"}, context.temp_allocator), context.temp_allocator)
-	if merr != nil do return
+	if !testing.expectf(t, merr == nil, "%s.meta reads: %v", path, merr) do return
 	meta: Meta
-	if json.unmarshal(meta_bytes, &meta, .JSON, context.temp_allocator) != nil do return
+	jerr := json.unmarshal(meta_bytes, &meta, .JSON, context.temp_allocator)
+	if !testing.expectf(t, jerr == nil, "%s.meta parses: %v", path, jerr) do return
 	id, err := uuid.read(meta.guid)
-	if err != nil do return
+	if !testing.expectf(t, err == nil, "%s.meta has a guid: %q", path, meta.guid) do return
 	path_c := strings.clone_to_cstring(path, context.temp_allocator)
 	data, res := cgltf.parse_file({}, path_c)
-	if res != .success do return
+	if !testing.expectf(t, res == .success, "%s parses: %v", path, res) do return
 	defer cgltf.free(data)
-	if cgltf.load_buffers({}, data, path_c) != .success do return
-	for &an in data.animations {
-		name := string(an.name)
-		for n in names do if n == name {
+	lres := cgltf.load_buffers({}, data, path_c)
+	if !testing.expectf(t, lres == .success, "%s buffers load: %v", path, lres) do return
+	for name in names {
+		found := false
+		for &an in data.animations do if string(an.name) == name {
 			for c in meta.settings.clips do if c.name == name {
-				if clip, ok := anim.animation_clip_from_gltf(data, &an); ok {
-					anim.animation_clip_cache[engine.PPtr{guid = engine.Asset_GUID(id), local_id = c.id}] = clip
-				}
+				clip, ok := anim.animation_clip_from_gltf(data, &an)
+				if !testing.expectf(t, ok, "clip %q converts", name) do continue
+				anim.animation_clip_preview(engine.PPtr{guid = engine.Asset_GUID(id), local_id = c.id}, clip)
+				found = true
 			}
 		}
+		testing.expectf(t, found, "clip %q is in %s and its .meta", name, path)
 	}
 }
-

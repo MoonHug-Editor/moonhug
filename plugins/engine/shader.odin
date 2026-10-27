@@ -29,11 +29,13 @@ Shader_Runtime :: struct {
 shader_cache: map[Asset_GUID]Shader_Runtime
 _shader_cache_ready: bool
 
-// Guids whose last load attempt failed (compile error, missing toolchain,
-// bad artifact). A failed load is NOT retried per call — the retry runs the
-// shader toolchain as subprocesses, and shader_load is called per draw, so
-// retrying would spawn glslc every frame. The memo clears when the source
-// changes (shader_path_changed), giving one retry per edit.
+// Guids whose GPU registration failed (gfx rejected the compiled stages). A
+// failed registration is NOT retried per call: shader_load is called per
+// draw. The memo clears when the source changes (shader_path_changed), giving
+// one retry per edit. A missing or bad artifact file (compile error, missing
+// toolchain, stale format) is recorded by the artifact reader instead
+// (assets._artifact_failed, cleared when the shader reimports), never here,
+// so the import the reader asks for runs once and not once per frame.
 @(private = "file") _shader_failed: map[Asset_GUID]bool
 
 shader_cache_init :: proc() {
@@ -160,8 +162,8 @@ _fullscreen_cache: map[Asset_GUID]string
 
 // The shader's artifact, read and parsed. artifact_load imports a missing one
 // in the editor (needs the toolchain), reimports a stale one once, and
-// reports a failure once. `blob` is temp memory, properties and textures are
-// owned by the caller.
+// reports and marks a failure once. `blob` is temp memory, properties and
+// textures are owned by the caller.
 @(private = "file")
 _Shader_Read :: struct {
 	blob:       []u8,
@@ -179,10 +181,7 @@ _shader_artifact_load :: proc(guid: Asset_GUID) -> (blob: []u8, header: Shader_A
 		r.header, r.spv, r.msl, r.properties, r.textures, ok = _shader_artifact_parse(data)
 		return
 	}
-	if !artifact_load(guid, 0, "shader", &r, parse) {
-		_shader_failed[guid] = true
-		return
-	}
+	if !artifact_load(guid, 0, "shader", &r, parse) do return
 	return r.blob, r.header, r.spv, r.msl, r.properties, r.textures, true
 }
 

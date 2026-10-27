@@ -155,3 +155,85 @@ test_mesh_import_multimaterial_submeshes :: proc(t: ^testing.T) {
 		testing.expect(t, idx < header.vertex_count, "index out of range")
 	}
 }
+
+// twin_meshes.gltf: two glTF meshes both named "Twin", then "Empty", a mesh
+// whose only primitive draws points, so its part has no triangles.
+@(private = "file")
+TWIN_GLTF :: "moonhug/tests/fixtures/meshes/twin_meshes.gltf"
+
+// Meshes sharing a name keep ids of their own, in file order, across a
+// reimport: each old entry matches once. The failure it guards: both
+// "Twin" meshes took the first entry's id and wrote the same part file.
+@(test)
+test_mesh_import_duplicate_names_get_distinct_ids :: proc(t: ^testing.T) {
+	artifact := _MESH_TMP + "/twins.bin"
+	defer _remove_tree(_MESH_TMP)
+
+	ms := engine.MeshSettings{scale = 1}
+	testing.expect(t, importers._import_mesh(TWIN_GLTF, artifact, &ms), "import failed")
+	testing.expect_value(t, len(ms.parts), 3)
+	if len(ms.parts) != 3 do return
+	testing.expect(t, ms.parts[0].name == "Twin" && ms.parts[1].name == "Twin", "the fixture has two meshes named Twin")
+	testing.expect(t, ms.parts[0].id != ms.parts[1].id, "meshes sharing a name get distinct ids")
+	a := engine.artifact_sub_path(artifact, ms.parts[0].id, context.temp_allocator)
+	b := engine.artifact_sub_path(artifact, ms.parts[1].id, context.temp_allocator)
+	testing.expect(t, a != b && os.exists(a) && os.exists(b), "each Twin has its own part file")
+
+	first, second := ms.parts[0].id, ms.parts[1].id
+	testing.expect(t, importers._import_mesh(TWIN_GLTF, artifact, &ms), "reimport failed")
+	testing.expect(t, len(ms.parts) == 3 && ms.parts[0].id == first && ms.parts[1].id == second, "a reimport keeps both ids in file order")
+}
+
+// A part with no triangles still gets its file: a header with zero counts
+// that parses, so an export that ships the part has a file to ship.
+@(test)
+test_mesh_import_empty_part_gets_a_file :: proc(t: ^testing.T) {
+	artifact := _MESH_TMP + "/empty_part.bin"
+	defer _remove_tree(_MESH_TMP)
+
+	ms := engine.MeshSettings{scale = 1}
+	testing.expect(t, importers._import_mesh(TWIN_GLTF, artifact, &ms), "import failed")
+	if len(ms.parts) != 3 do return
+	testing.expect(t, ms.parts[2].name == "Empty", "the third mesh is the empty one")
+	blob, err := os.read_entire_file(engine.artifact_sub_path(artifact, ms.parts[2].id, context.temp_allocator), context.temp_allocator)
+	testing.expect(t, err == nil, "the empty part has a file")
+	if err != nil do return
+	h, v, i, s, ok := engine._mesh_artifact_parse(blob)
+	testing.expect(t, ok, "an empty part artifact parses")
+	testing.expect(t, h.vertex_count == 0 && h.index_count == 0 && len(v) == 0 && len(i) == 0 && len(s) == 0, "an empty part has no vertices, indices or submeshes")
+}
+
+// An id once given is never given again: a mesh that appears after another
+// was removed gets a new id, not the removed one's. next_id carries the
+// high-water mark across imports, and a meta from before the field starts it
+// above every id it lists.
+@(test)
+test_mesh_import_never_reuses_a_removed_id :: proc(t: ^testing.T) {
+	artifact := _MESH_TMP + "/reuse.bin"
+	defer _remove_tree(_MESH_TMP)
+
+	// A meta from before next_id: the fixture's three meshes plus a fourth
+	// the model has lost since.
+	ms := engine.MeshSettings{scale = 1}
+	ms.parts = make([dynamic]engine.Mesh_Part, context.temp_allocator)
+	append(&ms.parts, engine.Mesh_Part{id = 1, name = "Twin"}, engine.Mesh_Part{id = 2, name = "Twin"}, engine.Mesh_Part{id = 3, name = "Empty"}, engine.Mesh_Part{id = 4, name = "Gone"})
+	testing.expect(t, importers._import_mesh(TWIN_GLTF, artifact, &ms), "import failed")
+	testing.expect_value(t, len(ms.parts), 3)
+	testing.expect_value(t, ms.next_id, engine.Local_ID(5))
+
+	// The model loses "Old" (the table's name for mesh 3) and gains "Empty":
+	// the newcomer gets 5, not 4 (Gone's) nor 3 (Old's).
+	if len(ms.parts) != 3 do return
+	ms.parts[2].name = "Old"
+	testing.expect(t, importers._import_mesh(TWIN_GLTF, artifact, &ms), "reimport failed")
+	testing.expect(t, len(ms.parts) == 3 && ms.parts[2].name == "Empty", "the table follows the file")
+	if len(ms.parts) != 3 do return
+	testing.expect_value(t, ms.parts[2].id, engine.Local_ID(5))
+	testing.expect_value(t, ms.next_id, engine.Local_ID(6))
+
+	// A first import mints index + 1 and leaves next_id past it.
+	fresh := engine.MeshSettings{scale = 1}
+	testing.expect(t, importers._import_mesh(TWIN_GLTF, artifact, &fresh), "fresh import failed")
+	testing.expect(t, len(fresh.parts) == 3 && fresh.parts[0].id == 1 && fresh.parts[1].id == 2 && fresh.parts[2].id == 3, "a first import mints index + 1")
+	testing.expect_value(t, fresh.next_id, engine.Local_ID(4))
+}

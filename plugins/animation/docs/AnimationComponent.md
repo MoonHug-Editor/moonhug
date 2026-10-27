@@ -362,7 +362,7 @@ system behind them:
 
 ### The Animation window
 
-A clip inside a model opens read-only: the window shows its keys and curves, previews, plays and scrubs it, and selects keys to show their values, but adds, moves and deletes nothing, and Record is off. The clip has no document to edit. The model's file is its source, and the clip is rebuilt from it on every import. The toolbar shows Read-Only and the clip list marks such clips. Assets/Extract Assets makes an editable standalone `.anim`.
+A clip inside a model opens read-only: the window shows its keys and curves, previews, plays and scrubs it, and selects keys to show their values, but adds, moves and deletes nothing, and Record is off. The clip has no document to edit. The model's file is its source, and the clip is rebuilt from it on every import. The toolbar shows Read-Only and the clip list marks such clips. Assets/Extract Assets makes an editable standalone `.anim`. A missing or unreadable `.anim` edits nothing either, but it is not marked Read-Only: the sheet says the clip is missing.
 
 By default playback respects the clip's `wrap`: a Once clip plays through and stops, a Loop clip cycles. The window reads the IMPORTED clip for that, not the document it is editing — the document holds keys, the meta holds wrap.
 
@@ -372,7 +372,7 @@ The playback toggle after the transport buttons overrides it. A click steps thro
 - **Play once**: plays through and stops, even a Loop clip, to look at its end pose.
 - **Loop**: cycles, even a Once clip, to watch its motion over and over.
 
-The state is a per-developer preference in `UserSettings/animation.json`, next to Play Ends on Last Frame, which decides where a Once playback comes to rest in every state.
+The state is a per-developer preference in `UserSettings/animation.json`, next to Play Ends on Last Frame, which decides where a Once playback comes to rest in every state. A saved value outside the three states reads as Match the clip's wrap setting.
 
 ## Non-goals
 

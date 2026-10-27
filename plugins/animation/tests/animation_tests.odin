@@ -13,6 +13,7 @@ import "core:testing"
 import "core:math"
 import "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
+import animation_editor "moonhug:packages/animation/editor"
 import common "moonhug:tests/common"
 
 // A 1-second clip: owner position x 0→2, plus a child "Arm" scale snap
@@ -278,4 +279,39 @@ test_engine_accessors_cover_package_components :: proc(t: ^testing.T) {
 	_, gone := engine.transform_get_comp(tH, anim.Animation)
 	testing.expect(t, gone == nil, "destroy should remove the component")
 	testing.expect_value(t, len(tr.components), 0)
+}
+
+// The Animation window's transport step (animation_editor.anim_playback_step):
+// Clip keeps the clip's wrap, Once and Loop override it, and a Once playback
+// stops at the first or the last frame as Play Ends on Last Frame says.
+@(test)
+test_anim_playback_step_override :: proc(t: ^testing.T) {
+	step :: animation_editor.anim_playback_step
+	near :: proc(a, b: f32) -> bool { return abs(a - b) < 0.0001 }
+
+	// Before the end every state just advances.
+	for p in animation_editor.Anim_Playback {
+		time, playing := step(0.25, 0.5, 1, .Once, p, false)
+		testing.expectf(t, near(time, 0.75) && playing, "%v advances inside the clip, got %v %v", p, time, playing)
+	}
+
+	// Clip: a Loop clip wraps, a Once clip stops.
+	time, playing := step(0.75, 0.5, 1, .Loop, .Clip, false)
+	testing.expectf(t, near(time, 0.25) && playing, "Clip on a Loop clip wraps, got %v %v", time, playing)
+	time, playing = step(0.75, 0.5, 1, .Once, .Clip, false)
+	testing.expectf(t, near(time, 0) && !playing, "Clip on a Once clip rewinds and stops, got %v %v", time, playing)
+
+	// Once on a Loop clip stops, at the last frame when asked.
+	time, playing = step(0.75, 0.5, 1, .Loop, .Once, false)
+	testing.expectf(t, near(time, 0) && !playing, "Once overrides a Loop clip, got %v %v", time, playing)
+	time, playing = step(0.75, 0.5, 2, .Loop, .Once, true)
+	testing.expectf(t, near(time, 1.25) && playing, "inside a longer clip it advances, got %v %v", time, playing)
+	time, playing = step(1.75, 0.5, 2, .Loop, .Once, true)
+	testing.expectf(t, near(time, 2) && !playing, "Once ends on the last frame, got %v %v", time, playing)
+
+	// Loop on a Once clip cycles, past several lengths in one step too.
+	time, playing = step(0.75, 0.5, 1, .Once, .Loop, false)
+	testing.expectf(t, near(time, 0.25) && playing, "Loop overrides a Once clip, got %v %v", time, playing)
+	time, playing = step(0.5, 2.25, 1, .Once, .Loop, false)
+	testing.expectf(t, near(time, 0.75) && playing, "Loop wraps a long step, got %v %v", time, playing)
 }

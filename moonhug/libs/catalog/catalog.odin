@@ -90,11 +90,15 @@ save :: proc(cf: ^File, path: string) -> bool {
 // writes each sub-asset that has data of its own to <key>_s<local id>.bin
 // (assets.artifact_sub_path): a model's parts, clips and convex
 // decompositions. The file ships when a reference names its id, the main
-// artifact ships when a reference names the asset itself (no local id) or an
-// id with no file of its own (a sprite slice reads its texture), and an
-// asset used whole (_Uses) ships everything. So a scene that plays one clip
-// of an animation library ships that clip, not the library. Fan-out files
-// without the `_s` marker hold shared data and always ship.
+// artifact ships when a reference names the asset itself (no local id), and
+// an asset used whole (_Uses) ships everything. So a scene that plays one
+// clip of an animation library ships that clip, not the library. An asset
+// with no `_s` file at all keeps its sub-assets in the main artifact (a
+// sprite slice reads its texture), so an id named in it ships the main
+// artifact. An asset with `_s` files has one for every sub-asset, and a
+// referenced id without one (a convex decomposition never computed) fails
+// the export. Fan-out files without the `_s` marker hold shared data and
+// always ship.
 //
 // - `root` prefixes reads of entry sources: "" when entry paths are valid
 //   from the cwd (the editor), "moonhug" when invoked from the repo root the
@@ -147,6 +151,20 @@ export :: proc(src: ^File, src_dir: string, data_dir: string, boot_scene := "", 
 	ship, cok := _closure(src, boot_guid, root, extra_roots, &uses)
 	if !cok do return false
 
+	// Every artifact file to copy, decided before the data dir is touched: a
+	// missing artifact fails the export without leaving a half-made dir that
+	// the next export would refuse to clear.
+	ship_files := make(map[string][]string, len(ship), context.temp_allocator)
+	skipped := 0
+	for guid_str in ship {
+		entry := src.assets[guid_str]
+		if entry.artifact == "" do continue
+		names, left_out, aok := _artifact_ship_list(src_dir, guid_str, entry, &uses)
+		if !aok do return false
+		ship_files[guid_str] = names
+		skipped += left_out
+	}
+
 	// Stage into an EMPTY dir, so the export is exactly the closure and not
 	// the closure on top of whatever the last export left behind. Only a dir
 	// that is itself an export (holds a catalog.json) is cleared: anything
@@ -166,7 +184,7 @@ export :: proc(src: ^File, src_dir: string, data_dir: string, boot_scene := "", 
 	out := File{version = VERSION, relocatable = true, boot_scene = boot_guid}
 	out.assets = make(map[string]Entry, len(ship), context.temp_allocator)
 
-	copied, skipped := 0, 0
+	copied := 0
 	for guid_str in ship {
 		entry := src.assets[guid_str]
 		src_path := _rooted(root, entry.path)
@@ -183,31 +201,11 @@ export :: proc(src: ^File, src_dir: string, data_dir: string, boot_scene := "", 
 			copied += 1
 		}
 
-		// The main artifact plus the fan-out files beside it
-		// (<key>_<suffix>.bin), each when something needs it. A missing main
-		// artifact fails the export instead of shipping a hole.
 		if entry.artifact != "" {
 			dir_rel := strings.concatenate({"artifacts/", entry.artifact[:2], "/"}, context.temp_allocator)
-			main_name := strings.concatenate({entry.artifact, ".bin"}, context.temp_allocator)
-			if !os.exists(strings.concatenate({src_dir, "/", dir_rel, main_name}, context.temp_allocator)) {
-				fmt.eprintfln("[Catalog] export: missing artifact for %s — run an import pass first", entry.path)
-				return false
-			}
-			files := make([dynamic]string, context.temp_allocator)
-			append(&files, main_name)
-			prefix := strings.concatenate({entry.artifact, "_"}, context.temp_allocator)
-			if handle, oerr := os.open(strings.concatenate({src_dir, "/", dir_rel}, context.temp_allocator)); oerr == nil {
-				defer os.close(handle)
-				infos, _ := os.read_dir(handle, -1, context.temp_allocator)
-				for f in infos {
-					if strings.has_prefix(f.name, prefix) && strings.has_suffix(f.name, ".bin") do append(&files, f.name)
-				}
-			}
-			for name in files {
-				if !_artifact_file_needed(guid_str, name[len(entry.artifact):len(name) - len(".bin")], entry.artifact, files[:], &uses) {
-					skipped += 1
-					continue
-				}
+			// Copied out: ranging over a map value with a missing key crashes.
+			names := ship_files[guid_str]
+			for name in names {
 				rel := strings.concatenate({dir_rel, name}, context.temp_allocator)
 				if !_copy_file(strings.concatenate({src_dir, "/", rel}, context.temp_allocator), strings.concatenate({data_dir, "/", rel}, context.temp_allocator)) {
 					fmt.eprintfln("[Catalog] export: cannot copy %s", rel)
@@ -224,6 +222,54 @@ export :: proc(src: ^File, src_dir: string, data_dir: string, boot_scene := "", 
 	if !save(&out, catalog_path) do return false
 	fmt.printfln("[Catalog] exported %s (%d of %d assets, %d files, %d unused artifact files left out)", data_dir, len(out.assets), len(src.assets), copied, skipped)
 	return true
+}
+
+// The artifact files of one shipped asset that ship: the main artifact plus
+// the fan-out files beside it (<key>_<suffix>.bin), each when something needs
+// it (_artifact_file_needed). `left_out` counts the rest. A missing main
+// artifact, an artifact dir that cannot be listed, or a referenced sub-asset
+// without its file fails the export instead of shipping a hole.
+@(private = "file")
+_artifact_ship_list :: proc(src_dir, guid_str: string, entry: Entry, uses: ^_Uses) -> (names: []string, left_out: int, ok: bool) {
+	dir_rel := strings.concatenate({"artifacts/", entry.artifact[:2], "/"}, context.temp_allocator)
+	main_name := strings.concatenate({entry.artifact, ".bin"}, context.temp_allocator)
+	if !os.exists(strings.concatenate({src_dir, "/", dir_rel, main_name}, context.temp_allocator)) {
+		fmt.eprintfln("[Catalog] export: missing artifact for %s — run an import pass first", entry.path)
+		return nil, 0, false
+	}
+	files := make([dynamic]string, context.temp_allocator)
+	append(&files, main_name)
+	// The listing decides which files ship, so a dir that cannot be listed
+	// fails the export instead of shipping the main file alone.
+	artifact_dir := strings.concatenate({src_dir, "/", dir_rel}, context.temp_allocator)
+	handle, oerr := os.open(artifact_dir)
+	if oerr != nil {
+		fmt.eprintfln("[Catalog] export: cannot open %s (%v)", artifact_dir, oerr)
+		return nil, 0, false
+	}
+	defer os.close(handle)
+	infos, rerr := os.read_dir(handle, -1, context.temp_allocator)
+	if rerr != nil {
+		fmt.eprintfln("[Catalog] export: cannot list %s (%v)", artifact_dir, rerr)
+		return nil, 0, false
+	}
+	prefix := strings.concatenate({entry.artifact, "_"}, context.temp_allocator)
+	for f in infos {
+		if strings.has_prefix(f.name, prefix) && strings.has_suffix(f.name, ".bin") do append(&files, f.name)
+	}
+	if missing, has_missing := _sub_file_missing(guid_str, entry.artifact, files[:], uses); has_missing {
+		fmt.eprintfln("[Catalog] export: %s has no file for sub-asset %d, which a shipped asset references (expected %s%s_s%d.bin): compute or reimport it first, or remove the reference", entry.path, missing, dir_rel, entry.artifact, missing)
+		return nil, 0, false
+	}
+	ship := make([dynamic]string, context.temp_allocator)
+	for name in files {
+		if _artifact_file_needed(guid_str, name[len(entry.artifact):len(name) - len(".bin")], entry.artifact, files[:], uses) {
+			append(&ship, name)
+		} else {
+			left_out += 1
+		}
+	}
+	return ship[:], left_out, true
 }
 
 // --- The catalog from the project's files -------------------------------------
@@ -496,7 +542,8 @@ _Uses :: struct {
 // Whether one artifact file of a shipped asset ships. `suffix` is the name
 // between the key and ".bin": "" for the main artifact, "_s<id>" for a
 // sub-asset file, anything else for shared data. `files` lists the asset's
-// artifact files, so an id with no file of its own sends the main artifact.
+// artifact files: an asset with no sub-asset file keeps its sub-assets in
+// the main artifact, so an id named in it ships the main artifact.
 @(private = "file")
 _artifact_file_needed :: proc(guid_str, suffix, key: string, files: []string, uses: ^_Uses) -> bool {
 	if uses.whole[guid_str] do return true
@@ -505,17 +552,36 @@ _artifact_file_needed :: proc(guid_str, suffix, key: string, files: []string, us
 	ids := uses.ids[guid_str]
 	if suffix == "" {
 		if uses.itself[guid_str] do return true
-		for id in ids {
-			own := fmt.tprintf("%s_s%d.bin", key, id)
-			has := false
-			for f in files do if f == own do has = true
-			if !has do return true
-		}
-		return false
+		return len(ids) > 0 && !_has_sub_files(key, files)
 	}
 	id, is_sub := _sub_id(suffix)
 	if !is_sub do return true
 	for want in ids do if want == id do return true
+	return false
+}
+
+// The first id a reference names that has no `_s` file of its own, for an
+// asset with sub-asset files. An asset used whole ships what it has.
+@(private = "file")
+_sub_file_missing :: proc(guid_str, key: string, files: []string, uses: ^_Uses) -> (id: i64, missing: bool) {
+	if uses.whole[guid_str] || !_has_sub_files(key, files) do return 0, false
+	ids := uses.ids[guid_str]
+	for want in ids {
+		own := fmt.tprintf("%s_s%d.bin", key, want)
+		has := false
+		for f in files do if f == own do has = true
+		if !has do return want, true
+	}
+	return 0, false
+}
+
+// Whether the asset has at least one sub-asset file (<key>_s<id>.bin).
+@(private = "file")
+_has_sub_files :: proc(key: string, files: []string) -> bool {
+	for f in files {
+		if len(f) <= len(key) + len(".bin") || !strings.has_prefix(f, key) || !strings.has_suffix(f, ".bin") do continue
+		if _, is_sub := _sub_id(f[len(key):len(f) - len(".bin")]); is_sub do return true
+	}
 	return false
 }
 
@@ -528,7 +594,9 @@ _sub_id :: proc(suffix: string) -> (i64, bool) {
 
 // The local id of a PPtr whose guid string spans text[start:end]: the value
 // of a "guid" key, with "local_id" written after it or before it. 0 when the
-// guid is no PPtr's or the PPtr has no local id.
+// guid is no PPtr's or the PPtr has no local id. A quote may be escaped
+// (\"), since a scene can hold a component's fields as a JSON string
+// (nested_records_json.odin), and a PPtr inside one is still a PPtr.
 @(private = "file")
 _local_id_beside :: proc(text: string, start, end: int) -> i64 {
 	ws :: proc(c: u8) -> bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }
@@ -542,30 +610,48 @@ _local_id_beside :: proc(text: string, start, end: int) -> i64 {
 		for i >= 0 && ws(text[i]) do i -= 1
 		return i
 	}
-	// `s` ends at text[i].
-	ends_at :: proc(text: string, i: int, s: string) -> bool {
-		return i + 1 >= len(s) && i < len(text) && text[i + 1 - len(s):i + 1] == s
+	// A quote, bare or escaped, starting at text[i]: the index after it, or
+	// -1 when there is none.
+	quote_fwd :: proc(text: string, i: int) -> int {
+		if i < len(text) && text[i] == '"' do return i + 1
+		if i + 1 < len(text) && text[i] == '\\' && text[i + 1] == '"' do return i + 2
+		return -1
 	}
-	KEY :: `"local_id"`
-	GUID_KEY :: `"guid"`
+	// A quote, bare or escaped, ending at text[i]: the index before it, or
+	// -2 when there is none.
+	quote_back :: proc(text: string, i: int) -> int {
+		if i < 0 || i >= len(text) || text[i] != '"' do return -2
+		if i >= 1 && text[i - 1] == '\\' do return i - 2
+		return i - 1
+	}
+	// The key `name`, quoted, ending at text[i]: the index before it, or -2.
+	key_back :: proc(text: string, i: int, name: string) -> int {
+		j := quote_back(text, i)
+		if j < 0 || j + 1 < len(name) || text[j + 1 - len(name):j + 1] != name do return -2
+		return quote_back(text, j - len(name))
+	}
+	// The key `name`, quoted, starting at text[i]: the index after it, or -1.
+	key_fwd :: proc(text: string, i: int, name: string) -> int {
+		j := quote_fwd(text, i)
+		if j < 0 || !strings.has_prefix(text[j:], name) do return -1
+		return quote_fwd(text, j + len(name))
+	}
+	KEY :: "local_id"
+	GUID_KEY :: "guid"
 
 	// The guid is the value of a "guid" key.
-	i := start - 1
-	if i < 0 || text[i] != '"' do return 0
-	i = back(text, i - 1)
+	i := back(text, quote_back(text, start - 1))
 	if i < 0 || text[i] != ':' do return 0
-	i = back(text, i - 1)
-	if !ends_at(text, i, GUID_KEY) do return 0
-	key_start := i + 1 - len(GUID_KEY)
+	key_before := key_back(text, back(text, i - 1), GUID_KEY)
+	if key_before == -2 do return 0
 
 	// After it: , "local_id" : <id>
-	j := end
-	if j < len(text) && text[j] == '"' {
-		j = fwd(text, j + 1)
+	if j := quote_fwd(text, end); j >= 0 {
+		j = fwd(text, j)
 		if j < len(text) && text[j] == ',' {
-			j = fwd(text, j + 1)
-			if strings.has_prefix(text[j:], KEY) {
-				j = fwd(text, j + len(KEY))
+			j = key_fwd(text, fwd(text, j + 1), KEY)
+			if j >= 0 {
+				j = fwd(text, j)
 				if j < len(text) && text[j] == ':' {
 					j = fwd(text, j + 1)
 					k := j
@@ -579,7 +665,7 @@ _local_id_beside :: proc(text: string, start, end: int) -> i64 {
 	}
 
 	// Before it: "local_id" : <id> ,
-	k := back(text, key_start - 1)
+	k := back(text, key_before)
 	if k < 0 || text[k] != ',' do return 0
 	k = back(text, k - 1)
 	digits_end := k + 1
@@ -588,8 +674,7 @@ _local_id_beside :: proc(text: string, start, end: int) -> i64 {
 	digits_start := k + 1
 	k = back(text, k)
 	if k < 0 || text[k] != ':' do return 0
-	k = back(text, k - 1)
-	if !ends_at(text, k, KEY) do return 0
+	if key_back(text, back(text, k - 1), KEY) == -2 do return 0
 	id, ok := strconv.parse_i64(text[digits_start:digits_end])
 	return id if ok else 0
 }

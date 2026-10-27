@@ -2,8 +2,9 @@ package engine
 
 // Mesh cache keyed by (guid, part), mirroring texture2d.odin. Unlike
 // textures, the raw glTF is never loaded at runtime — the imported artifact
-// IS the runtime format (see asset_importer_mesh.odin); a missing OR stale
-// artifact (format bump, corruption) triggers an import-then-retry.
+// IS the runtime format (see asset_importer_mesh.odin). A missing whole-model
+// artifact or a stale file (format bump, corruption) triggers an
+// import-then-retry, a missing part file is reported (artifact_read.odin).
 // part == 0 is the whole baked model; part == i+1 is glTF mesh i in
 // node-local space (MeshFilter.part).
 
@@ -30,6 +31,9 @@ Mesh :: struct {
     skin_gpu:      gfx.Skin_Source,
     inverse_binds: []matrix[4, 4]f32,        // one per joint
     joint_names:   []string,                 // one per joint, for binding
+
+    // A part with no triangles: cached so it is read once, never drawn.
+    empty: bool,
 }
 
 mesh_is_skinned :: proc(m: ^Mesh) -> bool {
@@ -43,15 +47,15 @@ Mesh_Key :: struct {
 
 mesh_cache: map[Mesh_Key]Mesh
 
-// Loads that failed, so a broken asset is attempted ONCE rather than on every
-// frame that draws it. A failing load re-imports from source, and re-importing
-// a glTF several times a second floods the log and stalls the editor — the
-// symptom that makes a missing artifact look like a performance bug rather than
-// a missing artifact. Mirrors _shader_failed in shader.odin.
+// Loads that failed for a reason that is not an artifact file: a GPU upload
+// that produced nothing, a part index past the model's table. Each is tried
+// ONCE rather than on every frame that draws it. A missing or bad artifact
+// file is recorded by the artifact reader instead (assets._artifact_failed,
+// cleared when the asset reimports), never here, so the two marks never
+// disagree about when a file gets its next try.
 //
 // Keyed by (guid, part): one unbuildable part must not stop the rest of the
-// model loading. Cleared for an asset by mesh_unload, so a re-import or a
-// changed file retries.
+// model loading. Cleared for an asset by mesh_unload, the reimport hook.
 @(private = "file") _mesh_failed: map[Mesh_Key]bool
 
 // Whether the parts and clips caches are live. A flag, not a nil check on the
@@ -278,14 +282,28 @@ mesh_ref_part :: proc(ref: PPtr) -> (part: i32, ok: bool) {
 // Loads what a MeshFilter references — the whole model or its part.
 mesh_load_filter :: proc(mf: ^MeshFilter) -> (^Mesh, bool) {
     part, ok := mesh_filter_part(mf)
-    if !ok do return nil, false
+    if !ok {
+        _mesh_part_unknown(mf.mesh)
+        return nil, false
+    }
     return mesh_load(mf.mesh.guid, part)
 }
 
+// A reference names a part id the model does not list: reported once through
+// the artifact reader, which marks the id until the model reimports.
+@(private = "file")
+_mesh_part_unknown :: proc(ref: PPtr) {
+    if asset_guid_is_empty(ref.guid) do return
+    artifact_fail(ref.guid, ref.local_id, "the model lists no part with this id")
+}
+
+// The GPU mesh of a model (part 0) or one of its parts. A part with no
+// triangles is cached like any other and returns ok=false with no report:
+// there is nothing to draw, and no draw path binds its empty buffers.
 mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
     key := Mesh_Key{guid, part}
     if mesh, ok := &mesh_cache[key]; ok {
-        return mesh, true
+        return mesh, !mesh.empty
     }
     // Known bad: do not re-import it again this session.
     if key in _mesh_failed do return nil, false
@@ -295,8 +313,10 @@ mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
     blob, header, vertices, indices, submeshes, parse_ok := _mesh_artifact_read(key)
     if !parse_ok do return nil, false
 
-    gpu := gfx.mesh_create(vertices, indices)
-    if gpu.index_count == 0 {
+    // A part with no triangles gets no GPU buffers.
+    gpu: gfx.Mesh
+    if len(indices) > 0 do gpu = gfx.mesh_create(vertices, indices)
+    if len(indices) > 0 && gpu.index_count == 0 {
         log.errorf("[Mesh] GPU upload produced no indices: %v (part %d, %d verts)", guid, part, len(vertices))
         _mesh_failed[key] = true
         return nil, false
@@ -310,6 +330,7 @@ mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
         aabb_max  = header.aabb_max,
         submeshes = owned_submeshes,
         gpu       = gpu,
+        empty     = len(indices) == 0,
     }
     // A skinned mesh uploads its bind pose and skin data a second time, as the
     // storage buffers the skinning compute pass reads.
@@ -322,13 +343,13 @@ mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
         for n, i in split do m.joint_names[i] = strings.clone(n)
     }
     mesh_cache[key] = m
-    return &mesh_cache[key], true
+    return &mesh_cache[key], !m.empty
 }
 
 // One part's artifact, read and parsed. The slices point into `blob`,
 // temp-allocated. A missing or unreadable file is assets.artifact_load's to
-// import or report, and every failure marks the key failed: the retry is
-// once per session, not once per frame.
+// import or report, and it marks the file failed itself: the retry is once
+// per reimport, not once per frame.
 @(private = "file")
 _Mesh_Read :: struct {
     blob:      []byte,
@@ -346,6 +367,7 @@ _mesh_artifact_read :: proc(key: Mesh_Key) -> (blob: []byte, header: Mesh_Artifa
     if key.part > 0 {
         parts := mesh_parts(key.guid)
         if int(key.part) > len(parts) {
+            // No id to name: the index came from an older table.
             _mesh_failed[key] = true
             source, _ := asset_db_get_path(uuid.Identifier(key.guid))
             log.errorf("[Mesh] %s lists no part %d", source, key.part)
@@ -359,10 +381,7 @@ _mesh_artifact_read :: proc(key: Mesh_Key) -> (blob: []byte, header: Mesh_Artifa
         r.header, r.vertices, r.indices, r.submeshes, ok = _mesh_artifact_parse(data)
         return
     }
-    if !artifact_load(key.guid, sub, "mesh", &r, parse) {
-        _mesh_failed[key] = true
-        return
-    }
+    if !artifact_load(key.guid, sub, "mesh", &r, parse) do return
     return r.blob, r.header, r.vertices, r.indices, r.submeshes, true
 }
 
@@ -386,7 +405,10 @@ mesh_geometry :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh_Geometry, bool)
 // part. ok=false when the part no longer exists in the model.
 mesh_geometry_of :: proc(ref: PPtr) -> (^Mesh_Geometry, bool) {
     part, ok := mesh_ref_part(ref)
-    if !ok do return nil, false
+    if !ok {
+        _mesh_part_unknown(ref)
+        return nil, false
+    }
     return mesh_geometry(ref.guid, part)
 }
 

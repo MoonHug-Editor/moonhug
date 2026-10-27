@@ -81,6 +81,12 @@ MeshSettings :: struct {
     // (entry i is glTF mesh i, its artifact named by the id). First mint is
     // index + 1.
     parts: [dynamic]Mesh_Part,
+    // The id the importer gives the next new part or clip. It only grows, so
+    // an id a removed part or clip held is never given to another one: a
+    // reference to the removed one stays broken instead of naming the
+    // newcomer. 0 in a meta written before the field: the importer starts it
+    // above every part and clip id the meta lists.
+    next_id: Local_ID `inspect:"-"`,
     // Identity table, not a setting: shown and edited through the selected
     // clip's own section (the animation package, editor/model_clips.odin).
     // The reflected drawer must not walk it, since each entry's settings is a
@@ -165,12 +171,14 @@ mesh_artifacts :: proc(artifact_path: string, allocator := context.allocator) ->
 
 // Validates an artifact blob and returns views into it (no copies) — shared
 // by mesh_load and the import tests. Fails on stale v1 artifacts (magic
-// mismatch); mesh_load reimports from source on parse failure.
+// mismatch). mesh_load reimports from source on parse failure. A part with
+// no triangles is a valid artifact with no vertices, indices or submeshes:
+// it loads and draws nothing.
 _mesh_artifact_parse :: proc(blob: []u8) -> (header: Mesh_Artifact_Header, vertices: []gfx.Vertex, indices: []u32, submeshes: []Mesh_Submesh, ok: bool) {
     if len(blob) < size_of(Mesh_Artifact_Header) do return
     header = (^Mesh_Artifact_Header)(raw_data(blob))^
     if string(header.magic[:]) != MESH_ARTIFACT_MAGIC do return
-    if header.submesh_count == 0 do return
+    if header.submesh_count == 0 && (header.vertex_count != 0 || header.index_count != 0) do return
 
     vert_bytes := int(header.vertex_count) * size_of(gfx.Vertex)
     index_bytes := int(header.index_count) * size_of(u32)

@@ -42,10 +42,15 @@ mesh_hulls_pending: proc(guid: engine.Asset_GUID, set: engine.Local_ID) -> bool
 // Loaded hull sets by file path, kept until any reimport.
 @(private = "file") _hull_sets: map[string][][][3]f32
 
-// The hulls of a model's set, owned by the cache.
+// The hulls of a model's set, owned by the cache. Every .Missing result has
+// been reported through [Artifact] (once per set until the model reimports),
+// so a caller adds no message of its own.
 mesh_hulls :: proc(guid: engine.Asset_GUID, set: engine.Local_ID) -> ([][][3]f32, Mesh_Hulls_State) {
 	path, pok := mesh_hulls_path(guid, set)
-	if !pok do return nil, .Missing
+	if !pok {
+		engine.artifact_fail(guid, set, "the model has no imported artifact, so its convex decomposition has no file")
+		return nil, .Missing
+	}
 	if hulls, cached := _hull_sets[path]; cached do return hulls, .Ready
 
 	context.allocator = runtime.default_allocator()

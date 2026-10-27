@@ -175,6 +175,14 @@ maximize_frame :: proc(pos, size: im.Vec2) {
 	}
 }
 
+// Frees what a maximized view holds, at editor shutdown.
+maximize_shutdown :: proc() {
+	delete(_max.name, runtime.default_allocator())
+	delete(_max.key, runtime.default_allocator())
+	delete(_max.host, runtime.default_allocator())
+	_max = {}
+}
+
 // From the main loop after the views: the view is back in its node, so the
 // placeholder leaves it.
 maximize_after_views :: proc() {
@@ -189,11 +197,14 @@ _max_restore :: proc() {
 	if _max.host != "" {
 		// Out of the maximize dockspace, then hosted again: its window goes.
 		im.DockBuilderDockWindow(_max.name, 0)
-		if wnd.find(_max.key) != nil {
-			wnd.host_open(_max.key, _max.host)
+		if w := wnd.find(_max.key); w == nil {
+			workspace_view_forget(_max.host, _max.key) // closed while maximized
+		} else if wnd.find(_max.host) != nil && wnd.host_open(_max.key, _max.host) != nil {
 			workspace_view_reveal(_max.host, _max.key)
 		} else {
-			workspace_view_forget(_max.host, _max.key) // closed while maximized
+			// Its Workspace view closed, or another one holds it now: it keeps
+			// a window of its own and docks beside its siblings.
+			w.placed = false
 		}
 	} else {
 		im.DockBuilderDockWindow(_max.name, _max.node)

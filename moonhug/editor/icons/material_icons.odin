@@ -86,8 +86,6 @@ ICON_MD_ACCOUNT_TREE  :: "\ue97a"   // account_tree (node graph; also in app_edi
 
 // Scene view overlays (dock.odin)
 ICON_MD_DRAG_INDICATOR :: "\ue945"   // drag_indicator (overlay grip handle, vertical dots)
-ICON_MD_SPACE_DASHBOARD :: "\ue66b"  // space_dashboard (workspace view)
-ICON_MD_MAP :: "\ue55b"              // map (workspace mini-map toggle)
 ICON_MD_DRAG_HANDLE    :: "\ue25d"   // drag_handle (overlay grip handle, horizontal bars)
 ICON_MD_OPEN_WITH      :: "\ue89f"   // open_with (move tool)
 ICON_MD_ROTATE_RIGHT   :: "\ue41a"   // rotate_right (rotate tool)
@@ -98,6 +96,10 @@ ICON_MD_GRID_ON        :: "\uf015"   // grid_on (grid settings overlay)
 ICON_MD_SNAP           :: "\uea49"   // square_foot (snap settings)
 ICON_MD_TRIP_ORIGIN    :: "\ue57b"   // trip_origin (gizmo at active pivot)
 ICON_MD_CENTER_FOCUS   :: "\ue3dc"   // filter_center_focus (gizmo at selection center)
+
+// Workspace
+ICON_MD_SPACE_DASHBOARD :: "\ue66b"   // space_dashboard (workspace view)
+ICON_MD_MAP             :: "\ue55b"   // map (workspace mini-map toggle)
 
 // Windows
 ICON_MD_LANDSCAPE      :: "\ue564" // landscape (Scene)

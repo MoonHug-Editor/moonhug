@@ -48,11 +48,6 @@ import "moonhug:editor/workspace"
 
 WORKSPACE_VIEW :: "workspace"
 
-// The drag-and-drop type of a frame's tab. The payload is the Workspace view
-// it comes from (^wnd.Window), whose state names the tab (_WS_View.dragging).
-@(private = "file")
-_WS_TAB_PAYLOAD :: "WS_TAB"
-
 // A tab dropped somewhere: its view key (owned), the frame it leaves, and the
 // frame it joins, or 0 for a new frame at `at` on the canvas.
 @(private = "file")
@@ -61,6 +56,17 @@ _WS_Move :: struct {
 	from: u32,
 	to:   u32,
 	at:   [2]f32,
+}
+
+// A frame's ⋮ menu action, applied at the next frame's start so the frame
+// list does not change while the frames draw. `frame` is the frame's id,
+// `key` (owned) the view it acts on or adds, `parent` the new parent.
+@(private = "file")
+_WS_Edit :: struct {
+	kind:   enum {Move_To_Dock, Add_Tab, Set_Parent, Unparent},
+	frame:  u32,
+	key:    string,
+	parent: u32,
 }
 
 // A view to add as a chained frame: its key (owned) and the frame it is
@@ -83,11 +89,8 @@ _WS_View :: struct {
 	touched:    u32,      // the frame last moved, resized, clicked or opened in: its chain stays when chains part
 	reveal:     string,   // owned, a view key to show next frame: its tab picked, its frame brought into view
 	pending:    [dynamic]_WS_Pending, // chained frames to add next frame
-	dragging:   struct {
-		key:  string, // owned, the tab being dragged out of its frame, "" for none
-		from: u32,    // its frame
-	},
 	moves:      [dynamic]_WS_Move, // tabs dropped, moved next frame
+	edits:      [dynamic]_WS_Edit, // frame menu actions, applied next frame
 	reorder:    struct {
 		id: u32, // a child moving to another place among its siblings, 0 for none
 		to: int, // that place, applied next frame
@@ -99,13 +102,36 @@ _WS_View :: struct {
 	// Tabs closed from their frames: they leave the frame once their view is
 	// gone, and stay when the close was held (unapplied edits, Cancel).
 	closing:    [dynamic]string, // owned keys
+	// Each frame's active tab as its tab bar last showed it, by frame id, for
+	// the workspace `synced_ws`. A frame whose active tab differs (code picked
+	// it, or the workspace just loaded) has it selected in its tab bar.
+	synced:     map[u32]int,
+	synced_ws:  string,   // owned
+	// A frame resized, or the layout moved frames, while the mouse was held:
+	// the workspace saves once it is released.
+	save_pending: bool,
 	rename:     bool,     // open the rename popup this frame
 	name_buf:   [128]u8,
 }
 
+// The view's state, made on first use. Its arrays and map live on the
+// default allocator, whoever appends to them.
+@(private = "file")
+_ws_state :: proc(w: ^wnd.Window) -> ^_WS_View {
+	if w.data != nil do return (^_WS_View)(w.data)
+	v := wnd.state(w, _WS_View{})
+	a := runtime.default_allocator()
+	v.pending.allocator = a
+	v.moves.allocator = a
+	v.edits.allocator = a
+	v.closing.allocator = a
+	v.synced = make(map[u32]int, a)
+	return v
+}
+
 @(editor_window={id="workspace", title="Workspace", icon="SPACE_DASHBOARD", canvas=true, width=1000, height=640, closed=workspace_view_closed})
 workspace_view_draw :: proc(w: ^wnd.Window) {
-	v := wnd.state(w, _WS_View{})
+	v := _ws_state(w)
 	_ws_toolbar(w, v)
 	e, ok := workspace.find(workspace.view_selection(w.key))
 	owner := ""
@@ -119,7 +145,24 @@ workspace_view_draw :: proc(w: ^wnd.Window) {
 		return
 	}
 	_ws_rename_popup(v, e.ws)
+	_ws_apply_queued(w, v, e.ws)
+	// Every tab's view is claimed each frame, shown or not, frame on screen or
+	// not: the registry gives a hosted view no host claims its own window
+	// back (window.host_open).
+	for f in e.ws.frames do for key in f.tabs do _ws_claim(w, v, key)
 	_ws_canvas(w, v, e.ws)
+}
+
+// The view `key` of a frame, claimed for this view: nil when it is missing,
+// or held by another Workspace view (window.host_held_elsewhere). A view
+// maximized out of its frame is found and not claimed. One whose close is
+// under way is claimed while it stays open, and nil once it is gone: hosting
+// would reopen it from its key.
+@(private = "file")
+_ws_claim :: proc(w: ^wnd.Window, v: ^_WS_View, key: string) -> ^wnd.Window {
+	if key == maximize_key() do return wnd.find(key)
+	if _ws_closing(v, key) && wnd.find(key) == nil do return nil
+	return wnd.host_open(key, w.key)
 }
 
 // The key of the Workspace view that shows the workspace `id`: the first one
@@ -139,11 +182,14 @@ workspace_view_closed :: proc(w: ^wnd.Window) {
 	for key in _ws_hosted_keys(w.key) do wnd.close(key)
 	for k in v.closing do delete(k, runtime.default_allocator())
 	delete(v.closing)
+	delete(v.synced)
+	delete(v.synced_ws, runtime.default_allocator())
 	for p in v.pending do delete(p.key, runtime.default_allocator())
 	delete(v.pending)
 	for m in v.moves do delete(m.key, runtime.default_allocator())
 	delete(v.moves)
-	delete(v.dragging.key, runtime.default_allocator())
+	for e in v.edits do delete(e.key, runtime.default_allocator())
+	delete(v.edits)
 	delete(v.reveal, runtime.default_allocator())
 	free(v, runtime.default_allocator())
 	w.data = nil
@@ -205,19 +251,14 @@ _ws_toolbar :: proc(w: ^wnd.Window, v: ^_WS_View) {
 	}
 
 	im.SameLine()
-	e, has := workspace.find(selected)
+	_, has := workspace.find(selected)
 	im.BeginDisabled(!has)
 	if im.Button("Add View") do im.OpenPopup("##ws_add")
 	im.EndDisabled()
 	widgets.tooltip("Open a view in a new frame of this workspace")
 	if has && im.BeginPopup("##ws_add") {
 		if id, picked := _ws_window_menu(); picked {
-			n := len(e.ws.frames)
-			rect := [4]f32{-e.ws.pan.x + 24 + f32(n % 8) * 28, -e.ws.pan.y + 24 + f32(n % 8) * 28, 460, 320}
-			if inst := _ws_open_view(id, w.key); inst != nil {
-				workspace.frame_add(e.ws, inst.key, rect)
-				workspace.changed(e.ws)
-			}
+			if k := _ws_new_key(id); k != "" do workspace_view_add(w.key, k)
 		}
 		im.EndPopup()
 	}
@@ -245,14 +286,38 @@ _ws_window_menu :: proc() -> (id: string, picked: bool) {
 	return
 }
 
-// A new instance of the window `id` hosted by the view `host`: its plain
-// instance when that is not open anywhere, another one when it is.
+// The key of a new instance of the window `id`: its plain instance's when
+// that is not open anywhere (hosting opens it from the key), another one's
+// when it is (open_another makes it). "" for an unknown id.
 @(private = "file")
-_ws_open_view :: proc(id: string, host: string) -> ^wnd.Window {
-	if wnd.find(id) == nil do return wnd.host_open(id, host)
+_ws_new_key :: proc(id: string) -> string {
+	if wnd.find(id) == nil do return id
 	inst := wnd.open_another(id)
+	return inst.key if inst != nil else ""
+}
+
+// Adds the view `key` to the workspace the Workspace view `view` shows, in a
+// new frame, and hosts it there. With a `parent` (a frame id) the frame is
+// chained to it and added next frame, shown once laid out. Without one it is
+// added now, a step down and right of the last one from the visible area's
+// corner. Returns the view, nil when `view` shows no workspace, the key opens
+// no window, or another Workspace view holds it.
+@(private)
+workspace_view_add :: proc(view, key: string, parent: u32 = 0) -> ^wnd.Window {
+	hv := wnd.find(view)
+	if hv == nil || hv.id != WORKSPACE_VIEW do return nil
+	e, ok := workspace.find(workspace.view_selection(view))
+	if !ok do return nil
+	inst := wnd.host_open(key, view)
 	if inst == nil do return nil
-	return wnd.host_open(inst.key, host)
+	if parent != 0 {
+		append(&_ws_state(hv).pending, _WS_Pending{strings.clone(key, runtime.default_allocator()), parent})
+		return inst
+	}
+	n := len(e.ws.frames)
+	workspace.frame_add(e.ws, key, {-e.ws.pan.x + 24 + f32(n % 8) * 28, -e.ws.pan.y + 24 + f32(n % 8) * 28, 460, 320})
+	workspace.changed(e.ws)
+	return inst
 }
 
 // --- Canvas ----------------------------------------------------------------
@@ -272,18 +337,13 @@ _ws_canvas :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace) {
 	size := im.GetContentRegionAvail()
 	dl := im.GetWindowDrawList()
 
-	if v.dragging.key != "" && im.GetDragDropPayload() == nil {
-		delete(v.dragging.key, runtime.default_allocator())
-		v.dragging = {}
+	// The layout moves frames while one is dragged or resized: saved once
+	// the mouse is released.
+	if workspace.layout(ws, v.touched) do v.save_pending = true
+	if v.save_pending && !im.IsMouseDown(.Left) {
+		v.save_pending = false
+		workspace.changed(ws)
 	}
-	_ws_apply_moves(v, ws)
-	_ws_apply_pending(v, ws)
-	if v.reorder.id != 0 {
-		workspace.sibling_move(ws, v.reorder.id, v.reorder.to)
-		v.reorder = {}
-	}
-	if workspace.fix(ws) do workspace.changed(ws)
-	if workspace.layout(ws, v.touched) && !im.IsMouseDown(.Left) do workspace.changed(ws)
 	_ws_apply_reveal(v, ws, size)
 
 	// A dot every grid step, moving with the pan, so panning reads. The
@@ -313,10 +373,10 @@ _ws_canvas :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace) {
 	}
 	// A tab dropped on empty canvas gets a frame there. Over a frame, that
 	// frame's smaller target wins.
-	if v.dragging.key != "" && im.BeginDragDropTarget() {
-		if p := im.AcceptDragDropPayload(_WS_TAB_PAYLOAD, {.AcceptNoDrawDefaultRect}); p != nil && (^^wnd.Window)(p.Data)^ == w {
+	if key := _ws_dragged(w); key != "" && im.BeginDragDropTarget() {
+		if p := im.AcceptDragDropPayload(wnd.TAB_PAYLOAD, {.AcceptNoDrawDefaultRect}); p != nil && wnd.tab_payload_key(p) == key {
 			at := im.GetMousePos() - origin - ws.pan - {24, im.GetFrameHeight() * 0.5}
-			append(&v.moves, _WS_Move{strings.clone(v.dragging.key, runtime.default_allocator()), v.dragging.from, 0, at})
+			_ws_move_queue(v, ws, key, 0, at)
 		}
 		im.EndDragDropTarget()
 	}
@@ -329,7 +389,6 @@ _ws_canvas :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace) {
 		}
 	}
 
-	_ws_prune_closing(v, ws)
 	// The mini-map draws over the frames, but imgui lets a splitter or a
 	// frame's resize border take the mouse through any window inside the same
 	// root window (FlattenChildren). With the mouse over the map, the frames
@@ -456,24 +515,61 @@ _ws_sync_tab_order :: proc(ws: ^workspace.Workspace, f: ^workspace.Frame, ids: [
 
 // The tab just submitted as a drag source, once the mouse leaves its bar up
 // or down: along the bar imgui reorders the tabs, and stops while a drag and
-// drop is under way.
+// drop is under way. The payload is the view's key (window.TAB_PAYLOAD).
 @(private = "file")
-_ws_tab_drag :: proc(w: ^wnd.Window, v: ^_WS_View, frame: u32, key: string, label: cstring, bar_min, bar_max: im.Vec2) {
+_ws_tab_drag :: proc(w: ^wnd.Window, key: string, label: cstring, bar_min, bar_max: im.Vec2) {
 	if !im.IsItemActive() do return
-	ours := v.dragging.key == key
+	ours := _ws_dragged(w) == key
 	mouse := im.GetMousePos()
 	if !ours && mouse.y >= bar_min.y - 6 && mouse.y <= bar_max.y + 6 do return
 	if !im.BeginDragDropSource({}) do return
 	defer im.EndDragDropSource()
-	src := w
-	im.SetDragDropPayload(_WS_TAB_PAYLOAD, &src, size_of(src))
-	if !ours {
-		delete(v.dragging.key, runtime.default_allocator())
-		v.dragging = {strings.clone(key, runtime.default_allocator()), frame}
-	}
+	wnd.tab_payload_set(key)
 	text := string(label)
 	if i := strings.index(text, "###"); i >= 0 do text = text[:i]
 	im.TextUnformatted(strings.clone_to_cstring(text, context.temp_allocator))
+}
+
+// The key of the tab of this Workspace view's frames being dragged, "" for
+// none: a tab payload whose view this view hosts.
+@(private = "file")
+_ws_dragged :: proc(w: ^wnd.Window) -> string {
+	key := wnd.tab_payload_key(im.GetDragDropPayload())
+	if key == "" do return ""
+	inst := wnd.find(key)
+	return key if inst != nil && inst.host == w.key else ""
+}
+
+// Queues the dragged tab `key` to move to the frame `to` (an id), or to a new
+// frame at `at` with 0. Dropped back onto its own frame, nothing moves.
+@(private = "file")
+_ws_move_queue :: proc(v: ^_WS_View, ws: ^workspace.Workspace, key: string, to: u32, at: [2]f32) {
+	fi := _ws_frame_of(ws, key)
+	if fi < 0 || ws.frames[fi].id == to do return
+	append(&v.moves, _WS_Move{strings.clone(key, runtime.default_allocator()), ws.frames[fi].id, to, at})
+}
+
+// The edits queued since the last frame, before anything draws: frame menu
+// actions, dropped tabs, new child frames, a child's new place, tabs whose
+// views closed. Then the frames are made valid.
+@(private = "file")
+_ws_apply_queued :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace) {
+	_ws_apply_edits(w, v, ws)
+	_ws_apply_moves(v, ws)
+	_ws_apply_pending(v, ws)
+	if v.reorder.id != 0 {
+		workspace.sibling_move(ws, v.reorder.id, v.reorder.to)
+		v.reorder = {}
+	}
+	_ws_prune_closing(v, ws)
+	if workspace.fix(ws) do workspace.changed(ws)
+	// The tab bars' state is for one workspace: another one shown has its
+	// saved tabs selected.
+	if v.synced_ws != ws.id {
+		clear(&v.synced)
+		delete(v.synced_ws, runtime.default_allocator())
+		v.synced_ws = strings.clone(ws.id, runtime.default_allocator())
+	}
 }
 
 // Moves the tabs dropped since the last frame (_WS_Move). A tab that was its
@@ -561,7 +657,7 @@ _ws_apply_reveal :: proc(v: ^_WS_View, ws: ^workspace.Workspace, canvas: [2]f32)
 workspace_view_reveal :: proc(host, key: string) {
 	hv := wnd.find(host)
 	if hv == nil || hv.id != WORKSPACE_VIEW do return
-	v := wnd.state(hv, _WS_View{})
+	v := _ws_state(hv)
 	delete(v.reveal, runtime.default_allocator())
 	v.reveal = strings.clone(key, runtime.default_allocator())
 	wnd.focus(hv)
@@ -599,18 +695,24 @@ _ws_host_hook :: proc(opener, w: ^wnd.Window, created: bool) {
 	if !ok do return
 	fi := _ws_frame_of(e.ws, opener.key)
 	if fi < 0 do return
-	wnd.host_open(w.key, hv.key)
-	v := wnd.state(hv, _WS_View{})
-	append(&v.pending, _WS_Pending{strings.clone(w.key), e.ws.frames[fi].id})
+	workspace_view_add(hv.key, w.key, e.ws.frames[fi].id)
 }
 
-// Tabs closed earlier whose views are gone now leave their frames.
+// Tabs closed earlier whose views are gone now leave their frames. A view
+// still open with no question up had its close held and cancelled
+// (view_close_prompt.odin): it is no longer closing, so its tab closes again.
 @(private = "file")
 _ws_prune_closing :: proc(v: ^_WS_View, ws: ^workspace.Workspace) {
 	context.allocator = runtime.default_allocator()
 	for i := len(v.closing) - 1; i >= 0; i -= 1 {
 		key := v.closing[i]
-		if wnd.find(key) != nil do continue
+		if wnd.find(key) != nil {
+			if !widgets.dialog_is_open() {
+				delete(key)
+				ordered_remove(&v.closing, i)
+			}
+			continue
+		}
 		for fi := len(ws.frames) - 1; fi >= 0; fi -= 1 {
 			for t := len(ws.frames[fi].tabs) - 1; t >= 0; t -= 1 {
 				if ws.frames[fi].tabs[t] == key do workspace.tab_remove(ws, fi, t)
@@ -645,24 +747,15 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 	wbg := im.GetStyleColorVec4(.WindowBg)^
 	wbg.w = 1
 	im.DrawList_AddRectFilled(im.GetWindowDrawList(), im.GetWindowPos(), im.GetWindowPos() + im.GetWindowSize(), im.GetColorU32ImVec4(wbg), im.GetStyle().ChildRounding)
-	// A dragged tab drops onto the frame. Back onto its own frame, nothing
-	// moves.
-	if v.dragging.key != "" {
-		fmin := im.GetWindowPos()
-		if im.BeginDragDropTargetCustom({fmin, fmin + im.GetWindowSize()}, im.GetID("##tab_drop")) {
-			if p := im.AcceptDragDropPayload(_WS_TAB_PAYLOAD); p != nil && (^^wnd.Window)(p.Data)^ == w && v.dragging.from != f.id {
-				append(&v.moves, _WS_Move{strings.clone(v.dragging.key, runtime.default_allocator()), v.dragging.from, f.id, {}})
-			}
-			im.EndDragDropTarget()
-		}
-	}
+	_ws_frame_drop_target(w, v, ws, f)
 	if im.IsWindowFocused({.ChildWindows}) do v.focused = i
 	clicked = im.IsWindowHovered(im.HoveredFlags_ChildWindows) && (im.IsMouseClicked(.Left) || im.IsMouseClicked(.Right) || im.IsMouseClicked(.Middle))
-	// The border drag resizes the child: the frame follows it.
+	// The border drag resizes the child: the frame follows it, and the
+	// workspace saves once the mouse is released.
 	if sz := im.GetWindowSize(); sz != {f.rect.z, f.rect.w} {
 		f.rect.z, f.rect.w = sz.x, sz.y
 		v.touched = f.id
-		if !im.IsMouseDown(.Left) do workspace.changed(ws)
+		v.save_pending = true
 	}
 
 	style := im.GetStyle()
@@ -671,13 +764,51 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 	// The active view and the width of its tab-bar widgets, measured before
 	// the grip: the measure draws them off to the side, and the tab group
 	// below goes on the grip's line. A view maximized out of its frame
-	// (maximize.odin) is left be until it comes back.
-	away := f.tabs[f.active] == maximize_key()
-	active := wnd.host_open(f.tabs[f.active], w.key) if !_ws_closing(v, f.tabs[f.active]) && !away else wnd.find(f.tabs[f.active])
-	active_view := session.view_of(f.tabs[f.active])
+	// (maximize.odin) is left be until it comes back, and one another
+	// Workspace view holds is not drawn here.
+	key := f.tabs[f.active]
+	away := key == maximize_key()
+	held := wnd.host_held_elsewhere(key, w.key)
+	active := _ws_claim(w, v, key)
+	active_view := session.view_of(key)
 	widgets_w := view_tab_bar_width(active_view) if active != nil && !away else 0
 
-	// Grip: drag to move the frame's chain, by the frame heading it.
+	_ws_frame_grip(v, ws, f, bar_h)
+	// The tab group, in a child as wide as the bar leaves, then the active
+	// view's widgets and its menu at the bar's right end.
+	menu_w := bar_h
+	im.SameLine(0, 0)
+	_ws_frame_tabs(w, v, ws, f, max(im.GetContentRegionAvail().x - widgets_w - menu_w - style.ItemSpacing.x * 2, 40), bar_h)
+	if active != nil && widgets_w > 0 && !away {
+		im.SameLine()
+		view_tab_bar_draw(active_view)
+	}
+	im.SameLine()
+	if im.Button(icons.ICON_MD_MENU + "##menu", {menu_w, bar_h}) do im.OpenPopup("##frame_menu")
+	if im.BeginPopup("##frame_menu") {
+		_ws_frame_menu(w, v, ws, f^)
+		im.EndPopup()
+	}
+	_ws_frame_content(active, held, away)
+	return
+}
+
+// A dragged tab of this view drops onto the frame. Back onto its own frame,
+// nothing moves.
+@(private = "file")
+_ws_frame_drop_target :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, f: ^workspace.Frame) {
+	key := _ws_dragged(w)
+	if key == "" do return
+	fmin := im.GetWindowPos()
+	if !im.BeginDragDropTargetCustom({fmin, fmin + im.GetWindowSize()}, im.GetID("##tab_drop")) do return
+	if p := im.AcceptDragDropPayload(wnd.TAB_PAYLOAD); p != nil && wnd.tab_payload_key(p) == key do _ws_move_queue(v, ws, key, f.id, {})
+	im.EndDragDropTarget()
+}
+
+// The grip, a drag on which moves the frame's chain by the frame heading
+// it, and a child frame's order arrows after it.
+@(private = "file")
+_ws_frame_grip :: proc(v: ^_WS_View, ws: ^workspace.Workspace, f: ^workspace.Frame, bar_h: f32) {
 	im.InvisibleButton("##grip", {bar_h * 0.6, bar_h})
 	grip_hot := im.IsItemHovered() || im.IsItemActive()
 	if im.IsItemActivated() {
@@ -706,54 +837,59 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 		im.SameLine(0, 0)
 		_ws_order_arrows(v, ws, f^, bar_h)
 	}
+}
 
-	// The tab group, in a child as wide as the bar leaves, then the active
-	// view's widgets and its menu at the bar's right end.
-	menu_w := bar_h
-	im.SameLine(0, 0)
-	tabs_w := max(im.GetContentRegionAvail().x - widgets_w - menu_w - style.ItemSpacing.x * 2, 40)
-	if im.BeginChild("##tabs", {tabs_w, bar_h}, {}, {.NoScrollbar, .NoScrollWithMouse}) {
-		bar_min := im.GetWindowPos()
-		bar_max := bar_min + im.GetWindowSize()
-		if im.BeginTabBar("##bar", {.Reorderable, .FittingPolicyShrink}) {
-			ids := make([]im.ID, len(f.tabs), context.temp_allocator)
-			for t := 0; t < len(f.tabs); t += 1 {
-				key := f.tabs[t]
-				inst := wnd.find(key) if _ws_closing(v, key) || key == maximize_key() else wnd.host_open(key, w.key)
-				label: cstring = wnd.title(inst) if inst != nil else fmt.ctprintf("%s %s###%s", icons.ICON_MD_WARNING, key, key)
-				open := true
-				selected := im.BeginTabItem(label, &open, {})
-				ids[t] = im.GetItemID()
-				if inst != nil do _ws_tab_drag(w, v, f.id, key, label, bar_min, bar_max)
-				if selected {
-					f.active = t
-					im.EndTabItem()
-				}
-				if !open do _ws_close_tab(v, key)
-			}
-			_ws_sync_tab_order(ws, f, ids)
-			im.EndTabBar()
+// The frame's tab bar, `width` wide. A tab picked by code, or saved, since
+// the bar last showed it is selected (imgui shows it from the next frame),
+// and a click on another tab makes it the frame's active one.
+@(private = "file")
+_ws_frame_tabs :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, f: ^workspace.Frame, width, bar_h: f32) {
+	defer im.EndChild()
+	if !im.BeginChild("##tabs", {width, bar_h}, {}, {.NoScrollbar, .NoScrollWithMouse}) do return
+	bar_min := im.GetWindowPos()
+	bar_max := bar_min + im.GetWindowSize()
+	if !im.BeginTabBar("##bar", {.Reorderable, .FittingPolicyShrink}) do return
+	defer im.EndTabBar()
+	ids := make([]im.ID, len(f.tabs), context.temp_allocator)
+	// Until imgui shows the tab code picked, the bar's pick is not a click.
+	synced, has := v.synced[f.id]
+	force := f.active if !has || synced != f.active else -1
+	picked := -1
+	for t := 0; t < len(f.tabs); t += 1 {
+		key := f.tabs[t]
+		inst := _ws_claim(w, v, key)
+		if inst == nil do inst = wnd.find(key) // held by another Workspace view
+		label: cstring = wnd.title(inst) if inst != nil else fmt.ctprintf("%s %s###%s", icons.ICON_MD_WARNING, key, key)
+		open := true
+		selected := im.BeginTabItem(label, &open, {.SetSelected} if t == force else {})
+		ids[t] = im.GetItemID()
+		if inst != nil && inst.host == w.key do _ws_tab_drag(w, key, label, bar_min, bar_max)
+		if selected {
+			picked = t
+			im.EndTabItem()
 		}
+		if !open do _ws_close_tab(v, key)
 	}
-	im.EndChild()
-	if active != nil && widgets_w > 0 && !away {
-		im.SameLine()
-		view_tab_bar_draw(active_view)
+	if force < 0 && picked >= 0 && picked != f.active {
+		f.active = picked
+		workspace.changed(ws)
 	}
-	im.SameLine()
-	if im.Button(icons.ICON_MD_MENU + "##menu", {menu_w, bar_h}) do im.OpenPopup("##frame_menu")
-	if im.BeginPopup("##frame_menu") {
-		_ws_frame_menu(w, v, ws, i)
-		im.EndPopup()
-	}
+	_ws_sync_tab_order(ws, f, ids)
+	v.synced[f.id] = f.active
+}
 
-	// The active view's content, inside the frame's padding. A canvas view
-	// gets no scrollbars, as its own window would.
-	if active == nil {
+// The active view's content, inside the frame's padding. A canvas view gets
+// no scrollbars, as its own window would.
+@(private = "file")
+_ws_frame_content :: proc(active: ^wnd.Window, held, away: bool) {
+	switch {
+	case held:
+		im.TextDisabled("This view is open in another Workspace view.")
+		return
+	case active == nil:
 		im.TextDisabled("This view's window or asset is missing: its plugin is not installed, or the asset is gone.")
 		return
-	}
-	if away {
+	case away:
 		im.TextDisabled("Maximized. Shift+Space puts it back here.")
 		return
 	}
@@ -764,7 +900,6 @@ _ws_frame :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int
 	if canvas do im.PopStyleVar()
 	if visible do wnd.draw_content(active)
 	im.EndChild()
-	return
 }
 
 @(private = "file")
@@ -777,41 +912,31 @@ _ws_closing :: proc(v: ^_WS_View, key: string) -> bool {
 // (_ws_prune_closing): a view with unapplied edits may be kept open.
 @(private = "file")
 _ws_close_tab :: proc(v: ^_WS_View, key: string) {
-	if _ws_closing(v, key) do return
-	append(&v.closing, strings.clone(key, runtime.default_allocator()))
+	if !_ws_closing(v, key) do append(&v.closing, strings.clone(key, runtime.default_allocator()))
 	wnd.close(key)
 }
 
 // The frame's ⋮ menu: the active view's own items (tab_menu_view_items),
 // Move to Dock, Add Tab, and the chain: Add Child (a view in a new child
-// frame), Set Parent, Unparent.
+// frame), Set Parent, Unparent. Its actions apply at the next frame's start
+// (_ws_apply_edits).
 @(private = "file")
-_ws_frame_menu :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i: int) {
-	f := &ws.frames[i]
+_ws_frame_menu :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, f: workspace.Frame) {
 	key := f.tabs[f.active]
 	if tab_menu_view_items(key) do _ws_close_tab(v, key)
-	if im.MenuItem("Move to Dock") {
-		if inst := wnd.find(key); inst != nil do wnd.host_release(inst)
-		workspace.tab_remove(ws, i, f.active)
-		workspace.changed(ws)
-		return
-	}
+	if im.MenuItem("Move to Dock") do _ws_edit_queue(v, {kind = .Move_To_Dock, frame = f.id, key = key})
 	im.Separator()
 	if im.BeginMenu("Add Tab") {
 		if id, picked := _ws_window_menu(); picked {
-			if inst := _ws_open_view(id, w.key); inst != nil {
-				append(&f.tabs, strings.clone(inst.key, runtime.default_allocator()))
-				f.active = len(f.tabs) - 1
-				workspace.changed(ws)
+			if k := _ws_new_key(id); k != "" && wnd.host_open(k, w.key) != nil {
+				_ws_edit_queue(v, {kind = .Add_Tab, frame = f.id, key = k})
 			}
 		}
 		im.EndMenu()
 	}
 	if im.BeginMenu("Add Child") {
 		if id, picked := _ws_window_menu(); picked {
-			if inst := _ws_open_view(id, w.key); inst != nil {
-				append(&v.pending, _WS_Pending{strings.clone(inst.key, runtime.default_allocator()), f.id})
-			}
+			if k := _ws_new_key(id); k != "" do workspace_view_add(w.key, k, f.id)
 		}
 		im.EndMenu()
 	}
@@ -821,18 +946,50 @@ _ws_frame_menu :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, i
 	if im.BeginMenu("Set Parent", others) {
 		for g in ws.frames {
 			if g.parent != 0 || g.id == own do continue
-			if im.MenuItem(_ws_frame_label(g)) {
-				workspace.chain(ws, f.id, g.id)
-				v.touched = g.id
-				workspace.changed(ws)
-			}
+			if im.MenuItem(_ws_frame_label(g)) do _ws_edit_queue(v, {kind = .Set_Parent, frame = f.id, parent = g.id})
 		}
 		im.EndMenu()
 	}
-	if im.MenuItem("Unparent", nil, false, f.parent != 0) {
-		// The parent's chain stays, so the frame moves out of its way.
-		v.touched = f.parent
-		workspace.chain(ws, f.id, 0)
+	if im.MenuItem("Unparent", nil, false, f.parent != 0) do _ws_edit_queue(v, {kind = .Unparent, frame = f.id})
+}
+
+// Queues a frame menu action. Its key is cloned.
+@(private = "file")
+_ws_edit_queue :: proc(v: ^_WS_View, e: _WS_Edit) {
+	e := e
+	e.key = strings.clone(e.key, runtime.default_allocator())
+	append(&v.edits, e)
+}
+
+// Applies the frame menu actions queued since the last frame.
+@(private = "file")
+_ws_apply_edits :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace) {
+	context.allocator = runtime.default_allocator()
+	if len(v.edits) == 0 do return
+	defer clear(&v.edits)
+	for e in v.edits {
+		defer delete(e.key)
+		fi := workspace.frame_index(ws, e.frame)
+		if fi < 0 do continue
+		switch e.kind {
+		case .Move_To_Dock:
+			ti := -1
+			for t, i in ws.frames[fi].tabs do if t == e.key do ti = i
+			if ti < 0 do continue
+			if inst := wnd.find(e.key); inst != nil && inst.host == w.key do wnd.host_release(inst)
+			workspace.tab_remove(ws, fi, ti)
+		case .Add_Tab:
+			f := &ws.frames[fi]
+			append(&f.tabs, strings.clone(e.key))
+			f.active = len(f.tabs) - 1
+		case .Set_Parent:
+			workspace.chain(ws, e.frame, e.parent)
+			v.touched = e.parent
+		case .Unparent:
+			// The parent's chain stays, so the frame moves out of its way.
+			v.touched = ws.frames[fi].parent
+			workspace.chain(ws, e.frame, 0)
+		}
 		workspace.changed(ws)
 	}
 }
@@ -975,8 +1132,8 @@ _ws_minimap :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, orig
 
 	// A tab dropped on the map stays where it was: without this target the
 	// canvas would give it a frame under the map.
-	if v.dragging.key != "" && im.BeginDragDropTargetCustom({cmin, cmin + size}, im.GetID("##map_drop")) {
-		im.AcceptDragDropPayload(_WS_TAB_PAYLOAD, {.AcceptNoDrawDefaultRect})
+	if _ws_dragged(w) != "" && im.BeginDragDropTargetCustom({cmin, cmin + size}, im.GetID("##map_drop")) {
+		im.AcceptDragDropPayload(wnd.TAB_PAYLOAD, {.AcceptNoDrawDefaultRect})
 		im.EndDragDropTarget()
 	}
 
@@ -1163,6 +1320,13 @@ workspace_delete_menu :: proc(view: session.View) {
 	})
 }
 
+// Frees what the Workspace views keep outside their instances, at editor
+// shutdown.
+workspace_view_shutdown :: proc() {
+	delete(_ws_delete_view, runtime.default_allocator())
+	_ws_delete_view = ""
+}
+
 _ws_has_selection :: proc(view: session.View) -> bool {
 	_, ok := workspace.find(workspace.view_selection(view.key))
 	return ok
@@ -1175,6 +1339,8 @@ _ws_delete_view: string // owned
 @(private = "file")
 _ws_delete_confirmed :: proc() {
 	e, ok := workspace.find(workspace.view_selection(_ws_delete_view))
+	delete(_ws_delete_view, runtime.default_allocator())
+	_ws_delete_view = ""
 	if !ok do return
 	for f in e.ws.frames do for key in f.tabs do wnd.close(key)
 	if p := workspace.providers()[e.provider]; p.remove != nil do p.remove(e.ws)

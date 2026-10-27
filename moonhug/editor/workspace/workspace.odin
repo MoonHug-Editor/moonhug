@@ -25,6 +25,7 @@ import "core:encoding/uuid"
 import "core:crypto"
 import "core:os"
 import "core:strings"
+import "moonhug:libs/log"
 
 Workspace :: struct {
 	id:         string, // owned, unique across providers
@@ -166,13 +167,24 @@ tab_remove :: proc(ws: ^Workspace, frame, tab: int) {
 	delete(f.tabs[tab])
 	ordered_remove(&f.tabs, tab)
 	if len(f.tabs) == 0 {
-		id := f.id
-		delete(f.tabs)
-		ordered_remove(&ws.frames, frame)
-		for &c in ws.frames do if c.parent == id do c.parent = 0
+		_frame_remove(ws, frame)
 		return
 	}
+	// The same tab stays active when one before it goes.
+	if tab < f.active do f.active -= 1
 	f.active = clamp(f.active, 0, len(f.tabs) - 1)
+}
+
+// Removes the frame at index `i`. The frames chained to it stay where they
+// are, chained to nothing.
+@(private = "file")
+_frame_remove :: proc(ws: ^Workspace, i: int) {
+	context.allocator = runtime.default_allocator()
+	id := ws.frames[i].id
+	for k in ws.frames[i].tabs do delete(k)
+	delete(ws.frames[i].tabs)
+	ordered_remove(&ws.frames, i)
+	for &c in ws.frames do if c.parent == id do c.parent = 0
 }
 
 // The index of the frame whose id is `id`, -1 for none.
@@ -232,10 +244,16 @@ sibling_move :: proc(ws: ^Workspace, id: u32, to: int) {
 	inject_at(&ws.frames, at if at >= 0 else i, f)
 }
 
-// Makes the frames valid, whatever a provider loaded: every frame gets a
-// unique id, and a parent that is missing, itself, or chained is dropped.
-// True when it changed something.
+// Makes the frames valid, whatever a provider loaded: a frame with no tabs
+// goes (its chained frames head their own chains), every frame gets a unique
+// id, and a parent that is missing, itself, or chained is dropped. True when
+// it changed something.
 fix :: proc(ws: ^Workspace) -> (changed: bool) {
+	for i := len(ws.frames) - 1; i >= 0; i -= 1 {
+		if len(ws.frames[i].tabs) > 0 do continue
+		_frame_remove(ws, i)
+		changed = true
+	}
 	for &f, i in ws.frames {
 		dup := false
 		for g in ws.frames[:i] do if g.id == f.id do dup = true
@@ -339,6 +357,13 @@ _next_id :: proc(ws: ^Workspace) -> u32 {
 }
 
 workspace_free :: proc(ws: ^Workspace) {
+	_workspace_free_fields(ws)
+	free(ws, runtime.default_allocator())
+}
+
+// What a workspace owns, without the workspace itself.
+@(private = "file")
+_workspace_free_fields :: proc(ws: ^Workspace) {
 	context.allocator = runtime.default_allocator()
 	delete(ws.id)
 	delete(ws.name)
@@ -347,17 +372,19 @@ workspace_free :: proc(ws: ^Workspace) {
 		delete(f.tabs)
 	}
 	delete(ws.frames)
-	free(ws)
 }
 
 // --- File providers (user settings, project settings) -----------------------
 
-// The workspaces one file holds, loaded on first use.
-@(private = "file")
-_File_Store :: struct {
-	path:   string,
-	loaded: bool,
-	list:   [dynamic]^Workspace,
+// The workspaces one file holds, loaded on first use. A file that does not
+// parse marks the store broken: it shows no workspaces and is never written,
+// so the file stays as it is for the user to repair.
+File_Store :: struct {
+	path:    string,
+	loaded:  bool,
+	broken:  bool, // the file did not read or parse: saving is refused
+	refused: bool, // a refused save was logged, so the next ones stay quiet
+	list:    [dynamic]^Workspace,
 }
 
 @(private = "file")
@@ -366,20 +393,38 @@ _File :: struct {
 }
 
 @(private = "file")
-_user := _File_Store{path = "UserSettings/workspaces.json"}
+_user := File_Store{path = "UserSettings/workspaces.json"}
 
 @(private = "file")
-_project := _File_Store{path = "ProjectSettings/workspaces.json"}
+_project := File_Store{path = "ProjectSettings/workspaces.json"}
 
-@(private = "file")
-_store_load :: proc(s: ^_File_Store) {
+// Loads the store's file once. A missing file is an empty store.
+file_store_load :: proc(s: ^File_Store) {
 	if s.loaded do return
 	s.loaded = true
 	context.allocator = runtime.default_allocator()
+	if !os.exists(s.path) do return
 	bytes, err := os.read_entire_file(s.path, context.temp_allocator)
-	if err != nil do return
+	if err != nil {
+		log.errorf("workspaces: cannot read %s (%v), its workspaces are not shown and it is not written", s.path, err)
+		s.broken = true
+		return
+	}
+	// json.unmarshal loops forever on some truncated files: they are
+	// checked first.
+	if !json.is_valid(bytes) {
+		log.errorf("workspaces: %s does not parse, its workspaces are not shown and it is not written until it is repaired", s.path)
+		s.broken = true
+		return
+	}
 	file: _File
-	if json.unmarshal(bytes, &file) != nil do return
+	if uerr := json.unmarshal(bytes, &file); uerr != nil {
+		log.errorf("workspaces: %s does not parse (%v), its workspaces are not shown and it is not written until it is repaired", s.path, uerr)
+		s.broken = true
+		for &ws in file.workspaces do _workspace_free_fields(&ws)
+		delete(file.workspaces)
+		return
+	}
 	for ws in file.workspaces {
 		p := new(Workspace)
 		p^ = ws
@@ -388,58 +433,81 @@ _store_load :: proc(s: ^_File_Store) {
 	delete(file.workspaces)
 }
 
-@(private = "file")
-_store_save :: proc(s: ^_File_Store) {
+// Writes the store's workspaces to its file. False when it did not: the
+// store is broken, or the write failed.
+file_store_save :: proc(s: ^File_Store) -> bool {
+	if s.broken {
+		if !s.refused do log.errorf("workspaces: %s did not load, so it is not written: workspace changes are not saved", s.path)
+		s.refused = true
+		return false
+	}
 	file := _File{workspaces = make([]Workspace, len(s.list), context.temp_allocator)}
 	for ws, i in s.list do file.workspaces[i] = ws^
 	bytes, err := json.marshal(file, {pretty = true, spec = .JSON}, context.temp_allocator)
-	if err != nil do return
-	_ = os.write_entire_file(s.path, bytes)
+	if err != nil {
+		log.errorf("workspaces: cannot encode %s (%v)", s.path, err)
+		return false
+	}
+	if werr := os.write_entire_file(s.path, bytes); werr != nil {
+		log.errorf("workspaces: cannot write %s (%v)", s.path, werr)
+		return false
+	}
+	return true
+}
+
+// Frees what the store loaded. It loads again on next use.
+file_store_free :: proc(s: ^File_Store) {
+	context.allocator = runtime.default_allocator()
+	for ws in s.list do workspace_free(ws)
+	delete(s.list)
+	s^ = {path = s.path}
 }
 
 @(private = "file")
-_store_create :: proc(s: ^_File_Store, name: string) -> ^Workspace {
-	_store_load(s)
+_store_create :: proc(s: ^File_Store, name: string) -> ^Workspace {
+	file_store_load(s)
+	if s.broken do return nil
 	context.allocator = runtime.default_allocator()
 	ws := make_workspace(name)
 	append(&s.list, ws)
-	_store_save(s)
+	file_store_save(s)
 	return ws
 }
 
 @(private = "file")
-_store_remove :: proc(s: ^_File_Store, ws: ^Workspace) {
+_store_remove :: proc(s: ^File_Store, ws: ^Workspace) {
 	for w, i in s.list {
 		if w != ws do continue
 		ordered_remove(&s.list, i)
 		workspace_free(ws)
-		_store_save(s)
+		file_store_save(s)
 		return
 	}
 }
 
 @(private = "file")
-_store_detach :: proc(s: ^_File_Store, ws: ^Workspace) {
+_store_detach :: proc(s: ^File_Store, ws: ^Workspace) {
 	for w, i in s.list {
 		if w != ws do continue
 		ordered_remove(&s.list, i)
-		_store_save(s)
+		file_store_save(s)
 		return
 	}
 }
 
 @(private = "file")
-_store_adopt :: proc(s: ^_File_Store, ws: ^Workspace) -> bool {
-	_store_load(s)
+_store_adopt :: proc(s: ^File_Store, ws: ^Workspace) -> bool {
+	file_store_load(s)
+	if s.broken do return false
 	context.allocator = runtime.default_allocator()
 	append(&s.list, ws)
-	_store_save(s)
+	file_store_save(s)
 	return true
 }
 
 @(private = "file")
-_store_list :: proc(s: ^_File_Store, out: ^[dynamic]^Workspace) {
-	_store_load(s)
+_store_list :: proc(s: ^File_Store, out: ^[dynamic]^Workspace) {
+	file_store_load(s)
 	for ws in s.list do append(out, ws)
 }
 
@@ -449,7 +517,7 @@ _register_file_providers :: proc "contextless" () {
 	provider_add({
 		name   = "User",
 		list   = proc(out: ^[dynamic]^Workspace) { _store_list(&_user, out) },
-		save   = proc(ws: ^Workspace) { _store_save(&_user) },
+		save   = proc(ws: ^Workspace) { file_store_save(&_user) },
 		create = proc(name: string) -> ^Workspace { return _store_create(&_user, name) },
 		remove = proc(ws: ^Workspace) { _store_remove(&_user, ws) },
 		detach = proc(ws: ^Workspace) { _store_detach(&_user, ws) },
@@ -458,7 +526,7 @@ _register_file_providers :: proc "contextless" () {
 	provider_add({
 		name   = "Project",
 		list   = proc(out: ^[dynamic]^Workspace) { _store_list(&_project, out) },
-		save   = proc(ws: ^Workspace) { _store_save(&_project) },
+		save   = proc(ws: ^Workspace) { file_store_save(&_project) },
 		create = proc(name: string) -> ^Workspace { return _store_create(&_project, name) },
 		remove = proc(ws: ^Workspace) { _store_remove(&_project, ws) },
 		detach = proc(ws: ^Workspace) { _store_detach(&_project, ws) },
@@ -469,11 +537,8 @@ _register_file_providers :: proc "contextless" () {
 // Frees what the built-in providers loaded. Once, at editor shutdown.
 shutdown :: proc() {
 	context.allocator = runtime.default_allocator()
-	for s in ([]^_File_Store{&_user, &_project}) {
-		for ws in s.list do workspace_free(ws)
-		delete(s.list)
-		s^ = {path = s.path}
-	}
+	file_store_free(&_user)
+	file_store_free(&_project)
 	for k, s in _views.by_key {
 		delete(k)
 		delete(s.workspace)
@@ -559,6 +624,7 @@ _views_load :: proc() {
 	context.allocator = runtime.default_allocator()
 	bytes, err := os.read_entire_file(_VIEWS_PATH, context.temp_allocator)
 	if err != nil do return
+	if !json.is_valid(bytes) do return // json.unmarshal loops forever on some truncated files
 	file: map[string]View_Settings
 	defer delete(file)
 	if json.unmarshal(bytes, &file) != nil do return

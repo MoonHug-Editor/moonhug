@@ -511,8 +511,13 @@ _sync_mesh_colliders :: proc(w: ^engine.World) {
 		// be of the collider's mesh: the hulls are in that mesh's space.
 		is_set := c.convex && c.hulls.local_id != 0
 		if is_set {
+			if c.hulls.guid != ref.guid {
+				c.build_failed = true
+				log.errorf("[Physics3D] MeshCollider on %q: its convex decomposition belongs to another model than its mesh, pick one of the mesh's model in Hulls", _owner_name(w, c.owner))
+				continue
+			}
 			set, found := engine.mesh_hull_set_of(c.hulls)
-			if !found || c.hulls.guid != ref.guid {
+			if !found {
 				c.build_failed = true
 				log.errorf("[Physics3D] MeshCollider on %q: its model has no convex decomposition %d any more, pick another in Hulls", _owner_name(w, c.owner), c.hulls.local_id)
 				continue
@@ -547,8 +552,9 @@ _sync_mesh_colliders :: proc(w: ^engine.World) {
 				continue
 			}
 			if state == .Missing {
+				// mesh_hulls reported the file through [Artifact] already,
+				// naming the model and the set.
 				c.build_failed = true
-				log.errorf("[Physics3D] MeshCollider on %q: its convex decomposition has no hulls, see the model's import settings", _owner_name(w, c.owner))
 				continue
 			}
 			if c.shapes == nil do c.shapes = make([dynamic]b3.ShapeId, runtime.default_allocator())

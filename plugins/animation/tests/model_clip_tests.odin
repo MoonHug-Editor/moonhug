@@ -389,3 +389,93 @@ test_stale_artifact_sweep_keeps_clip_fan_out :: proc(t: ^testing.T) {
 	testing.expect(t, os.exists(part0), "its mesh part survives the sweep")
 	testing.expect(t, os.exists(clip0), "its baked clip survives the sweep")
 }
+
+// Reimports of the watched model, counted by a reimport hook. Hooks live for
+// the run, so the hook registers once and counts only the watched guid.
+@(private = "file") _reimport_watch: engine.Asset_GUID
+@(private = "file") _reimport_count: int
+
+@(private = "file")
+_reimport_counter :: proc(guid: engine.Asset_GUID) {
+	if guid == _reimport_watch do _reimport_count += 1
+}
+
+// In the editor, only a missing MAIN artifact asks for an import. A missing
+// sub-asset file beside a present main artifact is reported at once: the
+// import that wrote the main artifact is the one that would have written it.
+// The failure it guards: every reimport cleared the failure marks of the
+// model's files, so two persistently missing sub files reimported the model
+// in turn, every frame.
+@(test)
+test_missing_sub_files_do_not_reimport :: proc(t: ^testing.T) {
+	src_dir :: "moonhug/tests/fixtures/_model_missing_sub_tmp"
+	gltf :: src_dir + "/box.gltf"
+	os.make_directory(src_dir)
+	bytes, rerr := os.read_entire_file(BOX_ANIM_GLTF, context.temp_allocator)
+	testing.expect(t, rerr == nil)
+	if rerr != nil do return
+	testing.expect(t, os.write_entire_file(gltf, bytes) == nil)
+	defer {
+		common.remove_tree(src_dir)
+		common.remove_tree(engine.library_dir())
+	}
+
+	asset_pipeline.asset_pipeline_init()
+	importers.gltf_clip_baker = animation_editor.bake_gltf_clip
+	engine.asset_db_init(src_dir)
+	defer engine.asset_db_shutdown()
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(gltf), "import")
+	raw, ok := engine.asset_db_get_guid(gltf)
+	testing.expect(t, ok, "model registered")
+	if !ok do return
+	model := engine.Asset_GUID(raw)
+	clips := engine.mesh_clips(model)
+	parts := engine.mesh_parts(model)
+	testing.expect(t, len(clips) >= 1 && len(parts) >= 1, "the model has a clip and a part")
+	if len(clips) == 0 || len(parts) == 0 do return
+	clip_id, part_id := clips[0].id, parts[0].id
+	whole, wok := engine.asset_pipeline_artifact_path(model)
+	testing.expect(t, wok)
+	if !wok do return
+	whole = strings.clone(whole, context.temp_allocator)
+	testing.expect(t, os.remove(engine.artifact_sub_path(whole, clip_id, context.temp_allocator)) == nil, "drop the clip file")
+	testing.expect(t, os.remove(engine.artifact_sub_path(whole, part_id, context.temp_allocator)) == nil, "drop the part file")
+
+	@(static) hooked := false
+	if !hooked {
+		hooked = true
+		engine.asset_pipeline_add_reimport_hook(_reimport_counter)
+	}
+	_reimport_watch, _reimport_count = model, 0
+	defer _reimport_watch = {}
+
+	since := len(log.entries) > 0 ? log.entries[len(log.entries) - 1].id : 0
+	logged :: proc(since: u64, has: ..string) -> int {
+		n := 0
+		outer: for e in log.entries {
+			if e.id <= since || !strings.has_prefix(e.message, "[Artifact]") do continue
+			for h in has do if !strings.contains(e.message, h) do continue outer
+			n += 1
+		}
+		return n
+	}
+
+	context.allocator = runtime.default_allocator()
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	for _ in 0 ..< 2 {
+		_, cok := anim.animation_clip_load(engine.PPtr{guid = model, local_id = clip_id})
+		testing.expect(t, !cok, "a clip whose file is gone does not load")
+		_, gok := engine.mesh_geometry(model, 1)
+		testing.expect(t, !gok, "a part whose file is gone does not load")
+	}
+	testing.expect_value(t, logged(since, fmt.tprintf("(sub-asset %d)", clip_id), "is missing"), 1)
+	testing.expect_value(t, logged(since, fmt.tprintf("(sub-asset %d)", part_id), "is missing"), 1)
+	testing.expect_value(t, _reimport_count, 0)
+
+	// A missing main artifact still imports on the spot, once.
+	testing.expect(t, os.remove(whole) == nil, "drop the main artifact")
+	_, mok := engine.mesh_geometry(model, 0)
+	testing.expect(t, mok, "a missing main artifact is imported and loads")
+	testing.expect_value(t, _reimport_count, 1)
+}

@@ -6,7 +6,9 @@ package importers
 //   into one vertex blob — what a reference with no local id draws;
 // - one PART artifact per glTF mesh (<key>_s<part id>.bin): vertices left in
 //   node-local space, so a transform hierarchy (extracted scene, animation)
-//   positions them at draw time;
+//   positions them at draw time. A mesh with no triangles gets an empty one,
+//   since every listed sub-asset has a file (the export fails on a referenced
+//   id without one);
 // - one CLIP artifact per glTF animation (<key>_s<clip id>.bin).
 // Indices are grouped BY MATERIAL into submeshes (Unity model: primitives
 // sharing a glTF material merge into one submesh, ordered by first
@@ -102,7 +104,6 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
         }
         if part_skin != nil do _mesh_take_skin(&part, part_skin, scale)
         if !_mesh_append_mesh(&part, &mesh, linalg.MATRIX4F32_IDENTITY, scale, source_path, part_skin) do return false
-        if len(part.vertices) == 0 do continue
         part_path := engine.artifact_sub_path(artifact_path, ms.parts[mi].id, context.temp_allocator)
         if !_mesh_write_artifact(part_path, &part) do return false
     }
@@ -125,41 +126,53 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
 
 // Maintain the part and clip id tables in the settings (the driver persists
 // the refinement to the meta): file order, ids preserved by NAME across
-// reimports so DCC reorders never retarget a reference. First mint of a part
-// is index + 1, every later id continues past the highest one. The settings
-// instance lives on the import call's temp allocator (_read_import_meta) —
-// the refined tables do too, and the driver marshals them to the meta right
-// after the run.
+// reimports so DCC reorders never retarget a reference. Each old entry
+// matches at most once, so meshes or animations sharing a name keep their
+// ids in file order and a newcomer by the same name gets an id of its own.
+// The first import of a model mints a part's id as index + 1, every later id
+// comes from ms.next_id, which only grows, so a removed part's or clip's id
+// is never reused. The settings instance lives on the import call's temp
+// allocator (_read_import_meta): the refined tables do too, and the driver
+// marshals them to the meta right after the run.
 @(private = "file")
 _mesh_refresh_ids :: proc(ms: ^engine.MeshSettings, data: ^cgltf.data) {
     old := ms.parts
     old_clips := ms.clips
     ms.parts = make([dynamic]engine.Mesh_Part, context.temp_allocator)
     ms.clips = make([dynamic]engine.Mesh_Clip, context.temp_allocator)
+    first_import := len(old) == 0 && len(old_clips) == 0 && ms.next_id == 0
     // Parts, clips and hull sets share one id space (a sub-asset id must be
-    // unique within its model, and it names the sub-asset's file), so new
-    // ids go above every part and clip id and skip the hull sets' ones.
-    max_id := engine.Local_ID(0)
-    for p in old do max_id = max(max_id, p.id)
-    for c in old_clips do max_id = max(max_id, c.id)
-    next :: proc(ms: ^engine.MeshSettings, max_id: ^engine.Local_ID) -> engine.Local_ID {
+    // unique within its model, and it names the sub-asset's file). A meta
+    // from before next_id starts it above every part and clip id it lists.
+    // Hull set ids are random (engine.mesh_new_sub_id), so new ids skip them
+    // instead of climbing above them.
+    for p in old do ms.next_id = max(ms.next_id, p.id + 1)
+    for c in old_clips do ms.next_id = max(ms.next_id, c.id + 1)
+    ms.next_id = max(ms.next_id, 1)
+    next :: proc(ms: ^engine.MeshSettings) -> engine.Local_ID {
         for {
-            max_id^ += 1
+            id := ms.next_id
+            ms.next_id += 1
             taken := false
-            for h in ms.hull_sets do if h.id == max_id^ do taken = true
-            if !taken do return max_id^
+            for h in ms.hull_sets do if h.id == id do taken = true
+            if !taken do return id
         }
     }
+    matched_parts := make([]bool, len(old), context.temp_allocator)
     for &mesh, mi in data.meshes {
         name := mesh.name != nil ? string(mesh.name) : fmt.tprintf("mesh_%d", mi)
         id := engine.Local_ID(0)
-        for p in old do if p.name == name { id = p.id; break }
+        for p, pi in old do if !matched_parts[pi] && p.name == name {
+            id = p.id
+            matched_parts[pi] = true
+            break
+        }
         if id == 0 {
-            if len(old) == 0 && len(old_clips) == 0 {
+            if first_import {
                 id = engine.Local_ID(mi + 1)
-                max_id = max(max_id, id)
+                ms.next_id = max(ms.next_id, id + 1)
             } else {
-                id = next(ms, &max_id)
+                id = next(ms)
             }
         }
         append(&ms.parts, engine.Mesh_Part{id = id, name = strings.clone(name, context.temp_allocator)})
@@ -171,12 +184,12 @@ _mesh_refresh_ids :: proc(ms: ^engine.MeshSettings, data: ^cgltf.data) {
     for &an, ai in data.animations {
         name := an.name != nil ? string(an.name) : fmt.tprintf("anim_%d", ai)
         entry := engine.Mesh_Clip{name = strings.clone(name, context.temp_allocator)}
-        for c, ci in old_clips do if c.name == name {
+        for c, ci in old_clips do if !matched[ci] && c.name == name {
             entry.id, entry.settings = c.id, c.settings
             matched[ci] = true
             break
         }
-        if entry.id == 0 do entry.id = next(ms, &max_id)
+        if entry.id == 0 do entry.id = next(ms)
         append(&ms.clips, entry)
     }
     // A clip the model lost keeps its entry as an orphan, so references to it
@@ -444,7 +457,9 @@ mesh_generate_tangents :: proc(vertices: []gfx.Vertex, indices: []u32, base: u32
     }
 }
 
-// Concatenate a build's buckets into the artifact blob and write it.
+// Concatenate a build's buckets into the artifact blob and write it. A build
+// with no triangles writes a header with zero counts: a part that draws
+// nothing still has its file.
 _mesh_write_artifact :: proc(path: string, build: ^_Mesh_Build) -> bool {
     vertices := &build.vertices
     total_indices := 0
@@ -461,11 +476,11 @@ _mesh_write_artifact :: proc(path: string, build: ^_Mesh_Build) -> bool {
         })
         append(&indices, ..b.indices[:])
     }
-    if len(vertices) == 0 || len(indices) == 0 do return false
+    if len(indices) == 0 do clear(vertices)
 
     // A skin that never reached every vertex would desync the parallel array,
     // so pad it before the counts are written.
-    skinned := len(build.joint_names) > 0 && build.skin != nil
+    skinned := len(build.joint_names) > 0 && build.skin != nil && len(vertices) > 0
     if skinned {
         for len(build.skin) < len(vertices) {
             append(&build.skin, engine.Mesh_Skin_Vertex{weights = {1, 0, 0, 0}})
@@ -483,12 +498,12 @@ _mesh_write_artifact :: proc(path: string, build: ^_Mesh_Build) -> bool {
         vertex_count  = u32(len(vertices)),
         index_count   = u32(len(indices)),
         submesh_count = u32(len(submeshes)),
-        aabb_min      = vertices[0].position,
-        aabb_max      = vertices[0].position,
+
         joint_count      = skinned ? u32(len(build.joint_names)) : 0,
         joint_name_bytes = skinned ? u32(len(name_blob)) : 0,
     }
     copy(header.magic[:], engine.MESH_ARTIFACT_MAGIC)
+    if len(vertices) > 0 do header.aabb_min, header.aabb_max = vertices[0].position, vertices[0].position
     for &v in vertices {
         header.aabb_min = linalg.min(header.aabb_min, v.position)
         header.aabb_max = linalg.max(header.aabb_max, v.position)

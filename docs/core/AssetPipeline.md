@@ -134,10 +134,12 @@ asset_load :: proc(uuid: u128, $T: typeid) -> (^T, bool) {
 Every loader reads its files through `moonhug:libs/assets` (`artifact_read.odin`, re-exported by the engine), so a missing or bad file is handled one way for every asset type. A file is named by the asset's guid and a local id: 0 for the asset itself (its main artifact), else a sub-asset's id (see "Sub-asset files").
 
 - `artifact_file(guid, sub)`: the file's path, present on disk. `artifact_read` returns its bytes, `artifact_load` also parses them with the loader's own proc
-- in the editor a missing file is imported on the spot, and a file that does not parse gets one forced reimport (an older format after an artifact bump)
+- in the editor a missing main artifact is imported on the spot, and a file that does not parse gets one forced reimport (an older format after an artifact bump)
+- a missing sub-asset file beside a present main artifact is reported at once and not imported: the import that wrote the main artifact is the one that would have written it. The line asks for a reimport of the asset
+- a reimport a read asked for that leaves the file missing or bad is not asked for again until something else reimports the asset (an edit, an Apply). Without the rule, a reimport for one broken file clears the mark of another broken file of the same asset, and the two reimport the asset in turn every frame
 - a game has no importer, so there a missing or bad file is a load error. It is logged once, naming the asset, the sub-asset and the file: `[Artifact] <model> (sub-asset 44): <file> is missing`. Without the line a mesh would draw nothing, a clip would hold the rest pose and a sound would stay silent, with no hint why
 - in an export, a missing file was left out because no reference the export followed names it, and the line says so: `[Artifact] <model> (sub-asset 44) is not in this export: no reference the export followed names sub-asset 44. Reference it with a PPtr, or put the asset under a resources folder`
-- a file that failed is not read again until its asset reimports, so a loader called every frame costs a map lookup and logs nothing more
+- a file that failed is not read again until its asset reimports, so a loader called every frame costs a map lookup and logs nothing more. These marks are the only record of artifact-file failures: a loader's own failure map (`_mesh_failed`, `_shader_failed`) holds only failures that are not about a file, such as a GPU upload
 - `artifact_fail(guid, sub, why)` reports a loader's own reason with the same once-only rule (a clip id the model does not list, bytes that do not decode as audio)
 - a file something other than the importer makes, such as the hulls of a convex decomposition, is read with `import_missing = false`: reported, never imported. Its producer calls `artifact_written(guid, sub)` once the file is on disk, so a failure recorded before it existed no longer holds
 
@@ -174,12 +176,14 @@ The app has ONE pipeline: catalog. With no flag it boots the editor-maintained i
 
 A sub-asset is something inside an asset that a reference can name on its own: a model's parts, clips and convex decompositions, a texture's sprite slices. A reference names it as a PPtr, `{"guid": "<asset>", "local_id": <id>}`. Local id 0 means no local id: the asset itself. Ids are unique within their asset.
 
-- an importer writes the data of each sub-asset that has data of its own to `<key>_s<id>.bin` beside the main artifact (`assets.artifact_sub_path`). A model's parts, clips and convex decompositions each get one. A sprite slice has none: it is a rect of its texture
+- an importer writes the data of each sub-asset that has data of its own to `<key>_s<id>.bin` beside the main artifact (`assets.artifact_sub_path`). A model's parts, clips and convex decompositions each get one, an empty part included. A sprite slice has none: it is a rect of its texture
 - the export ships a `_s<id>` file only when some reference in the closure names that id. Unused clips of an animation library stay behind, and so does a model's whole-mesh artifact when a scene only uses its parts
-- the main artifact ships when a reference names the asset itself, or an id with no file of its own (a slice reads its texture's main artifact)
+- the main artifact ships when a reference names the asset itself
+- an asset with no `_s` file at all keeps its sub-assets in its main artifact, so a reference to one of its ids ships the main artifact (a slice reads its texture's main artifact)
+- an asset with at least one `_s` file has one for every sub-asset. A referenced id without its file (a convex decomposition never computed, a file an importer forgot) FAILS the export, naming the asset, the id and the expected file: compute or reimport it first, or remove the reference. An artifact folder that cannot be listed fails it too. Every check runs before the data dir is touched, so a failed export leaves the last one in place
 - an asset used whole ships every file: a root, anything under `resources`, every asset of an export with no boot scene
 - a fan-out file without the `_s` marker holds data several sub-assets share and always ships with its asset
-- the walk reads `local_id` on either side of a `"guid"` key, so the rule does not depend on a writer's key order. Any other place a guid appears names the asset itself
+- the walk reads `local_id` on either side of a `"guid"` key, so the rule does not depend on a writer's key order. A quote may be escaped (`\"`), since a scene can hold a component's fields as a JSON string, and a PPtr inside one is still a PPtr. Any other place a guid appears names the asset itself
 
 The rule needs no importer knowledge, so a new importer gets per-sub-asset shipping by naming its files this way. It holds two contracts:
 

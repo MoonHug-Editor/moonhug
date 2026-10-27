@@ -51,10 +51,12 @@ Window :: struct {
 	placed: bool,  // drawn once, so its place is imgui's to keep
 	used:   u64,   // when it was last clicked in or opened: the highest is last(id)
 	drawn:  u64,   // the draw pass it was last drawn in, so draw_all skips what draw(id) drew
+	ran:    u64,   // the draw pass its draw proc last ran in: visible as a window, or drawn by its host
 	// The key of the view that hosts it (a workspace view), "" for a window
 	// of its own. A hosted instance never draws as a window: its host draws
 	// its content (draw_content) where it places it. Owned.
-	host:   string,
+	host:    string,
+	claimed: u64, // the draw pass its host last claimed it in (host_open)
 }
 
 Draw_Proc  :: proc(w: ^Window)
@@ -300,18 +302,31 @@ draw_all :: proc() {
 		w := _windows[i]
 		if w.open && w.host == "" && w.drawn != _pass + 1 do _draw_instance(w)
 	}
+	_release_unclaimed()
 	_pass += 1
 }
 
 // --- Hosting ---------------------------------------------------------------
+//
+// A host claims each instance it holds with host_open once per draw pass,
+// whether it draws its content or not (a tab in the back). The rule:
+// - An instance belongs to the host that claimed it. Another host's
+//   host_open gets nil while that host goes on claiming it.
+// - At the end of draw_all, a hosted instance no host claimed in the pass
+//   gets its own window back (host_release), unless its host did not draw
+//   at all (a hidden tab), which keeps what it holds. So a view is never
+//   hosted and drawn by nobody: a host that closed, shows another
+//   workspace, or dropped the view's frame lets it go.
 
 // The instance whose key is `key`, hosted by the view `host`: an open one
 // moves there, a missing one opens from the key (`id`, `id/<asset guid>`,
-// `id/<n>`). nil when the key names no registered window, or an asset that
-// is gone.
+// `id/<n>`). It claims the instance for this draw pass. nil when the key
+// names no registered window, or an asset that is gone, or when another host
+// holds it: it claimed it this pass or the last.
 host_open :: proc(key: string, host: string) -> ^Window {
 	context.allocator = runtime.default_allocator()
 	w := find(key)
+	if w != nil && w.host != "" && w.host != host && w.claimed >= _pass do return nil
 	if w == nil {
 		id, asset, ok := _parse_key(key)
 		if !ok do return nil
@@ -326,7 +341,26 @@ host_open :: proc(key: string, host: string) -> ^Window {
 		delete(w.host)
 		w.host = strings.clone(host)
 	}
+	w.claimed = _pass + 1
 	return w
+}
+
+// Whether another host than `host` holds the instance `key`: host_open
+// gives nil for it.
+host_held_elsewhere :: proc(key: string, host: string) -> bool {
+	w := find(key)
+	return w != nil && w.host != "" && w.host != host && w.claimed >= _pass
+}
+
+// The end of a draw pass: every hosted instance no host claimed in it gets
+// its own window back, unless its host did not draw.
+@(private = "file")
+_release_unclaimed :: proc() {
+	for w in _windows {
+		if !w.open || w.host == "" || w.claimed == _pass + 1 do continue
+		if h := find(w.host); h != nil && h.ran != _pass + 1 do continue
+		host_release(w)
+	}
 }
 
 // The open instances the view `host` hosts (temp).
@@ -350,6 +384,7 @@ host_release :: proc(w: ^Window) {
 // scrollbars (is_canvas).
 draw_content :: proc(w: ^Window) {
 	w.drawn = _pass + 1
+	w.ran = _pass + 1
 	prev := _drawing
 	_drawing = w
 	_registry[w.reg].draw(w)
@@ -364,6 +399,24 @@ draw_content :: proc(w: ^Window) {
 		_use_count += 1
 		w.used = _use_count
 	}
+}
+
+// The drag-and-drop type of a view's tab dragged out of its tab bar. The
+// payload is the instance key's bytes, so any drop target can read it
+// (tab_payload_key).
+TAB_PAYLOAD :: "VIEW_TAB"
+
+// Sets the dragged tab's payload, between BeginDragDropSource and
+// EndDragDropSource. imgui copies the key.
+tab_payload_set :: proc(key: string) {
+	im.SetDragDropPayload(TAB_PAYLOAD, raw_data(key), uint(len(key)))
+}
+
+// The key a tab payload carries, "" for a payload of another type. It points
+// into imgui's copy: clone it to keep it past the frame.
+tab_payload_key :: proc(p: ^im.Payload) -> string {
+	if p == nil || !im.Payload_IsDataType(p, TAB_PAYLOAD) || p.DataSize <= 0 do return ""
+	return string(([^]u8)(p.Data)[:p.DataSize])
 }
 
 // Whether the instance draws edge to edge (@(editor_window) canvas).
@@ -433,6 +486,7 @@ _draw_instance :: proc(w: ^Window) {
 			_hovered = w
 			_hovered_frame = im.GetFrameCount()
 		}
+		w.ran = _pass + 1
 		r.draw(w)
 		if im.IsWindowHovered(im.HoveredFlags_RootAndChildWindows) && (im.IsMouseClicked(.Left) || im.IsMouseClicked(.Right) || im.IsMouseClicked(.Middle)) {
 			_use_count += 1

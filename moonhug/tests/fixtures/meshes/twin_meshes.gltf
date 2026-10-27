@@ -1,0 +1,128 @@
+{
+ "asset": {
+  "version": "2.0",
+  "generator": "MoonHug test fixture: two meshes named Twin, one mesh with no triangles"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "nodes": [
+    0,
+    1,
+    2
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "mesh": 0,
+   "name": "TwinA"
+  },
+  {
+   "mesh": 1,
+   "name": "TwinB",
+   "translation": [
+    4,
+    0,
+    0
+   ]
+  },
+  {
+   "mesh": 2,
+   "name": "EmptyNode"
+  }
+ ],
+ "meshes": [
+  {
+   "name": "Twin",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1
+     },
+     "indices": 2
+    }
+   ]
+  },
+  {
+   "name": "Twin",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1
+     },
+     "indices": 2
+    }
+   ]
+  },
+  {
+   "name": "Empty",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0
+     },
+     "mode": 0
+    }
+   ]
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 552,
+   "uri": "data:application/octet-stream;base64,AADAvwAAwL8AAAC/AADAPwAAwL8AAAC/AADAPwAAwD8AAAC/AAAAPwAAwD8AAAC/AAAAPwAAAL8AAAC/AAAAvwAAAL8AAAC/AAAAvwAAwD8AAAC/AADAvwAAwD8AAAC/AADAvwAAwL8AAAA/AADAPwAAwL8AAAA/AADAPwAAwD8AAAA/AAAAPwAAwD8AAAA/AAAAPwAAAL8AAAA/AAAAvwAAAL8AAAA/AAAAvwAAwD8AAAA/AADAvwAAwD8AAAA/d9aIvnfWCL+zQU2/Qx8TP0Mfk76vKUS/97wjP0pR2j73vCO/swEev7MBHj4fgkW/sl+avrJfmj6Lj2e/q9JIP6vSSD4Anha/akGyPmpBsj7E0V6/iXhivwb7Fj6JeOK+d9YIv3fWiL6zQU0/Qx+TPkMfE7+vKUQ/iXhiPwb7Fj6JeOI+akGyvmpBsj7E0V4/P6gMvz+oDD5f/FI/Qlv4PkJb+D5yRDo/swEeP7MBHj4fgkU/97wjv0pR2j73vCM/CQAKAAsAAQADAAIACQALAAwAAQAEAAMACAANAA4AAAAGAAUACAAOAA8AAAAHAAYACAAJAAwAAAAEAAEACAAMAA0AAAAFAAQAAAABAAkAAAAJAAgAAQACAAoAAQAKAAkAAgADAAsAAgALAAoAAwAEAAwAAwAMAAsABAAFAA0ABAANAAwABQAGAA4ABQAOAA0ABgAHAA8ABgAPAA4ABwAAAAgABwAIAA8A"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteOffset": 0,
+   "byteLength": 192,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 192,
+   "byteLength": 192,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 384,
+   "byteLength": 168,
+   "target": 34963
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 16,
+   "type": "VEC3",
+   "min": [
+    -1.5,
+    -1.5,
+    -0.5
+   ],
+   "max": [
+    1.5,
+    1.5,
+    0.5
+   ]
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 16,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5123,
+   "count": 84,
+   "type": "SCALAR"
+  }
+ ]
+}

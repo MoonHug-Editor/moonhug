@@ -333,7 +333,61 @@ test_asset_catalog_export_ships_used_sub_asset_files :: proc(t: ^testing.T) {
 	for name in ([]string{MODEL_KEY + "_s1.bin", MODEL_KEY + "_s5.bin", MODEL_KEY + "_s6.bin", MODEL_KEY + "_s7.bin", MODEL_KEY + "_s900.bin"}) {
 		testing.expect(t, !shipped(data_dir, "ab", name), "the asset itself ships no sub-asset file")
 	}
+
+	// A component payload held as a JSON string escapes its quotes: the
+	// PPtr inside still names a sub-asset, local id after or before the guid.
+	escaped := src_dir + "/escaped.scene"
+	scene(&cf, "66666666-2222-4333-8444-555555555555", escaped, `{"added_components": [{"json": "{\"clip\":{\"guid\":\"` + MODEL + `\",\"local_id\":5},\"hulls\":{\"local_id\": 900, \"guid\": \"` + MODEL + `\"}}"}]}`)
+	testing.expect(t, catalog.export(&cf, lib, data_dir, boot_scene = escaped), "export the escaped-payload scene")
+	testing.expect(t, shipped(data_dir, "ab", MODEL_KEY + "_s5.bin"), "a clip named inside an escaped payload ships")
+	testing.expect(t, shipped(data_dir, "ab", MODEL_KEY + "_s900.bin"), "a set named inside an escaped payload ships, local id first")
+	testing.expect(t, !shipped(data_dir, "ab", MODEL_KEY + ".bin"), "an escaped PPtr does not count as the asset itself")
+	testing.expect(t, !shipped(data_dir, "ab", MODEL_KEY + "_s6.bin"), "an unreferenced clip does not ship")
 }
+
+// An asset with sub-asset files has one for every sub-asset it lists, so a
+// referenced id with no file (a convex decomposition never computed, a file
+// an importer forgot) fails the export, naming the asset, the id and the
+// file. Shipping the main artifact instead would leave the game without the
+// data. An asset with no sub-asset file at all keeps its sub-assets in the
+// main artifact (a texture's slices) and ships it.
+@(test)
+test_asset_catalog_export_fails_on_a_missing_sub_asset_file :: proc(t: ^testing.T) {
+	src_dir :: "moonhug/tests/fixtures/_catalog_subs_missing_tmp"
+	lib :: src_dir + "/library"
+	data_dir :: src_dir + "_data"
+	defer {
+		_remove_tree(src_dir)
+		_remove_tree(data_dir)
+	}
+
+	MODEL :: "11111111-2222-4333-8444-555555555555"
+	MODEL_KEY :: "ab0123456789abcdef0123456789abcd"
+	for f in ([]string{"ab/" + MODEL_KEY + ".bin", "ab/" + MODEL_KEY + "_s1.bin"}) {
+		path := strings.concatenate({lib, "/artifacts/", f}, context.temp_allocator)
+		catalog.ensure_parent_dirs(path)
+		testing.expect(t, os.write_entire_file(path, transmute([]byte)string("bin")) == nil)
+	}
+	model_src := src_dir + "/model.glb"
+	catalog.ensure_parent_dirs(model_src)
+	testing.expect(t, os.write_entire_file(model_src, transmute([]byte)string("src")) == nil)
+
+	cf := catalog.File{version = catalog.VERSION}
+	cf.assets = make(map[string]catalog.Entry, context.temp_allocator)
+	cf.assets[MODEL] = {path = model_src, artifact = MODEL_KEY}
+	boot := src_dir + "/boot.scene"
+	testing.expect(t, os.write_entire_file(boot, transmute([]byte)string(`{"mesh": {"guid": "` + MODEL + `", "local_id": 1}, "hulls": {"guid": "` + MODEL + `", "local_id": 77}}`)) == nil)
+	cf.assets["44444444-2222-4333-8444-555555555555"] = {path = boot}
+
+	testing.expect(t, !catalog.export(&cf, lib, data_dir, boot_scene = boot), "a referenced sub-asset without its file fails the export")
+
+	// The same model with only the part referenced exports, the part alone.
+	testing.expect(t, os.write_entire_file(boot, transmute([]byte)string(`{"mesh": {"guid": "` + MODEL + `", "local_id": 1}}`)) == nil)
+	testing.expect(t, catalog.export(&cf, lib, data_dir, boot_scene = boot), "every referenced sub-asset has its file")
+	testing.expect(t, os.exists(data_dir + "/artifacts/ab/" + MODEL_KEY + "_s1.bin"), "the part ships")
+	testing.expect(t, !os.exists(data_dir + "/artifacts/ab/" + MODEL_KEY + ".bin"), "the main artifact does not")
+}
+
 
 @(test)
 test_asset_catalog_export_rejects_unknown_boot_scene :: proc(t: ^testing.T) {
