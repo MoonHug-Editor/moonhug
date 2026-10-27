@@ -1,3 +1,9 @@
+## [0.150.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.150.0...v0.150.1) (2026-10-27)
+
+### Bug Fixes
+
+* workspace hosting rule, tab selection and saves, export fails on a missing sub-asset file, no id reuse, per-window sprite editor state ([23ad0d0](https://github.com/MoonHug-Editor/moonhug/commit/23ad0d03ebf9f0b005e0c885cce51c294a26ca25))
+
 ## [0.150.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.149.0...v0.150.0) (2026-10-27)
 
 ### Features
