@@ -23,6 +23,7 @@ import animation_editor "moonhug:packages/animation/editor"
 import mesh_editor "moonhug:packages/engine/editor/mesh_editor"
 import common "moonhug:tests/common"
 import "moonhug:libs/log"
+import assets "moonhug:libs/assets"
 
 BOX_ANIM_GLTF :: "moonhug/tests/fixtures/meshes/box_animated.gltf"
 
@@ -149,13 +150,16 @@ test_model_clip_resolves_loads_and_exports :: proc(t: ^testing.T) {
 	}
 }
 
-// A game cannot import, so a mesh part or clip file its export left out is a
-// load error, and it says so once instead of drawing nothing or holding the
-// rest pose in silence. The catalog pipeline refuses imports the way a game
-// binary does. A reimport of the model gives a failed clip its next try.
+// Missing artifact files, read the way a game reads them (engine.artifact_read,
+// libs/assets/artifact_read.odin): a game cannot import, so a mesh part or
+// clip file that is not there is a load error, reported once instead of
+// drawing nothing or holding the rest pose in silence. The catalog pipeline
+// refuses imports the way a game binary does. A reimport of the model gives a
+// failed file its next try, and an export says when it left a file out.
 @(test)
 test_missing_artifacts_are_reported_once :: proc(t: ^testing.T) {
 	src_dir :: "moonhug/tests/fixtures/_model_missing_tmp"
+	data_dir :: src_dir + "_data"
 	gltf :: src_dir + "/box.gltf"
 	os.make_directory(src_dir)
 	bytes, rerr := os.read_entire_file(BOX_ANIM_GLTF, context.temp_allocator)
@@ -164,6 +168,7 @@ test_missing_artifacts_are_reported_once :: proc(t: ^testing.T) {
 	testing.expect(t, os.write_entire_file(gltf, bytes) == nil)
 	defer {
 		common.remove_tree(src_dir)
+		common.remove_tree(data_dir)
 		common.remove_tree(engine.library_dir())
 	}
 
@@ -187,46 +192,74 @@ test_missing_artifacts_are_reported_once :: proc(t: ^testing.T) {
 	}
 	clip_id, part_id := clips[0].id, parts[0].id
 	testing.expect(t, catalog.build_to_file("", {src_dir}, engine.library_dir(), engine.asset_catalog_path()))
+	// No boot scene: the export ships everything, the deletion below is ours.
+	testing.expect(t, catalog.export_from(engine.asset_catalog_path(), data_dir), "export")
 	engine.asset_db_shutdown()
 
-	testing.expect(t, engine.asset_db_init_from_catalog(engine.asset_catalog_path()), "catalog pipeline")
-	defer engine.asset_db_shutdown()
-	whole, wok := engine.asset_pipeline_artifact_path(model)
-	testing.expect(t, wok)
-	if !wok do return
-	whole = strings.clone(whole, context.temp_allocator)
-	testing.expect(t, os.remove(engine.artifact_sub_path(whole, clip_id, context.temp_allocator)) == nil, "drop the clip file")
-	testing.expect(t, os.remove(engine.artifact_sub_path(whole, part_id, context.temp_allocator)) == nil, "drop the part file")
-
-	logged :: proc(prefix, has: string) -> int {
+	logged :: proc(has: ..string) -> int {
 		n := 0
-		for e in log.entries do if strings.has_prefix(e.message, prefix) && strings.contains(e.message, has) do n += 1
+		outer: for e in log.entries {
+			if !strings.has_prefix(e.message, "[Artifact]") do continue
+			for h in has do if !strings.contains(e.message, h) do continue outer
+			n += 1
+		}
 		return n
 	}
-
-	context.allocator = runtime.default_allocator()
-	anim.animation_clip_cache_init()
-	defer anim.animation_clip_cache_shutdown()
+	clip_sub := fmt.tprintf("(sub-asset %d)", clip_id)
+	part_sub := fmt.tprintf("(sub-asset %d)", part_id)
 	ref := engine.PPtr{guid = model, local_id = clip_id}
-	for _ in 0 ..< 3 {
+
+	{
+		testing.expect(t, engine.asset_db_init_from_catalog(engine.asset_catalog_path()), "catalog pipeline")
+		defer engine.asset_db_shutdown()
+		whole, wok := engine.asset_pipeline_artifact_path(model)
+		testing.expect(t, wok)
+		if !wok do return
+		whole = strings.clone(whole, context.temp_allocator)
+		testing.expect(t, os.remove(engine.artifact_sub_path(whole, clip_id, context.temp_allocator)) == nil, "drop the clip file")
+		testing.expect(t, os.remove(engine.artifact_sub_path(whole, part_id, context.temp_allocator)) == nil, "drop the part file")
+
+		context.allocator = runtime.default_allocator()
+		anim.animation_clip_cache_init()
+		defer anim.animation_clip_cache_shutdown()
+		for _ in 0 ..< 3 {
+			_, lok := anim.animation_clip_load(ref)
+			testing.expect(t, !lok, "a clip whose file is gone does not load")
+		}
+		testing.expect_value(t, logged(clip_sub, "is missing"), 1)
+
+		for _ in 0 ..< 2 do _, _ = anim.animation_clip_load(engine.PPtr{guid = model, local_id = 424242})
+		testing.expect_value(t, logged("(sub-asset 424242)", "has no such clip"), 1)
+
+		for _ in 0 ..< 2 {
+			_, gok := engine.mesh_geometry(model, 1)
+			testing.expect(t, !gok, "a part whose file is gone does not load")
+		}
+		testing.expect_value(t, logged(part_sub, "is missing"), 1)
+
+		// A reimport clears the mark: the next load reads, fails and says so again.
+		assets._notify_reimported(uuid.Identifier(model))
+		_, _ = anim.animation_clip_load(ref)
+		testing.expect_value(t, logged(clip_sub, "is missing"), 2)
+	}
+
+	// In an export, a missing file was left out by the export walk, and the
+	// report says that rather than "missing".
+	{
+		testing.expect(t, engine.asset_db_init_from_catalog(data_dir + "/catalog.json"), "boot the export")
+		defer engine.asset_db_shutdown()
+		whole, wok := engine.asset_pipeline_artifact_path(model)
+		testing.expect(t, wok)
+		if !wok do return
+		testing.expect(t, os.remove(engine.artifact_sub_path(whole, clip_id, context.temp_allocator)) == nil, "drop the exported clip file")
+
+		context.allocator = runtime.default_allocator()
+		anim.animation_clip_cache_init()
+		defer anim.animation_clip_cache_shutdown()
 		_, lok := anim.animation_clip_load(ref)
-		testing.expect(t, !lok, "a clip whose file is gone does not load")
+		testing.expect(t, !lok, "a clip the export does not hold does not load")
+		testing.expect_value(t, logged(clip_sub, "is not in this export", "no reference the export followed names sub-asset"), 1)
 	}
-	testing.expect_value(t, logged("[Animation]", "is missing or unreadable"), 1)
-
-	for _ in 0 ..< 2 do _, _ = anim.animation_clip_load(engine.PPtr{guid = model, local_id = 424242})
-	testing.expect_value(t, logged("[Animation]", "has no clip 424242"), 1)
-
-	for _ in 0 ..< 2 {
-		_, gok := engine.mesh_geometry(model, 1)
-		testing.expect(t, !gok, "a part whose file is gone does not load")
-	}
-	testing.expect_value(t, logged("[Mesh]", "is missing or unreadable"), 1)
-
-	// A reimport clears the mark: the next load reads, fails and says so again.
-	anim.animation_clip_reimported(model)
-	_, _ = anim.animation_clip_load(ref)
-	testing.expect_value(t, logged("[Animation]", "is missing or unreadable"), 2)
 }
 
 // The project view lists a model's sub-assets through the ONE model provider

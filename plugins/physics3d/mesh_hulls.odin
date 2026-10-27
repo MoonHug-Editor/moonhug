@@ -55,11 +55,23 @@ mesh_hulls :: proc(guid: engine.Asset_GUID, set: engine.Local_ID) -> ([][][3]f32
 		_hull_sets = make(map[string][][][3]f32)
 		engine.asset_pipeline_add_reimport_hook(_hull_sets_drop)
 	}
-	if _, hulls, ok := mesh_hulls_read(path, context.allocator); ok {
+	// A set the editor is computing may have no file yet, which is no failure.
+	if mesh_hulls_pending != nil && mesh_hulls_pending(guid, set) {
+		if _, hulls, ok := mesh_hulls_read(path, context.allocator); ok {
+			_hull_sets[strings.clone(path)] = hulls
+			return hulls, .Ready
+		}
+		return nil, .Pending
+	}
+	// The editor makes the file after the import, the import never does: a
+	// missing one is reported (once, see engine.artifact_file), not imported.
+	data, data_ok := engine.artifact_read(guid, set, import_missing = false)
+	if !data_ok do return nil, .Missing
+	if _, hulls, ok := mesh_hulls_decode(data, context.allocator); ok {
 		_hull_sets[strings.clone(path)] = hulls
 		return hulls, .Ready
 	}
-	if mesh_hulls_pending != nil && mesh_hulls_pending(guid, set) do return nil, .Pending
+	engine.artifact_fail(guid, set, "the file does not decode as convex hulls")
 	return nil, .Missing
 }
 

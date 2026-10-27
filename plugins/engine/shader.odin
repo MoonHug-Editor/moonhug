@@ -12,7 +12,6 @@ package engine
 import "base:runtime"
 import gfx "moonhug:libs/gfx"
 import "core:encoding/uuid"
-import "core:os"
 import "core:strings"
 
 Shader_Runtime :: struct {
@@ -82,38 +81,8 @@ shader_load :: proc(guid: Asset_GUID) -> (^Shader_Runtime, bool) {
 	// Headless contexts (tests, scene tooling) have no GPU device.
 	if gfx.device() == nil do return nil, false
 
-	artifact := _artifact_path(uuid.Identifier(guid))
-	defer delete(artifact)
-
-	header: Shader_Artifact_Header
-	spv, msl: []u8
-	properties: []Shader_Property
-	textures: []Shader_Texture
-	parse_ok := false
-	blob, read_err := os.read_entire_file(artifact, context.temp_allocator)
-	if read_err == nil {
-		header, spv, msl, properties, textures, parse_ok = _shader_artifact_parse(blob)
-	}
-	if !parse_ok {
-		// Artifact missing (fresh clone, cleaned library/) or stale (format
-		// bump): import from source and retry once (needs the toolchain).
-		source_path, path_ok := asset_db_get_path(uuid.Identifier(guid))
-		if !path_ok do return nil, false
-		if !asset_pipeline_request_import(source_path, force = true) {
-			_shader_failed[guid] = true
-			return nil, false
-		}
-		blob, read_err = os.read_entire_file(artifact, context.temp_allocator)
-		if read_err != nil {
-			_shader_failed[guid] = true
-			return nil, false
-		}
-		header, spv, msl, properties, textures, parse_ok = _shader_artifact_parse(blob)
-		if !parse_ok {
-			_shader_failed[guid] = true
-			return nil, false
-		}
-	}
+	blob, header, spv, msl, properties, textures, parse_ok := _shader_artifact_load(guid)
+	if !parse_ok do return nil, false
 
 	guid_str := uuid.to_string(uuid.Identifier(guid), context.temp_allocator)
 	// A leftover registration (cache cleared without unregister) is reused.
@@ -165,7 +134,7 @@ shader_load_fullscreen :: proc(guid: Asset_GUID) -> (name: string, ok: bool) {
 	context.allocator = runtime.default_allocator()
 	if !_shader_cache_ready || guid in _shader_failed || gfx.device() == nil do return "", false
 
-	header, spv, msl, properties, textures, parse_ok := _shader_artifact_load(guid)
+	_, header, spv, msl, properties, textures, parse_ok := _shader_artifact_load(guid)
 	if !parse_ok do return "", false
 	for prop in properties do delete(prop.name)
 	delete(properties)
@@ -189,33 +158,32 @@ shader_load_fullscreen :: proc(guid: Asset_GUID) -> (name: string, ok: bool) {
 @(private = "file")
 _fullscreen_cache: map[Asset_GUID]string
 
-// The shader's artifact, imported from source when missing or stale (needs
-// the toolchain). Properties and textures are owned by the caller.
+// The shader's artifact, read and parsed. artifact_load imports a missing one
+// in the editor (needs the toolchain), reimports a stale one once, and
+// reports a failure once. `blob` is temp memory, properties and textures are
+// owned by the caller.
 @(private = "file")
-_shader_artifact_load :: proc(guid: Asset_GUID) -> (header: Shader_Artifact_Header, spv, msl: []u8, properties: []Shader_Property, textures: []Shader_Texture, ok: bool) {
-	artifact := _artifact_path(uuid.Identifier(guid))
-	defer delete(artifact)
-	blob, read_err := os.read_entire_file(artifact, context.temp_allocator)
-	if read_err == nil {
-		header, spv, msl, properties, textures, ok = _shader_artifact_parse(blob)
+_Shader_Read :: struct {
+	blob:       []u8,
+	header:     Shader_Artifact_Header,
+	spv, msl:   []u8,
+	properties: []Shader_Property,
+	textures:   []Shader_Texture,
+}
+
+@(private = "file")
+_shader_artifact_load :: proc(guid: Asset_GUID) -> (blob: []u8, header: Shader_Artifact_Header, spv, msl: []u8, properties: []Shader_Property, textures: []Shader_Texture, ok: bool) {
+	r: _Shader_Read
+	parse :: proc(data: []byte, r: ^_Shader_Read) -> (ok: bool) {
+		r.blob = data
+		r.header, r.spv, r.msl, r.properties, r.textures, ok = _shader_artifact_parse(data)
+		return
 	}
-	if ok do return
-	// Artifact missing (fresh clone, cleaned library/) or stale (format
-	// bump): import from source and retry once.
-	source_path, path_ok := asset_db_get_path(uuid.Identifier(guid))
-	if !path_ok do return
-	if !asset_pipeline_request_import(source_path, force = true) {
+	if !artifact_load(guid, 0, "shader", &r, parse) {
 		_shader_failed[guid] = true
 		return
 	}
-	blob, read_err = os.read_entire_file(artifact, context.temp_allocator)
-	if read_err != nil {
-		_shader_failed[guid] = true
-		return
-	}
-	header, spv, msl, properties, textures, ok = _shader_artifact_parse(blob)
-	if !ok do _shader_failed[guid] = true
-	return
+	return r.blob, r.header, r.spv, r.msl, r.properties, r.textures, true
 }
 
 // The asset database's evict hook, registered here.

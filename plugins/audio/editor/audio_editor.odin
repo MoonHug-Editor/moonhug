@@ -59,7 +59,7 @@ _wave_evict :: proc(guid: engine.Asset_GUID) {
 _waveform_get :: proc(guid: engine.Asset_GUID) -> (_Waveform, bool) {
 	if wf, ok := _wave_cache[guid]; ok do return wf, true
 
-	path, pok := engine.asset_pipeline_artifact_path(guid)
+	path, pok := engine.artifact_file(guid)
 	if !pok do return {}, false
 	pcm, spec, dok := audio.decode_file_f32(path, context.temp_allocator)
 	if !dok || len(pcm) == 0 do return {}, false

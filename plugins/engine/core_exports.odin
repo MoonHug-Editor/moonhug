@@ -267,6 +267,11 @@ asset_pipeline_artifact_key       :: assets.asset_pipeline_artifact_key
 asset_pipeline_artifact_path      :: assets.asset_pipeline_artifact_path
 artifact_sub_path                 :: assets.artifact_sub_path
 artifact_files                    :: assets.artifact_files
+artifact_file                     :: assets.artifact_file
+artifact_read                     :: assets.artifact_read
+artifact_load                     :: assets.artifact_load
+artifact_fail                     :: assets.artifact_fail
+artifact_written                  :: assets.artifact_written
 asset_pipeline_add_reimport_hook  :: assets.asset_pipeline_add_reimport_hook
 asset_pipeline_set_import_request :: assets.asset_pipeline_set_import_request
 asset_pipeline_request_import     :: assets.asset_pipeline_request_import

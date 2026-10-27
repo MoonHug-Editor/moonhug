@@ -56,6 +56,7 @@ asset_db_init_from_catalog :: proc(catalog_path := "") -> bool {
 	// own directory: entry paths get the prefix, artifacts come from its
 	// artifacts/ fan-out instead of the working tree's library.
 	base := ""
+	asset_db.exported = cf.relocatable
 	if cf.relocatable {
 		{
 			context.allocator = context.temp_allocator

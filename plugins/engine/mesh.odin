@@ -11,7 +11,6 @@ import gfx "moonhug:libs/gfx"
 import "moonhug:libs/log"
 import "base:runtime"
 import "core:encoding/uuid"
-import "core:os"
 import "core:math/rand"
 import "core:strings"
 
@@ -326,75 +325,45 @@ mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
     return &mesh_cache[key], true
 }
 
-// The file of a part: the whole model's artifact for part 0, else the part's
-// own file, named by its id. ok=false when the model lists no such part.
+// One part's artifact, read and parsed. The slices point into `blob`,
+// temp-allocated. A missing or unreadable file is assets.artifact_load's to
+// import or report, and every failure marks the key failed: the retry is
+// once per session, not once per frame.
 @(private = "file")
-_mesh_part_file :: proc(whole: string, key: Mesh_Key) -> (string, bool) {
-    if key.part == 0 do return whole, true
-    parts := mesh_parts(key.guid)
-    if int(key.part) > len(parts) do return "", false
-    return artifact_sub_path(whole, parts[key.part - 1].id, context.temp_allocator), true
+_Mesh_Read :: struct {
+    blob:      []byte,
+    header:    Mesh_Artifact_Header,
+    vertices:  []gfx.Vertex,
+    indices:   []u32,
+    submeshes: []Mesh_Submesh,
 }
 
-// The artifact of one part, read and parsed. The slices point into `blob`,
-// temp-allocated. A missing or stale artifact (fresh clone, cleaned library,
-// format bump) is imported from source and read once more, and every failure
-// marks the key failed: the retry is once per session, not once per frame.
 @(private = "file")
 _mesh_artifact_read :: proc(key: Mesh_Key) -> (blob: []byte, header: Mesh_Artifact_Header, vertices: []gfx.Vertex, indices: []u32, submeshes: []Mesh_Submesh, ok: bool) {
-    whole := _artifact_path(uuid.Identifier(key.guid))
-    defer delete(whole)
-    artifact, part_ok := _mesh_part_file(whole, key)
-
-    read_err: os.Error
-    if part_ok {
-        blob, read_err = os.read_entire_file(artifact, context.temp_allocator)
-        if read_err == nil {
-            header, vertices, indices, submeshes, ok = _mesh_artifact_parse(blob)
+    // Part 0 is the whole model, its main artifact. A part is its own
+    // sub-asset file, named by its id.
+    sub := Local_ID(0)
+    if key.part > 0 {
+        parts := mesh_parts(key.guid)
+        if int(key.part) > len(parts) {
+            _mesh_failed[key] = true
+            source, _ := asset_db_get_path(uuid.Identifier(key.guid))
+            log.errorf("[Mesh] %s lists no part %d", source, key.part)
+            return
         }
-        if ok do return
+        sub = parts[key.part - 1].id
     }
-
-    source_path, path_ok := asset_db_get_path(uuid.Identifier(key.guid))
-    if !path_ok {
+    r: _Mesh_Read
+    parse :: proc(data: []byte, r: ^_Mesh_Read) -> (ok: bool) {
+        r.blob = data
+        r.header, r.vertices, r.indices, r.submeshes, ok = _mesh_artifact_parse(data)
+        return
+    }
+    if !artifact_load(key.guid, sub, "mesh", &r, parse) {
         _mesh_failed[key] = true
         return
     }
-    if !asset_pipeline_request_import(source_path, force = true) {
-        // A game has no importer, so a file its export left out ends here.
-        // In the editor the failed import has said why already.
-        switch {
-        case whole == "":
-            log.errorf("[Mesh] %s has no artifact", source_path)
-        case !part_ok:
-            log.errorf("[Mesh] %s has no part %d", source_path, key.part)
-        case:
-            log.errorf("[Mesh] %s (part %d): %s is missing or unreadable", source_path, key.part, artifact)
-        }
-        _mesh_failed[key] = true
-        return
-    }
-    // The import gave the asset its artifact, so its path is known only now.
-    delete(whole)
-    whole = _artifact_path(uuid.Identifier(key.guid))
-    artifact, part_ok = _mesh_part_file(whole, key)
-    if !part_ok {
-        log.errorf("[Mesh] %v has no part %d after re-import", key.guid, key.part)
-        _mesh_failed[key] = true
-        return
-    }
-    blob, read_err = os.read_entire_file(artifact, context.temp_allocator)
-    if read_err != nil {
-        log.errorf("[Mesh] artifact unreadable after re-import: %s (part %d)", artifact, key.part)
-        _mesh_failed[key] = true
-        return
-    }
-    header, vertices, indices, submeshes, ok = _mesh_artifact_parse(blob)
-    if !ok {
-        log.errorf("[Mesh] artifact unparseable after re-import: %s (part %d)", artifact, key.part)
-        _mesh_failed[key] = true
-    }
-    return
+    return r.blob, r.header, r.vertices, r.indices, r.submeshes, true
 }
 
 // The positions and indices of a model or a part, on the CPU. Owned by the

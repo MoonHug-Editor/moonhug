@@ -129,7 +129,19 @@ asset_load :: proc(uuid: u128, $T: typeid) -> (^T, bool) {
 }
 ```
 
-In the editor a missing or stale artifact is imported on the spot. A game has no importer, so a missing file is a load error, and the mesh and clip loaders log it once, naming the asset, the sub-asset id and the file: `[Animation] <model> (clip 44): <file> is missing or unreadable`. Without that line, a mesh would draw nothing and a clip would hold the rest pose with no hint why. A failed load is not retried every frame. A reimport of the asset gives it its next try.
+### Reading artifacts
+
+Every loader reads its files through `moonhug:libs/assets` (`artifact_read.odin`, re-exported by the engine), so a missing or bad file is handled one way for every asset type. A file is named by the asset's guid and a local id: 0 for the asset itself (its main artifact), else a sub-asset's id (see "Sub-asset files").
+
+- `artifact_file(guid, sub)`: the file's path, present on disk. `artifact_read` returns its bytes, `artifact_load` also parses them with the loader's own proc
+- in the editor a missing file is imported on the spot, and a file that does not parse gets one forced reimport (an older format after an artifact bump)
+- a game has no importer, so there a missing or bad file is a load error. It is logged once, naming the asset, the sub-asset and the file: `[Artifact] <model> (sub-asset 44): <file> is missing`. Without the line a mesh would draw nothing, a clip would hold the rest pose and a sound would stay silent, with no hint why
+- in an export, a missing file was left out because no reference the export followed names it, and the line says so: `[Artifact] <model> (sub-asset 44) is not in this export: no reference the export followed names sub-asset 44. Reference it with a PPtr, or put the asset under a resources folder`
+- a file that failed is not read again until its asset reimports, so a loader called every frame costs a map lookup and logs nothing more
+- `artifact_fail(guid, sub, why)` reports a loader's own reason with the same once-only rule (a clip id the model does not list, bytes that do not decode as audio)
+- a file something other than the importer makes, such as the hulls of a convex decomposition, is read with `import_missing = false`: reported, never imported. Its producer calls `artifact_written(guid, sub)` once the file is on disk, so a failure recorded before it existed no longer holds
+
+A new asset type gets all of this by reading through these procs. Path helpers that only name a file to write (`mesh_hulls_path`) do not read and need none of it.
 
 ## Asset catalog and builds
 

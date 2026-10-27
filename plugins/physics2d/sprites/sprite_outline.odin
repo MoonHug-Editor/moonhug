@@ -11,7 +11,6 @@ package physics2d_sprites
 
 import "core:encoding/uuid"
 import "core:math"
-import "core:os"
 import stbi "vendor:stb/image"
 import "moonhug:packages/engine"
 import sprites "moonhug:packages/sprites"
@@ -37,21 +36,12 @@ sprite_outline_of_owner :: proc(owner: engine.Transform_Handle, points: ^[dynami
 // The outline of a sprite reference (texture guid, slice id or 0 for the
 // whole texture), in the collider's space.
 sprite_outline :: proc(sprite: engine.PPtr, points: ^[dynamic][2]f32) -> bool {
-	if engine.asset_guid_is_empty(sprite.guid) do return false
+	// The texture's artifact holds its image bytes. A slice has no file of
+	// its own, so the texture's main artifact is the one to read.
+	data, data_ok := engine.artifact_read(sprite.guid)
+	if !data_ok do return false
 	path, path_ok := engine.asset_db_get_path(uuid.Identifier(sprite.guid))
 	if !path_ok do return false
-
-	// The artifact is the source bytes, and a dev run may not have imported
-	// yet: read whichever is there.
-	data: []byte
-	if artifact, aok := engine.asset_pipeline_artifact_path(sprite.guid); aok {
-		data, _ = os.read_entire_file(artifact, context.temp_allocator)
-	}
-	if data == nil {
-		read_err: os.Error
-		data, read_err = os.read_entire_file(path, context.temp_allocator)
-		if read_err != nil do return false
-	}
 	width, height, channels: i32
 	pixels := stbi.load_from_memory(raw_data(data), i32(len(data)), &width, &height, &channels, 4)
 	if pixels == nil do return false

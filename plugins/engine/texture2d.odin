@@ -3,6 +3,7 @@ package engine
 import gfx "moonhug:libs/gfx"
 import "base:runtime"
 import "core:encoding/uuid"
+import "core:fmt"
 import "core:strings"
 
 // GUID-keyed texture cache. The GPU side lives in ^gfx.Texture, which is
@@ -68,15 +69,14 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
     // Headless contexts (tests, scene tooling) have no GPU device.
     if gfx.device() == nil do return nil, false
 
-    // Artifact first, like every other loader: the artifact is what an export
-    // ships (catalog.export_from copies no source for an imported asset), so
-    // reading the source first would work in the editor and fail in a build.
-    // The source is the fallback for a dev run whose import has not happened.
-    // The path stays the key for settings even when the file is not there.
+    // The artifact, never the source: the artifact is what an export ships
+    // (catalog.export_from copies no source for an imported asset).
+    // artifact_file imports a missing one in the editor and reports it once
+    // in a game. The source path is the key for the settings.
+    artifact, artifact_ok := artifact_file(guid)
+    if !artifact_ok do return nil, false
     path, path_ok := asset_db_get_path(uuid.Identifier(guid))
     if !path_ok do return nil, false
-    artifact := _artifact_path(uuid.Identifier(guid))
-    defer delete(artifact)
 
     ts: TextureSettings
     has_settings := false
@@ -86,8 +86,10 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
     // A texture without settings gets the default: generated mip levels.
     mipmaps := !has_settings || ts.mipmaps == .Generate
     g := gfx.texture_decode_file(artifact, mipmaps)
-    if g == nil do g = gfx.texture_decode_file(path, mipmaps)
-    if g == nil do return nil, false
+    if g == nil {
+        artifact_fail(guid, 0, fmt.tprintf("%s does not decode as a texture", artifact))
+        return nil, false
+    }
 
     ppu := f32(PIXELS_PER_UNIT)
     sprites: []Sprite_Rect

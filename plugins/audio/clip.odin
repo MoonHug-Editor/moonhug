@@ -5,7 +5,7 @@ package audio
 // never from the source file. Missing artifact: import on demand.
 
 import "base:runtime"
-import "core:encoding/uuid"
+import "core:fmt"
 import "core:strings"
 import sdl "vendor:sdl3"
 import mix "vendor:sdl3/mixer"
@@ -26,20 +26,17 @@ clip_load :: proc(guid: engine.Asset_GUID) -> (^Audio_Clip, bool) {
 	if clip, ok := &clip_cache[guid]; ok do return clip, true
 	if !_mixer_ensure() do return nil, false
 
-	path, path_ok := engine.asset_pipeline_artifact_path(guid)
-	if !path_ok {
-		// Self-heal is editor-only (asset_pipeline_request_import is nil in a
-		// game binary — a missing artifact there is a load error).
-		src, src_ok := engine.asset_db_get_path(uuid.Identifier(guid))
-		if !src_ok do return nil, false
-		_ = engine.asset_pipeline_request_import(src, force = false)
-		path, path_ok = engine.asset_pipeline_artifact_path(guid)
-		if !path_ok do return nil, false
-	}
+	// engine.artifact_file imports a missing artifact in the editor and
+	// reports it once in a game.
+	path, path_ok := engine.artifact_file(guid)
+	if !path_ok do return nil, false
 
 	cpath := strings.clone_to_cstring(path, context.temp_allocator)
 	audio := mix.LoadAudio(_audio_state.mixer, cpath, predecode = true)
-	if audio == nil do return nil, false
+	if audio == nil {
+		engine.artifact_fail(guid, 0, fmt.tprintf("%s does not load as audio (%s)", path, sdl.GetError()))
+		return nil, false
+	}
 
 	spec: sdl.AudioSpec
 	_ = mix.GetAudioFormat(audio, &spec)

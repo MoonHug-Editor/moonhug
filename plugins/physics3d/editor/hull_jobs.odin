@@ -194,7 +194,10 @@ hull_sets_reconcile :: proc(guid: engine.Asset_GUID) {
 		key := _Key{guid, s.id}
 		target, _ := physics3d.mesh_hulls_path(guid, s.id)
 		if fh, fok := physics3d.mesh_hulls_file_hash(target); fok && fh == h do continue
-		if _restore_from_meta(kept[:], s.id, h, target) do continue
+		if _restore_from_meta(kept[:], s.id, h, target) {
+			engine.artifact_written(guid, s.id)
+			continue
+		}
 		if o, has := _jobs.outcomes[key]; has && o.source_hash == h do continue
 		if _job_index(key, h) >= 0 do continue
 		_job_cancel_key(key)
@@ -519,6 +522,7 @@ _job_finish :: proc(j: ^_Job, exit_code: int) {
 		log.errorf("[Physics3D] cannot save the convex decomposition of %s", j.name)
 		return
 	}
+	engine.artifact_written(j.key.guid, j.key.set)
 	if source, sok := engine.asset_db_get_path(uuid.Identifier(j.key.guid)); sok do _meta_hulls_put(source, j.key.set, data)
 	log.infof("[Physics3D] %s decomposed into %d hulls in %.0f s", j.name, len(hulls), time.duration_seconds(elapsed))
 }

@@ -32,6 +32,9 @@ AssetDB :: struct {
     // The catalog's pinned boot scene ({} = none) — what the app loads under
     // the catalog pipeline when no scene argument is given.
     boot_scene:   core.Asset_GUID,
+    // Running from an export (a relocatable catalog): a missing artifact file
+    // was left out by the export walk (artifact_read.odin).
+    exported:     bool,
 
     // Root-info index for the object picker (docs/core/ObjectPicker.md): per scene
     // asset, its root transform; assets_by_type answers "scene assets whose
@@ -130,6 +133,7 @@ asset_db_init :: proc(root: string) {
 
 asset_db_shutdown :: proc() {
     _catalog_pipeline_reset()
+    _artifact_failed_reset()
     _free_maps()
     _free_root_index()
     for path in asset_db.file_state {

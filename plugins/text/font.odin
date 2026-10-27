@@ -394,40 +394,20 @@ font_cache_insert :: proc(guid: engine.Asset_GUID, f: Font) {
 	if f.header.glyph_count > 0 do _font_upload(guid, &_fonts[guid])
 }
 
-// The font for a .ttf/.otf asset: cache hit, or its artifact read and parsed
-// (in the editor a missing artifact triggers the import first).
+// The font for a .ttf/.otf asset: cache hit, or its artifact read and parsed.
+// engine.artifact_load imports a missing artifact in the editor, reimports an
+// unreadable one once, and reports a failure once.
 font_load :: proc(guid: engine.Asset_GUID) -> (^Font, bool) {
 	if f, ok := &_fonts[guid]; ok do return f, f.header.glyph_count > 0
-	path, path_ok := engine.asset_pipeline_artifact_path(guid)
-	if !path_ok {
-		src, src_ok := engine.asset_db_get_path(uuid.Identifier(guid))
-		if !src_ok do return nil, false
-		_ = engine.asset_pipeline_request_import(src, force = false)
-		path, path_ok = engine.asset_pipeline_artifact_path(guid)
-		if !path_ok do return nil, false
+	f: Font
+	// The font keeps the bytes it parsed, so they leave temp memory.
+	parse :: proc(data: []byte, f: ^Font) -> (ok: bool) {
+		owned := slice.clone(data, runtime.default_allocator())
+		f^, ok = font_parse(owned, runtime.default_allocator())
+		if !ok do delete(owned, runtime.default_allocator())
+		return
 	}
-	data, rerr := os.read_entire_file(path, runtime.default_allocator())
-	if rerr != nil do return nil, false
-	f, ok := font_parse(data, runtime.default_allocator())
-	if !ok {
-		delete(data, runtime.default_allocator())
-		// An unreadable artifact: force one reimport in the editor and read
-		// the fresh one. Still unreadable: cache the failure as an empty font
-		// so a broken artifact is not re-read every frame; the next reimport
-		// evicts it through the hook.
-		if src, src_ok := engine.asset_db_get_path(uuid.Identifier(guid)); src_ok && engine.asset_pipeline_request_import(src, force = true) {
-			if path, path_ok = engine.asset_pipeline_artifact_path(guid); path_ok {
-				if data, rerr = os.read_entire_file(path, runtime.default_allocator()); rerr == nil {
-					f, ok = font_parse(data, runtime.default_allocator())
-					if !ok do delete(data, runtime.default_allocator())
-				}
-			}
-		}
-		if !ok {
-			font_cache_insert(guid, Font{})
-			return nil, false
-		}
-	}
+	if !engine.artifact_load(guid, 0, "font", &f, parse) do return nil, false
 	font_cache_insert(guid, f)
 	return &_fonts[guid], true
 }

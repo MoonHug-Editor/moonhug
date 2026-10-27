@@ -421,6 +421,7 @@ asset_pipeline_add_reimport_hook :: proc(hook: Reimport_Hook) {
 }
 
 _notify_reimported :: proc(guid: uuid.Identifier) {
+    _artifact_failed_forget(core.Asset_GUID(guid))
     for hook in _reimport_hooks do hook(core.Asset_GUID(guid))
 }
 
