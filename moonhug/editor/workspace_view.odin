@@ -112,6 +112,12 @@ _WS_View :: struct {
 	save_pending: bool,
 	rename:     bool,     // open the rename popup this frame
 	name_buf:   [128]u8,
+	// The workspaces this view has loaded (owned ids): their views live, with
+	// their documents, until the workspace is unloaded, shown or not. Only
+	// the selected one draws.
+	loaded:     [dynamic]string,
+	// The view's own close waits for the unload of everything it loaded.
+	closing_view: bool,
 }
 
 // The view's state, made on first use. Its arrays and map live on the
@@ -125,6 +131,7 @@ _ws_state :: proc(w: ^wnd.Window) -> ^_WS_View {
 	v.moves.allocator = a
 	v.edits.allocator = a
 	v.closing.allocator = a
+	v.loaded.allocator = a
 	v.synced = make(map[u32]int, a)
 	return v
 }
@@ -146,12 +153,129 @@ workspace_view_draw :: proc(w: ^wnd.Window) {
 	}
 	_ws_rename_popup(v, e.ws)
 	_ws_apply_queued(w, v, e.ws)
-	// Every tab's view is claimed each frame, shown or not, frame on screen or
-	// not: the registry gives a hosted view no host claims its own window
-	// back (window.host_open).
-	for f in e.ws.frames do for key in f.tabs do _ws_claim(w, v, key)
+	_ws_load(v, e.ws.id)
+	// Every tab's view of every loaded workspace is claimed each frame, shown
+	// or not, frame on screen or not: the registry closes a hosted view no
+	// host claims (window.host_open). A loaded workspace that is gone (its
+	// source dropped it) unloads.
+	for i := len(v.loaded) - 1; i >= 0; i -= 1 {
+		le, lok := workspace.find(v.loaded[i])
+		if !lok {
+			_ws_unload_request(w, v, {v.loaded[i]})
+			continue
+		}
+		for f in le.ws.frames do for key in f.tabs do _ws_claim(w, v, key)
+	}
 	_ws_canvas(w, v, e.ws)
 }
+
+// A workspace is closed, loaded, or shown. Loaded, its views exist with
+// their documents and unapplied edits, claimed by the Workspace view that
+// loaded it and drawn only while it is the one shown. Showing another
+// workspace keeps it loaded. Unloading closes its views without saving, after
+// one question naming the documents with unapplied edits. Closing the
+// Workspace view unloads everything it loaded the same way.
+
+@(private = "file")
+_ws_load :: proc(v: ^_WS_View, id: string) {
+	if _ws_loaded(v, id) do return
+	append(&v.loaded, strings.clone(id, runtime.default_allocator()))
+}
+
+@(private = "file")
+_ws_loaded :: proc(v: ^_WS_View, id: string) -> bool {
+	for l in v.loaded do if l == id do return true
+	return false
+}
+
+// The one unload question up, answered by the dialog's buttons.
+@(private = "file")
+_unload: struct {
+	view: string,          // owned, the Workspace view's key
+	ids:  [dynamic]string, // owned
+}
+
+// Unloads `ids` at once when no view of theirs holds unapplied edits, else
+// asks first, naming the documents that would lose them.
+@(private = "file")
+_ws_unload_request :: proc(w: ^wnd.Window, v: ^_WS_View, ids: []string) {
+	context.allocator = runtime.default_allocator()
+	names := make([dynamic]string, context.temp_allocator)
+	for id in ids {
+		e, ok := workspace.find(id)
+		if !ok do continue
+		for f in e.ws.frames do for key in f.tabs {
+			if d, dok := session.view_document(key); dok && d.view == key && d.dirty do append(&names, session.document_name(d))
+		}
+	}
+	if len(names) == 0 {
+		_ws_unload_now(w, v, ids)
+		return
+	}
+	delete(_unload.view)
+	_unload.view = strings.clone(w.key)
+	for id in _unload.ids do delete(id)
+	clear(&_unload.ids)
+	for id in ids do append(&_unload.ids, strings.clone(id))
+	widgets.dialog_open({
+		title       = "Unload Workspace",
+		description = fmt.tprintf("Unapplied changes in %s will be lost.\nUnload without applying them?", strings.join(names[:], ", ", context.temp_allocator)),
+		buttons     = {{label = "Unload", action = _ws_unload_confirmed}, {label = "Cancel", action = _ws_unload_cancelled, is_cancel = true, is_default = true}},
+	})
+}
+
+@(private = "file")
+_ws_unload_confirmed :: proc() {
+	w := wnd.find(_unload.view)
+	if w == nil || w.data == nil do return
+	_ws_unload_now(w, (^_WS_View)(w.data), _unload.ids[:])
+}
+
+@(private = "file")
+_ws_unload_cancelled :: proc() {
+	if w := wnd.find(_unload.view); w != nil && w.data != nil do (^_WS_View)(w.data).closing_view = false
+}
+
+// Closes the views of `ids` without saving: each document with unapplied
+// edits is discarded first, so no close asks again. The ids leave `loaded`,
+// and a Workspace view waiting to close closes once nothing is loaded.
+@(private = "file")
+_ws_unload_now :: proc(w: ^wnd.Window, v: ^_WS_View, ids: []string) {
+	context.allocator = runtime.default_allocator()
+	for id in ids {
+		if e, ok := workspace.find(id); ok {
+			for f in e.ws.frames do for key in f.tabs {
+				if d, dok := session.view_document(key); dok && d.view == key do session.document_discard(d)
+				wnd.close(key)
+			}
+		}
+		for i := len(v.loaded) - 1; i >= 0; i -= 1 do if v.loaded[i] == id {
+			delete(v.loaded[i])
+			ordered_remove(&v.loaded, i)
+		}
+		// Unloaded, the workspace shown is shown no more.
+		if workspace.view_selection(w.key) == id do workspace.view_select(w.key, "")
+	}
+	if v.closing_view && len(v.loaded) == 0 do wnd.close(w.key)
+}
+
+// Closing the Workspace view unloads everything it loaded first (installed
+// in view_close_guard): true keeps it open until that is done.
+workspace_view_close_guard :: proc(w: ^wnd.Window) -> bool {
+	is_ws := false
+	for inst in wnd.instances(WORKSPACE_VIEW) do if inst == w do is_ws = true
+	if !is_ws || w.data == nil do return false
+	v := (^_WS_View)(w.data)
+	if len(v.loaded) == 0 do return false
+	if !v.closing_view {
+		v.closing_view = true
+		ids := make([]string, len(v.loaded), context.temp_allocator)
+		copy(ids, v.loaded[:])
+		_ws_unload_request(w, v, ids)
+	}
+	return len(v.loaded) > 0
+}
+
 
 // The view `key` of a frame, claimed for this view: nil when it is missing,
 // or held by another Workspace view (window.host_held_elsewhere). A view
@@ -182,6 +306,8 @@ workspace_view_closed :: proc(w: ^wnd.Window) {
 	for key in _ws_hosted_keys(w.key) do wnd.close(key)
 	for k in v.closing do delete(k, runtime.default_allocator())
 	delete(v.closing)
+	for id in v.loaded do delete(id, runtime.default_allocator())
+	delete(v.loaded)
 	delete(v.synced)
 	delete(v.synced_ws, runtime.default_allocator())
 	for p in v.pending do delete(p.key, runtime.default_allocator())
@@ -226,7 +352,9 @@ _ws_toolbar :: proc(w: ^wnd.Window, v: ^_WS_View) {
 			label := fmt.ctprintf("%s  (%s)", en.ws.name, provs[en.provider].name)
 			owner := workspace_view_owner(en.ws.id)
 			elsewhere := owner != "" && owner != w.key
-			if im.Selectable(label, en.ws.id == selected, {.Disabled} if elsewhere else {}) do workspace.view_select(w.key, en.ws.id)
+			// Showing another workspace keeps this one loaded: its views live on,
+			// hidden, until it is unloaded.
+			if im.Selectable(label, en.ws.id == selected, {.Disabled} if elsewhere else {}) && en.ws.id != selected do workspace.view_select(w.key, en.ws.id)
 			if elsewhere do widgets.tooltip("Open in another Workspace view", im.HoveredFlags_AllowWhenDisabled)
 			im.PopID()
 		}
@@ -1306,6 +1434,16 @@ workspace_rename_menu :: proc(view: session.View) {
 	if w := wnd.find(view.key); w != nil && w.data != nil do (^_WS_View)(w.data).rename = true
 }
 
+// Unload closes the shown workspace's views without saving, after one
+// question when any holds unapplied edits. The view then shows no workspace.
+@(view_menu={view="workspace", label="Unload Workspace", enabled=_ws_has_selection})
+workspace_unload_menu :: proc(view: session.View) {
+	w := wnd.find(view.key)
+	if w == nil || w.data == nil do return
+	id := workspace.view_selection(view.key)
+	_ws_unload_request(w, (^_WS_View)(w.data), {strings.clone(id, context.temp_allocator)})
+}
+
 @(view_menu={view="workspace", label="Delete Workspace", enabled=_ws_has_selection})
 workspace_delete_menu :: proc(view: session.View) {
 	context.allocator = runtime.default_allocator()
@@ -1315,7 +1453,7 @@ workspace_delete_menu :: proc(view: session.View) {
 	if !ok do return
 	widgets.dialog_open({
 		title       = "Delete Workspace",
-		description = fmt.tprintf("Delete \"%s\"?\nIts views close, and the workspace is gone.", e.ws.name),
+		description = fmt.tprintf("Delete \"%s\"?\nIts views close without applying their changes, and the workspace is gone.", e.ws.name),
 		buttons     = {{label = "Delete", action = _ws_delete_confirmed, is_default = true}, {label = "Cancel", is_cancel = true}},
 	})
 }
@@ -1339,10 +1477,12 @@ _ws_delete_view: string // owned
 @(private = "file")
 _ws_delete_confirmed :: proc() {
 	e, ok := workspace.find(workspace.view_selection(_ws_delete_view))
+	w := wnd.find(_ws_delete_view)
 	delete(_ws_delete_view, runtime.default_allocator())
 	_ws_delete_view = ""
 	if !ok do return
-	for f in e.ws.frames do for key in f.tabs do wnd.close(key)
+	// Deleting unloads: the question above said the views close.
+	if w != nil && w.data != nil do _ws_unload_now(w, (^_WS_View)(w.data), {e.ws.id})
 	if p := workspace.providers()[e.provider]; p.remove != nil do p.remove(e.ws)
 }
 

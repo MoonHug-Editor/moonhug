@@ -19,6 +19,18 @@ import b3 "vendor:box3d"
 @(private = "file")
 _SRC_DIR :: "moonhug/tests/fixtures/_mesh_collider_tmp"
 
+// A copy of the DamagedHelmet folder, metas included (its hull sets restore
+// from the meta). Tests never import a project asset in place: an import
+// writes the meta.
+_HELMET_TMP :: "moonhug/tests/fixtures/_helmet_tmp"
+
+@(private = "file")
+_helmet_copy :: proc(t: ^testing.T) -> bool {
+	ok := common.copy_tree("moonhug/packages/app/assets/meshes/DamagedHelmet", _HELMET_TMP)
+	testing.expect(t, ok, "the helmet copies to a fixture folder")
+	return ok
+}
+
 // A test asset folder with the cube, and the asset db on it. The caller
 // tears both down.
 @(private = "file")
@@ -200,9 +212,10 @@ physics3d_mesh_collider_dense_mesh_holds_a_box :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 	asset_pipeline.asset_pipeline_init()
-	engine.asset_db_init("moonhug/packages/app/assets/meshes/DamagedHelmet")
-	defer { engine.asset_db_shutdown(); common.remove_tree(engine.library_dir()) }
-	guid, gok := engine.asset_db_get_guid("moonhug/packages/app/assets/meshes/DamagedHelmet/DamagedHelmet.gltf")
+	if !_helmet_copy(t) do return
+	engine.asset_db_init(_HELMET_TMP)
+	defer { engine.asset_db_shutdown(); common.remove_tree(engine.library_dir()); common.remove_tree(_HELMET_TMP) }
+	guid, gok := engine.asset_db_get_guid(_HELMET_TMP + "/DamagedHelmet.gltf")
 	testing.expect(t, gok, "the helmet is in the asset db")
 	if !gok do return
 	helmet := engine.transform_new("Helmet")
@@ -240,9 +253,10 @@ physics3d_mesh_collider_material_edit :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 	asset_pipeline.asset_pipeline_init()
-	engine.asset_db_init("moonhug/packages/app/assets/meshes/DamagedHelmet")
-	defer { engine.asset_db_shutdown(); common.remove_tree(engine.library_dir()) }
-	guid, gok := engine.asset_db_get_guid("moonhug/packages/app/assets/meshes/DamagedHelmet/DamagedHelmet.gltf")
+	if !_helmet_copy(t) do return
+	engine.asset_db_init(_HELMET_TMP)
+	defer { engine.asset_db_shutdown(); common.remove_tree(engine.library_dir()); common.remove_tree(_HELMET_TMP) }
+	guid, gok := engine.asset_db_get_guid(_HELMET_TMP + "/DamagedHelmet.gltf")
 	testing.expect(t, gok, "the helmet is in the asset db")
 	if !gok do return
 

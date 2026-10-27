@@ -198,11 +198,13 @@ test_window_host_ownership :: proc(t: ^testing.T) {
 	testing.expect(t, wnd.host_open("instance_test/11", "host_b") == nil, "claimed last pass, B still gets nil")
 
 	// A pass where A does not claim it, and A is no open window (it closed):
-	// released, it is a window of its own, so any host may take it.
+	// the view closes, since a workspace changes no layout outside itself.
+	// Any host may then open it afresh.
 	wnd.draw_all()
-	testing.expect_value(t, a.host, "")
-	testing.expect(t, wnd.host_open("instance_test/11", "host_b") == a && a.host == "host_b", "B takes it")
-	wnd.close(a.key)
+	testing.expect(t, !a.open && a.host == "", "let go of, the view closes")
+	b := wnd.host_open("instance_test/11", "host_b")
+	testing.expect(t, b != nil && b.host == "host_b", "B opens it afresh")
+	wnd.close(b.key)
 	wnd.draw_all() // removes it: a window of its own would draw, and there is no imgui frame
 
 	// A host that is an open instance (hosted itself, so nothing draws it

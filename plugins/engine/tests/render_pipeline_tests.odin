@@ -13,9 +13,10 @@ import "core:strings"
 import "core:testing"
 
 @(private = "file")
+// The key is owned: json.destroy_value frees an object's keys with its values.
 _settings_json :: proc(key: string, value: f64) -> json.Value {
 	obj := make(json.Object)
-	obj[key] = json.Float(value)
+	obj[strings.clone(key)] = json.Float(value)
 	return obj
 }
 import asset_pipeline "moonhug:editor/assets"

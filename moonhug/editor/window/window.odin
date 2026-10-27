@@ -359,7 +359,10 @@ _release_unclaimed :: proc() {
 	for w in _windows {
 		if !w.open || w.host == "" || w.claimed == _pass + 1 do continue
 		if h := find(w.host); h != nil && h.ran != _pass + 1 do continue
+		// A workspace changes no layout outside its own view, so a view it
+		// let go of closes instead of getting a window of its own.
 		host_release(w)
+		w.open = false
 	}
 }
 

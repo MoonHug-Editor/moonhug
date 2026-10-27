@@ -19,6 +19,7 @@ _asked: string // owned
 
 // True keeps the view open: it holds unapplied edits, and the question is up.
 view_close_guard :: proc(w: ^wnd.Window) -> bool {
+	if workspace_view_close_guard(w) do return true
 	d, ok := session.view_document(w.key)
 	if !ok || d.view != w.key || !d.dirty do return false
 	context.allocator = runtime.default_allocator()

@@ -132,3 +132,30 @@ remove_tree :: proc(dir: string) {
 	}
 	os.remove(dir)
 }
+
+// Copies `src` and everything under it to `dst` (made fresh). A test that
+// needs project assets works on a copy: an import writes the asset's meta,
+// and a test never changes the repository.
+copy_tree :: proc(src, dst: string) -> bool {
+	remove_tree(dst)
+	// Every missing parent too: os.make_directory makes one level.
+	for i := 1; i <= len(dst); i += 1 {
+		if i == len(dst) || dst[i] == '/' do os.make_directory(dst[:i])
+	}
+	handle, err := os.open(src)
+	if err != nil do return false
+	defer os.close(handle)
+	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+	if rerr != nil do return false
+	for entry in entries {
+		from := strings.concatenate({src, "/", entry.name}, context.temp_allocator)
+		to := strings.concatenate({dst, "/", entry.name}, context.temp_allocator)
+		if entry.type == .Directory {
+			if !copy_tree(from, to) do return false
+			continue
+		}
+		data, derr := os.read_entire_file(from, context.temp_allocator)
+		if derr != nil || os.write_entire_file(to, data) != nil do return false
+	}
+	return true
+}
