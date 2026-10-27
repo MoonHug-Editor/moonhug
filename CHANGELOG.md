@@ -1,3 +1,12 @@
+## [0.150.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.149.0...v0.150.0) (2026-10-27)
+
+### Features
+
+* **animation:** playback toggle in Animation window (once, loop, clip wrap), ship only the model clips a scene references ([e964a6f](https://github.com/MoonHug-Editor/moonhug/commit/e964a6fe7a92a2f347bf147107f8dd0fb3664e6c))
+* **assets:** one artifact read path for every loader, missing files reported once and export-aware ([fb3443a](https://github.com/MoonHug-Editor/moonhug/commit/fb3443a56b0748d218cbe2eb15ad82c562c7a08d))
+* **export:** sub-asset files named by local id, an export ships only the ones scenes reference ([d6e9805](https://github.com/MoonHug-Editor/moonhug/commit/d6e9805a4f094a822fce7622c6bbfd39f2b741f4))
+* **runtime:** a missing mesh part or clip file logs once in a game build instead of failing silently ([25e0ab2](https://github.com/MoonHug-Editor/moonhug/commit/25e0ab2b04c9457a1e2496e2d60a4e21532038ea))
+
 ## [0.149.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.148.0...v0.149.0) (2026-10-26)
 
 ### Features
