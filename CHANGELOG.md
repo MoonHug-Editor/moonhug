@@ -1,3 +1,9 @@
+## [0.151.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.150.1...v0.151.0) (2026-10-27)
+
+### Features
+
+* **workspace:** loaded workspaces keep their views and documents until an explicit unload, one question for unapplied changes ([475e9fe](https://github.com/MoonHug-Editor/moonhug/commit/475e9fe779c669eefdc719e99b83778a6eff03d8))
+
 ## [0.150.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.150.0...v0.150.1) (2026-10-27)
 
 ### Bug Fixes
