@@ -9,9 +9,9 @@ package workspace
 // - A workspace has a unique id, which the workspace view remembers, a name
 //   and its frames. A frame names its views by window instance key (`id`,
 //   `id/<asset guid>`, `id/<n>`), so a hosted view reopens from it.
-// - Frames form chains, one level deep: a frame with a parent sits right of
-//   it, under its earlier siblings, and moves with it (layout). Chains keep
-//   apart: one that overlaps another moves away.
+// - Frames form trees of any depth: a frame with a parent sits right of it,
+//   under its earlier siblings and their children, and moves with it
+//   (layout). Trees keep apart: one that overlaps another moves away.
 // - Workspaces come from providers. Each provider holds a list, saves it,
 //   makes new ones. User settings and project settings are built in (this
 //   file), each in its own file. A provider's list may change: one that keeps
@@ -43,10 +43,10 @@ Frame :: struct {
 	active: int,             // the tab showing
 }
 
-// Between a frame and the frames chained to it, and between them.
+// Between a frame and the frames chained to it, and between their subtrees.
 CHAIN_COLUMN_GAP :: f32(30)
 CHAIN_ROW_GAP :: f32(20)
-// The least space between two chains.
+// The least space between two trees.
 CHAIN_SPACING :: f32(40)
 
 // Where workspaces live. `list` appends the workspaces it holds now, `save`
@@ -149,18 +149,19 @@ new_id :: proc() -> string {
 }
 
 // Adds a frame holding the view `key` at `rect`, chained to the frame
-// `parent` (an id, 0 for none), and returns its id. A frame chained to a
-// chained frame joins that frame's parent: chains are one level deep.
+// `parent` (an id, 0 for none, any frame), and returns its id. A parent no
+// frame has is none.
 frame_add :: proc(ws: ^Workspace, key: string, rect: [4]f32, parent: u32 = 0) -> u32 {
 	context.allocator = runtime.default_allocator()
-	f := Frame{id = _next_id(ws), parent = chain_root(ws, parent), rect = rect}
+	f := Frame{id = _next_id(ws), parent = parent if frame_index(ws, parent) >= 0 else 0, rect = rect}
 	append(&f.tabs, strings.clone(key))
 	append(&ws.frames, f)
 	return f.id
 }
 
 // Removes tab `tab` of frame `frame`, and the frame with its last tab. The
-// frames chained to a removed frame stay where they are, chained to nothing.
+// frames chained to a removed frame take its place under its parent
+// (_frame_remove).
 tab_remove :: proc(ws: ^Workspace, frame, tab: int) {
 	context.allocator = runtime.default_allocator()
 	f := &ws.frames[frame]
@@ -175,16 +176,33 @@ tab_remove :: proc(ws: ^Workspace, frame, tab: int) {
 	f.active = clamp(f.active, 0, len(f.tabs) - 1)
 }
 
-// Removes the frame at index `i`. The frames chained to it stay where they
-// are, chained to nothing.
+// Removes the frame at index `i`. Its children take its place: chained to
+// its parent, at its place among its siblings, in their own order. The
+// children of a removed root head their own trees.
 @(private = "file")
 _frame_remove :: proc(ws: ^Workspace, i: int) {
 	context.allocator = runtime.default_allocator()
-	id := ws.frames[i].id
+	id, parent := ws.frames[i].id, ws.frames[i].parent
 	for k in ws.frames[i].tabs do delete(k)
 	delete(ws.frames[i].tabs)
 	ordered_remove(&ws.frames, i)
-	for &c in ws.frames do if c.parent == id do c.parent = 0
+	// Sibling order is list order, so the children move to where the frame
+	// was in the list.
+	kids := make([dynamic]Frame, context.temp_allocator)
+	at := i
+	for k := 0; k < len(ws.frames); {
+		if ws.frames[k].parent != id {
+			k += 1
+			continue
+		}
+		if k < at do at -= 1
+		append(&kids, ws.frames[k])
+		ordered_remove(&ws.frames, k)
+	}
+	for &c, n in kids {
+		c.parent = parent
+		inject_at(&ws.frames, at + n, c)
+	}
 }
 
 // The index of the frame whose id is `id`, -1 for none.
@@ -194,22 +212,71 @@ frame_index :: proc(ws: ^Workspace, id: u32) -> int {
 	return -1
 }
 
-// The id of the frame that heads the chain of the frame `id`: its parent,
-// or itself. 0 for 0 or an id no frame has.
+// The id of the frame that heads the tree of the frame `id`: its topmost
+// ancestor, or itself. 0 for 0 or an id no frame has. A parent no frame has
+// ends the walk.
 chain_root :: proc(ws: ^Workspace, id: u32) -> u32 {
 	i := frame_index(ws, id)
 	if i < 0 do return 0
-	return ws.frames[i].parent if ws.frames[i].parent != 0 else id
+	for _ in 0 ..= len(ws.frames) {
+		p := frame_index(ws, ws.frames[i].parent)
+		if p < 0 do return ws.frames[i].id
+		i = p
+	}
+	panic("workspace.chain_root: the frames' parents form a cycle")
+}
+
+// Whether the frame `ancestor` is above the frame `id` in its tree: its
+// parent, its parent's parent, and so on. A frame is not its own ancestor.
+is_ancestor :: proc(ws: ^Workspace, ancestor, id: u32) -> bool {
+	if ancestor == 0 do return false
+	i := frame_index(ws, id)
+	if i < 0 do return false
+	for _ in 0 ..= len(ws.frames) {
+		p := ws.frames[i].parent
+		if p == ancestor do return true
+		i = frame_index(ws, p)
+		if i < 0 do return false
+	}
+	panic("workspace.is_ancestor: the frames' parents form a cycle")
+}
+
+// The frame `id` and every frame below it, a parent before its children,
+// siblings in their order. Empty for an id no frame has.
+subtree :: proc(ws: ^Workspace, id: u32, allocator := context.temp_allocator) -> []u32 {
+	out := make([dynamic]u32, allocator)
+	if frame_index(ws, id) < 0 do return out[:]
+	append(&out, id)
+	// Each frame's children go right after it: `out` grows as it is read.
+	for at := 0; at < len(out); at += 1 {
+		kids := 0
+		for f in ws.frames do if f.parent == out[at] {
+			inject_at(&out, at + 1 + kids, f.id)
+			kids += 1
+		}
+		if len(out) > len(ws.frames) do panic("workspace.subtree: the frames' parents form a cycle")
+	}
+	return out[:]
 }
 
 // Chains the frame `id` to the frame `parent`, or unchains it with 0. The
-// frames chained to it come along: chains are one level deep.
+// frames below it come along. Refused, with no change, when `parent` is the
+// frame itself, below it, or no frame.
 chain :: proc(ws: ^Workspace, id: u32, parent: u32) {
-	target := chain_root(ws, parent)
-	if target == id do return
-	for &f in ws.frames {
-		if f.id == id || (f.parent == id && target != 0) do f.parent = target
+	i := frame_index(ws, id)
+	if i < 0 do return
+	if parent != 0 && (parent == id || frame_index(ws, parent) < 0 || is_ancestor(ws, id, parent)) do return
+	ws.frames[i].parent = parent
+	// The frame and its subtree go to the end of the list, so a newly chained
+	// frame is its parent's last child (siblings are in list order).
+	ids := subtree(ws, id, context.temp_allocator)
+	moved := make([dynamic]Frame, 0, len(ids), context.temp_allocator)
+	for sid in ids {
+		j := frame_index(ws, sid)
+		append(&moved, ws.frames[j])
+		ordered_remove(&ws.frames, j)
 	}
+	for f in moved do append(&ws.frames, f)
 }
 
 // The place of the chained frame `id` among its siblings (the frames chained
@@ -245,13 +312,19 @@ sibling_move :: proc(ws: ^Workspace, id: u32, to: int) {
 }
 
 // Makes the frames valid, whatever a provider loaded: a frame with no tabs
-// goes (its chained frames head their own chains), every frame gets a unique
-// id, and a parent that is missing, itself, or chained is dropped. True when
-// it changed something.
+// goes (its children take its place, _frame_remove), every frame gets a
+// unique id, a parent that is missing or itself is dropped, and a frame
+// whose parents lead back to it heads its own tree, which breaks the cycle.
+// True when it changed something.
 fix :: proc(ws: ^Workspace) -> (changed: bool) {
-	for i := len(ws.frames) - 1; i >= 0; i -= 1 {
-		if len(ws.frames[i].tabs) > 0 do continue
-		_frame_remove(ws, i)
+	for {
+		empty := -1
+		for f, i in ws.frames do if len(f.tabs) == 0 {
+			empty = i
+			break
+		}
+		if empty < 0 do break
+		_frame_remove(ws, empty)
 		changed = true
 	}
 	for &f, i in ws.frames {
@@ -264,66 +337,73 @@ fix :: proc(ws: ^Workspace) -> (changed: bool) {
 	}
 	for &f in ws.frames {
 		if f.parent == 0 do continue
-		p := frame_index(ws, f.parent)
-		if p < 0 || f.parent == f.id || ws.frames[p].parent != 0 {
+		if f.parent == f.id || frame_index(ws, f.parent) < 0 {
 			f.parent = 0
 			changed = true
+		}
+	}
+	// Every parent exists now, so a walk up either ends at a root or goes
+	// round a cycle, which comes back to each of its frames within
+	// len(frames) steps. The first frame of a cycle found heads a tree.
+	for &f in ws.frames {
+		p := f.parent
+		for _ in 0 ..< len(ws.frames) {
+			if p == 0 do break
+			if p == f.id {
+				f.parent = 0
+				changed = true
+				break
+			}
+			p = ws.frames[frame_index(ws, p)].parent
 		}
 	}
 	return
 }
 
-// Places the chained frames and keeps chains apart. A chained frame sits
-// CHAIN_COLUMN_GAP right of its parent, CHAIN_ROW_GAP under the one before it,
-// in list order. Then a chain that comes nearer another than CHAIN_SPACING
-// moves away from it, by the shortest way out. The chain of the frame
-// `pinned` (an id, 0 for none) stays, the other one moves: the chain being
-// dragged or worked in pushes the rest. True when a frame moved.
+// Places the chained frames and keeps trees apart. A frame's children sit
+// CHAIN_COLUMN_GAP right of it, stacked down from its top in sibling order.
+// Each child takes the height of its subtree (its own height, or its
+// children's stacked height when that is more), and CHAIN_ROW_GAP parts one
+// from the next. Then a tree that comes nearer another than CHAIN_SPACING
+// moves away from it, by the shortest way, its box being the bounds of all
+// its frames. The tree of the frame `pinned` (an id, 0 for none) stays, the
+// other one moves: the tree being dragged or worked in pushes the rest. True
+// when a frame moved.
 layout :: proc(ws: ^Workspace, pinned: u32 = 0) -> (moved: bool) {
-	for root in ws.frames {
-		if root.parent != 0 do continue
-		x := root.rect.x + root.rect.z + CHAIN_COLUMN_GAP
-		y := root.rect.y
-		for &c in ws.frames {
-			if c.parent != root.id do continue
-			if c.rect.x != x || c.rect.y != y {
-				c.rect.x, c.rect.y = x, y
-				moved = true
-			}
-			y += c.rect.w + CHAIN_ROW_GAP
+	// Each tree as its root, its frames and the box around them (min x,
+	// min y, max x, max y). A frame whose parent no frame has heads a tree.
+	Tree :: struct {
+		root:   u32,
+		frames: []u32,
+		box:    [4]f32,
+	}
+	trees := make([dynamic]Tree, context.temp_allocator)
+	for i in 0 ..< len(ws.frames) {
+		if frame_index(ws, ws.frames[i].parent) >= 0 do continue
+		root := ws.frames[i].id
+		_place_children(ws, root, &moved)
+		t := Tree{root = root, frames = subtree(ws, root), box = {max(f32), max(f32), min(f32), min(f32)}}
+		for id in t.frames {
+			r := ws.frames[frame_index(ws, id)].rect
+			t.box = {min(t.box.x, r.x), min(t.box.y, r.y), max(t.box.z, r.x + r.z), max(t.box.w, r.y + r.w)}
 		}
+		append(&trees, t)
 	}
 
-	// Each chain as its root and the box around it (min x, min y, max x, max y).
-	Chain :: struct {
-		root: u32,
-		box:  [4]f32,
-	}
-	chains := make([dynamic]Chain, context.temp_allocator)
-	for f in ws.frames {
-		if f.parent != 0 do continue
-		append(&chains, Chain{f.id, {f.rect.x, f.rect.y, f.rect.x + f.rect.z, f.rect.y + f.rect.w}})
-	}
-	for f in ws.frames {
-		if f.parent == 0 do continue
-		for &c in chains do if c.root == f.parent {
-			c.box = {min(c.box.x, f.rect.x), min(c.box.y, f.rect.y), max(c.box.z, f.rect.x + f.rect.z), max(c.box.w, f.rect.y + f.rect.w)}
-		}
-	}
 	keep := chain_root(ws, pinned)
-	// Each pass parts every pair that is too near. Moving one chain can bring
+	// Each pass parts every pair that is too near. Moving one tree can bring
 	// it near a third, so passes repeat until none moves, a few at most.
 	for _ in 0 ..< 32 {
 		parted := false
-		for i in 0 ..< len(chains) {
-			for j in i + 1 ..< len(chains) {
-				a, b := chains[i].box, chains[j].box
+		for i in 0 ..< len(trees) {
+			for j in i + 1 ..< len(trees) {
+				a, b := trees[i].box, trees[j].box
 				g := CHAIN_SPACING
 				if !(b.x < a.z + g && a.x < b.z + g && b.y < a.w + g && a.y < b.w + g) do continue
-				// The later chain moves, unless it is the pinned one.
+				// The later tree moves, unless it is the pinned one.
 				mover, other := j, i
-				if chains[j].root == keep do mover, other = i, j
-				m, o := chains[mover].box, chains[other].box
+				if trees[j].root == keep do mover, other = i, j
+				m, o := trees[mover].box, trees[other].box
 				right := o.z + g - m.x
 				left := m.z + g - o.x
 				down := o.w + g - m.y
@@ -332,12 +412,11 @@ layout :: proc(ws: ^Workspace, pinned: u32 = 0) -> (moved: bool) {
 				if left < abs(d.x) + abs(d.y) do d = {-left, 0}
 				if down < abs(d.x) + abs(d.y) do d = {0, down}
 				if up < abs(d.x) + abs(d.y) do d = {0, -up}
-				chains[mover].box += {d.x, d.y, d.x, d.y}
-				for &f in ws.frames {
-					if f.id == chains[mover].root || f.parent == chains[mover].root {
-						f.rect.x += d.x
-						f.rect.y += d.y
-					}
+				trees[mover].box += {d.x, d.y, d.x, d.y}
+				for id in trees[mover].frames {
+					f := &ws.frames[frame_index(ws, id)]
+					f.rect.x += d.x
+					f.rect.y += d.y
 				}
 				parted = true
 				moved = true
@@ -346,6 +425,38 @@ layout :: proc(ws: ^Workspace, pinned: u32 = 0) -> (moved: bool) {
 		if !parted do break
 	}
 	return
+}
+
+// Places the children of the frame `id`, and theirs below them (layout).
+@(private = "file")
+_place_children :: proc(ws: ^Workspace, id: u32, moved: ^bool) {
+	r := ws.frames[frame_index(ws, id)].rect
+	x := r.x + r.z + CHAIN_COLUMN_GAP
+	y := r.y
+	for k in 0 ..< len(ws.frames) {
+		c := &ws.frames[k]
+		if c.parent != id do continue
+		if c.rect.x != x || c.rect.y != y {
+			c.rect.x, c.rect.y = x, y
+			moved^ = true
+		}
+		_place_children(ws, c.id, moved)
+		y += _subtree_height(ws, c.id) + CHAIN_ROW_GAP
+	}
+}
+
+// The height the frame `id` takes in its parent's column: its own, or its
+// children's stacked height when that is more.
+@(private = "file")
+_subtree_height :: proc(ws: ^Workspace, id: u32) -> f32 {
+	stacked, n := f32(0), 0
+	for f in ws.frames {
+		if f.parent != id do continue
+		if n > 0 do stacked += CHAIN_ROW_GAP
+		stacked += _subtree_height(ws, f.id)
+		n += 1
+	}
+	return max(ws.frames[frame_index(ws, id)].rect.w, stacked)
 }
 
 @(private = "file")

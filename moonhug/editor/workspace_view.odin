@@ -10,18 +10,18 @@ package editor
 // provider no longer holds it (its scene closed) shows as not open.
 //
 // - Drag the canvas background to pan. Drag a frame's grip to move its
-//   chain, its right or bottom border to resize it. A child frame's up and
+//   tree, its right or bottom border to resize it. A child frame's up and
 //   down arrows, beside its grip, move it one place among its parent's
 //   children, or with Shift to the top or the bottom.
 // - A tab dragged up or down out of its frame's tab bar drops onto another
 //   frame, joining its tabs, or onto empty canvas, where it gets a frame of
 //   its own (its frame moves there when it was the only tab). Along the bar a
 //   drag reorders the tabs.
-// - Frames form chains (workspace.layout): a frame chained to another sits
-//   right of it, linked by a curve. A window a frame's view opens joins that
-//   frame's chain (window.host_hook), and a view already in a frame is shown
-//   there when opened again. Chains keep apart: the chain being dragged or
-//   worked in pushes the others away.
+// - Frames form trees of any depth (workspace.layout): a frame chained to
+//   another sits right of it, linked by a curve. A window a frame's view
+//   opens becomes that frame's child (window.host_hook), and a view already
+//   in a frame is shown there when opened again. Trees keep apart: the tree
+//   being dragged or worked in pushes the others away.
 // - Each frame draws in a child window, so imgui's focus tells its views
 //   apart: a view takes keys while its own frame is focused.
 // - A view added from Add View opens hosted in a new frame. Move to Dock
@@ -82,11 +82,11 @@ _WS_Pending :: struct {
 _WS_View :: struct {
 	drag:       enum {None, Pan, Move, Map_Pan, Map_Move, Map_Resize},
 	drag_grip:  u32,      // a move: the frame whose grip is held
-	drag_frame: u32,      // a move: the frame heading its chain, which moves
+	drag_frame: u32,      // a move: the frame heading its tree, which moves with its subtree
 	drag_from:  im.Vec2, // mouse at the press
 	drag_start: [2]f32,  // the pan, the frame position, or the mini-map's offset or size at the press
 	focused:    int,      // the frame focused this frame, -1 for none
-	touched:    u32,      // the frame last moved, resized, clicked or opened in: its chain stays when chains part
+	touched:    u32,      // the frame last moved, resized, clicked or opened in: its tree stays when trees part
 	reveal:     string,   // owned, a view key to show next frame: its tab picked, its frame brought into view
 	pending:    [dynamic]_WS_Pending, // chained frames to add next frame
 	moves:      [dynamic]_WS_Move, // tabs dropped, moved next frame
@@ -701,7 +701,8 @@ _ws_apply_queued :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace)
 }
 
 // Moves the tabs dropped since the last frame (_WS_Move). A tab that was its
-// frame's only one onto empty canvas moves the frame itself, out of its chain.
+// frame's only one onto empty canvas moves the frame itself, with its
+// subtree, out of its parent's tree.
 @(private = "file")
 _ws_apply_moves :: proc(v: ^_WS_View, ws: ^workspace.Workspace) {
 	context.allocator = runtime.default_allocator()
@@ -933,8 +934,11 @@ _ws_frame_drop_target :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Works
 	im.EndDragDropTarget()
 }
 
-// The grip, a drag on which moves the frame's chain by the frame heading
-// it, and a child frame's order arrows after it.
+// The grip, a drag on which moves the frame's tree: the frame heading it and
+// its whole subtree, by the same amount, so the frames drawn after the grip
+// follow in the same frame. A chained frame's place follows its parent
+// (workspace.layout), so a child's grip moves the tree it is in. A child
+// frame's order arrows come after the grip.
 @(private = "file")
 _ws_frame_grip :: proc(v: ^_WS_View, ws: ^workspace.Workspace, f: ^workspace.Frame, bar_h: f32) {
 	im.InvisibleButton("##grip", {bar_h * 0.6, bar_h})
@@ -950,8 +954,13 @@ _ws_frame_grip :: proc(v: ^_WS_View, ws: ^workspace.Workspace, f: ^workspace.Fra
 	}
 	if v.drag == .Move && v.drag_grip == f.id {
 		if r := workspace.frame_index(ws, v.drag_frame); r >= 0 && im.IsItemActive() {
-			d := im.GetMousePos() - v.drag_from
-			ws.frames[r].rect.x, ws.frames[r].rect.y = v.drag_start.x + d.x, v.drag_start.y + d.y
+			to := v.drag_start + (im.GetMousePos() - v.drag_from)
+			d := to - {ws.frames[r].rect.x, ws.frames[r].rect.y}
+			for id in workspace.subtree(ws, v.drag_frame) {
+				g := &ws.frames[workspace.frame_index(ws, id)]
+				g.rect.x += d.x
+				g.rect.y += d.y
+			}
 		} else {
 			v.drag = .None
 			workspace.changed(ws)
@@ -960,7 +969,7 @@ _ws_frame_grip :: proc(v: ^_WS_View, ws: ^workspace.Workspace, f: ^workspace.Fra
 	gmin := im.GetItemRectMin()
 	gsz := im.CalcTextSize(icons.ICON_MD_DRAG_INDICATOR)
 	im.DrawList_AddText(im.GetWindowDrawList(), gmin + (im.Vec2{bar_h * 0.6, bar_h} - gsz) * 0.5, im.GetColorU32(.Text if grip_hot else .TextDisabled), icons.ICON_MD_DRAG_INDICATOR)
-	widgets.tooltip("Drag to move the frame with its parent and children" if f.parent != 0 else "Drag to move the frame with its children")
+	widgets.tooltip("Drag to move the frame's whole tree" if f.parent != 0 else "Drag to move the frame with its children")
 	if f.parent != 0 {
 		im.SameLine(0, 0)
 		_ws_order_arrows(v, ws, f^, bar_h)
@@ -1045,9 +1054,9 @@ _ws_close_tab :: proc(v: ^_WS_View, key: string) {
 }
 
 // The frame's ⋮ menu: the active view's own items (tab_menu_view_items),
-// Move to Dock, Add Tab, and the chain: Add Child (a view in a new child
-// frame), Set Parent, Unparent. Its actions apply at the next frame's start
-// (_ws_apply_edits).
+// Move to Dock, Add Tab, and the tree: Add Child (a view in a new child
+// frame), Set Parent (a menu of the trees, _ws_parent_menu), Unparent. Its
+// actions apply at the next frame's start (_ws_apply_edits).
 @(private = "file")
 _ws_frame_menu :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, f: workspace.Frame) {
 	key := f.tabs[f.active]
@@ -1068,17 +1077,43 @@ _ws_frame_menu :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace, f
 		}
 		im.EndMenu()
 	}
-	own := workspace.chain_root(ws, f.id)
+	// Any frame but this one and the frames below it can be its parent.
 	others := false
-	for g in ws.frames do if g.parent == 0 && g.id != own do others = true
+	for g in ws.frames do if g.id != f.id && !workspace.is_ancestor(ws, f.id, g.id) do others = true
 	if im.BeginMenu("Set Parent", others) {
-		for g in ws.frames {
-			if g.parent != 0 || g.id == own do continue
-			if im.MenuItem(_ws_frame_label(g)) do _ws_edit_queue(v, {kind = .Set_Parent, frame = f.id, parent = g.id})
-		}
+		_ws_parent_menu(v, ws, f, 0)
 		im.EndMenu()
 	}
 	if im.MenuItem("Unparent", nil, false, f.parent != 0) do _ws_edit_queue(v, {kind = .Unparent, frame = f.id})
+}
+
+// The Set Parent items for the children of the frame `parent` (0: the
+// roots), in sibling order. A frame with no children to show is an item that
+// parents `f` to it. One with children is a submenu: first "+ <label>",
+// which parents `f` to it, then its children the same way. The frame `f` is
+// left out with its subtree: none of it can be its parent. Its parent now is
+// checked.
+@(private = "file")
+_ws_parent_menu :: proc(v: ^_WS_View, ws: ^workspace.Workspace, f: workspace.Frame, parent: u32) {
+	for g in ws.frames {
+		if g.parent != parent || g.id == f.id do continue
+		im.PushIDInt(i32(g.id))
+		defer im.PopID()
+		kids := false
+		for c in ws.frames do if c.parent == g.id && c.id != f.id do kids = true
+		label := _ws_frame_label(g)
+		current := g.id == f.parent
+		if !kids {
+			if im.MenuItem(label, nil, current) do _ws_edit_queue(v, {kind = .Set_Parent, frame = f.id, parent = g.id})
+			continue
+		}
+		if im.BeginMenu(label) {
+			if im.MenuItem(fmt.ctprintf("+ %s", label), nil, current) do _ws_edit_queue(v, {kind = .Set_Parent, frame = f.id, parent = g.id})
+			im.Separator()
+			_ws_parent_menu(v, ws, f, g.id)
+			im.EndMenu()
+		}
+	}
 }
 
 // Queues a frame menu action. Its key is cloned.
@@ -1114,7 +1149,7 @@ _ws_apply_edits :: proc(w: ^wnd.Window, v: ^_WS_View, ws: ^workspace.Workspace) 
 			workspace.chain(ws, e.frame, e.parent)
 			v.touched = e.parent
 		case .Unparent:
-			// The parent's chain stays, so the frame moves out of its way.
+			// The parent's tree stays, so the frame moves out of its way.
 			v.touched = ws.frames[fi].parent
 			workspace.chain(ws, e.frame, 0)
 		}

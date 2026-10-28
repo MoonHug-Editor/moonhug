@@ -9,6 +9,7 @@ package editor_tests
 import "base:runtime"
 import "core:os"
 import "core:path/filepath"
+import "core:slice"
 import "core:strings"
 import "core:testing"
 import "moonhug:editor/workspace"
@@ -118,31 +119,62 @@ test_workspaces_from_providers :: proc(t: ^testing.T) {
 	testing.expect(t, !still, "a workspace its provider does not hold is not found")
 }
 
-// Chains (workspace.layout): a chained frame sits right of its parent, under
-// the one before it, and a frame chained to a chained frame joins its
-// parent, so chains stay one level deep.
+// The frame `id`'s position.
+@(private = "file")
+_pos :: proc(ws: ^workspace.Workspace, id: u32) -> [2]f32 {
+	r := ws.frames[workspace.frame_index(ws, id)].rect
+	return {r.x, r.y}
+}
+
+// Trees (workspace.layout): a child sits right of its parent, and each child
+// of a frame takes the height of its subtree in the column, so a deeper
+// child pushes its later siblings down. The tree moves with its root.
 @(test)
 test_workspace_chain_layout :: proc(t: ^testing.T) {
 	ws := workspace.make_workspace("Chains")
 	defer workspace.workspace_free(ws)
 	a := workspace.frame_add(ws, "A", {0, 0, 100, 50})
 	b := workspace.frame_add(ws, "B", {999, 999, 80, 40}, a)
-	c := workspace.frame_add(ws, "C", {0, 0, 60, 30}, b)
-	testing.expect_value(t, ws.frames[2].parent, a)
+	c := workspace.frame_add(ws, "C", {0, 0, 60, 100}, b)
+	d := workspace.frame_add(ws, "D", {0, 0, 70, 30}, a)
+	testing.expect_value(t, ws.frames[2].parent, b)
+	testing.expect_value(t, workspace.chain_root(ws, c), a)
 	workspace.layout(ws)
 	gx := 100 + workspace.CHAIN_COLUMN_GAP
-	testing.expect_value(t, [2]f32{ws.frames[1].rect.x, ws.frames[1].rect.y}, [2]f32{gx, 0})
-	testing.expect_value(t, [2]f32{ws.frames[2].rect.x, ws.frames[2].rect.y}, [2]f32{gx, 40 + workspace.CHAIN_ROW_GAP})
+	testing.expect_value(t, _pos(ws, b), [2]f32{gx, 0})
+	testing.expect_value(t, _pos(ws, c), [2]f32{gx + 80 + workspace.CHAIN_COLUMN_GAP, 0})
+	// B's subtree is as tall as C, taller than B itself.
+	testing.expect_value(t, _pos(ws, d), [2]f32{gx, 100 + workspace.CHAIN_ROW_GAP})
 
-	// The chain moves with the frame heading it.
+	// The tree moves with the frame heading it.
 	ws.frames[0].rect.x, ws.frames[0].rect.y = 500, 300
 	workspace.layout(ws)
-	testing.expect_value(t, [2]f32{ws.frames[2].rect.x, ws.frames[2].rect.y}, [2]f32{600 + workspace.CHAIN_COLUMN_GAP, 300 + 40 + workspace.CHAIN_ROW_GAP})
+	testing.expect_value(t, _pos(ws, c), [2]f32{600 + 2 * workspace.CHAIN_COLUMN_GAP + 80, 300})
+	testing.expect_value(t, _pos(ws, d), [2]f32{600 + workspace.CHAIN_COLUMN_GAP, 300 + 100 + workspace.CHAIN_ROW_GAP})
 
-	// Unchained, a frame stays where it is and heads its own chain.
-	workspace.chain(ws, c, 0)
-	testing.expect_value(t, ws.frames[2].parent, u32(0))
-	testing.expect_value(t, workspace.chain_root(ws, c), c)
+	// Unchained, a frame stays where it is and heads its own tree, with its
+	// children: the rest stacks up in the column.
+	workspace.chain(ws, b, 0)
+	testing.expect_value(t, ws.frames[workspace.frame_index(ws, b)].parent, u32(0))
+	testing.expect_value(t, workspace.chain_root(ws, c), b)
+	workspace.layout(ws, a)
+	testing.expect_value(t, _pos(ws, d), [2]f32{600 + workspace.CHAIN_COLUMN_GAP, 300})
+}
+
+// A tree's box holds all its frames: another tree near its grandchild parts
+// from it.
+@(test)
+test_workspace_trees_keep_apart :: proc(t: ^testing.T) {
+	ws := workspace.make_workspace("Trees")
+	defer workspace.workspace_free(ws)
+	a := workspace.frame_add(ws, "A", {0, 0, 100, 50})
+	b := workspace.frame_add(ws, "B", {0, 0, 100, 50}, a)
+	c := workspace.frame_add(ws, "C", {0, 0, 100, 50}, b)
+	z := workspace.frame_add(ws, "Z", {260, 60, 100, 50})
+	workspace.layout(ws, a)
+	// C spans x 260..360, y 0..50. Z, below it, moves down the shortest way.
+	testing.expect_value(t, _pos(ws, c), [2]f32{260, 0})
+	testing.expect_value(t, _pos(ws, z), [2]f32{260, 50 + workspace.CHAIN_SPACING})
 }
 
 // A chain nearer another than CHAIN_SPACING moves away by the shortest way.
@@ -166,7 +198,7 @@ test_workspace_chains_keep_apart :: proc(t: ^testing.T) {
 }
 
 // fix makes whatever a provider loaded valid: unique ids, and no parent that
-// is missing or chained.
+// is missing. A chained parent stays: trees have any depth.
 @(test)
 test_workspace_fix :: proc(t: ^testing.T) {
 	ws := workspace.make_workspace("Fix")
@@ -179,31 +211,123 @@ test_workspace_fix :: proc(t: ^testing.T) {
 		for g in ws.frames[:i] do testing.expect(t, g.id != f.id, "ids are unique")
 	}
 	testing.expect_value(t, ws.frames[3].parent, u32(5))
-	testing.expect_value(t, ws.frames[4].parent, u32(0)) // its parent is chained
+	testing.expect_value(t, ws.frames[4].parent, u32(7)) // its parent is chained, which is fine
 	testing.expect_value(t, ws.frames[5].parent, u32(0)) // its parent is missing
 	testing.expect(t, !workspace.fix(ws), "valid now")
 }
 
-// A frame that goes leaves the frames chained to it where they are, each
-// heading its own chain. Chaining a frame that heads a chain brings its
-// frames along.
+// Chaining a frame brings its subtree along. A root that goes leaves its
+// children where they are, each heading its own tree, with their own
+// children still under them.
 @(test)
 test_workspace_chain_edits :: proc(t: ^testing.T) {
 	ws := workspace.make_workspace("Edits")
 	defer workspace.workspace_free(ws)
 	a := workspace.frame_add(ws, "A", {0, 0, 100, 50})
-	workspace.frame_add(ws, "B", {0, 0, 80, 40}, a)
+	b := workspace.frame_add(ws, "B", {0, 0, 80, 40}, a)
 	x := workspace.frame_add(ws, "X", {800, 0, 100, 50})
 	workspace.chain(ws, a, x)
-	for f in ws.frames[:2] do testing.expect_value(t, f.parent, x)
+	// A chained frame and its subtree go to the end of the list: the last child.
+	testing.expect_value(t, ws.frames[workspace.frame_index(ws, a)].parent, x)
+	testing.expect_value(t, ws.frames[workspace.frame_index(ws, b)].parent, a)
+	testing.expect_value(t, workspace.frame_index(ws, x), 0)
 
 	workspace.layout(ws, x)
-	before := ws.frames[0].rect
-	workspace.tab_remove(ws, 2, 0) // X goes with its only tab
+	before := ws.frames[workspace.frame_index(ws, a)].rect
+	workspace.tab_remove(ws, workspace.frame_index(ws, x), 0) // X goes with its only tab
 	testing.expect_value(t, len(ws.frames), 2)
-	testing.expect_value(t, ws.frames[0].parent, u32(0))
-	testing.expect_value(t, ws.frames[1].parent, u32(0))
-	testing.expect_value(t, ws.frames[0].rect, before)
+	ai, bi := workspace.frame_index(ws, a), workspace.frame_index(ws, b)
+	testing.expect_value(t, ws.frames[ai].parent, u32(0))
+	testing.expect_value(t, ws.frames[bi].parent, a)
+	testing.expect_value(t, ws.frames[ai].rect, before)
+}
+
+// A middle frame that goes hands its children to its parent, at its own
+// place among its siblings, in their order: the tree condenses.
+@(test)
+test_workspace_remove_condenses :: proc(t: ^testing.T) {
+	ws := workspace.make_workspace("Condense")
+	defer workspace.workspace_free(ws)
+	a := workspace.frame_add(ws, "A", {0, 0, 100, 50})
+	b := workspace.frame_add(ws, "B", {0, 0, 80, 40}, a)
+	c := workspace.frame_add(ws, "C", {0, 0, 80, 40}) // made before X: its place comes from the list
+	x := workspace.frame_add(ws, "X", {0, 0, 80, 40}, a)
+	workspace.chain(ws, c, x)
+	e := workspace.frame_add(ws, "E", {0, 0, 80, 40}, x)
+	g := workspace.frame_add(ws, "G", {0, 0, 80, 40}, e)
+	f := workspace.frame_add(ws, "F", {0, 0, 80, 40}, a)
+
+	workspace.tab_remove(ws, workspace.frame_index(ws, x), 0)
+	kids := make([dynamic]u32, context.temp_allocator)
+	for fr in ws.frames do if fr.parent == a do append(&kids, fr.id)
+	testing.expect_value(t, len(kids), 4)
+	if len(kids) == 4 do testing.expect_value(t, [4]u32{kids[0], kids[1], kids[2], kids[3]}, [4]u32{b, c, e, f})
+	testing.expect_value(t, ws.frames[workspace.frame_index(ws, g)].parent, e)
+	testing.expect_value(t, workspace.sibling_index(ws, e), 2)
+
+	workspace.layout(ws)
+	gx := 100 + workspace.CHAIN_COLUMN_GAP
+	testing.expect_value(t, _pos(ws, c), [2]f32{gx, 40 + workspace.CHAIN_ROW_GAP})
+	testing.expect_value(t, _pos(ws, f), [2]f32{gx, 3 * (40 + workspace.CHAIN_ROW_GAP)})
+}
+
+// chain refuses a parent that is the frame itself or below it, and changes
+// nothing.
+@(test)
+test_workspace_chain_refuses_cycle :: proc(t: ^testing.T) {
+	ws := workspace.make_workspace("Cycle")
+	defer workspace.workspace_free(ws)
+	a := workspace.frame_add(ws, "A", {0, 0, 100, 50})
+	b := workspace.frame_add(ws, "B", {0, 0, 100, 50}, a)
+	c := workspace.frame_add(ws, "C", {0, 0, 100, 50}, b)
+	testing.expect(t, workspace.is_ancestor(ws, a, c), "A is above C")
+	testing.expect(t, !workspace.is_ancestor(ws, c, a), "C is not above A")
+	testing.expect(t, !workspace.is_ancestor(ws, a, a), "a frame is not its own ancestor")
+	workspace.chain(ws, a, c)
+	workspace.chain(ws, a, b)
+	workspace.chain(ws, b, b)
+	workspace.chain(ws, b, 999)
+	testing.expect_value(t, [3]u32{ws.frames[0].parent, ws.frames[1].parent, ws.frames[2].parent}, [3]u32{0, a, b})
+
+	// Moving C up to A is fine.
+	workspace.chain(ws, c, a)
+	testing.expect_value(t, ws.frames[2].parent, a)
+}
+
+// fix breaks a cycle a provider saved: the first frame of it in the list
+// heads its tree, and the rest keep their parents.
+@(test)
+test_workspace_fix_breaks_cycle :: proc(t: ^testing.T) {
+	ws := workspace.make_workspace("Saved cycle")
+	defer workspace.workspace_free(ws)
+	append(&ws.frames, workspace.Frame{id = 1, parent = 3}, workspace.Frame{id = 2, parent = 1}, workspace.Frame{id = 3, parent = 2}, workspace.Frame{id = 4, parent = 2}, workspace.Frame{id = 5, parent = 5})
+	for &f in ws.frames do append(&f.tabs, _clone("View"))
+	testing.expect(t, workspace.fix(ws), "it repairs")
+	got: [5]u32
+	for f, i in ws.frames do got[i] = f.parent
+	testing.expect_value(t, got, [5]u32{0, 1, 2, 2, 0})
+	testing.expect_value(t, workspace.chain_root(ws, 4), u32(1))
+	testing.expect(t, !workspace.fix(ws), "valid now")
+	workspace.layout(ws)
+}
+
+// subtree lists a frame and every frame below it, a parent before its
+// children, siblings in their order.
+@(test)
+test_workspace_subtree_order :: proc(t: ^testing.T) {
+	ws := workspace.make_workspace("Subtree")
+	defer workspace.workspace_free(ws)
+	a := workspace.frame_add(ws, "A", {0, 0, 100, 50})
+	b := workspace.frame_add(ws, "B", {0, 0, 100, 50}, a)
+	c := workspace.frame_add(ws, "C", {0, 0, 100, 50}, b)
+	d := workspace.frame_add(ws, "D", {0, 0, 100, 50}, a)
+	e := workspace.frame_add(ws, "E", {0, 0, 100, 50}, c)
+	z := workspace.frame_add(ws, "Z", {0, 0, 100, 50})
+	f := workspace.frame_add(ws, "F", {0, 0, 100, 50}, b)
+	testing.expect(t, slice.equal(workspace.subtree(ws, a), []u32{a, b, c, e, f, d}), "the whole tree, depth first")
+	testing.expect(t, slice.equal(workspace.subtree(ws, b), []u32{b, c, e, f}), "a subtree")
+	testing.expect(t, slice.equal(workspace.subtree(ws, z), []u32{z}), "a lone frame")
+	testing.expect_value(t, len(workspace.subtree(ws, 999)), 0)
 }
 
 // A child moves among its siblings, and the layout stacks it in its new place.
