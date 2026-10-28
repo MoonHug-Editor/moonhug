@@ -1,3 +1,9 @@
+## [0.152.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.151.0...v0.152.0) (2026-10-28)
+
+### Features
+
+* workspace no parent depth limit, set parent menu as tree ([64b10ab](https://github.com/MoonHug-Editor/moonhug/commit/64b10ab38a0341e74bbe60154ad764d79a08da07))
+
 ## [0.151.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.150.1...v0.151.0) (2026-10-27)
 
 ### Features
