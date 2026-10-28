@@ -5,221 +5,268 @@
     "__type_guid": "fadd5659-ad40-4e00-95c7-908efc8e8631",
     "clips": [
       {
-        "guid": "28b0cd20-1bd7-454a-9939-334a99170672",
         "id": 2,
-        "name": "A_TPose"
+        "name": "A_TPose",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "7f0c9e70-53ce-41fa-a078-6957ef9f0c33",
         "id": 3,
-        "name": "Crouch_Fwd_Loop"
+        "name": "Crouch_Fwd_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "d92c706c-963c-4967-8a91-71685aceaf19",
         "id": 4,
-        "name": "Crouch_Idle_Loop"
+        "name": "Crouch_Idle_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "dd837374-4461-4b23-9c0c-f9c9a6331bdd",
         "id": 5,
-        "name": "Dance_Loop"
+        "name": "Dance_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "3268a6bf-9817-4535-bdc2-543aba3432ff",
         "id": 6,
-        "name": "Death01"
+        "name": "Death01",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "5d23e136-2264-40f3-be68-b4c9d17bebd9",
         "id": 7,
-        "name": "Driving_Loop"
+        "name": "Driving_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "097f4e11-2ae7-4325-b2f4-205ae01f299a",
         "id": 8,
-        "name": "Fixing_Kneeling"
+        "name": "Fixing_Kneeling",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "0ea5d0e7-dc4e-49c1-bc2a-c72350d30216",
         "id": 9,
-        "name": "Hit_Chest"
+        "name": "Hit_Chest",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "b96ddb1c-1c9b-4684-85a7-6628616f0333",
         "id": 10,
-        "name": "Hit_Head"
+        "name": "Hit_Head",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "ed7f6ad6-792f-4637-9545-55f122d2e61a",
         "id": 11,
-        "name": "Idle_Loop"
+        "name": "Idle_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "6137a599-3f03-447e-90b8-1096c88224ff",
         "id": 12,
-        "name": "Idle_Talking_Loop"
+        "name": "Idle_Talking_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "2c234331-7b9d-4c36-943b-9d21a89e11e8",
         "id": 13,
-        "name": "Idle_Torch_Loop"
+        "name": "Idle_Torch_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "67c8fa17-aaaa-48f8-8e42-1ac1da71977a",
         "id": 14,
-        "name": "Interact"
+        "name": "Interact",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "bee57051-7aa6-48db-adbb-254444addc35",
         "id": 15,
-        "name": "Jog_Fwd_Loop"
+        "name": "Jog_Fwd_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "f6fee7ba-ff37-4238-818d-e6dca8a99be3",
         "id": 16,
-        "name": "Jump_Land"
+        "name": "Jump_Land",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "5057dfca-7221-40bc-85fa-ad51956f3ef0",
         "id": 17,
-        "name": "Jump_Loop"
+        "name": "Jump_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "dd6366a4-229a-4ac0-a2c0-b22ca0e86beb",
         "id": 18,
-        "name": "Jump_Start"
+        "name": "Jump_Start",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "ef99250d-d463-4862-b452-c4f7e2974588",
         "id": 19,
-        "name": "PickUp_Table"
+        "name": "PickUp_Table",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "f716988e-1d02-4879-81d3-634289996abe",
         "id": 20,
-        "name": "Pistol_Aim_Down"
+        "name": "Pistol_Aim_Down",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "d2707e3d-df74-4001-98b8-dd040de4586d",
         "id": 21,
-        "name": "Pistol_Aim_Neutral"
+        "name": "Pistol_Aim_Neutral",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "b1cdc315-2683-4ea9-80c6-71e0d8056619",
         "id": 22,
-        "name": "Pistol_Aim_Up"
+        "name": "Pistol_Aim_Up",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "38764366-8a82-4590-84c4-47e581209d6a",
         "id": 23,
-        "name": "Pistol_Idle_Loop"
+        "name": "Pistol_Idle_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "d8a5ff66-3105-4b54-a13f-13e3bdd9583f",
         "id": 24,
-        "name": "Pistol_Reload"
+        "name": "Pistol_Reload",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "8a72995e-9bfe-41e2-9498-69b5f7924bab",
         "id": 25,
-        "name": "Pistol_Shoot"
+        "name": "Pistol_Shoot",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "9536a6c8-e8e1-4ff8-96cf-962460f2f465",
         "id": 26,
-        "name": "Punch_Cross"
+        "name": "Punch_Cross",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "5e44452e-6729-49d9-aa35-03a2ec06fa6a",
         "id": 27,
-        "name": "Punch_Jab"
+        "name": "Punch_Jab",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "ac35d662-5c91-465c-8127-69da03e9707a",
         "id": 28,
-        "name": "Push_Loop"
+        "name": "Push_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "b643e9f8-99f9-417e-97f4-e4396d6a69ba",
         "id": 29,
-        "name": "Roll"
+        "name": "Roll",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "70fba13e-d95c-48d5-88c7-027562746987",
         "id": 30,
-        "name": "Sitting_Enter"
+        "name": "Sitting_Enter",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "feee554e-140b-4447-ac32-782b789e9e47",
         "id": 31,
-        "name": "Sitting_Exit"
+        "name": "Sitting_Exit",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "a66379cd-d9bb-46cc-814f-ddfc77c04445",
         "id": 32,
-        "name": "Sitting_Idle_Loop"
+        "name": "Sitting_Idle_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "9783a247-9031-4336-944d-e236c574c99e",
         "id": 33,
-        "name": "Sitting_Talking_Loop"
+        "name": "Sitting_Talking_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "ec66bf5f-6503-46e9-9ab5-bcc355a9e219",
         "id": 34,
-        "name": "Spell_Simple_Enter"
+        "name": "Spell_Simple_Enter",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "8458709d-aadd-4522-a840-3116be746570",
         "id": 35,
-        "name": "Spell_Simple_Exit"
+        "name": "Spell_Simple_Exit",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "12a2e51d-5e33-4c54-ba73-21d8ba2aa7f4",
         "id": 36,
-        "name": "Spell_Simple_Idle_Loop"
+        "name": "Spell_Simple_Idle_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "58fa6bf7-d60b-432c-97fa-bc295f11ad50",
         "id": 37,
-        "name": "Spell_Simple_Shoot"
+        "name": "Spell_Simple_Shoot",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "e7a02327-4b57-4651-ad85-e19c3630ace2",
         "id": 38,
-        "name": "Sprint_Loop"
+        "name": "Sprint_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "58d85f5e-8e51-4e69-9725-ca5920f0b88a",
         "id": 39,
-        "name": "Swim_Fwd_Loop"
+        "name": "Swim_Fwd_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "fcc0719f-6842-448d-a44e-bc23a6b5da32",
         "id": 40,
-        "name": "Swim_Idle_Loop"
+        "name": "Swim_Idle_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "731e21da-708c-44e2-94a7-f3f4171ba9df",
         "id": 41,
-        "name": "Sword_Attack"
+        "name": "Sword_Attack",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "d8f5cfa9-136d-472d-9ce1-0e0c775e454c",
         "id": 42,
-        "name": "Sword_Idle"
+        "name": "Sword_Idle",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "65af74c3-dd50-4b31-8e93-c83deff3e3eb",
         "id": 43,
-        "name": "Walk_Formal_Loop"
+        "name": "Walk_Formal_Loop",
+        "orphan": false,
+        "settings": null
       },
       {
-        "guid": "3437be89-ac15-42b4-bbda-9f8ce3ec1427",
         "id": 44,
-        "name": "Walk_Loop"
+        "name": "Walk_Loop",
+        "orphan": false,
+        "settings": null
       }
     ],
+    "hull_sets": [
+
+    ],
+    "next_id": 45,
     "parts": [
       {
         "id": 1,
