@@ -417,3 +417,43 @@ test_lane_driven_value_fills_disabled_lanes :: proc(t: ^testing.T) {
 	testing.expect_value(t, _lane_doc_clip(doc).channels[0].lanes_off, anim.Channel_Lanes_Off{})
 	testing.expect_value(t, tr.position, [3]f32{5, 9, 7})
 }
+
+// An Euler row with only y enabled turns the transform around y, the other
+// angles from the rotation at bind time. Two clips with euler keys blend as
+// quaternions: 350 and 10 degrees at half weight give 0, not 180.
+@(test)
+test_lane_euler_rows_play_as_quaternions :: proc(t: ^testing.T) {
+	lt: _Lane_Test
+	_lane_setup(&lt)
+	context.user_ptr = &lt.tc.uc
+	defer _lane_teardown(&lt)
+
+	w := engine.ctx_world()
+	tr := engine.pool_get(&w.transforms, engine.Handle(lt.owner))
+	tr.rotation = anim.animation_quat_from_euler({10, 20, 30})
+
+	// y stays clear of 90, where x and z lose their meaning.
+	a := _lane_clip()
+	_lane_row(&a, .Euler, "", {0, 60, 0, 0}, {0, 2})
+	a_ref := engine.PPtr{guid = _clip_guid(0xB4)}
+	anim.animation_clip_cache[a_ref] = a
+	leaf := anim.playable_add(&lt.g, anim.Playable_Clip{clip = a_ref})
+	anim.animation_pose_apply(&lt.b, anim.playable_graph_evaluate(&lt.g, leaf, &lt.b))
+	e := engine.quat_to_euler_xyz(tr.rotation)
+	testing.expectf(t, _near3(e, {10, 60, 30}), "y from the row, x and z from the bind rotation, got %v", e)
+
+	b := _lane_clip()
+	_lane_row(&b, .Euler, "", {0, 350, 0, 0}, {})
+	c := _lane_clip()
+	_lane_row(&c, .Euler, "", {0, 10, 0, 0}, {})
+	b_ref, c_ref := engine.PPtr{guid = _clip_guid(0xB5)}, engine.PPtr{guid = _clip_guid(0xB6)}
+	anim.animation_clip_cache[b_ref] = b
+	anim.animation_clip_cache[c_ref] = c
+	mixer := anim.playable_add(&lt.g, anim.Playable_Mixer{})
+	anim.playable_connect(&lt.g, mixer, anim.playable_add(&lt.g, anim.Playable_Clip{clip = b_ref}), 0.5)
+	anim.playable_connect(&lt.g, mixer, anim.playable_add(&lt.g, anim.Playable_Clip{clip = c_ref}), 0.5)
+	anim.animation_pose_apply(&lt.b, anim.playable_graph_evaluate(&lt.g, mixer, &lt.b))
+	e = engine.quat_to_euler_xyz(tr.rotation)
+	testing.expectf(t, abs(e.x) < 0.5 && abs(e.y) < 0.5 && abs(e.z) < 0.5, "350 and 10 blend to 0 as quaternions, got %v", e)
+}
+

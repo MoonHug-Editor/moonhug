@@ -244,15 +244,15 @@ Lane_Acc :: struct {
 // Accumulated weighted sums per bound transform. Position and scale are lane
 // sums (Lane_Acc, first three lanes). Rotations accumulate nlerp-style with
 // neighborhood correction (contributions flipped into the accumulator's
-// hemisphere): rot = sum(w_i * q_i), rot_w = sum(w_i). Euler rows accumulate
-// their angles per lane in `eul`, like a position, and replace those angles
-// on the quaternion result at apply (animation_pose_apply).
+// hemisphere): rot = sum(w_i * q_i), rot_w = sum(w_i). A clip's Euler rows
+// become one quaternion at the clip (_eval_node), so the rotation blends as
+// a whole above it: a rotation is a quaternion, euler angles are its
+// authoring form.
 Pose_Value :: struct {
 	pos:   Lane_Acc,
 	rot:   [4]f32,
 	rot_w: f32,
 	scl:   Lane_Acc,
-	eul:   Lane_Acc,
 }
 
 // One accumulated property channel. Continuous kinds accumulate float lanes
@@ -302,15 +302,11 @@ Binding_Slot :: struct {
 	target:      engine.Transform_Handle,
 	resolved:    bool,
 	animated:    Pose_Props,
-	// The position, scale and euler lanes any bound row animates. A lane
-	// outside them keeps the transform's current value at every write.
+	// The position and scale lanes any bound row animates. A lane outside
+	// them keeps the transform's current value at every write. A rotation
+	// has no lanes: an Euler row's unanimated angles come from default_rot.
 	pos_lanes:   Lane_Set,
 	scl_lanes:   Lane_Set,
-	eul_lanes:   Lane_Set,
-	// A Rotation (quaternion) row is bound: the rotation starts from the
-	// quaternion blend. Without one it starts from the transform's own
-	// rotation and only the euler lanes change it.
-	rot_quat:    bool,
 	default_pos: [3]f32,
 	default_rot: [4]f32,
 	default_scl: [3]f32,
@@ -367,11 +363,9 @@ _binding_slot :: proc(b: ^Animation_Binding, path: string, ch_path: Animation_Pa
 		_binding_resolve(b, s)
 		b.by_path[s.path] = i32(len(b.slots) - 1)
 	}
-	switch ch_path {
+	#partial switch ch_path {
 	case .Position: s.pos_lanes += lanes
 	case .Scale:    s.scl_lanes += lanes
-	case .Euler:    s.eul_lanes += lanes
-	case .Rotation: s.rot_quat = true
 	}
 }
 
@@ -630,6 +624,10 @@ _eval_node :: proc(
 		clip, ok := animation_clip_load(v.clip)
 		if !ok do return
 		t := animation_clip_sample_time(clip, playable_node_time(n))
+		// The clip's euler angles per slot, and the lanes its Euler rows
+		// set, turned into the slot's quaternion after the rows (_eval_euler).
+		eul := make([][4]f32, len(out.trs), allocator)
+		eul_lanes := make([]Lane_Set, len(out.trs), allocator)
 		for &ch in clip.channels {
 			// No keys, nothing to contribute: sampling would write zeros over
 			// the pose (see animation_clip_apply).
@@ -658,9 +656,15 @@ _eval_node :: proc(
 			case .Position: _lane_acc_leaf(&pv.pos, val, animation_channel_lanes_off(&ch, .Vec3))
 			case .Rotation: pv.rot = val; pv.rot_w = 1
 			case .Scale:    _lane_acc_leaf(&pv.scl, val, animation_channel_lanes_off(&ch, .Vec3))
-			case .Euler:    _lane_acc_leaf(&pv.eul, val, animation_channel_lanes_off(&ch, .Vec3))
+			case .Euler:
+				off := animation_channel_lanes_off(&ch, .Vec3)
+				for l in 0 ..< 3 do if l not_in off {
+					eul[idx][l] = val[l]
+					eul_lanes[idx] += {l}
+				}
 			}
 		}
+		for lanes, idx in eul_lanes do if lanes != {} do _eval_euler(&out.trs[idx], &b.slots[idx], eul[idx], lanes)
 	case Playable_Mixer:
 		for inp in n.inputs {
 			if inp.weight <= PLAYABLE_WEIGHT_EPS do continue
@@ -779,7 +783,6 @@ _pose_accumulate :: proc(out, child: Pose, w: f32, b: ^Animation_Binding) {
 		o := &out.trs[i]
 		_lane_acc_add(&o.pos, c.pos, w)
 		_lane_acc_add(&o.scl, c.scl, w)
-		_lane_acc_add(&o.eul, c.eul, w)
 		if c.rot_w > PLAYABLE_WEIGHT_EPS {
 			cw := min(c.rot_w, 1)
 			q := (1.0 / c.rot_w) * c.rot
@@ -811,8 +814,6 @@ _pose_set_default :: proc(out: Pose, b: ^Animation_Binding) {
 		if .Rotation in s.animated {
 			o.rot = s.default_rot
 			o.rot_w = 1
-			e := engine.quat_to_euler_xyz(s.default_rot)
-			o.eul = _lane_acc_full({e.x, e.y, e.z, 0}, s.eul_lanes)
 		}
 		if .Scale in s.animated do o.scl = _lane_acc_full({s.default_scl.x, s.default_scl.y, s.default_scl.z, 0}, s.scl_lanes)
 	}
@@ -851,7 +852,6 @@ _pose_blend_over :: proc(out, child: Pose, layer_w: f32, b: ^Animation_Binding) 
 		o := &out.trs[i]
 		_lane_acc_over(&o.pos, c.pos, layer_w)
 		_lane_acc_over(&o.scl, c.scl, layer_w)
-		_lane_acc_over(&o.eul, c.eul, layer_w)
 		if c.rot_w > PLAYABLE_WEIGHT_EPS {
 			eff := layer_w * min(c.rot_w, 1)
 			q := (1.0 / c.rot_w) * c.rot
@@ -915,7 +915,7 @@ animation_pose_apply :: proc(b: ^Animation_Binding, pose: Pose) {
 		if t == nil do continue
 		p := &pose.trs[i]
 		if .Position in s.animated do t.position = _finalize_vec(p.pos, s.pos_lanes, s.default_pos, t.position)
-		if .Rotation in s.animated do t.rotation = _finalize_rot(p, s, t.rotation)
+		if .Rotation in s.animated do t.rotation = _finalize_quat(p.rot, p.rot_w, s.default_rot)
 		if .Scale in s.animated do t.scale = _finalize_vec(p.scl, s.scl_lanes, s.default_scl, t.scale)
 	}
 	for i in 0 ..< len(pose.props) {
@@ -950,15 +950,18 @@ playable_scripts_fire :: proc(scripts: []Script_Invocation) {
 	}
 }
 
-// The written rotation: the quaternion blend when a Rotation row is bound,
-// else the transform's own rotation `cur`, with the euler lanes any Euler row
-// animates replaced by their blend (_finalize_vec over the angles).
+// A clip's Euler rows as the slot's quaternion: the angles in `lanes` from
+// the rows (`e`), the others from the clip's own Rotation row when it has
+// one, else from the rotation at bind time (default_rot). Interpolation
+// between keys is euler, per lane, so a two-key 0 to 720 row spins twice.
+// Above the clip the rotation blends as a quaternion, so a mask on an Euler
+// row does not give other clips the unanimated axes.
 @(private = "file")
-_finalize_rot :: proc(p: ^Pose_Value, s: ^Binding_Slot, cur: [4]f32) -> [4]f32 {
-	q := s.rot_quat ? _finalize_quat(p.rot, p.rot_w, s.default_rot) : cur
-	if s.eul_lanes == {} do return q
-	e := _finalize_vec(p.eul, s.eul_lanes, engine.quat_to_euler_xyz(s.default_rot), engine.quat_to_euler_xyz(q))
-	return animation_quat_from_euler(e)
+_eval_euler :: proc(pv: ^Pose_Value, s: ^Binding_Slot, e: [4]f32, lanes: Lane_Set) {
+	base := engine.quat_to_euler_xyz(pv.rot_w > PLAYABLE_WEIGHT_EPS ? pv.rot : s.default_rot)
+	for l in lanes do base[l] = e[l]
+	pv.rot = animation_quat_from_euler(base)
+	pv.rot_w = 1
 }
 
 // A position or scale: _lane_acc_finalize over the first three lanes.

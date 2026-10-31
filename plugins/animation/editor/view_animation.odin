@@ -1832,11 +1832,15 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 			if width := anim.animation_channel_mask_width(ch); width >= 2 {
 				im.SeparatorText("Lanes")
 				lane_names := [4]cstring{"x", "y", "z", "w"}
+				// A lane change frees or adds channels: `group` and `ch` are
+				// stale after it, so the items below wait for the next frame.
+				changed := false
 				for l in 0 ..< width {
 					if len(group) == 1 {
 						on := l not_in _pv_lanes_off(ch)
 						if im.MenuItem(lane_names[l], nil, on, doc != nil) {
 							_pv_lane_set(doc, clip, _av.sel_ch, l, !on)
+							changed = true
 							break // the row may be gone
 						}
 						continue
@@ -1844,11 +1848,14 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 					lc := sheet_lane_channel(clip, group, l)
 					if im.MenuItem(lane_names[l], nil, lc >= 0, doc != nil) {
 						_pv_split_lane_set(doc, clip, group, l, lc)
+						changed = true
 						break // channel indices shifted
 					}
 				}
 				im.Separator()
-				if im.MenuItem("Split Lanes", nil, false, doc != nil && sheet_can_split(clip, _av.sel_ch)) {
+				if changed {
+					// Nothing more this frame.
+				} else if im.MenuItem("Split Lanes", nil, false, doc != nil && sheet_can_split(clip, _av.sel_ch)) {
 					_pv_edit_begin(doc)
 					{
 						context.allocator = inspector.doc_alloc()
@@ -1867,6 +1874,20 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 				}
 				im.Separator()
 			}
+		}
+		// A quaternion row of an editable clip becomes an Euler row, the
+		// authoring form with per-axis keys, masks and splits.
+		if _av.sel_ch >= 0 && _av.sel_ch < len(clip.channels) && _pv_ch_is_rotation(&clip.channels[_av.sel_ch]) {
+			if im.MenuItem("Convert to Euler", nil, false, doc != nil) {
+				_pv_edit_begin(doc)
+				{
+					context.allocator = inspector.doc_alloc()
+					sheet_rotation_to_euler(clip, _av.sel_ch)
+				}
+				_pv_deselect()
+				_pv_edit_commit(doc)
+			}
+			im.Separator()
 		}
 		if im.MenuItem("Remove Property", nil, false, doc != nil) && _av.sel_ch >= 0 && _av.sel_ch < len(clip.channels) {
 			// Every channel of the property, last first so the indices hold.

@@ -7,6 +7,7 @@ package animation_tests
 // curve, and Add Lane gives a split row a channel for a lane it lacks.
 
 import "core:encoding/uuid"
+import "core:math/linalg"
 import "core:strings"
 import "core:testing"
 import "moonhug:packages/engine"
@@ -218,3 +219,36 @@ test_lane_split_then_join_round_trips :: proc(t: ^testing.T) {
 	for w, i in times do testing.expect_value(t, c.times[i], w)
 	for w, i in values do testing.expect_value(t, _ls_floats(&clip, 0)[i].xyz, w.xyz)
 }
+
+// A quaternion row converts to an Euler row whose angles are continuous
+// across keys: a turn 0, 170, 190 (the last keyed as -170) reads back in
+// order, every key rebuilding its quaternion.
+@(test)
+test_lane_quaternion_row_converts_to_unwound_euler :: proc(t: ^testing.T) {
+	defer free_all(context.temp_allocator)
+	clip := anim.AnimationClip{length = 2, frame_rate = 30}
+	clip.channels = make([dynamic]anim.Animation_Channel, context.temp_allocator)
+	ch := anim.Animation_Channel{target = "Arm", path = .Rotation}
+	ch.times = make([dynamic]f32, context.temp_allocator)
+	append(&ch.times, 0, 1, 2)
+	vals := make([dynamic][4]f32, context.temp_allocator)
+	for y in ([3]f32{0, 170, -170}) do append(&vals, anim.animation_quat_from_euler({0, y, 0}))
+	ch.values = vals
+	ch.tangents = make([dynamic][2][4]f32, context.temp_allocator)
+	append(&clip.channels, ch)
+	src := make([dynamic][4]f32, context.temp_allocator)
+	append(&src, ..vals[:])
+
+	testing.expect(t, animation_editor.sheet_rotation_to_euler(&clip, 0), "a quaternion row converts")
+	c := &clip.channels[0]
+	testing.expect_value(t, c.path, anim.Animation_Path.Euler)
+	out := anim.animation_channel_floats(c)
+	want := [3]f32{0, 170, 190}
+	for k in 0 ..< 3 {
+		testing.expectf(t, abs(out[k].y - want[k]) < 0.01 && abs(out[k].x) < 0.01 && abs(out[k].z) < 0.01, "key %d reads %v, want y %v", k, out[k], want[k])
+		q := anim.animation_quat_from_euler(out[k].xyz)
+		testing.expectf(t, abs(linalg.dot(q, src[k])) > 0.9999, "key %d rebuilds its quaternion", k)
+	}
+	testing.expect(t, !animation_editor.sheet_rotation_to_euler(&clip, 0), "an Euler row does not convert again")
+}
+

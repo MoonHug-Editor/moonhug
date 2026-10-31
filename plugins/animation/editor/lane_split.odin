@@ -16,6 +16,9 @@ package animation_editor
 // allocator in context, and the window reselects afterwards (channel
 // indices shift).
 
+import "core:math"
+import "core:math/linalg"
+import engine "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
 
 // Whether row `ch` can split: a vector row with at least two enabled lanes
@@ -204,3 +207,56 @@ sheet_channel_free :: proc(clip: ^anim.AnimationClip, i: int) {
 	delete(ch.tangents)
 	ordered_remove(&clip.channels, i)
 }
+
+// Turns the quaternion Rotation row `ch` into an Euler row in place: each
+// key's quaternion becomes euler angles in degrees, and from the second key
+// on the angles are unwound, so a turn through 180 degrees does not flip
+// sign between keys: of the two euler solutions of a quaternion, each lane
+// moved by whole turns, the one nearest the previous key wins. Key modes
+// stay (a quaternion row's are Linear or Step), tangents are none. False
+// when `ch` is not a quaternion Rotation row.
+sheet_rotation_to_euler :: proc(clip: ^anim.AnimationClip, ch: int) -> bool {
+	if ch < 0 || ch >= len(clip.channels) do return false
+	c := &clip.channels[ch]
+	if anim.animation_channel_is_property(c) || c.path != .Rotation do return false
+	vals := anim.animation_channel_floats(c)
+	prev: [3]f32
+	for &v, k in vals {
+		q := v
+		if l := linalg.length(q); l > 0.0001 do q = (1.0 / l) * q
+		e := engine.quat_to_euler_xyz(q)
+		if k > 0 do e = _euler_nearest(q, e, prev)
+		v = {e.x, e.y, e.z, 0}
+		prev = e
+	}
+	c.path = .Euler
+	c.lanes_off = {}
+	clear(&c.tangents)
+	return true
+}
+
+// The euler angles for `q` nearest to `prev`: `e` (a solution of `q`) and
+// its alternate solution, each lane shifted by whole turns toward `prev`,
+// the candidate with the smallest largest lane step. The alternate is kept
+// only when it rebuilds `q`.
+@(private = "file")
+_euler_nearest :: proc(q: [4]f32, e, prev: [3]f32) -> [3]f32 {
+	best := _euler_unwind(e, prev)
+	alt := _euler_unwind({e.x + 180, 180 - e.y, e.z + 180}, prev)
+	if abs(linalg.dot(anim.animation_quat_from_euler(alt), q)) < 0.9999 do return best
+	if _euler_step(alt, prev) < _euler_step(best, prev) do return alt
+	return best
+}
+
+@(private = "file")
+_euler_unwind :: proc(e, prev: [3]f32) -> [3]f32 {
+	out := e
+	for l in 0 ..< 3 do out[l] = e[l] + 360 * math.round((prev[l] - e[l]) / 360)
+	return out
+}
+
+@(private = "file")
+_euler_step :: proc(e, prev: [3]f32) -> f32 {
+	return max(abs(e.x - prev.x), abs(e.y - prev.y), abs(e.z - prev.z))
+}
+

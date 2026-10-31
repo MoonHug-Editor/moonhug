@@ -414,8 +414,10 @@ A float row is the array of 4-lane arrays it has always been, so every `.anim`, 
 - An Euler row (`"path": 3`) is the same rotation as euler angles in degrees, `[x, y, z, 0]` in the inspector's order (`engine.quat_to_euler_xyz`, `animation_quat_from_euler`).
 - An Euler row is a 3-lane vector row: each lane interpolates on its own by the key modes, with no slerp, and the row can mask lanes and split like a Position row.
 - Recording and Add Property create Euler rows for a transform's rotation.
-- A clip can hold a Rotation row and an Euler row for one transform. The Rotation row gives the quaternion, then the Euler row's enabled lanes replace those angles of it. Without a Rotation row the Euler lanes replace angles of the transform's own rotation.
-- The direct apply (`animation_clip_apply`) and the mixer both write a rotation this way. The mixer blends the bound Rotation rows' quaternions first (`Binding_Slot.rot_quat`), then the Euler lanes on top (`_finalize_rot` in `playable_graph.odin`).
+- A rotation is a quaternion. Euler rows are its authoring form: the keys hold the angles as typed, so a two-key row from 0 to 720 spins twice, which quaternion keys cannot say.
+- A clip's Euler rows become one quaternion per transform inside the clip (`_eval_euler` in `playable_graph.odin`): the rows' enabled lanes set their angles, the other angles come from the clip's own Rotation row when it has one, else from the transform's rotation at bind time. Above the clip the rotation blends as a quaternion, like a model clip's, so a mask on an Euler row does not hand the other axes to another clip.
+- The direct apply (`animation_clip_apply`) replaces the enabled angles of the transform's current rotation.
+- Convert to Euler in a quaternion row's context menu turns it into an Euler row with unwound angles (`sheet_rotation_to_euler` in `editor/lane_split.odin`), so an extracted or hand-made clip can be edited per axis. A clip inside a model is read-only and stays quaternion.
 
 ### Lanes
 
