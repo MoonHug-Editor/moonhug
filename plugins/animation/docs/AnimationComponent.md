@@ -288,6 +288,16 @@ The sheet groups the rows by the transform they animate (`editor/sheet_rows.odin
 - Clicking a summary key selects every key it stands for, the first of them becoming the primary key. Dragging it moves them together. A modifier click adds them to the selection or removes them. A box selection over an Object row selects its channels' keys in the band.
 - A press on an Object row's name selects nothing. Double-click, Remove Property and Add Key act on property rows only, and the curve view plots only the selected property row.
 
+### Lane rows
+
+A vector row (Position, Scale, or a field of 2 to 4 float lanes, never Rotation) has an arrow before its label. It is collapsed by default. Expanded, a Lane row per enabled lane follows it, labelled x, y, z or w, one step further in (`Sheet_Row_Kind.Lane` in `editor/sheet_rows.odin`). A disabled lane has no row. The expanded state belongs to the window copy, like the Object rows' collapse, and is not saved.
+
+- A Lane row shows the property row's keys, at the same times, in the lane's curve colour.
+- A Lane row is a view of the property row's keys: a click, a drag, a modifier click, a double-click and a box selection on it act as they do on the property row. A key caught by both a property row and its Lane rows in one box is selected once. A right-click on a key opens the key menu, as on the property row.
+- The property row's context menu has a Lanes group above Remove Property: one checked item per lane of the row's width, checked when the lane is enabled. A click toggles the lane, one undo step. Unchecking the last enabled lane removes the whole row in that same step, without asking, as Remove Property does.
+- The property row's value fields keep every lane in its column: an enabled lane shows its field, a disabled lane a dimmed dash. The selected key's footer does the same.
+- The curve view plots, hit-tests and draws tangent handles for the enabled lanes only.
+
 ### Record
 
 While Record is armed, an edit of an animatable field keys the clip at the playhead instead of changing the object (`editor/record.odin`). Any edit that records undo counts: an inspector row, a gizmo drag, a multi-object edit.
@@ -396,6 +406,28 @@ The variant is told by the element type of `values`, so the key stays `values` f
 - an empty array: floats
 
 A float row is the array of 4-lane arrays it has always been, so every `.anim`, artifact and model clip reads as it is. The rule lives in a JSON marshaler and unmarshaler for `Channel_Values`, registered on SerializationInit with the marshaler maps every load and save goes through (the artifact load, asset documents, undo).
+
+### Lanes
+
+A float row of 2, 3 or 4 lanes can animate only some of them. Animating `position.y` alone leaves x and z to the object.
+
+```json
+{ "target": "", "path": 0, "times": [0.0, 1.0], "values": [[0, 0, 0, 0], [0, 2, 0, 0]], "lanes": [false, true, false, true] }
+```
+
+- `lanes` holds one bool per lane, x to w, true for a lane the row animates. A lane the array does not reach animates. The key is absent when every lane animates, so every file without it reads as it always has.
+- In memory the row holds the disabled lanes, `Animation_Channel.lanes_off`, so the zero value is "every lane". A JSON marshaler and unmarshaler for `Channel_Lanes_Off` turn it into `lanes` and back, registered with the `Channel_Values` ones.
+- The width comes from the field: Position and Scale are 3 lanes, a property row as many as its field's type (`animation_channel_lane_count`, `animation_channel_lanes_off` in `clip_property.odin`). A lane past the width never counts as disabled.
+- A Rotation row and a scalar row ignore the mask: every lane animates.
+- A mask with every lane disabled is valid but nothing writes one: the Animation window removes the row with its last lane.
+
+How a mask applies:
+
+- A write of the row reads the field, replaces the enabled lanes and writes it back (`_prop_write_value` with the lanes to keep). The other lanes keep what the field holds.
+- In the mixer a disabled lane contributes nothing. When the pose is written, a lane no bound row animates keeps the field's value at that moment, not the value captured at bind time, so an edit of that lane holds.
+- Each lane blends on its own (`Lane_Acc` in `playable_graph.odin`): a lane's value is the blend of only the clips whose row enables it, and the row's weight across every clip that animates the field decides how much of the default shows. Two clips at 0.5, one animating x and the other y, give x the first clip's full value and y the second's.
+- The inspector's driven value fills the disabled lanes from the live field, so it shows the clip's lanes and the object's own lanes together.
+- Recording keys the whole vector and enables every lane of the row.
 
 The live field's type decides how a row applies. A float row on an int or bool field writes its first lane rounded, an int row on a float field writes the int. A row of any other kind than the field's writes nothing, like a row whose field does not resolve.
 

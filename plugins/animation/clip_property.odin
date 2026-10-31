@@ -47,6 +47,77 @@ prop_kind_discrete :: proc(kind: Prop_Kind) -> bool {
 	return false
 }
 
+// How many float lanes a field of `kind` has: 2 to 4 for a vector, 1 for
+// every other kind (a scalar, or an int, bool, reference or string in one
+// value).
+prop_kind_lanes :: proc(kind: Prop_Kind) -> int {
+	switch kind {
+	case .Vec2: return 2
+	case .Vec3: return 3
+	case .Vec4: return 4
+	case .F32, .Bool, .Int, .Ref, .Text:
+	}
+	return 1
+}
+
+// --- Lane masks ------------------------------------------------------------------
+//
+// A float row of 2, 3 or 4 lanes animates only the lanes outside its
+// `lanes_off` (Animation_Channel). The mask needs the row's width, which a
+// property row only has once its field resolves, so these take the field's
+// kind: a transform row ignores it (Position and Scale are 3 lanes, Rotation
+// 4), a property row is as wide as prop_kind_lanes says.
+//   - a Rotation row and a scalar row ignore the mask: every lane animates
+//   - a lane past the row's width is never off
+//   - all lanes off is a valid file but nothing writes one: the window removes
+//     the row when its last lane goes
+
+// How many lanes row `ch` has on a field of `kind`.
+animation_channel_lane_count :: proc(ch: ^Animation_Channel, kind: Prop_Kind) -> int {
+	if !animation_channel_is_property(ch) do return ch.path == .Rotation ? 4 : 3
+	if !animation_channel_is_float(ch) do return 1
+	return prop_kind_lanes(kind)
+}
+
+// Whether row `ch` on a field of `kind` reads its lane mask: a float row of 2
+// to 4 lanes that is not a Rotation row.
+animation_channel_lanes_maskable :: proc(ch: ^Animation_Channel, kind: Prop_Kind) -> bool {
+	if !animation_channel_is_float(ch) do return false
+	if !animation_channel_is_property(ch) && ch.path == .Rotation do return false
+	return animation_channel_lane_count(ch, kind) >= 2
+}
+
+// The lanes row `ch` leaves alone on a field of `kind`: its mask inside its
+// width, empty for a row that ignores the mask.
+animation_channel_lanes_off :: proc(ch: ^Animation_Channel, kind: Prop_Kind) -> Lane_Set {
+	if !animation_channel_lanes_maskable(ch, kind) do return {}
+	width: Lane_Set
+	for l in 0 ..< animation_channel_lane_count(ch, kind) do width += {l}
+	return Lane_Set(ch.lanes_off) & width
+}
+
+// Whether lane `lane` of row `ch` animates on a field of `kind`. False past
+// the row's width.
+animation_channel_lane_on :: proc(ch: ^Animation_Channel, kind: Prop_Kind, lane: int) -> bool {
+	if lane < 0 || lane >= animation_channel_lane_count(ch, kind) do return false
+	return lane not_in animation_channel_lanes_off(ch, kind)
+}
+
+// The number of lanes row `ch` can mask, resolving a property row's field
+// through the type registry (no world needed): 2 to 4, or 0 for a row with no
+// mask (Rotation, scalar, discrete, or a property that does not resolve).
+// The Animation window's lane rows and lane menus read this.
+animation_channel_mask_width :: proc(ch: ^Animation_Channel) -> int {
+	kind := Prop_Kind.Vec3
+	if animation_channel_is_property(ch) {
+		loc, ok := _prop_meta(ch.component, ch.field)
+		if !ok do return 0
+		kind = loc.kind
+	}
+	if !animation_channel_lanes_maskable(ch, kind) do return 0
+	return animation_channel_lane_count(ch, kind)
+}
+
 // The animatable kind of a field type, unwrapping named aliases. PPtr and
 // Asset_GUID are Ref. Every other reference type (Ref, Ref_Local, Owned) and
 // plain structs are not animatable.
@@ -277,17 +348,29 @@ _prop_read_value :: proc(ptr: rawptr, kind: Prop_Kind, leaf: typeid) -> Channel_
 // other (the first lane, rounded). A value of any other kind than the field's
 // writes nothing: the row no longer matches the field's type.
 //
+// A float write leaves the lanes in `keep` as the field holds them: it reads
+// the field, replaces the other lanes and writes the result back. A row's
+// lane mask arrives here (animation_channel_lanes_off). Other kinds ignore
+// `keep`.
+//
 // A Text field owns its string on context.allocator, as every component
 // string does (scene load, undo and the inspector allocate it there): a new
 // value frees the old string and stores a clone. An equal value writes
 // nothing, so a held key does not allocate every frame.
-_prop_write_value :: proc(ptr: rawptr, kind: Prop_Kind, leaf: typeid, v: Channel_Value) {
+_prop_write_value :: proc(ptr: rawptr, kind: Prop_Kind, leaf: typeid, v: Channel_Value, keep: Lane_Set = {}) {
 	switch kind {
 	case .F32, .Vec2, .Vec3, .Vec4:
+		f: [4]f32
 		#partial switch x in v {
-		case [4]f32: _prop_write(ptr, kind, leaf, x)
-		case i64:    _prop_write(ptr, kind, leaf, {f32(x), 0, 0, 0})
+		case [4]f32: f = x
+		case i64:    f = {f32(x), 0, 0, 0}
+		case:        return
 		}
+		if keep != {} {
+			cur := _prop_read(ptr, kind, leaf)
+			for l in keep do f[l] = cur[l]
+		}
+		_prop_write(ptr, kind, leaf, f)
 	case .Bool:
 		size, _ := _int_spec(leaf)
 		#partial switch x in v {

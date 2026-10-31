@@ -4,6 +4,7 @@ package animation_tests
 // under one Object row per animated transform, collapse, and the summary key
 // times an Object row shows.
 
+import "core:encoding/uuid"
 import "core:os"
 import "core:testing"
 import asset_pipeline "moonhug:editor/assets"
@@ -58,7 +59,7 @@ _sr_expect_row :: proc(t: ^testing.T, r: animation_editor.Sheet_Row, kind: anima
 test_sheet_rows_group_by_target_in_first_appearance_order :: proc(t: ^testing.T) {
 	defer free_all(context.temp_allocator)
 	clip := _sr_clip()
-	rows := animation_editor.sheet_rows(&clip, nil, context.temp_allocator)
+	rows := animation_editor.sheet_rows(&clip, nil, nil, context.temp_allocator)
 	if !testing.expect_value(t, len(rows), 6) do return
 	// Arm appears first, so its group comes first, its channels in channel order.
 	_sr_expect_row(t, rows[0], .Object, "Body/Arm", -1)
@@ -77,7 +78,7 @@ test_sheet_rows_root_first_when_it_appears_first :: proc(t: ^testing.T) {
 	append(&clip.channels, _sr_channel("", .Scale, {0}))
 	append(&clip.channels, _sr_channel("Head", .Position, {0}))
 	append(&clip.channels, _sr_channel("", .Rotation, {0}))
-	rows := animation_editor.sheet_rows(&clip, nil, context.temp_allocator)
+	rows := animation_editor.sheet_rows(&clip, nil, nil, context.temp_allocator)
 	if !testing.expect_value(t, len(rows), 5) do return
 	_sr_expect_row(t, rows[0], .Object, "", -1)
 	_sr_expect_row(t, rows[1], .Channel, "", 0)
@@ -95,7 +96,7 @@ test_sheet_rows_collapse_hides_channels_keeps_object_row :: proc(t: ^testing.T) 
 	clip := _sr_clip()
 	collapsed := make(map[string]bool, context.temp_allocator)
 	collapsed["Body/Arm"] = true
-	rows := animation_editor.sheet_rows(&clip, collapsed, context.temp_allocator)
+	rows := animation_editor.sheet_rows(&clip, collapsed, nil, context.temp_allocator)
 	if !testing.expect_value(t, len(rows), 4) do return
 	_sr_expect_row(t, rows[0], .Object, "Body/Arm", -1)
 	_sr_expect_row(t, rows[1], .Object, "", -1)
@@ -104,14 +105,14 @@ test_sheet_rows_collapse_hides_channels_keeps_object_row :: proc(t: ^testing.T) 
 
 	// A false entry is not collapsed.
 	collapsed["Body/Arm"] = false
-	testing.expect_value(t, len(animation_editor.sheet_rows(&clip, collapsed, context.temp_allocator)), 6)
+	testing.expect_value(t, len(animation_editor.sheet_rows(&clip, collapsed, nil, context.temp_allocator)), 6)
 }
 
 @(test)
 test_sheet_row_of_channel_is_minus_one_when_hidden :: proc(t: ^testing.T) {
 	defer free_all(context.temp_allocator)
 	clip := _sr_clip()
-	rows := animation_editor.sheet_rows(&clip, nil, context.temp_allocator)
+	rows := animation_editor.sheet_rows(&clip, nil, nil, context.temp_allocator)
 	testing.expect_value(t, animation_editor.sheet_row_of_channel(rows, 0), 1)
 	testing.expect_value(t, animation_editor.sheet_row_of_channel(rows, 2), 2)
 	testing.expect_value(t, animation_editor.sheet_row_of_channel(rows, 3), 5)
@@ -119,10 +120,62 @@ test_sheet_row_of_channel_is_minus_one_when_hidden :: proc(t: ^testing.T) {
 
 	collapsed := make(map[string]bool, context.temp_allocator)
 	collapsed[""] = true
-	rows = animation_editor.sheet_rows(&clip, collapsed, context.temp_allocator)
+	rows = animation_editor.sheet_rows(&clip, collapsed, nil, context.temp_allocator)
 	testing.expect_value(t, animation_editor.sheet_row_of_channel(rows, 0), 1)
 	testing.expect_value(t, animation_editor.sheet_row_of_channel(rows, 1), -1)
 	testing.expect_value(t, animation_editor.sheet_row_of_channel(rows, 3), -1)
+}
+
+// An expanded vector row (Position, a [3]f32 field) shows a Lane row per
+// enabled lane, x to z, one level deeper. A disabled lane has no row. A vector row not in `expanded` shows none,
+// and neither does a Rotation row or a scalar field row, expanded or not. A
+// collapsed Object row hides its Lane rows with its property rows.
+@(test)
+test_sheet_rows_lane_rows_under_expanded_vector_rows :: proc(t: ^testing.T) {
+	defer free_all(context.temp_allocator)
+	volume := uuid.to_string(engine.get_guid_by_typeid(engine.Volume), context.temp_allocator)
+	clip := anim.AnimationClip{length = 1}
+	clip.channels = make([dynamic]anim.Animation_Channel, context.temp_allocator)
+	append(&clip.channels, _sr_channel("", .Position, {0}))
+	append(&clip.channels, _sr_channel("", .Scale, {0}))
+	append(&clip.channels, _sr_channel("", .Rotation, {0}))
+	append(&clip.channels, _sr_channel("", .Position, {0}, field = "size"))
+	append(&clip.channels, _sr_channel("", .Position, {0}, field = "blend_distance"))
+	clip.channels[3].component = volume
+	clip.channels[4].component = volume
+	clip.channels[3].lanes_off = {1}
+
+	expanded := make(map[string]bool, context.temp_allocator)
+	for i in ([?]int{0, 2, 3, 4}) {
+		expanded[animation_editor.sheet_channel_key(&clip.channels[i], context.temp_allocator)] = true
+	}
+	rows := animation_editor.sheet_rows(&clip, nil, expanded, context.temp_allocator)
+	if !testing.expect_value(t, len(rows), 11) do return
+	_sr_expect_row(t, rows[0], .Object, "", -1)
+	_sr_expect_row(t, rows[1], .Channel, "", 0)
+	for l in 0 ..< 3 {
+		r := rows[2 + l]
+		testing.expect_value(t, r.kind, animation_editor.Sheet_Row_Kind.Lane)
+		testing.expect_value(t, r.ch, 0)
+		testing.expect_value(t, r.lane, l)
+		testing.expect_value(t, r.depth, 2)
+	}
+	_sr_expect_row(t, rows[5], .Channel, "", 1)
+	_sr_expect_row(t, rows[6], .Channel, "", 2)
+	_sr_expect_row(t, rows[7], .Channel, "", 3)
+	// The size row has y disabled: x and z only.
+	for l, j in ([2]int{0, 2}) {
+		r := rows[8 + j]
+		testing.expect_value(t, r.kind, animation_editor.Sheet_Row_Kind.Lane)
+		testing.expect_value(t, r.ch, 3)
+		testing.expect_value(t, r.lane, l)
+	}
+	_sr_expect_row(t, rows[10], .Channel, "", 4)
+
+	collapsed := make(map[string]bool, context.temp_allocator)
+	collapsed[""] = true
+	testing.expect_value(t, len(animation_editor.sheet_rows(&clip, collapsed, expanded, context.temp_allocator)), 1)
+	testing.expect_value(t, len(animation_editor.sheet_rows(&clip, nil, nil, context.temp_allocator)), 6)
 }
 
 @(test)
@@ -178,7 +231,7 @@ test_sheet_target_split_depth_and_parent :: proc(t: ^testing.T) {
 	// The rows carry it: an Object row at its path depth, its channels one deeper.
 	defer free_all(context.temp_allocator)
 	clip := _sr_clip()
-	rows := animation_editor.sheet_rows(&clip, nil, context.temp_allocator)
+	rows := animation_editor.sheet_rows(&clip, nil, nil, context.temp_allocator)
 	if !testing.expect_value(t, len(rows), 6) do return
 	testing.expect_value(t, rows[0].depth, 2) // Body/Arm
 	testing.expect_value(t, rows[1].depth, 3)

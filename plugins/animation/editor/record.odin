@@ -181,6 +181,8 @@ _record_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, k: _Re
 		anim.animation_channel_set_value(&clip.channels[idx], 0, old)
 	}
 	_pv_add_key(doc, clip, idx, _pv.time, edited)
+	// The key holds the whole edited vector, so every lane animates.
+	clip.channels[idx].lanes_off = {}
 }
 
 @(private = "file")
@@ -305,7 +307,9 @@ _record_field_key :: proc(owner: engine.Handle, field_offset: uintptr, field_tid
 	return k, true
 }
 
-// Samples the field's row at the playhead.
+// Samples the field's row at the playhead. A vector row with disabled lanes
+// fills them from the live field, so the inspector shows the clip's lanes and
+// the object's own lanes together.
 //
 // A string field is never driven: the inspector's string drawer frees the
 // string in the buffer it draws on when it is edited, and a driven string
@@ -324,16 +328,34 @@ _record_driven :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: t
 	if !ok do return false, false
 	idx := _record_find_channel(clip, k)
 	if idx < 0 do return false, false
+	ch := &clip.channels[idx]
 	if k.property {
-		anim._prop_write_value(out, k.kind, field_tid, anim._animation_channel_sample_value(&clip.channels[idx], _pv.time))
+		v := anim._animation_channel_sample_value(ch, _pv.time)
+		if off := anim.animation_channel_lanes_off(ch, k.kind); off != {} {
+			if f, is_f := v.([4]f32); is_f {
+				if live, _, _, lok := anim._prop_locate(k.owner, k.guid_str, k.field); lok {
+					cur := anim._prop_read(live, k.kind, field_tid)
+					for l in off do f[l] = cur[l]
+					v = f
+				}
+			}
+		}
+		anim._prop_write_value(out, k.kind, field_tid, v)
 		return true, _pv.recording && doc != nil
 	}
-	v := anim._animation_channel_sample(&clip.channels[idx], _pv.time)
+	v := anim._animation_channel_sample(ch, _pv.time)
 	if k.path == .Rotation {
 		(cast(^[4]f32)out)^ = v
-	} else {
-		(cast(^[3]f32)out)^ = v.xyz
+		return true, _pv.recording && doc != nil
 	}
+	if off := anim.animation_channel_lanes_off(ch, .Vec3); off != {} {
+		w := engine.ctx_world()
+		if t := engine.pool_get(&w.transforms, engine.Handle(k.owner)); t != nil {
+			cur := k.path == .Position ? t.position : t.scale
+			for l in off do if l < 3 do v[l] = cur[l]
+		}
+	}
+	(cast(^[3]f32)out)^ = v.xyz
 	return true, _pv.recording && doc != nil
 }
 
@@ -460,6 +482,8 @@ _record_add_key :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: 
 			assert(idx >= 0, "record: the new row is in the clip")
 		}
 		_pv_add_key(doc, clip, idx, _pv.time, edited)
+		// The key holds the whole vector, so every lane animates.
+		clip.channels[idx].lanes_off = {}
 	}
 	_pv_edit_held = false
 	_pv_edit_commit(doc)

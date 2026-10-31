@@ -50,6 +50,9 @@ Animation_Path :: enum u8 {
 // `values` holds one typed array per row, parallel to `times`
 // (Channel_Values). Float rows also carry per-key interpolation: `modes` and
 // `tangents`, both optional and parallel to `times` when present.
+//
+// A float row of 2, 3 or 4 lanes animates only the lanes outside
+// `lanes_off` (clip_property.odin, animation_channel_lanes_off).
 Animation_Channel :: struct {
 	target:    string, // name path relative to the playing owner ("" = owner)
 	path:      Animation_Path,
@@ -66,7 +69,21 @@ Animation_Channel :: struct {
 	// In and out slopes per lane of a Free key, in value units per second. A
 	// Free key past the end of `tangents` has flat tangents.
 	tangents:  [dynamic][2][4]f32 `json:"tangents,omitempty"`,
+	// The lanes this row does not animate. A write leaves them as the field
+	// holds them. Empty, the default, animates every lane. Only a float row
+	// of 2, 3 or 4 lanes reads it, never a Rotation row or a scalar row. On
+	// disk the key is `lanes`, one bool per lane x, y, z, w that is true when
+	// the lane animates, absent when every lane animates
+	// (_channel_lanes_marshal).
+	lanes_off: Channel_Lanes_Off `json:"lanes,omitempty"`,
 }
+
+// A set of value lanes by index: 0 x, 1 y, 2 z, 3 w.
+Lane_Set :: bit_set[0 ..< 4; u8]
+
+// Animation_Channel.lanes_off: the lanes a row does not animate. Its own type
+// so the JSON form (the lanes that DO animate) has a marshaler of its own.
+Channel_Lanes_Off :: distinct Lane_Set
 
 // The keys of one row, one array per value kind. A row animates one field, so
 // all its keys share a type:
@@ -280,6 +297,7 @@ animation_clip_preview :: proc(ref: engine.PPtr, clip: AnimationClip) {
 			component = strings.clone(ch.component),
 			field     = strings.clone(ch.field),
 			step      = ch.step,
+			lanes_off = ch.lanes_off,
 		}
 		c.times = make([dynamic]f32, len(ch.times))
 		copy(c.times[:], ch.times[:])
@@ -534,6 +552,30 @@ animation_clip_serialization_init :: proc() {
 	done = true
 	json.register_user_marshaler(Channel_Values, _channel_values_marshal)
 	json.register_user_unmarshaler(Channel_Values, _channel_values_unmarshal)
+	json.register_user_marshaler(Channel_Lanes_Off, _channel_lanes_marshal)
+	json.register_user_unmarshaler(Channel_Lanes_Off, _channel_lanes_unmarshal)
+}
+
+// `lanes` on disk: four bools, x to w, true for a lane that animates. The
+// field is omitted (omitempty) when no lane is off, so only a row with a
+// disabled lane writes the key.
+@(private = "file")
+_channel_lanes_marshal :: proc(w: io.Writer, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
+	off := (cast(^Channel_Lanes_Off)v.data)^
+	on: [4]bool
+	for l in 0 ..< 4 do on[l] = l not_in off
+	return json.marshal_to_writer(w, on, opt)
+}
+
+// Reads up to four bools. A lane the array does not reach animates.
+@(private = "file")
+_channel_lanes_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
+	on := [4]bool{true, true, true, true}
+	if err := json.unmarshal_value(p, any{&on, typeid_of([4]bool)}); err != nil do return err
+	off: Channel_Lanes_Off
+	for l in 0 ..< 4 do if !on[l] do off += {l}
+	(cast(^Channel_Lanes_Off)v.data)^ = off
+	return nil
 }
 
 // The active variant through the plain writer, so a float row writes the
@@ -584,16 +626,17 @@ animation_clip_apply :: proc(clip: ^AnimationClip, owner: engine.Transform_Handl
 		if animation_channel_is_property(&ch) {
 			ptr, kind, leaf_tid, pok := _prop_locate(tH, ch.component, ch.field)
 			if !pok do continue
-			_prop_write_value(ptr, kind, leaf_tid, _animation_channel_sample_value(&ch, time))
+			_prop_write_value(ptr, kind, leaf_tid, _animation_channel_sample_value(&ch, time), animation_channel_lanes_off(&ch, kind))
 			continue
 		}
 		v := _animation_channel_sample(&ch, time)
 		t := engine.pool_get(&w.transforms, engine.Handle(tH))
 		if t == nil do continue
+		off := animation_channel_lanes_off(&ch, .Vec3)
 		switch ch.path {
-		case .Position: t.position = v.xyz
+		case .Position: for l in 0 ..< 3 do if l not_in off do t.position[l] = v[l]
 		case .Rotation: t.rotation = v
-		case .Scale:    t.scale = v.xyz
+		case .Scale:    for l in 0 ..< 3 do if l not_in off do t.scale[l] = v[l]
 		}
 	}
 }

@@ -9,22 +9,31 @@ package animation_editor
 //   its Object row, unless the target is collapsed.
 // - An Object row is indented by its target's path depth (sheet_target_split),
 //   its Channel rows one level further.
+// - A Channel row of a vector (a float row with a lane mask of 2 to 4 lanes,
+//   anim.animation_channel_mask_width: Position, Scale, a vector field, never
+//   Rotation) is expandable: expanded, a Lane row per enabled lane follows it,
+//   x to w, one level further in. A disabled lane has no row. Collapsed is the
+//   default.
 // - The view maps between sheet rows and channel indices only through
 //   sheet_rows and sheet_row_of_channel. A channel index is never a row index.
 
+import "core:fmt"
 import "core:slice"
+import "core:strings"
 import anim "moonhug:packages/animation"
 
 Sheet_Row_Kind :: enum {
 	Object,
 	Channel,
+	Lane, // one lane of a vector Channel row: a view of the row's keys
 }
 
 Sheet_Row :: struct {
 	kind:   Sheet_Row_Kind,
 	target: string, // the channel target, borrowed from the clip
 	ch:     int,    // channel index, -1 for an Object row
-	depth:  int,    // indent level: an Object row's path depth, one more for its channels
+	depth:  int,    // indent level: an Object row's path depth, one more for its channels, two more for lanes
+	lane:   int,    // a Lane row's lane, 0 x to 3 w, -1 for the other kinds
 }
 
 // One key of a clip: channel index and key index in it.
@@ -34,19 +43,38 @@ Sheet_Key :: struct {
 }
 
 // The visible rows of `clip`. A target in `collapsed` (value true) shows its
-// Object row only.
-sheet_rows :: proc(clip: ^anim.AnimationClip, collapsed: map[string]bool, allocator := context.allocator) -> []Sheet_Row {
+// Object row only. A vector Channel row whose sheet_channel_key is in
+// `expanded` (value true) shows a Lane row per enabled lane.
+sheet_rows :: proc(clip: ^anim.AnimationClip, collapsed: map[string]bool, expanded: map[string]bool, allocator := context.allocator) -> []Sheet_Row {
 	rows := make([dynamic]Sheet_Row, 0, len(clip.channels) * 2, allocator)
 	for &first, i in clip.channels {
 		if _sheet_target_seen(clip, first.target, i) do continue
 		_, _, depth := sheet_target_split(first.target)
-		append(&rows, Sheet_Row{kind = .Object, target = first.target, ch = -1, depth = depth})
+		append(&rows, Sheet_Row{kind = .Object, target = first.target, ch = -1, depth = depth, lane = -1})
 		if collapsed[first.target] do continue
 		for &c, j in clip.channels[i:] {
-			if c.target == first.target do append(&rows, Sheet_Row{kind = .Channel, target = c.target, ch = i + j, depth = depth + 1})
+			if c.target != first.target do continue
+			append(&rows, Sheet_Row{kind = .Channel, target = c.target, ch = i + j, depth = depth + 1, lane = -1})
+			if len(expanded) == 0 do continue
+			width := anim.animation_channel_mask_width(&c)
+			if width < 2 || !expanded[sheet_channel_key(&c, context.temp_allocator)] do continue
+			for l in 0 ..< width {
+				if l in c.lanes_off do continue
+				append(&rows, Sheet_Row{kind = .Lane, target = c.target, ch = i + j, depth = depth + 2, lane = l})
+			}
 		}
 	}
 	return rows[:]
+}
+
+// What identifies a channel across edits, for a view's per-row state (the
+// expanded vector rows): target, then the transform path or the component and
+// field. A channel index shifts when a row is removed, this does not.
+sheet_channel_key :: proc(ch: ^anim.Animation_Channel, allocator := context.allocator) -> string {
+	if anim.animation_channel_is_property(ch) {
+		return strings.concatenate({ch.target, "\x1f", ch.component, "\x1f", ch.field}, allocator)
+	}
+	return fmt.aprintf("%s\x1f%v", ch.target, ch.path, allocator = allocator)
 }
 
 // Whether a channel before index `before` already has `target`.

@@ -223,25 +223,43 @@ Pose_Prop :: enum u8 {
 }
 Pose_Props :: bit_set[Pose_Prop; u8]
 
-// Accumulated weighted sums per bound transform: value = sum(w_i * v_i),
-// *_w = sum(w_i). Rotations accumulate nlerp-style with neighborhood
-// correction (contributions flipped into the accumulator's hemisphere).
-Pose_Value :: struct {
-	pos:   [3]f32,
-	pos_w: f32,
-	rot:   [4]f32,
-	rot_w: f32,
-	scl:   [3]f32,
-	scl_w: f32,
+// Accumulated weighted float lanes of one property (a position, a scale, a
+// continuous property channel), with a weight per lane besides the row's:
+//   - w = sum(w_i) over the contributors that animate the property at all
+//   - lw[l] = sum(w_i) over the contributors whose row animates lane l
+//   - v[l] = sum(w_i * v_i[l]) over those same contributors
+// A row with a lane mask (Animation_Channel.lanes_off) contributes to w but
+// not to the lanes it leaves alone. So lane l's value is v[l] / lw[l], the
+// blend of only the clips that animate it, and w alone decides how much of
+// the default shows through (_lane_acc_finalize). Two clips at 0.5, one
+// animating x and the other y, give x the first clip's full value and y the
+// second's, not half of each over the default. With no masks lw[l] == w for
+// every lane, which is the plain weighted sum.
+Lane_Acc :: struct {
+	v:  [4]f32,
+	w:  f32,
+	lw: [4]f32,
 }
 
-// One accumulated property channel. Continuous kinds hold floats:
-// value = sum(w_i * v_i), w = sum(w_i). Discrete kinds carry the dominant
-// contributor instead: val is that contributor's raw value (any row kind, a
-// string borrowed from its clip), w its effective weight.
+// Accumulated weighted sums per bound transform. Position and scale are lane
+// sums (Lane_Acc, first three lanes). Rotations accumulate nlerp-style with
+// neighborhood correction (contributions flipped into the accumulator's
+// hemisphere): rot = sum(w_i * q_i), rot_w = sum(w_i).
+Pose_Value :: struct {
+	pos:   Lane_Acc,
+	rot:   [4]f32,
+	rot_w: f32,
+	scl:   Lane_Acc,
+}
+
+// One accumulated property channel. Continuous kinds accumulate float lanes
+// in `acc`. Discrete kinds carry the dominant contributor instead: val is
+// that contributor's raw value (any row kind, a string borrowed from its
+// clip), w its effective weight.
 Prop_Value :: struct {
 	val: Channel_Value,
 	w:   f32,
+	acc: Lane_Acc,
 }
 
 // One evaluation result: the transform pose plus the property channel values,
@@ -263,6 +281,10 @@ Prop_Slot :: struct {
 	target:      engine.Transform_Handle,
 	loc:         Prop_Location,
 	resolved:    bool,
+	// The lanes any bound row animates, for a vector field: a lane outside it
+	// keeps the field's current value at every write. Grows as rows bind, like
+	// Binding_Slot.animated.
+	lanes:       Lane_Set,
 	// The field's value at bind time. A Text default is an owned clone on the
 	// default allocator: the live string it was read from is freed by the
 	// first write.
@@ -277,6 +299,10 @@ Binding_Slot :: struct {
 	target:      engine.Transform_Handle,
 	resolved:    bool,
 	animated:    Pose_Props,
+	// The position and scale lanes any bound row animates. A lane outside
+	// them keeps the transform's current value at every write.
+	pos_lanes:   Lane_Set,
+	scl_lanes:   Lane_Set,
 	default_pos: [3]f32,
 	default_rot: [4]f32,
 	default_scl: [3]f32,
@@ -315,17 +341,22 @@ animation_binding_destroy :: proc(b: ^Animation_Binding) {
 }
 
 @(private = "file")
-_binding_slot :: proc(b: ^Animation_Binding, path: string, prop: Pose_Prop) {
+_binding_slot :: proc(b: ^Animation_Binding, path: string, prop: Pose_Prop, lanes: Lane_Set) {
+	s: ^Binding_Slot
 	if idx, ok := b.by_path[path]; ok {
-		s := &b.slots[idx]
+		s = &b.slots[idx]
 		s.animated += {prop}
 		if !s.resolved do _binding_resolve(b, s)
-		return
+	} else {
+		append(&b.slots, Binding_Slot{path = strings.clone(path), animated = {prop}})
+		s = &b.slots[len(b.slots) - 1]
+		_binding_resolve(b, s)
+		b.by_path[s.path] = i32(len(b.slots) - 1)
 	}
-	append(&b.slots, Binding_Slot{path = strings.clone(path), animated = {prop}})
-	s := &b.slots[len(b.slots) - 1]
-	_binding_resolve(b, s)
-	b.by_path[s.path] = i32(len(b.slots) - 1)
+	#partial switch prop {
+	case .Position: s.pos_lanes += lanes
+	case .Scale:    s.scl_lanes += lanes
+	}
 }
 
 @(private = "file")
@@ -350,13 +381,14 @@ _prop_key :: proc(target, component, field: string, allocator := context.temp_al
 	return strings.concatenate({target, "\x1f", component, "\x1f", field}, allocator)
 }
 
+// Returns the slot's index.
 @(private = "file")
-_prop_binding_slot :: proc(b: ^Animation_Binding, target, component, field: string) {
+_prop_binding_slot :: proc(b: ^Animation_Binding, target, component, field: string) -> int {
 	key := _prop_key(target, component, field)
 	if idx, ok := b.by_prop[key]; ok {
 		s := &b.prop_slots[idx]
 		if !s.resolved do _prop_resolve(b, s)
-		return
+		return int(idx)
 	}
 	owned := strings.clone(key)
 	s := Prop_Slot{
@@ -369,6 +401,7 @@ _prop_binding_slot :: proc(b: ^Animation_Binding, target, component, field: stri
 	sp := &b.prop_slots[len(b.prop_slots) - 1]
 	_prop_resolve(b, sp)
 	b.by_prop[sp.key] = i32(len(b.prop_slots) - 1)
+	return len(b.prop_slots) - 1
 }
 
 @(private = "file")
@@ -443,24 +476,35 @@ animation_binding_refresh_defaults :: proc(b: ^Animation_Binding) {
 	}
 }
 
-// Write the defaults back to the bound transforms, animated properties only —
-// the scrub preview's restore: the world returns to its authored pose.
+// Write the defaults back to the bound transforms, animated properties and
+// lanes only — the scrub preview's restore: the world returns to its authored
+// pose.
 animation_binding_write_defaults :: proc(b: ^Animation_Binding) {
 	w := engine.ctx_world()
 	for &s in b.slots {
 		if !s.resolved || !engine.pool_valid(&w.transforms, engine.Handle(s.target)) do continue
 		t := engine.pool_get(&w.transforms, engine.Handle(s.target))
 		if t == nil do continue
-		if .Position in s.animated do t.position = s.default_pos
+		if .Position in s.animated do for l in s.pos_lanes do if l < 3 do t.position[l] = s.default_pos[l]
 		if .Rotation in s.animated do t.rotation = s.default_rot
-		if .Scale in s.animated do t.scale = s.default_scl
+		if .Scale in s.animated do for l in s.scl_lanes do if l < 3 do t.scale[l] = s.default_scl[l]
 	}
 	for &s in b.prop_slots {
 		if !s.resolved || !engine.pool_valid(&w.transforms, engine.Handle(s.target)) do continue
 		ptr := _prop_slot_ptr(&s)
 		if ptr == nil do continue
-		_prop_write_value(ptr, s.loc.kind, s.loc.leaf, s.default)
+		keep: Lane_Set
+		if !prop_kind_discrete(s.loc.kind) do keep = ~_prop_slot_lanes(&s)
+		_prop_write_value(ptr, s.loc.kind, s.loc.leaf, s.default, keep)
 	}
+}
+
+// The lanes of a property slot that any bound row animates: the bound rows'
+// lanes for a vector field, every lane for any other kind.
+@(private = "file")
+_prop_slot_lanes :: proc(s: ^Prop_Slot) -> Lane_Set {
+	if prop_kind_lanes(s.loc.kind) < 2 do return ~Lane_Set{}
+	return s.lanes
 }
 
 // --- Evaluation ---------------------------------------------------------------------
@@ -499,7 +543,13 @@ _graph_bind :: proc(g: ^Playable_Graph, root: Playable_Handle, b: ^Animation_Bin
 		if !ok do continue
 		for &ch in clip.channels {
 			if animation_channel_is_property(&ch) {
-				_prop_binding_slot(b, ch.target, ch.component, ch.field)
+				// The slot index first: the call may grow prop_slots.
+				si := _prop_binding_slot(b, ch.target, ch.component, ch.field)
+				s := &b.prop_slots[si]
+				// The mask needs the field's kind, known once the slot resolves.
+				// An unresolved slot writes nothing, and picks the lanes up on
+				// the bind after it resolves.
+				if s.resolved do s.lanes += ~animation_channel_lanes_off(&ch, s.loc.kind)
 				continue
 			}
 			prop: Pose_Prop
@@ -508,7 +558,7 @@ _graph_bind :: proc(g: ^Playable_Graph, root: Playable_Handle, b: ^Animation_Bin
 			case .Rotation: prop = .Rotation
 			case .Scale:    prop = .Scale
 			}
-			_binding_slot(b, ch.target, prop)
+			_binding_slot(b, ch.target, prop, ~animation_channel_lanes_off(&ch, .Vec3))
 		}
 	}
 }
@@ -578,14 +628,16 @@ _eval_node :: proc(
 				idx, found := b.by_prop[_prop_key(ch.target, ch.component, ch.field)]
 				if !found do continue
 				pval := _animation_channel_sample_value(&ch, t)
+				kind := b.prop_slots[idx].loc.kind
+				if prop_kind_discrete(kind) {
+					out.props[idx] = {val = pval, w = 1}
+					continue
+				}
 				// A continuous slot accumulates floats: an int row converts,
 				// a row of another kind does not fit the field and adds nothing.
-				if !prop_kind_discrete(b.prop_slots[idx].loc.kind) {
-					f, fok := _channel_value_floats(pval)
-					if !fok do continue
-					pval = f
-				}
-				out.props[idx] = {pval, 1}
+				f, fok := _channel_value_floats(pval)
+				if !fok do continue
+				out.props[idx] = {acc = _lane_acc_leaf(f, animation_channel_lanes_off(&ch, kind))}
 				continue
 			}
 			val := _animation_channel_sample(&ch, t)
@@ -593,9 +645,9 @@ _eval_node :: proc(
 			if !found do continue
 			pv := &out.trs[idx]
 			switch ch.path {
-			case .Position: pv.pos = val.xyz; pv.pos_w = 1
+			case .Position: pv.pos = _lane_acc_leaf(val, animation_channel_lanes_off(&ch, .Vec3))
 			case .Rotation: pv.rot = val; pv.rot_w = 1
-			case .Scale:    pv.scl = val.xyz; pv.scl_w = 1
+			case .Scale:    pv.scl = _lane_acc_leaf(val, animation_channel_lanes_off(&ch, .Vec3))
 			}
 		}
 	case Playable_Mixer:
@@ -620,41 +672,101 @@ _eval_node :: proc(
 	}
 }
 
+// A clip row's contribution: weight 1 for the row and for each lane it
+// animates, nothing in the lanes in `off`.
+@(private = "file")
+_lane_acc_leaf :: proc(v: [4]f32, off: Lane_Set) -> Lane_Acc {
+	a := Lane_Acc{w = 1}
+	for l in 0 ..< 4 {
+		if l in off do continue
+		a.v[l] = v[l]
+		a.lw[l] = 1
+	}
+	return a
+}
+
+// Adds a child's lanes at weight `w`. The child counts at its row weight
+// clamped to 1, and each lane it animates adds its own normalized value
+// (v / lw) at that same weight, so a nested mixer cannot amplify values and a
+// lane only some of the child's clips animate counts as fully animated by the
+// child.
+@(private = "file")
+_lane_acc_add :: proc(o: ^Lane_Acc, c: Lane_Acc, w: f32) {
+	if c.w <= PLAYABLE_WEIGHT_EPS do return
+	cw := w * min(c.w, 1)
+	for l in 0 ..< 4 {
+		if c.lw[l] <= PLAYABLE_WEIGHT_EPS do continue
+		o.v[l] += cw * (c.v[l] / c.lw[l])
+		o.lw[l] += cw
+	}
+	o.w += cw
+}
+
+// Blends a layer's lanes over the running result (which holds normalized
+// values at weight 1): each lane the layer animates lerps toward the layer's
+// value by the layer's effective weight, the other lanes stay.
+@(private = "file")
+_lane_acc_over :: proc(o: ^Lane_Acc, c: Lane_Acc, layer_w: f32) {
+	if c.w <= PLAYABLE_WEIGHT_EPS do return
+	eff := layer_w * min(c.w, 1)
+	for l in 0 ..< 4 {
+		if c.lw[l] <= PLAYABLE_WEIGHT_EPS do continue
+		top := c.v[l] / c.lw[l]
+		// A lane the base does not hold has nothing to lerp from: the layer
+		// takes it.
+		base := o.lw[l] > PLAYABLE_WEIGHT_EPS ? o.v[l] / o.lw[l] : top
+		o.v[l] = base + (top - base) * eff
+		o.lw[l] = 1
+	}
+	o.w = 1
+}
+
+// The written value of an accumulated property, lane by lane:
+//   - a lane outside `animated` (no bound row animates it) keeps `cur`, the
+//     field's value right now, so an edit of that lane holds
+//   - a lane nothing covered this evaluation, or a row at zero weight, rests
+//     at the default
+//   - otherwise the lane's own blend (v / lw), and below full row weight the
+//     rest of the weight from the default
+@(private = "file")
+_lane_acc_finalize :: proc(a: Lane_Acc, animated: Lane_Set, def, cur: [4]f32) -> [4]f32 {
+	r := cur
+	for l in animated {
+		if a.w <= PLAYABLE_WEIGHT_EPS || a.lw[l] <= PLAYABLE_WEIGHT_EPS {
+			r[l] = def[l]
+			continue
+		}
+		v := a.v[l] / a.lw[l]
+		r[l] = a.w >= 1 ? v : a.w * v + (1 - a.w) * def[l]
+	}
+	return r
+}
+
 // Mixer accumulation: children are normalized (their own weight sums clamped
 // to 1) before adding, so nested over-weighted mixers cannot amplify values.
-// Continuous property channels follow the same weighted-sum rule — discrete
-// ones (bool/int/enum) cannot lerp, so the DOMINANT contributor wins,
-// carrying its raw value and effective weight.
+// Continuous property channels, positions and scales accumulate per lane
+// (Lane_Acc) — discrete ones (bool/int/enum) cannot lerp, so the DOMINANT
+// contributor wins, carrying its raw value and effective weight.
 @(private = "file")
 _pose_accumulate :: proc(out, child: Pose, w: f32, b: ^Animation_Binding) {
 	for i in 0 ..< len(out.props) {
 		c := &child.props[i]
 		o := &out.props[i]
-		if c.w <= PLAYABLE_WEIGHT_EPS do continue
-		cw := min(c.w, 1)
 		if prop_kind_discrete(b.prop_slots[i].loc.kind) {
-			if eff := w * cw; eff > o.w {
+			if c.w <= PLAYABLE_WEIGHT_EPS do continue
+			if eff := w * min(c.w, 1); eff > o.w {
 				o.val = c.val
 				o.w = eff
 			}
 			continue
 		}
-		o.val = o.val.([4]f32) + (w * cw / c.w) * c.val.([4]f32)
-		o.w += w * cw
+		_lane_acc_add(&o.acc, c.acc, w)
 	}
 	for i in 0 ..< len(out.trs) {
 		c := &child.trs[i]
 		o := &out.trs[i]
-		if c.pos_w > PLAYABLE_WEIGHT_EPS {
-			cw := min(c.pos_w, 1)
-			o.pos += (w * cw / c.pos_w) * c.pos
-			o.pos_w += w * cw
-		}
-		if c.scl_w > PLAYABLE_WEIGHT_EPS {
-			cw := min(c.scl_w, 1)
-			o.scl += (w * cw / c.scl_w) * c.scl
-			o.scl_w += w * cw
-		}
+		_lane_acc_add(&o.pos, c.pos, w)
+		_lane_acc_add(&o.scl, c.scl, w)
 		if c.rot_w > PLAYABLE_WEIGHT_EPS {
 			cw := min(c.rot_w, 1)
 			q := (1.0 / c.rot_w) * c.rot
@@ -670,25 +782,36 @@ _pose_accumulate :: proc(out, child: Pose, w: f32, b: ^Animation_Binding) {
 @(private = "file")
 _pose_set_default :: proc(out: Pose, b: ^Animation_Binding) {
 	for i in 0 ..< len(out.props) {
-		if !b.prop_slots[i].resolved do continue
-		out.props[i] = {b.prop_slots[i].default, 1}
+		s := &b.prop_slots[i]
+		if !s.resolved do continue
+		if prop_kind_discrete(s.loc.kind) {
+			out.props[i] = {val = s.default, w = 1}
+			continue
+		}
+		d, _ := _channel_value_floats(s.default)
+		out.props[i] = {acc = _lane_acc_full(d, _prop_slot_lanes(s))}
 	}
 	for i in 0 ..< len(out.trs) {
 		s := &b.slots[i]
 		o := &out.trs[i]
-		if .Position in s.animated {
-			o.pos = s.default_pos
-			o.pos_w = 1
-		}
+		if .Position in s.animated do o.pos = _lane_acc_full({s.default_pos.x, s.default_pos.y, s.default_pos.z, 0}, s.pos_lanes)
 		if .Rotation in s.animated {
 			o.rot = s.default_rot
 			o.rot_w = 1
 		}
-		if .Scale in s.animated {
-			o.scl = s.default_scl
-			o.scl_w = 1
-		}
+		if .Scale in s.animated do o.scl = _lane_acc_full({s.default_scl.x, s.default_scl.y, s.default_scl.z, 0}, s.scl_lanes)
 	}
+}
+
+// `v` at full weight in the lanes of `lanes`.
+@(private = "file")
+_lane_acc_full :: proc(v: [4]f32, lanes: Lane_Set) -> Lane_Acc {
+	a := Lane_Acc{w = 1}
+	for l in lanes {
+		a.v[l] = v[l]
+		a.lw[l] = 1
+	}
+	return a
 }
 
 // Blend a layer's pose over the running result. A layer covering a channel at
@@ -700,28 +823,19 @@ _pose_blend_over :: proc(out, child: Pose, layer_w: f32, b: ^Animation_Binding) 
 	for i in 0 ..< len(out.props) {
 		c := &child.props[i]
 		o := &out.props[i]
-		if c.w <= PLAYABLE_WEIGHT_EPS do continue
-		eff := layer_w * min(c.w, 1)
 		if prop_kind_discrete(b.prop_slots[i].loc.kind) {
-			if eff >= 0.5 do o.val = c.val
-		} else {
-			o.val = linalg.lerp(o.val.([4]f32), (1.0 / c.w) * c.val.([4]f32), eff)
+			if c.w <= PLAYABLE_WEIGHT_EPS do continue
+			if layer_w * min(c.w, 1) >= 0.5 do o.val = c.val
+			o.w = 1
+			continue
 		}
-		o.w = 1
+		_lane_acc_over(&o.acc, c.acc, layer_w)
 	}
 	for i in 0 ..< len(out.trs) {
 		c := &child.trs[i]
 		o := &out.trs[i]
-		if c.pos_w > PLAYABLE_WEIGHT_EPS {
-			eff := layer_w * min(c.pos_w, 1)
-			o.pos = linalg.lerp(o.pos, c.pos / c.pos_w, eff)
-			o.pos_w = 1
-		}
-		if c.scl_w > PLAYABLE_WEIGHT_EPS {
-			eff := layer_w * min(c.scl_w, 1)
-			o.scl = linalg.lerp(o.scl, c.scl / c.scl_w, eff)
-			o.scl_w = 1
-		}
+		_lane_acc_over(&o.pos, c.pos, layer_w)
+		_lane_acc_over(&o.scl, c.scl, layer_w)
 		if c.rot_w > PLAYABLE_WEIGHT_EPS {
 			eff := layer_w * min(c.rot_w, 1)
 			q := (1.0 / c.rot_w) * c.rot
@@ -770,8 +884,9 @@ playable_output_tick :: proc(o: ^Playable_Output) {
 // Write the pose to the bound transforms. Per property: full weight writes the
 // value, partial weight blends toward the bind-time default, zero weight (a
 // property some clip animates but nothing covered this evaluation) rests AT
-// the default. Slots whose handle died re-resolve here — that covers
-// reparent/delete/reload of the target.
+// the default. Per lane of a vector, a lane no bound row animates keeps the
+// field's current value (_lane_acc_finalize). Slots whose handle died
+// re-resolve here — that covers reparent/delete/reload of the target.
 animation_pose_apply :: proc(b: ^Animation_Binding, pose: Pose) {
 	w := engine.ctx_world()
 	for i in 0 ..< len(pose.trs) {
@@ -783,9 +898,9 @@ animation_pose_apply :: proc(b: ^Animation_Binding, pose: Pose) {
 		t := engine.pool_get(&w.transforms, engine.Handle(s.target))
 		if t == nil do continue
 		p := &pose.trs[i]
-		if .Position in s.animated do t.position = _finalize_vec(p.pos, p.pos_w, s.default_pos)
+		if .Position in s.animated do t.position = _finalize_vec(p.pos, s.pos_lanes, s.default_pos, t.position)
 		if .Rotation in s.animated do t.rotation = _finalize_quat(p.rot, p.rot_w, s.default_rot)
-		if .Scale in s.animated do t.scale = _finalize_vec(p.scl, p.scl_w, s.default_scl)
+		if .Scale in s.animated do t.scale = _finalize_vec(p.scl, s.scl_lanes, s.default_scl, t.scale)
 	}
 	for i in 0 ..< len(pose.props) {
 		s := &b.prop_slots[i]
@@ -799,7 +914,15 @@ animation_pose_apply :: proc(b: ^Animation_Binding, pose: Pose) {
 			continue
 		}
 		p := &pose.props[i]
-		_prop_write_value(ptr, s.loc.kind, s.loc.leaf, _finalize_prop(p.val, p.w, s.default, prop_kind_discrete(s.loc.kind)))
+		if prop_kind_discrete(s.loc.kind) {
+			// The winner's raw value rides in val unscaled: it is written only
+			// when it is the dominant contributor against the default.
+			_prop_write_value(ptr, s.loc.kind, s.loc.leaf, p.w >= 0.5 ? p.val : s.default)
+			continue
+		}
+		def, _ := _channel_value_floats(s.default)
+		cur := _prop_read(ptr, s.loc.kind, s.loc.leaf)
+		_prop_write_value(ptr, s.loc.kind, s.loc.leaf, _lane_acc_finalize(p.acc, _prop_slot_lanes(s), def, cur))
 	}
 }
 
@@ -811,29 +934,11 @@ playable_scripts_fire :: proc(scripts: []Script_Invocation) {
 	}
 }
 
+// A position or scale: _lane_acc_finalize over the first three lanes.
 @(private = "file")
-_finalize_vec :: proc(acc: [3]f32, w: f32, def: [3]f32) -> [3]f32 {
-	if w <= PLAYABLE_WEIGHT_EPS do return def
-	if w >= 1 do return (1.0 / w) * acc
-	return acc + (1 - w) * def
-}
-
-// Property channel finalize: continuous follows _finalize_vec, discrete
-// writes the accumulated winner only when it is the dominant contributor
-// against the default (the winner's raw value rides in acc unscaled).
-@(private = "file")
-_finalize_prop :: proc(acc: Channel_Value, w: f32, def: Channel_Value, discrete: bool) -> Channel_Value {
-	if discrete do return w >= 0.5 ? acc : def
-	if w <= PLAYABLE_WEIGHT_EPS do return def
-	a := acc.([4]f32)
-	r: [4]f32
-	if w >= 1 {
-		r = (1.0 / w) * a
-	} else {
-		d, _ := _channel_value_floats(def)
-		r = a + (1 - w) * d
-	}
-	return r
+_finalize_vec :: proc(a: Lane_Acc, animated: Lane_Set, def, cur: [3]f32) -> [3]f32 {
+	r := _lane_acc_finalize(a, animated, {def.x, def.y, def.z, 0}, {cur.x, cur.y, cur.z, 0})
+	return r.xyz
 }
 
 // A key value as float lanes: floats as they are, an int in the first lane.

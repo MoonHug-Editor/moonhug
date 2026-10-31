@@ -159,6 +159,9 @@ _Anim_View :: struct {
 	// Targets whose Object row is collapsed (sheet_rows.odin). Keys are clones
 	// under the default allocator, freed with the view. Not persisted.
 	collapsed: map[string]bool,
+	// Vector rows whose Lane rows show, by sheet_channel_key. Keys are clones
+	// under the default allocator, freed with the view. Not persisted.
+	expanded:  map[string]bool,
 	// The Object row path field (retargeting). path_target is the target being
 	// edited and ctx_target the Object row the context menu opened on, both
 	// clones under the default allocator. path_wait counts the frames left for
@@ -192,11 +195,14 @@ _anim_view_free :: proc(av: ^_Anim_View) {
 	delete(av.drag_t0)
 	for k in av.collapsed do delete(k)
 	delete(av.collapsed)
+	for k in av.expanded do delete(k)
+	delete(av.expanded)
 	delete(av.path_target)
 	delete(av.ctx_target)
 	av.sel = nil
 	av.drag_t0 = nil
 	av.collapsed = nil
+	av.expanded = nil
 	av.path_edit = false
 	av.path_target = ""
 	av.ctx_target = ""
@@ -220,6 +226,20 @@ _pv_collapse_toggle :: proc(target: string) {
 	}
 	if _av.collapsed == nil do _av.collapsed = make(map[string]bool)
 	_av.collapsed[strings.clone(target)] = true
+}
+
+// Shows or hides the Lane rows of the vector row with sheet_channel_key `key`
+// in the current copy.
+@(private = "file")
+_pv_expand_toggle :: proc(key: string) {
+	context.allocator = runtime.default_allocator()
+	if key in _av.expanded {
+		k, _ := delete_key(&_av.expanded, key)
+		delete(k)
+		return
+	}
+	if _av.expanded == nil do _av.expanded = make(map[string]bool)
+	_av.expanded[strings.clone(key)] = true
 }
 
 // Expands `target`'s Object row in the current copy, so a channel just added
@@ -751,6 +771,52 @@ _pv_channel_remove :: proc(clip: ^anim.AnimationClip, i: int) {
 	delete(ch.modes)
 	delete(ch.tangents)
 	ordered_remove(&clip.channels, i)
+}
+
+// --- Lanes ------------------------------------------------------------------------------
+//
+// A vector row animates only its enabled lanes (anim.animation_channel_lanes_off).
+// The Lanes group of its context menu turns them on and off. Only enabled
+// lanes get Lane rows. A disabled lane's value field is a dimmed dash.
+
+// The lanes row `ch` leaves alone, by the field's live kind. Empty for a row
+// with no mask, or a property row that does not resolve.
+@(private = "file")
+_pv_lanes_off :: proc(ch: ^anim.Animation_Channel) -> anim.Lane_Set {
+	kind, ok := _pv_row_kind(ch)
+	if !ok do return {}
+	return anim.animation_channel_lanes_off(ch, kind)
+}
+
+// Enables or disables lane `lane` of row `ch_idx`, one undo step. Disabling
+// the last enabled lane removes the row in the same step. False with nothing
+// to change: no document, no such row or lane, or the lane already so.
+@(private)
+_pv_lane_set :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx, lane: int, on: bool) -> bool {
+	if doc == nil || ch_idx < 0 || ch_idx >= len(clip.channels) do return false
+	ch := &clip.channels[ch_idx]
+	width := anim.animation_channel_mask_width(ch)
+	if lane < 0 || lane >= width do return false
+	if (lane not_in ch.lanes_off) == on do return false
+	_pv_edit_begin(doc)
+	if on {
+		ch.lanes_off -= {lane}
+	} else {
+		ch.lanes_off += {lane}
+		last := true
+		for l in 0 ..< width do if l not_in ch.lanes_off {
+			last = false
+			break
+		}
+		if last {
+			// The row's strings and arrays live in the document.
+			context.allocator = inspector.doc_alloc()
+			_pv_channel_remove(clip, ch_idx)
+			_pv_deselect() // channel indices shifted
+		}
+	}
+	_pv_edit_commit(doc)
+	return true
 }
 
 // --- Key interpolation ------------------------------------------------------------------
@@ -1540,7 +1606,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 
 	// The visible rows: an Object row per animated transform, its property
 	// rows under it unless collapsed (sheet_rows.odin).
-	rows := sheet_rows(clip, _av.collapsed, context.temp_allocator)
+	rows := sheet_rows(clip, _av.collapsed, _av.expanded, context.temp_allocator)
 	nrows := len(rows)
 	rows_y := origin.y + ruler_h
 	body_h: f32
@@ -1648,6 +1714,12 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 			}
 		}
 	}
+	// A press on a vector row's arrow (or the indent left of it) shows or
+	// hides its Lane rows.
+	if row_at >= 0 && rows[row_at].kind == .Channel && mp.x < _pv_row_label_x(origin.x, rows[row_at]) && im.IsItemActivated() {
+		ch := &clip.channels[rows[row_at].ch]
+		if anim.animation_channel_mask_width(ch) >= 2 do _pv_expand_toggle(sheet_channel_key(ch, context.temp_allocator))
+	}
 
 	// Left panel rows (both modes: this is where curves pick their channel).
 	// An Object row shows its arrow and the transform's name. A property row's
@@ -1665,16 +1737,31 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 			continue
 		}
 		ch := &clip.channels[r.ch]
+		if r.kind == .Lane {
+			// A Lane row: the lane's name in its curve colour.
+			if i % 2 == 1 {
+				im.DrawList_AddRectFilled(dl, im.Vec2{origin.x, ry}, im.Vec2{left_x1, ry + _ANIM_ROW_H}, im.GetColorU32(.FrameBg, 0.25))
+			}
+			lane_names := [4]cstring{"x", "y", "z", "w"}
+			comp_cols := _ANIM_COMP_COLS
+			im.DrawList_AddText(dl, im.Vec2{_pv_row_label_x(origin.x, r), ry + 3}, im.GetColorU32ImVec4(comp_cols[r.lane]), lane_names[r.lane])
+			continue
+		}
 		if r.ch == _av.sel_ch {
 			im.DrawList_AddRectFilled(dl, im.Vec2{origin.x, ry}, im.Vec2{left_x1, ry + _ANIM_ROW_H}, im.GetColorU32(.Header, 0.7))
 		} else if i % 2 == 1 {
 			im.DrawList_AddRectFilled(dl, im.Vec2{origin.x, ry}, im.Vec2{left_x1, ry + _ANIM_ROW_H}, im.GetColorU32(.FrameBg, 0.25))
 		}
+		label_x := _pv_row_label_x(origin.x, r)
+		if anim.animation_channel_mask_width(ch) >= 2 {
+			open := _av.expanded[sheet_channel_key(ch, context.temp_allocator)]
+			_pv_draw_collapse_arrow(dl, im.Vec2{label_x - 4 - _ANIM_ARROW_W * 0.5, ry + _ANIM_ROW_H * 0.5}, open)
+		}
 		label, resolved := _pv_ch_label(ch)
 		col := resolved ? im.GetColorU32(.Text) : im.GetColorU32ImVec4(_ANIM_WARN_COL)
 		name_x1 := left_x1 - _pv_row_values_w(ch) - 8
 		im.DrawList_PushClipRect(dl, im.Vec2{origin.x, ry}, im.Vec2{max(name_x1, origin.x), ry + _ANIM_ROW_H}, true)
-		im.DrawList_AddText(dl, im.Vec2{origin.x + 6 + f32(_pv_row_indent(r)) * _ANIM_INDENT, ry + 3}, col, label)
+		im.DrawList_AddText(dl, im.Vec2{label_x, ry + 3}, col, label)
 		im.DrawList_PopClipRect(dl)
 	}
 	im.DrawList_PopClipRect(dl)
@@ -1697,6 +1784,23 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 		im.EndPopup()
 	}
 	if im.BeginPopup("##anim_ch_ctx") {
+		// A vector row's lanes, checked when enabled. Unchecking the last
+		// enabled lane removes the row, as Remove Property does.
+		if _av.sel_ch >= 0 && _av.sel_ch < len(clip.channels) {
+			ch := &clip.channels[_av.sel_ch]
+			if width := anim.animation_channel_mask_width(ch); width >= 2 {
+				im.SeparatorText("Lanes")
+				lane_names := [4]cstring{"x", "y", "z", "w"}
+				for l in 0 ..< width {
+					on := l not_in _pv_lanes_off(ch)
+					if im.MenuItem(lane_names[l], nil, on, doc != nil) {
+						_pv_lane_set(doc, clip, _av.sel_ch, l, !on)
+						break // the row may be gone
+					}
+				}
+				im.Separator()
+			}
+		}
 		if im.MenuItem("Remove Property", nil, false, doc != nil) && _av.sel_ch >= 0 && _av.sel_ch < len(clip.channels) {
 			_pv_edit_begin(doc)
 			_pv_channel_remove(clip, _av.sel_ch)
@@ -1824,10 +1928,22 @@ _pv_root_name :: proc() -> string {
 
 // How far a row indents: an Object row sits at the column's edge whatever its
 // path depth (the dimmed parent path says where it is), its property rows one
-// step in.
+// step in, a vector row's Lane rows two.
 @(private = "file")
 _pv_row_indent :: proc(r: Sheet_Row) -> int {
-	return r.kind == .Channel ? 1 : 0
+	switch r.kind {
+	case .Object:  return 0
+	case .Channel: return 1
+	case .Lane:    return 2
+	}
+	unreachable()
+}
+
+// Where a row's label starts: after its indent and an arrow's width, so the
+// labels of property rows line up whether or not they have an arrow.
+@(private = "file")
+_pv_row_label_x :: proc(x0: f32, r: Sheet_Row) -> f32 {
+	return _pv_obj_name_x(x0, _pv_row_indent(r))
 }
 
 // Where an Object row's name starts: its indent, then the arrow.
@@ -2012,17 +2128,6 @@ _pv_rot_from_euler :: proc(e: [3]f32) -> [4]f32 {
 	return q
 }
 
-@(private = "file")
-_pv_kind_lanes :: proc(kind: anim.Prop_Kind) -> int {
-	switch kind {
-	case .Vec2: return 2
-	case .Vec3: return 3
-	case .Vec4: return 4
-	case .F32, .Bool, .Int, .Ref, .Text:
-	}
-	return 1
-}
-
 // A key value as float lanes, an int in the first lane. A reference or string
 // has none.
 @(private = "file")
@@ -2140,7 +2245,7 @@ _pv_row_values_w :: proc(ch: ^anim.Animation_Channel) -> f32 {
 	if !ok do return 0
 	if kind == .Bool do return _pv_row_field_h()
 	if kind == .Ref || kind == .Text do return 3 * _ANIM_VAL_W + 2 * _ANIM_VAL_GAP
-	n := f32(_pv_kind_lanes(kind))
+	n := f32(anim.prop_kind_lanes(kind))
 	return n * _ANIM_VAL_W + (n - 1) * _ANIM_VAL_GAP
 }
 
@@ -2204,7 +2309,7 @@ _pv_draw_row_values :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 		ch := &clip.channels[i]
 		kind, ok := _pv_row_kind(ch)
 		if !ok do continue
-		n := _pv_kind_lanes(kind)
+		n := anim.prop_kind_lanes(kind)
 		ry := rows_y + f32(row) * _ANIM_ROW_H + (_ANIM_ROW_H - field_h) * 0.5
 		x := left_x1 - _pv_row_values_w(ch) - 4
 		sampled := anim._animation_channel_sample_value(ch, _pv.time)
@@ -2226,11 +2331,18 @@ _pv_draw_row_values :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 		rot := _pv_ch_is_rotation(ch)
 		euler: [3]f32
 		if rot do euler = _pv_rot_to_euler(v)
+		off := _pv_lanes_off(ch)
 		changed := false
 		im.PushIDInt(i32(i))
 		for c in 0 ..< n {
+			fx := x + f32(c) * (_ANIM_VAL_W + _ANIM_VAL_GAP)
+			if c in off {
+				// A lane the row leaves alone keeps its column, as a dimmed dash.
+				im.DrawList_AddText(im.GetWindowDrawList(), im.Vec2{fx + _ANIM_VAL_W * 0.5 - 3, ry + _pv_row_pad_y()}, im.GetColorU32(.TextDisabled), "-")
+				continue
+			}
 			im.PushIDInt(i32(c))
-			im.SetCursorScreenPos(im.Vec2{x + f32(c) * (_ANIM_VAL_W + _ANIM_VAL_GAP), ry})
+			im.SetCursorScreenPos(im.Vec2{fx, ry})
 			im.SetNextItemWidth(_ANIM_VAL_W)
 			#partial switch kind {
 			case .Bool:
@@ -2403,12 +2515,13 @@ _pv_draw_summary_key :: proc(dl: ^im.DrawList, kx, ky: f32, sel: bool) {
 }
 
 // Adds the keys of channel `ci` inside the band [rmin, rmax] in x to the
-// selection.
+// selection. A key already selected (a property row and its Lane rows in the
+// same band) is added once.
 @(private = "file")
 _pv_box_add_channel :: proc(clip: ^anim.AnimationClip, ci: int, rmin, rmax: im.Vec2, tx0, pps: f32) {
 	for t, k in clip.channels[ci].times {
 		kx := tx0 + t * pps
-		if kx < rmin.x || kx > rmax.x do continue
+		if kx < rmin.x || kx > rmax.x || _pv_sel_has(ci, k) do continue
 		_pv_sel_pin()
 		append(&_av.sel, _Key_Ref{ci, k})
 	}
@@ -2440,10 +2553,16 @@ _pv_sheet_dopesheet :: proc(
 		if i % 2 == 1 {
 			im.DrawList_AddRectFilled(dl, im.Vec2{x0, ry}, im.Vec2{x1, ry + _ANIM_ROW_H}, im.GetColorU32(.FrameBg, 0.25))
 		}
+		// A Lane row shows the row's keys in its lane's colour.
+		key_col := im.GetColorU32(.Text)
+		if r.kind == .Lane {
+			comp_cols := _ANIM_COMP_COLS
+			key_col = im.GetColorU32ImVec4(comp_cols[r.lane])
+		}
 		for t, k in clip.channels[r.ch].times {
 			kx := tx0 + t * pps
 			sel := _pv_sel_has(r.ch, k)
-			col := sel ? im.GetColorU32(.CheckMark) : im.GetColorU32(.Text)
+			col := sel ? im.GetColorU32(.CheckMark) : key_col
 			kr := sel ? _ANIM_KEY_R + 1 : _ANIM_KEY_R
 			im.DrawList_AddQuadFilled(dl,
 				im.Vec2{kx, ky - kr}, im.Vec2{kx + kr, ky},
@@ -2451,7 +2570,8 @@ _pv_sheet_dopesheet :: proc(
 		}
 	}
 
-	// The row under the pointer: an Object row, or a property row's channel.
+	// The row under the pointer: an Object row, or a property row's channel. A
+	// Lane row stands for its channel: its keys are the row's keys.
 	obj_row := row_at >= 0 && rows[row_at].kind == .Object
 	row_ch := row_at >= 0 && !obj_row ? rows[row_at].ch : -1
 
@@ -2659,7 +2779,7 @@ _pv_sheet_curves :: proc(
 ) {
 	// Left-panel click on a property row selects the channel whose curves
 	// show. An Object row plots nothing.
-	if im.IsItemActivated() && mp.x < x0 && row_at >= 0 && rows[row_at].kind == .Channel {
+	if im.IsItemActivated() && mp.x < x0 && row_at >= 0 && rows[row_at].kind != .Object {
 		_av.sel_ch = rows[row_at].ch
 		_av.sel_key = -1
 		clear(&_av.sel)
@@ -2679,6 +2799,8 @@ _pv_sheet_curves :: proc(
 	vals := anim.animation_channel_floats(ch)
 	ncomp := _pv_ch_ncomp(ch)
 	handles := _pv_curve_has_handles(ch)
+	// Only the lanes the row animates plot, take handles and take presses.
+	off := _pv_lanes_off(ch)
 
 	// Freeze the value range while dragging — a range that follows the edited
 	// value makes the curve chase the cursor.
@@ -2686,6 +2808,7 @@ _pv_sheet_curves :: proc(
 		vmin, vmax := max(f32), min(f32)
 		for v in vals {
 			for c in 0 ..< ncomp {
+				if c in off do continue
 				vmin = min(vmin, v[c])
 				vmax = max(vmax, v[c])
 			}
@@ -2710,6 +2833,7 @@ _pv_sheet_curves :: proc(
 					if anim._animation_key_mode(ch, k) != .Free do continue
 					tin, tout := anim._animation_key_tangents(ch, vals[:], k)
 					for c in 0 ..< ncomp {
+						if c in off do continue
 						dout := tangent_handle_offset(tout[c], pps, vpx, _ANIM_TAN_LEN)
 						din := tangent_handle_offset(tin[c], pps, vpx, _ANIM_TAN_LEN)
 						hi_v := vals[k][c] - dout.y / vpx
@@ -2731,7 +2855,7 @@ _pv_sheet_curves :: proc(
 	if _av.drag_tan {
 		k, c := _av.tan_key, _av.tan_comp
 		switch {
-		case doc == nil || !handles || k < 0 || k >= len(ch.times) || c >= ncomp || anim._animation_key_mode(ch, k) != .Free:
+		case doc == nil || !handles || k < 0 || k >= len(ch.times) || c >= ncomp || c in off || anim._animation_key_mode(ch, k) != .Free:
 			_pv_tan_drag_end(doc, false)
 		case im.IsMouseDown(.Left):
 			key_pt := im.Vec2{tx0 + ch.times[k] * pps, _pv_curve_v_to_y(vals[k][c], rows_y, body_h)}
@@ -2767,6 +2891,7 @@ _pv_sheet_curves :: proc(
 			if anim._animation_key_mode(ch, k) != .Free do continue
 			tin, tout := anim._animation_key_tangents(ch, vals[:], k)
 			for c in 0 ..< ncomp {
+				if c in off do continue
 				key_pt := im.Vec2{tx0 + t * pps, _pv_curve_v_to_y(vals[k][c], rows_y, body_h)}
 				for out in ([2]bool{false, true}) {
 					hp := _pv_tan_handle_pos(key_pt, tin, tout, c, out, pps, vpx)
@@ -2794,6 +2919,7 @@ _pv_sheet_curves :: proc(
 	im.DrawList_PushClipRect(dl, im.Vec2{x0, rows_y}, im.Vec2{x1, rows_y + body_h}, true)
 	comp_cols := _ANIM_COMP_COLS
 	for c in 0 ..< ncomp {
+		if c in off do continue
 		col := im.GetColorU32ImVec4(comp_cols[c])
 		pts := make([dynamic]im.Vec2, context.temp_allocator)
 		for x := tx0; x <= x1 - _ANIM_PAD_X + 3; x += 3 {
@@ -2848,6 +2974,7 @@ _pv_sheet_curves :: proc(
 		for t, k in ch.times {
 			kx := tx0 + t * pps
 			for c in 0 ..< ncomp {
+				if c in off do continue
 				ky := _pv_curve_v_to_y(vals[k][c], rows_y, body_h)
 				d := max(abs(kx - mp.x), abs(ky - mp.y))
 				if d < best_d {
@@ -2936,10 +3063,16 @@ _pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 
 	ncomp := _pv_ch_is_rotation(ch) || !anim.animation_channel_is_float(ch) ? 0 : _pv_ch_ncomp(ch)
 	comp_names := [4]cstring{"x", "y", "z", "w"}
+	off := _pv_lanes_off(ch)
 	for c in 0 ..< ncomp {
 		im.SameLine()
 		im.TextUnformatted(comp_names[c])
 		im.SameLine()
+		if c in off {
+			// A lane the row leaves alone.
+			im.TextDisabled("-")
+			continue
+		}
 		im.SetNextItemWidth(70)
 		_pv_field_undo(doc, clip, im.DragFloat(fmt.ctprintf("##anim_key_v%d", c), &anim.animation_channel_floats(ch)[k][c], 0.01))
 	}
@@ -3135,4 +3268,12 @@ animation_view_apply_preset :: proc(preset: Key_Preset) {
 // Test-only: clears the key selection.
 animation_view_deselect :: proc() {
 	_pv_deselect()
+}
+
+// Test-only: enables or disables lane `lane` of row `ch` in the shown clip, as
+// the lane items of the property row's menu do.
+animation_view_set_lane :: proc(ch, lane: int, on: bool) -> bool {
+	doc, clip := _pv_doc()
+	if doc == nil || clip == nil do return false
+	return _pv_lane_set(doc, clip, ch, lane, on)
 }
