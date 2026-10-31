@@ -158,6 +158,37 @@ test_lane_mixer_blends_each_lane_on_its_own :: proc(t: ^testing.T) {
 	testing.expect(t, _near3(tr.position, {4, 6, 0.5}), "each position lane takes its own clip's value")
 }
 
+// One clip with a split position row (one channel per lane, the form Split
+// Lanes writes): the graph merges the channels per lane, so each lane takes
+// its own channel's value instead of the last channel overwriting the rest.
+@(test)
+test_lane_mixer_merges_split_channels_of_one_clip :: proc(t: ^testing.T) {
+	lt: _Lane_Test
+	_lane_setup(&lt)
+	context.user_ptr = &lt.tc.uc
+	defer _lane_teardown(&lt)
+
+	w := engine.ctx_world()
+	tr := engine.pool_get(&w.transforms, engine.Handle(lt.owner))
+	tr.position = {0.5, 0.5, 0.5}
+
+	a := _lane_clip()
+	_lane_row(&a, .Position, "", {4, 0, 0, 0}, {1, 2})
+	_lane_row(&a, .Position, "", {0, 6, 0, 0}, {0, 2})
+	_lane_row(&a, .Position, "", {0, 0, 8, 0}, {0, 1})
+	_lane_row(&a, .Position, "size", {10, 0, 0, 0}, {1, 2})
+	_lane_row(&a, .Position, "size", {0, 20, 0, 0}, {0, 2})
+	ref := engine.PPtr{guid = _clip_guid(0xB4)}
+	anim.animation_clip_cache[ref] = a
+
+	mixer := anim.playable_add(&lt.g, anim.Playable_Mixer{})
+	anim.playable_connect(&lt.g, mixer, anim.playable_add(&lt.g, anim.Playable_Clip{clip = ref}), 1)
+	anim.animation_pose_apply(&lt.b, anim.playable_graph_evaluate(&lt.g, mixer, &lt.b))
+
+	testing.expect(t, _near3(tr.position, {4, 6, 8}), "each position lane takes its own channel's value")
+	testing.expect(t, _near3(lt.volume.size, {10, 20, 3}), "each size lane takes its own channel's value, z keeps the field's")
+}
+
 // --- Format -------------------------------------------------------------------------------
 
 // The `lanes` object of channel 0 in marshaled clip bytes, and whether it is

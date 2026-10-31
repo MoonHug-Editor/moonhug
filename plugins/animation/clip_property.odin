@@ -65,8 +65,8 @@ prop_kind_lanes :: proc(kind: Prop_Kind) -> int {
 // A float row of 2, 3 or 4 lanes animates only the lanes outside its
 // `lanes_off` (Animation_Channel). The mask needs the row's width, which a
 // property row only has once its field resolves, so these take the field's
-// kind: a transform row ignores it (Position and Scale are 3 lanes, Rotation
-// 4), a property row is as wide as prop_kind_lanes says.
+// kind: a transform row ignores it (Position, Scale and Euler are 3 lanes,
+// Rotation 4), a property row is as wide as prop_kind_lanes says.
 //   - a Rotation row and a scalar row ignore the mask: every lane animates
 //   - a lane past the row's width is never off
 //   - all lanes off is a valid file but nothing writes one: the window removes

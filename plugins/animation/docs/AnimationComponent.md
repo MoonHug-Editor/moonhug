@@ -281,18 +281,19 @@ plays and the Playable Graph window shows the real topology.
 
 The sheet groups the rows by the transform they animate (`editor/sheet_rows.odin`). Each animated transform has an Object row, in the order its first channel appears in the clip, labelled with the transform's name (the animated object's own name for the object itself). Its property rows follow it, indented, labelled with the component and field or Position, Rotation and Scale.
 
-- Object rows sit at the column's edge whatever their depth, their property rows one step in. The parent path shows dimmed before the name ("Armature / node_2") when the column has room, which is what says where a transform sits. The tooltip shows the full path. A target that does not resolve under the animated object shows its name in the warning colour the unresolved property rows use.
-- Retargeting: a double-click on an Object row's name, or Edit Path in its context menu, opens a field holding the full target path. Enter, or Escape as in every text field, sets the target of every channel of that object to the typed path, spaces trimmed, as one undo step (`animation_view_retarget`). A click elsewhere cancels. A clip inside a model has no field. An unresolved path shows in the warning colour and can be edited again. The collapsed state follows the row to its new path.
+- Object rows sit at the column's edge whatever their depth, their property rows one step in. The row shows the transform's name only. The tooltip shows the full path. A target that does not resolve under the animated object shows its name in the warning colour the unresolved property rows use.
+- A click on an Object row's name pings the transform in the hierarchy, a double-click selects it. Neither changes the keys.
+- Retargeting: Edit Path in an Object row's context menu opens a field holding the full target path, at the row's indent. Enter, or Escape as in every text field, sets the target of every channel of that object to the typed path, spaces trimmed, as one undo step (`animation_view_retarget`). A click elsewhere cancels. A clip inside a model has no field. An unresolved path shows in the warning colour and can be edited again. The collapsed state follows the row to its new path.
 - The arrow on an Object row collapses it, hiding its property rows. Collapse state belongs to the window copy and is not saved. Adding a property under a collapsed object expands it.
 - In the dope sheet an Object row shows an outlined summary key at every time where any of its property rows has a key, hidden rows included. Keys within half a frame after the first key of a run count as one.
 - Clicking a summary key selects every key it stands for, the first of them becoming the primary key. Dragging it moves them together. A modifier click adds them to the selection or removes them. A box selection over an Object row selects its channels' keys in the band.
-- A press on an Object row's name selects nothing. Double-click, Remove Property and Add Key act on property rows only, and the curve view plots only the selected property row.
+- A press on an Object row's name selects no key. Double-click on a key, Remove Property and Add Key act on property rows only, and the curve view plots only the selected property row.
 
 ### Lane rows
 
-A vector row (Position, Scale, or a field of 2 to 4 float lanes, never Rotation) has an arrow before its label. It is collapsed by default. Expanded, a Lane row per enabled lane follows it, labelled x, y, z or w, one step further in (`Sheet_Row_Kind.Lane` in `editor/sheet_rows.odin`). A disabled lane has no row. The expanded state belongs to the window copy, like the Object rows' collapse, and is not saved.
+A vector row (Position, Scale, Euler, or a field of 2 to 4 float lanes, never Rotation) has an arrow before its label. It is collapsed by default. Expanded, a Lane row per enabled lane follows it, labelled x, y, z or w, one step further in (`Sheet_Row_Kind.Lane` in `editor/sheet_rows.odin`). A disabled lane has no row. The expanded state belongs to the window copy, like the Object rows' collapse, and is not saved.
 
-- A Lane row shows the property row's keys, at the same times, in the lane's curve colour.
+- A Lane row shows the keys of the channel that animates its lane, in the lane's curve colour: the property row's keys for a joined row, the lane's own channel for a split row ("Split lanes" below).
 - A Lane row is a view of the property row's keys: a click, a drag, a modifier click, a double-click and a box selection on it act as they do on the property row. A key caught by both a property row and its Lane rows in one box is selected once. A right-click on a key opens the key menu, as on the property row.
 - The property row's context menu has a Lanes group above Remove Property: one checked item per lane of the row's width, checked when the lane is enabled. A click toggles the lane, one undo step. Unchecking the last enabled lane removes the whole row in that same step, without asking, as Remove Property does.
 - The property row's value fields keep every lane in its column: an enabled lane shows its field, a disabled lane a dimmed dash. The selected key's footer does the same.
@@ -323,7 +324,7 @@ The preview poses the object only around the scene and game render, so the live 
 - Preview on, Record off: the field shows the clip's value in the theme's accent color, with a bar left of the label, and ignores edits. An edit there would change the object's own value, which the pose hides, so the field takes no edits.
 - Record armed: the field shows the clip's value in red. When a drag is released or a typed value lands, the edited value is keyed at the playhead through `inspector.driven_commit`, one undo step on the clip. The object's own value, the scene undo stack, the prefab overrides and the other selected objects are not touched. A value equal to the object's own value is keyed like any other.
 - A field without a row, an object outside the animated object, a state preview from the States tree, or the preview off: the field shows the object's own value as usual.
-- Rotation shows the euler angles (degrees) of the clip's quaternion, and an edit keys the quaternion built from them.
+- Rotation shows euler angles in degrees: an Euler row's angles over the transform's own rotation, or the angles of a Rotation row's quaternion. An edit keys an Euler row's angles, or the quaternion built from the angles for a Rotation row.
 - A string field is never driven: the inspector's string drawer frees the string it edits, and a driven string would be the clip's own. The field shows the object's own value, and recording and Add Key still key it.
 - A row drawn by a decorator (a color swatch, a range slider) shows the clip's value the same way and keys an edit the same way.
 - While the window shows a clip, preview on or off and Record armed or not, a field the clip has a row for and the preview does not drive now has a dimmed green bar left of its label (`inspector.driven_row_state`). A driven field shows the driven tint and bar instead.
@@ -407,6 +408,15 @@ The variant is told by the element type of `values`, so the key stays `values` f
 
 A float row is the array of 4-lane arrays it has always been, so every `.anim`, artifact and model clip reads as it is. The rule lives in a JSON marshaler and unmarshaler for `Channel_Values`, registered on SerializationInit with the marshaler maps every load and save goes through (the artifact load, asset documents, undo).
 
+`path` is a number on disk (`Animation_Path` in `clip.odin`): `0` Position, `1` Rotation, `2` Scale, `3` Euler. A property row ignores it.
+
+- A Rotation row (`"path": 1`) holds unit quaternions `[x, y, z, w]` and slerps between keys. Model clips and baked glTF clips keep Rotation rows.
+- An Euler row (`"path": 3`) is the same rotation as euler angles in degrees, `[x, y, z, 0]` in the inspector's order (`engine.quat_to_euler_xyz`, `animation_quat_from_euler`).
+- An Euler row is a 3-lane vector row: each lane interpolates on its own by the key modes, with no slerp, and the row can mask lanes and split like a Position row.
+- Recording and Add Property create Euler rows for a transform's rotation.
+- A clip can hold a Rotation row and an Euler row for one transform. The Rotation row gives the quaternion, then the Euler row's enabled lanes replace those angles of it. Without a Rotation row the Euler lanes replace angles of the transform's own rotation.
+- The direct apply (`animation_clip_apply`) and the mixer both write a rotation this way. The mixer blends the bound Rotation rows' quaternions first (`Binding_Slot.rot_quat`), then the Euler lanes on top (`_finalize_rot` in `playable_graph.odin`).
+
 ### Lanes
 
 A float row of 2, 3 or 4 lanes can animate only some of them. Animating `position.y` alone leaves x and z to the object.
@@ -417,7 +427,7 @@ A float row of 2, 3 or 4 lanes can animate only some of them. Animating `positio
 
 - `lanes` holds one bool per lane, x to w, true for a lane the row animates. A lane the array does not reach animates. The key is absent when every lane animates, so every file without it reads as it always has.
 - In memory the row holds the disabled lanes, `Animation_Channel.lanes_off`, so the zero value is "every lane". A JSON marshaler and unmarshaler for `Channel_Lanes_Off` turn it into `lanes` and back, registered with the `Channel_Values` ones.
-- The width comes from the field: Position and Scale are 3 lanes, a property row as many as its field's type (`animation_channel_lane_count`, `animation_channel_lanes_off` in `clip_property.odin`). A lane past the width never counts as disabled.
+- The width comes from the field: Position, Scale and Euler are 3 lanes, a property row as many as its field's type (`animation_channel_lane_count`, `animation_channel_lanes_off` in `clip_property.odin`). A lane past the width never counts as disabled.
 - A Rotation row and a scalar row ignore the mask: every lane animates.
 - A mask with every lane disabled is valid but nothing writes one: the Animation window removes the row with its last lane.
 
@@ -426,10 +436,30 @@ How a mask applies:
 - A write of the row reads the field, replaces the enabled lanes and writes it back (`_prop_write_value` with the lanes to keep). The other lanes keep what the field holds.
 - In the mixer a disabled lane contributes nothing. When the pose is written, a lane no bound row animates keeps the field's value at that moment, not the value captured at bind time, so an edit of that lane holds.
 - Each lane blends on its own (`Lane_Acc` in `playable_graph.odin`): a lane's value is the blend of only the clips whose row enables it, and the row's weight across every clip that animates the field decides how much of the default shows. Two clips at 0.5, one animating x and the other y, give x the first clip's full value and y the second's.
+- Several channels of one clip on one property merge per lane the same way (`_lane_acc_leaf` accumulates into the slot), so each lane of a split row takes its own channel's value.
 - The inspector's driven value fills the disabled lanes from the live field, so it shows the clip's lanes and the object's own lanes together.
-- Recording keys the whole vector and enables every lane of the row.
+- Recording into a joined row keys the whole vector and enables every lane of the row. Recording into a split row is below.
 
 The live field's type decides how a row applies. A float row on an int or bool field writes its first lane rounded, an int row on a float field writes the int. A row of any other kind than the field's writes nothing, like a row whose field does not resolve.
+
+#### Split lanes
+
+A vector row (Position, Scale, Euler, a vector field) is joined or split (`editor/lane_split.odin`).
+
+- A joined row is one channel: every lane shares the key times. Joined is the default.
+- A split row is several channels with the same target and property, one per lane, each masked to its lane through `lanes` and each with its own key times. A lane can have keys on frames the other lanes have none.
+- On disk a split row is just those channels. There is no new field: the shared target and property group them, and each channel's `lanes` says which lane it animates.
+- Joined is cheaper: one time and one value per key instead of one per lane, and one curve evaluation per sample instead of one per channel.
+- Split Lanes and Join Lanes are in the property row's context menu. Split Lanes needs a vector row with two or more enabled lanes that is not split yet. Join Lanes needs a split float row.
+- Split copies the row once per enabled lane, times, values, modes and tangents included, and masks each copy to its lane.
+- Join puts the union of the channels' key times into the first channel. Times within half a frame of an earlier one fold into it.
+- Join samples each lane from its own channel at every time and gives the keys Free tangents from each lane's slopes, so the lanes keep their curves.
+- A joined key is Step only where every lane steps there. Otherwise it is Free.
+- A lane no channel animates is disabled in the joined row. Join frees the other channels.
+- In the sheet a split row is one property row. It shows summary keys like an Object row, one per time where any of its lanes has a key, and its Lane rows own their keys: each Lane row shows and edits the keys of its lane's channel.
+- The Lanes menu on a split row adds a channel for an enabled lane (a copy of the first channel masked to that lane, after the group) or removes the lane's channel.
+- Recording into a split row keys only the lanes the edit changed, each in its own channel. An undo-recorded edit compares with the value before the edit, an inspector edit of a driven field with the value the rows show at the playhead.
+- Add Key keys every lane of a split row. Delete Key removes the playhead key in every channel of the field.
 
 ### Interpolation
 

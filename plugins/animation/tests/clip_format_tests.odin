@@ -442,6 +442,73 @@ test_clip_format_preview_copy_is_deep :: proc(t: ^testing.T) {
 	testing.expect(t, cs[0] == "x" && raw_data(cs[0]) != raw_data(strs[0]), "strings are cloned")
 }
 
+// --- Euler rows ---------------------------------------------------------------------------
+
+// An Euler row is `"path": 3` on disk: it reads back as an Euler row with its
+// angles and its lane mask, and writes the same number.
+@(test)
+test_clip_format_euler_row_round_trips :: proc(t: ^testing.T) {
+	src := `{"length": 1.0, "channels": [{"target": "Arm", "path": 3, "times": [0.0, 1.0],
+		"values": [[10, 20, 30, 0], [10, 80, 30, 0]], "lanes": [false, true, false]}]}`
+	clip: anim.AnimationClip
+	err := json.unmarshal(transmute([]byte)src, &clip, .JSON, context.allocator)
+	defer anim.cleanup_AnimationClip(&clip)
+	testing.expect(t, err == nil, "the Euler row unmarshals")
+	if !testing.expect_value(t, len(clip.channels), 1) do return
+	ch := &clip.channels[0]
+	testing.expect_value(t, ch.path, anim.Animation_Path.Euler)
+	testing.expect_value(t, ch.lanes_off, anim.Channel_Lanes_Off{0, 2})
+	testing.expect_value(t, anim.animation_channel_mask_width(ch), 3)
+	vals, is_f := ch.values.([dynamic][4]f32)
+	if testing.expect(t, is_f && len(vals) == 2, "two float keys") do testing.expect_value(t, vals[1], [4]f32{10, 80, 30, 0})
+
+	data, merr := json.marshal(clip, {spec = .JSON}, context.temp_allocator)
+	testing.expect(t, merr == nil, "the clip marshals")
+	root, _ := json.parse(data, .JSON, true, context.temp_allocator)
+	obj := root.(json.Object)["channels"].(json.Array)[0].(json.Object)
+	n, is_num := _num(obj["path"])
+	testing.expect(t, is_num && n == 3, "the path writes as 3")
+
+	again: anim.AnimationClip
+	err = json.unmarshal(data, &again, .JSON, context.allocator)
+	defer anim.cleanup_AnimationClip(&again)
+	testing.expect(t, err == nil, "the written clip unmarshals")
+	if len(again.channels) == 1 {
+		testing.expect_value(t, again.channels[0].path, anim.Animation_Path.Euler)
+		testing.expect_value(t, again.channels[0].lanes_off, anim.Channel_Lanes_Off{0, 2})
+		testing.expect_value(t, again.channels[0].values.([dynamic][4]f32)[0], [4]f32{10, 20, 30, 0})
+	}
+}
+
+// The direct apply of an Euler row masked to y changes only the y angle of
+// the transform's rotation: x and z keep the transform's own angles.
+@(test)
+test_clip_format_euler_row_apply_writes_its_lanes :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	owner := engine.transform_new("Rig")
+	w := engine.ctx_world()
+	tr := engine.pool_get(&w.transforms, engine.Handle(owner))
+	tr.rotation = anim.animation_quat_from_euler({10, 20, 30})
+	before := engine.quat_to_euler_xyz(tr.rotation)
+
+	clip := anim.AnimationClip{length = 1}
+	clip.channels = make([dynamic]anim.Animation_Channel)
+	defer anim.cleanup_AnimationClip(&clip)
+	ch := _float_channel({0}, {{70, 60, -40, 0}}, .Euler)
+	ch.lanes_off = {0, 2}
+	append(&clip.channels, ch)
+
+	anim.animation_clip_apply(&clip, owner, 0)
+	after := engine.quat_to_euler_xyz(tr.rotation)
+	testing.expectf(t, _near(after.x, before.x, 0.01) && _near(after.z, before.z, 0.01), "x and z keep their angles: %v before, %v after", before, after)
+	testing.expectf(t, _near(after.y, 60, 0.01), "y takes the row's angle, got %v", after.y)
+}
+
 // --- Binding typed rows to fields ---------------------------------------------------------
 
 // An int row writes an i32 above 2^24 exactly, a string row writes the camera's

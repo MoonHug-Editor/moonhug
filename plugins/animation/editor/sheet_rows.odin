@@ -1,21 +1,27 @@
 package animation_editor
 
 // The Animation window's sheet rows: the channels grouped by the transform
-// they animate. Pure, no imgui, so the grouping is testable on its own.
+// they animate, and by the property they animate. Pure, no imgui, so the
+// grouping is testable on its own.
 //
 // - One Object row per distinct channel target, in order of first appearance
 //   among the channels. "" is the animated object itself.
-// - A Channel row per channel of that target, in channel order, right after
-//   its Object row, unless the target is collapsed.
-// - An Object row is indented by its target's path depth (sheet_target_split),
-//   its Channel rows one level further.
+// - A Channel row per property of that target, in order of the property's
+//   first channel, right after its Object row, unless the target is
+//   collapsed. A property is one channel (a joined row), or one channel per
+//   lane (a split row, lane_split.odin): the channels sharing the row's
+//   sheet_channel_key. The row's `ch` is the property's first channel and
+//   `split` says whether there are more (sheet_group_channels lists them).
+// - An Object row has depth 0, its Channel rows 1, their Lane rows 2.
 // - A Channel row of a vector (a float row with a lane mask of 2 to 4 lanes,
-//   anim.animation_channel_mask_width: Position, Scale, a vector field, never
-//   Rotation) is expandable: expanded, a Lane row per enabled lane follows it,
-//   x to w, one level further in. A disabled lane has no row. Collapsed is the
-//   default.
+//   anim.animation_channel_mask_width: Position, Scale, Euler, a vector
+//   field, never Rotation) is expandable: expanded, a Lane row per enabled
+//   lane follows it, x to w. A Lane row's `ch` is the channel that animates
+//   its lane: the row's own channel when joined, the lane's channel when
+//   split. A disabled lane has no row. Collapsed is the default.
 // - The view maps between sheet rows and channel indices only through
-//   sheet_rows and sheet_row_of_channel. A channel index is never a row index.
+//   sheet_rows, sheet_group_channels and sheet_row_of_channel. A channel
+//   index is never a row index.
 
 import "core:fmt"
 import "core:slice"
@@ -25,15 +31,16 @@ import anim "moonhug:packages/animation"
 Sheet_Row_Kind :: enum {
 	Object,
 	Channel,
-	Lane, // one lane of a vector Channel row: a view of the row's keys
+	Lane, // one lane of a vector Channel row
 }
 
 Sheet_Row :: struct {
 	kind:   Sheet_Row_Kind,
 	target: string, // the channel target, borrowed from the clip
-	ch:     int,    // channel index, -1 for an Object row
-	depth:  int,    // indent level: an Object row's path depth, one more for its channels, two more for lanes
+	ch:     int,    // channel index, -1 for an Object row: a Channel row's first channel, a Lane row's own
+	depth:  int,    // indent level: 0 for an Object row, 1 for its Channel rows, 2 for their Lane rows
 	lane:   int,    // a Lane row's lane, 0 x to 3 w, -1 for the other kinds
+	split:  bool,   // a Channel row whose property has a channel per lane
 }
 
 // One key of a clip: channel index and key index in it.
@@ -49,27 +56,67 @@ sheet_rows :: proc(clip: ^anim.AnimationClip, collapsed: map[string]bool, expand
 	rows := make([dynamic]Sheet_Row, 0, len(clip.channels) * 2, allocator)
 	for &first, i in clip.channels {
 		if _sheet_target_seen(clip, first.target, i) do continue
-		_, _, depth := sheet_target_split(first.target)
-		append(&rows, Sheet_Row{kind = .Object, target = first.target, ch = -1, depth = depth, lane = -1})
+		append(&rows, Sheet_Row{kind = .Object, target = first.target, ch = -1, depth = 0, lane = -1})
 		if collapsed[first.target] do continue
 		for &c, j in clip.channels[i:] {
 			if c.target != first.target do continue
-			append(&rows, Sheet_Row{kind = .Channel, target = c.target, ch = i + j, depth = depth + 1, lane = -1})
+			group := sheet_group_channels(clip, i + j, context.temp_allocator)
+			if group[0] != i + j do continue // grouped into an earlier row
+			append(&rows, Sheet_Row{kind = .Channel, target = c.target, ch = i + j, depth = 1, lane = -1, split = len(group) > 1})
 			if len(expanded) == 0 do continue
 			width := anim.animation_channel_mask_width(&c)
 			if width < 2 || !expanded[sheet_channel_key(&c, context.temp_allocator)] do continue
 			for l in 0 ..< width {
-				if l in c.lanes_off do continue
-				append(&rows, Sheet_Row{kind = .Lane, target = c.target, ch = i + j, depth = depth + 2, lane = l})
+				lc := sheet_lane_channel(clip, group, l)
+				if lc < 0 do continue
+				append(&rows, Sheet_Row{kind = .Lane, target = c.target, ch = lc, depth = 2, lane = l})
 			}
 		}
 	}
 	return rows[:]
 }
 
+// The channels of the property channel `ch` animates, in channel order,
+// `ch` among them: one for a joined row, one per lane for a split row.
+sheet_group_channels :: proc(clip: ^anim.AnimationClip, ch: int, allocator := context.allocator) -> []int {
+	out := make([dynamic]int, allocator)
+	c := &clip.channels[ch]
+	for &o, i in clip.channels {
+		if _sheet_same_property(c, &o) do append(&out, i)
+	}
+	return out[:]
+}
+
+// Whether two channels animate the same property of the same target.
+@(private = "file")
+_sheet_same_property :: proc(a, b: ^anim.Animation_Channel) -> bool {
+	if a.target != b.target do return false
+	if anim.animation_channel_is_property(a) != anim.animation_channel_is_property(b) do return false
+	if anim.animation_channel_is_property(a) do return a.component == b.component && a.field == b.field
+	return a.path == b.path
+}
+
+// The channel of `group` (sheet_group_channels) that animates lane `lane`:
+// the first with the lane enabled, -1 when none has it.
+sheet_lane_channel :: proc(clip: ^anim.AnimationClip, group: []int, lane: int) -> int {
+	for idx in group {
+		c := &clip.channels[idx]
+		if lane < anim.animation_channel_mask_width(c) && lane not_in c.lanes_off do return idx
+	}
+	return -1
+}
+
+// The channels of `target`, in channel order.
+sheet_target_channels :: proc(clip: ^anim.AnimationClip, target: string, allocator := context.allocator) -> []int {
+	out := make([dynamic]int, allocator)
+	for &c, i in clip.channels do if c.target == target do append(&out, i)
+	return out[:]
+}
+
 // What identifies a channel across edits, for a view's per-row state (the
 // expanded vector rows): target, then the transform path or the component and
-// field. A channel index shifts when a row is removed, this does not.
+// field. A channel index shifts when a row is removed, this does not. The
+// channels of a split row share it.
 sheet_channel_key :: proc(ch: ^anim.Animation_Channel, allocator := context.allocator) -> string {
 	if anim.animation_channel_is_property(ch) {
 		return strings.concatenate({ch.target, "\x1f", ch.component, "\x1f", ch.field}, allocator)
@@ -86,22 +133,23 @@ _sheet_target_seen :: proc(clip: ^anim.AnimationClip, target: string, before: in
 	return false
 }
 
-// The row showing channel `ch`, -1 when the channel is hidden or absent.
-sheet_row_of_channel :: proc(rows: []Sheet_Row, ch: int) -> int {
+// The Channel row of the property channel `ch` animates, -1 when the
+// property is hidden or absent.
+sheet_row_of_channel :: proc(clip: ^anim.AnimationClip, rows: []Sheet_Row, ch: int) -> int {
+	if ch < 0 || ch >= len(clip.channels) do return -1
 	for r, i in rows {
-		if r.kind == .Channel && r.ch == ch do return i
+		if r.kind == .Channel && _sheet_same_property(&clip.channels[r.ch], &clip.channels[ch]) do return i
 	}
 	return -1
 }
 
-// The key times across every channel of `target`, sorted. Times within half a
+// The key times across the channels `chans`, sorted. Times within half a
 // frame of the first time of a run count as one, and that first time stands
-// for the run.
-sheet_object_key_times :: proc(clip: ^anim.AnimationClip, target: string, allocator := context.allocator) -> []f32 {
+// for the run. An Object row's summary keys come from this over the target's
+// channels, a split row's over its lanes' channels.
+sheet_keys_times :: proc(clip: ^anim.AnimationClip, chans: []int, allocator := context.allocator) -> []f32 {
 	all := make([dynamic]f32, context.temp_allocator)
-	for &c in clip.channels {
-		if c.target == target do append(&all, ..c.times[:])
-	}
+	for idx in chans do append(&all, ..clip.channels[idx].times[:])
 	slice.sort(all[:])
 	half := 0.5 / anim.animation_clip_frame_rate(clip)
 	out := make([dynamic]f32, 0, len(all), allocator)
@@ -112,19 +160,28 @@ sheet_object_key_times :: proc(clip: ^anim.AnimationClip, target: string, alloca
 	return out[:]
 }
 
-// The keys of `target`'s channels that summary time `times[i]` stands for:
+// The keys of the channels `chans` that summary time `times[i]` stands for:
 // every key from that time up to the next summary time. `times` comes from
-// sheet_object_key_times on the same clip.
-sheet_object_keys_at :: proc(clip: ^anim.AnimationClip, target: string, times: []f32, i: int, allocator := context.allocator) -> []Sheet_Key {
-	assert(i >= 0 && i < len(times), "sheet_object_keys_at: summary index in range")
+// sheet_keys_times over the same channels.
+sheet_keys_at :: proc(clip: ^anim.AnimationClip, chans: []int, times: []f32, i: int, allocator := context.allocator) -> []Sheet_Key {
+	assert(i >= 0 && i < len(times), "sheet_keys_at: summary index in range")
 	keys := make([dynamic]Sheet_Key, allocator)
-	for &c, ci in clip.channels {
-		if c.target != target do continue
-		for kt, k in c.times {
+	for ci in chans {
+		for kt, k in clip.channels[ci].times {
 			if sheet_object_key_index(times, kt) == i do append(&keys, Sheet_Key{ci, k})
 		}
 	}
 	return keys[:]
+}
+
+// sheet_keys_times over every channel of `target`.
+sheet_object_key_times :: proc(clip: ^anim.AnimationClip, target: string, allocator := context.allocator) -> []f32 {
+	return sheet_keys_times(clip, sheet_target_channels(clip, target, context.temp_allocator), allocator)
+}
+
+// sheet_keys_at over every channel of `target`.
+sheet_object_keys_at :: proc(clip: ^anim.AnimationClip, target: string, times: []f32, i: int, allocator := context.allocator) -> []Sheet_Key {
+	return sheet_keys_at(clip, sheet_target_channels(clip, target, context.temp_allocator), times, i, allocator)
 }
 
 // The summary time a key at `kt` falls under: the last index of `times`

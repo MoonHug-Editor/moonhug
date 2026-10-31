@@ -815,9 +815,10 @@ _wrap_transform_rotation_override :: proc(tH: engine.Transform_Handle, t: ^engin
 
 	multi_offset := uintptr(uintptr(rawptr(&t.rotation)) - uintptr(t))
 
-	// A driven rotation (inspector/driven.odin) shows the euler angles of the
-	// driven quaternion, converted the way the euler cache converts.
-	dv := inspector.driven_query(engine.Handle(tH), multi_offset, typeid_of([4]f32))
+	// A driven rotation (inspector/driven.odin) shows and edits euler angles:
+	// the provider reads the rotation field as [3]f32 euler degrees, so an
+	// Euler row's angles reach the row as typed, without a quaternion between.
+	dv := inspector.driven_query(engine.Handle(tH), multi_offset, typeid_of([3]f32))
 	if dv.state != .None {
 		_wrap_transform_rotation_driven(&t.rotation, drawer, &dv)
 		return
@@ -888,20 +889,20 @@ _wrap_transform_rotation_override :: proc(tH: engine.Transform_Handle, t: ^engin
 	}
 }
 
-// A driven Rotation row: three euler fields converted from the driven
-// quaternion. Read-only drops an edit. Editable keeps the euler buffer across
-// the frames of one gesture (a drag continues from where it is), and when the
-// gesture ends hands inspector.driven_commit the quaternion built from it. The
-// live rotation is never written, and multi-edit peers are not: the row edits
-// the value the active object is driven to, which the peers do not share. The
-// context menu offers "Add Key" alone, which keys the driven quaternion.
+// A driven Rotation row: three euler fields, the driven euler angles.
+// Read-only drops an edit. Editable keeps the euler buffer across the frames
+// of one gesture (a drag continues from where it is), and when the gesture
+// ends hands inspector.driven_commit the angles. The live rotation is never
+// written, and multi-edit peers are not: the row edits the value the active
+// object is driven to, which the peers do not share. The context menu offers
+// "Add Key" alone, which keys the driven angles.
 @(private)
 _wrap_transform_rotation_driven :: proc(rot: ^[4]f32, drawer: proc(ptr: rawptr, tid: typeid, label: cstring), dv: ^inspector.Driven_Value) {
 	inspector.multi_clear_mixed()
 	prev_changed := inspector.consume_inspector_changed()
 	defer if prev_changed do inspector.mark_inspector_changed()
 
-	seed := engine.quat_to_euler_xyz((cast(^[4]f32)&dv.value)^)
+	seed := (cast(^[3]f32)&dv.value)^
 	start := seed
 	buf := &seed
 	if dv.state == .Editable do buf = cast(^[3]f32)inspector.driven_edit_buffer(rot, &seed)
@@ -914,8 +915,7 @@ _wrap_transform_rotation_driven :: proc(rot: ^[4]f32, drawer: proc(ptr: rawptr, 
 
 	active, finished := inspector.driven_gesture_state()
 	if !inspector.driven_edit_end(rot, buf, &seed, &start, size_of([3]f32), active, finished) do return
-	q := engine.quat_from_euler_xyz(seed.x, seed.y, seed.z)
-	inspector.driven_commit(dv.owner, dv.offset, dv.tid, &q)
+	inspector.driven_commit(dv.owner, dv.offset, dv.tid, &seed)
 }
 
 // Mixed state for the rotation row, per euler axis.

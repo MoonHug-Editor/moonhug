@@ -30,12 +30,18 @@ Animation_Wrap :: enum u8 {
 	Loop,
 }
 
-// Which transform property a channel writes (glTF target paths; curves
-// bind arbitrary properties — transforms cover the imported set).
+// Which transform property a channel writes, and in which form. Position,
+// Rotation and Scale are the glTF target paths: Rotation holds quaternions,
+// slerped between keys. Euler is the rotation too, as euler angles in degrees
+// (x, y, z, the inspector's order): three lanes that interpolate, mask and
+// split like a Position row. Recording makes Euler rows, model clips keep
+// Rotation rows. A clip may hold both for one transform: the Rotation row
+// gives the quaternion, the Euler lanes replace their angles on top of it.
 Animation_Path :: enum u8 {
 	Position,
 	Rotation,
 	Scale,
+	Euler,
 }
 
 // One curve: keyframe times plus values for a single target property.
@@ -637,8 +643,20 @@ animation_clip_apply :: proc(clip: ^AnimationClip, owner: engine.Transform_Handl
 		case .Position: for l in 0 ..< 3 do if l not_in off do t.position[l] = v[l]
 		case .Rotation: t.rotation = v
 		case .Scale:    for l in 0 ..< 3 do if l not_in off do t.scale[l] = v[l]
+		case .Euler:
+			e := engine.quat_to_euler_xyz(t.rotation)
+			for l in 0 ..< 3 do if l not_in off do e[l] = v[l]
+			t.rotation = animation_quat_from_euler(e)
 		}
 	}
+}
+
+// The normalized quaternion for euler angles `e` (degrees, x y z), what an
+// Euler row writes.
+animation_quat_from_euler :: proc(e: [3]f32) -> [4]f32 {
+	q := engine.quat_from_euler_xyz(e.x, e.y, e.z)
+	if l := linalg.length(q); l > 0.0001 do q = (1.0 / l) * q
+	return q
 }
 
 // Walk children by name along a "/"-separated path. Empty path = the owner.

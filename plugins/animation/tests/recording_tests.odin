@@ -900,3 +900,247 @@ test_delete_key_removes_the_playhead_key :: proc(t: ^testing.T) {
 	testing.expect(t, !has_row, "a row without keys is gone")
 }
 
+
+// --- Split rows and Euler rows -------------------------------------------------------
+//
+// A split row (editor/lane_split.odin) is one channel per lane. Recording into
+// it keys only the lanes the edit changed, "Add Key" keys every lane, the
+// provider reads each lane from its own channel, and "Delete Key" removes the
+// playhead key in every lane. The rotation field is recorded into an Euler row
+// and reads as euler angles or as a quaternion.
+
+// A split Position row on "Arm": x, y and z each in a channel of their own,
+// masked to their lane, keyed at `x`, `y` and `z` with the values `xv`, `yv`
+// and `zv` in their own lane.
+@(private = "file")
+_rec_split_position :: proc(clip: ^anim.AnimationClip, x, y, z: []f32, xv, yv, zv: []f32) {
+	masks := [3]anim.Channel_Lanes_Off{{1, 2}, {0, 2}, {0, 1}}
+	times := [3][]f32{x, y, z}
+	vals := [3][]f32{xv, yv, zv}
+	for l in 0 ..< 3 {
+		v := make([][4]f32, len(vals[l]), context.temp_allocator)
+		for f, i in vals[l] do v[i][l] = f
+		_rec_add_row(clip, {target = "Arm", path = .Position, lanes_off = masks[l]}, times[l], v)
+	}
+}
+
+// An edit session on a split position row that changes only y keys the y
+// channel at the playhead, and leaves the x and z channels without a key there.
+@(test)
+test_record_into_a_split_row_keys_only_the_changed_lane :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	arm := engine.transform_new("Arm", root)
+	w := engine.ctx_world()
+	tr := engine.pool_get(&w.transforms, engine.Handle(arm))
+	tr.position = {1, 2, 3}
+	_rec_split_position(_rec_clip(doc), {0}, {0}, {0}, {1}, {2}, {3})
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+
+	before := s.top
+	sess := undo.edit_session_begin({undo.edit_target_transform(arm, &tr.position, typeid_of([3]f32))}, "Move")
+	tr.position = {1, 5, 3}
+	undo.edit_session_end(&sess)
+
+	clip := _rec_clip(doc)
+	if !testing.expect_value(t, len(clip.channels), 3) do return
+	testing.expect_value(t, _key_at(&clip.channels[0], 1), -1)
+	testing.expect_value(t, _key_at(&clip.channels[2], 1), -1)
+	at := _key_at(&clip.channels[1], 1)
+	testing.expect(t, at >= 0, "the y channel has a key at the playhead")
+	if at >= 0 do testing.expect_value(t, clip.channels[1].values.([dynamic][4]f32)[at].y, 5)
+	masks := [3]anim.Channel_Lanes_Off{{1, 2}, {0, 2}, {0, 1}}
+	for l in 0 ..< 3 do testing.expect_value(t, clip.channels[l].lanes_off, masks[l])
+	testing.expect_value(t, tr.position, [3]f32{1, 2, 3})
+	testing.expect_value(t, s.top, before + 1)
+}
+
+// The provider reads a split row lane by lane, each lane from its own channel
+// at the playhead.
+@(test)
+test_driven_value_merges_split_channels :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	arm := engine.transform_new("Arm", root)
+	// x: 0 to 2 over 2 s, y: 7 throughout, z: 0 to 10 from 0.5 s to 1.5 s.
+	_rec_split_position(_rec_clip(doc), {0, 2}, {1}, {0.5, 1.5}, {0, 2}, {7}, {0, 10})
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
+
+	pos: [3]f32
+	driven, _ := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &pos)
+	testing.expect(t, driven, "the position is driven")
+	testing.expect_value(t, pos, [3]f32{1, 7, 5})
+}
+
+// On a split row an inspector commit keys only the lanes that differ from the
+// value the rows show at the playhead, and "Add Key" keys every lane.
+@(test)
+test_split_row_commit_keys_changed_lanes_add_key_keys_all :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	arm := engine.transform_new("Arm", root)
+	_rec_split_position(_rec_clip(doc), {0}, {0}, {0}, {1}, {2}, {3})
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+
+	edited := [3]f32{1, 2, 9}
+	testing.expect(t, inspector.driven_commit(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &edited), "the commit keys the position")
+	clip := _rec_clip(doc)
+	testing.expect_value(t, _key_at(&clip.channels[0], 1), -1)
+	testing.expect_value(t, _key_at(&clip.channels[1], 1), -1)
+	at := _key_at(&clip.channels[2], 1)
+	testing.expect(t, at >= 0 && clip.channels[2].values.([dynamic][4]f32)[at].z == 9, "the z channel takes the edit")
+
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1.5, armed = false)
+	added := [3]f32{4, 5, 6}
+	testing.expect(t, inspector.driven_add_key(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &added), "Add Key keys the position")
+	clip = _rec_clip(doc)
+	for l in 0 ..< 3 {
+		k := _key_at(&clip.channels[l], 1.5)
+		testing.expectf(t, k >= 0, "lane %d has a key at the playhead", l)
+		if k >= 0 do testing.expect_value(t, clip.channels[l].values.([dynamic][4]f32)[k][l], added[l])
+	}
+}
+
+@(private = "file")
+_near_euler :: proc(a, b: [3]f32) -> bool {
+	EPS :: f32(0.01)
+	return abs(a.x - b.x) < EPS && abs(a.y - b.y) < EPS && abs(a.z - b.z) < EPS
+}
+
+// A recorded rotation edit with no row creates an Euler row: the key at the
+// clip start holds the old angles, the key at the playhead the new ones, and
+// the transform keeps its own rotation.
+@(test)
+test_record_rotation_creates_an_euler_row :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	arm := engine.transform_new("Arm", root)
+	w := engine.ctx_world()
+	tr := engine.pool_get(&w.transforms, engine.Handle(arm))
+	own := anim.animation_quat_from_euler({10, 20, 30})
+	tr.rotation = own
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+
+	before := s.top
+	sess := undo.edit_session_begin({undo.edit_target_transform(arm, &tr.rotation, typeid_of([4]f32))}, "Rotate")
+	tr.rotation = anim.animation_quat_from_euler({10, 50, 30})
+	undo.edit_session_end(&sess)
+
+	clip := _rec_clip(doc)
+	if !testing.expect_value(t, len(clip.channels), 1) do return
+	ch := &clip.channels[0]
+	testing.expect_value(t, ch.target, "Arm")
+	testing.expect_value(t, ch.path, anim.Animation_Path.Euler)
+	testing.expect_value(t, ch.lanes_off, anim.Channel_Lanes_Off{})
+	vals := ch.values.([dynamic][4]f32)
+	start := _key_at(ch, 0)
+	at := _key_at(ch, 1)
+	testing.expect(t, start >= 0 && at >= 0, "keys at the clip start and at the playhead")
+	if start >= 0 do testing.expectf(t, _near_euler(vals[start].xyz, {10, 20, 30}), "the start key holds the old angles, got %v", vals[start].xyz)
+	if at >= 0 do testing.expectf(t, _near_euler(vals[at].xyz, {10, 50, 30}), "the playhead key holds the new angles, got %v", vals[at].xyz)
+	testing.expect_value(t, tr.rotation, own)
+	testing.expect_value(t, s.top, before + 1)
+}
+
+// The provider answers the rotation field from an Euler row as euler angles
+// ([3]f32) and as a quaternion ([4]f32). A masked Euler row takes the other
+// angles from the transform's own rotation.
+@(test)
+test_driven_rotation_reads_an_euler_row_as_angles_or_quaternion :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	arm := engine.transform_new("Arm", root)
+	w := engine.ctx_world()
+	tr := engine.pool_get(&w.transforms, engine.Handle(arm))
+	tr.rotation = anim.animation_quat_from_euler({20, 0, 0})
+	// Only y animates: 0 to 90 over 2 s.
+	_rec_add_row(_rec_clip(doc), {target = "Arm", path = .Euler, lanes_off = {0, 2}}, {0, 2}, {{0, 0, 0, 0}, {0, 90, 0, 0}})
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
+
+	e: [3]f32
+	driven, _ := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, rotation), typeid_of([3]f32), &e)
+	testing.expect(t, driven, "the rotation is driven as euler angles")
+	testing.expectf(t, _near_euler(e, {20, 45, 0}), "y from the row, x and z from the transform, got %v", e)
+
+	q: [4]f32
+	driven, _ = inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, rotation), typeid_of([4]f32), &q)
+	testing.expect(t, driven, "the rotation is driven as a quaternion")
+	want := anim.animation_quat_from_euler({20, 45, 0})
+	testing.expectf(t, linalg.length(q - want) < 1e-4 || linalg.length(q + want) < 1e-4, "the quaternion of the same angles, got %v want %v", q, want)
+}
+
+// "Delete Key" on a split row removes the playhead key in every lane's
+// channel, as one undo step, and keeps the channels that still have keys.
+@(test)
+test_delete_key_on_a_split_row_removes_every_lane_key :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	arm := engine.transform_new("Arm", root)
+	_rec_split_position(_rec_clip(doc), {0, 1}, {0.5, 1}, {1, 1.5}, {1, 2}, {3, 4}, {5, 6})
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+
+	off := offset_of(engine.Transform, position)
+	top := s.top
+	testing.expect(t, inspector.driven_delete_key(engine.Handle(arm), off, typeid_of([3]f32)), "the key at 1.0 is deleted")
+	testing.expect_value(t, s.top, top + 1)
+	clip := _rec_clip(doc)
+	if !testing.expect_value(t, len(clip.channels), 3) do return
+	for l in 0 ..< 3 {
+		testing.expectf(t, _key_at(&clip.channels[l], 1) < 0, "lane %d has no key at 1.0", l)
+		testing.expect_value(t, len(clip.channels[l].times), 1)
+	}
+	_, _, keyed := inspector.driven_row_state(engine.Handle(arm), off, typeid_of([3]f32))
+	testing.expect(t, !keyed, "no key at 1.0 any more")
+
+	testing.expect(t, undo.apply_undo(s), "undo")
+	clip = _rec_clip(doc)
+	for l in 0 ..< 3 do testing.expectf(t, _key_at(&clip.channels[l], 1) >= 0, "undo brings lane %d's key back", l)
+}

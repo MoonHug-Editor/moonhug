@@ -50,9 +50,15 @@ _sr_expect_row :: proc(t: ^testing.T, r: animation_editor.Sheet_Row, kind: anima
 	testing.expect_value(t, r.kind, kind, loc)
 	testing.expect_value(t, r.target, target, loc)
 	testing.expect_value(t, r.ch, ch, loc)
-	// An Object row sits at its path depth, its channels one level deeper.
-	_, _, depth := animation_editor.sheet_target_split(target)
-	testing.expect_value(t, r.depth, kind == .Object ? depth : depth + 1, loc)
+	// An Object row has depth 0, a Channel row 1, a Lane row 2, whatever the
+	// target's path depth.
+	want := 0
+	switch kind {
+	case .Object:  want = 0
+	case .Channel: want = 1
+	case .Lane:    want = 2
+	}
+	testing.expect_value(t, r.depth, want, loc)
 }
 
 @(test)
@@ -113,17 +119,17 @@ test_sheet_row_of_channel_is_minus_one_when_hidden :: proc(t: ^testing.T) {
 	defer free_all(context.temp_allocator)
 	clip := _sr_clip()
 	rows := animation_editor.sheet_rows(&clip, nil, nil, context.temp_allocator)
-	testing.expect_value(t, animation_editor.sheet_row_of_channel(rows, 0), 1)
-	testing.expect_value(t, animation_editor.sheet_row_of_channel(rows, 2), 2)
-	testing.expect_value(t, animation_editor.sheet_row_of_channel(rows, 3), 5)
-	testing.expect_value(t, animation_editor.sheet_row_of_channel(rows, 9), -1)
+	testing.expect_value(t, animation_editor.sheet_row_of_channel(&clip, rows, 0), 1)
+	testing.expect_value(t, animation_editor.sheet_row_of_channel(&clip, rows, 2), 2)
+	testing.expect_value(t, animation_editor.sheet_row_of_channel(&clip, rows, 3), 5)
+	testing.expect_value(t, animation_editor.sheet_row_of_channel(&clip, rows, 9), -1)
 
 	collapsed := make(map[string]bool, context.temp_allocator)
 	collapsed[""] = true
 	rows = animation_editor.sheet_rows(&clip, collapsed, nil, context.temp_allocator)
-	testing.expect_value(t, animation_editor.sheet_row_of_channel(rows, 0), 1)
-	testing.expect_value(t, animation_editor.sheet_row_of_channel(rows, 1), -1)
-	testing.expect_value(t, animation_editor.sheet_row_of_channel(rows, 3), -1)
+	testing.expect_value(t, animation_editor.sheet_row_of_channel(&clip, rows, 0), 1)
+	testing.expect_value(t, animation_editor.sheet_row_of_channel(&clip, rows, 1), -1)
+	testing.expect_value(t, animation_editor.sheet_row_of_channel(&clip, rows, 3), -1)
 }
 
 // An expanded vector row (Position, a [3]f32 field) shows a Lane row per
@@ -178,6 +184,94 @@ test_sheet_rows_lane_rows_under_expanded_vector_rows :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(animation_editor.sheet_rows(&clip, nil, nil, context.temp_allocator)), 6)
 }
 
+// A split position row (one channel per lane) with a Scale row between its
+// channels: channels 0, 2, 3 are Arm Position masked to x, y, z, channel 1 is
+// Arm Scale.
+@(private = "file")
+_sr_split_clip :: proc() -> anim.AnimationClip {
+	clip := anim.AnimationClip{length = 2, frame_rate = 10}
+	clip.channels = make([dynamic]anim.Animation_Channel, context.temp_allocator)
+	append(&clip.channels, _sr_channel("Arm", .Position, {0, 1}))
+	append(&clip.channels, _sr_channel("Arm", .Scale, {0}))
+	append(&clip.channels, _sr_channel("Arm", .Position, {0.5}))
+	append(&clip.channels, _sr_channel("Arm", .Position, {1.03, 1.5}))
+	clip.channels[0].lanes_off = {1, 2}
+	clip.channels[2].lanes_off = {0, 2}
+	clip.channels[3].lanes_off = {0, 1}
+	return clip
+}
+
+// The channels of one property make one Channel row: `ch` is the first,
+// `split` says there are more. Expanded, each Lane row points at the channel
+// that animates its lane. sheet_row_of_channel finds the row from any of them.
+@(test)
+test_sheet_rows_group_split_channels_into_one_row :: proc(t: ^testing.T) {
+	defer free_all(context.temp_allocator)
+	clip := _sr_split_clip()
+	rows := animation_editor.sheet_rows(&clip, nil, nil, context.temp_allocator)
+	if !testing.expect_value(t, len(rows), 3) do return
+	_sr_expect_row(t, rows[0], .Object, "Arm", -1)
+	_sr_expect_row(t, rows[1], .Channel, "Arm", 0)
+	testing.expect(t, rows[1].split, "the position row is split")
+	_sr_expect_row(t, rows[2], .Channel, "Arm", 1)
+	testing.expect(t, !rows[2].split, "the scale row is joined")
+	for ch in ([?]int{0, 2, 3}) do testing.expect_value(t, animation_editor.sheet_row_of_channel(&clip, rows, ch), 1)
+	testing.expect_value(t, animation_editor.sheet_row_of_channel(&clip, rows, 1), 2)
+
+	expanded := make(map[string]bool, context.temp_allocator)
+	expanded[animation_editor.sheet_channel_key(&clip.channels[2], context.temp_allocator)] = true
+	rows = animation_editor.sheet_rows(&clip, nil, expanded, context.temp_allocator)
+	if !testing.expect_value(t, len(rows), 6) do return
+	_sr_expect_row(t, rows[1], .Channel, "Arm", 0)
+	want_ch := [3]int{0, 2, 3}
+	for l in 0 ..< 3 {
+		_sr_expect_row(t, rows[2 + l], .Lane, "Arm", want_ch[l])
+		testing.expect_value(t, rows[2 + l].lane, l)
+	}
+	_sr_expect_row(t, rows[5], .Channel, "Arm", 1)
+
+	// A lane no channel animates has no Lane row.
+	ordered_remove(&clip.channels, 2)
+	rows = animation_editor.sheet_rows(&clip, nil, expanded, context.temp_allocator)
+	if !testing.expect_value(t, len(rows), 5) do return
+	testing.expect(t, rows[2].lane == 0 && rows[2].ch == 0, "x from channel 0")
+	testing.expect(t, rows[3].lane == 2 && rows[3].ch == 2, "z from channel 2")
+}
+
+// sheet_group_channels lists a property's channels from any of them,
+// sheet_lane_channel picks the one owning a lane, and sheet_keys_times and
+// sheet_keys_at summarize the group's keys the way an Object row summarizes
+// its target's.
+@(test)
+test_sheet_group_channels_lanes_and_summary_keys :: proc(t: ^testing.T) {
+	defer free_all(context.temp_allocator)
+	clip := _sr_split_clip()
+	group := animation_editor.sheet_group_channels(&clip, 3, context.temp_allocator)
+	if !testing.expect_value(t, len(group), 3) do return
+	testing.expect_value(t, group[0], 0)
+	testing.expect_value(t, group[1], 2)
+	testing.expect_value(t, group[2], 3)
+	for l in 0 ..< 3 do testing.expect_value(t, animation_editor.sheet_lane_channel(&clip, group, l), group[l])
+	testing.expect_value(t, animation_editor.sheet_lane_channel(&clip, group, 3), -1)
+
+	scale := animation_editor.sheet_group_channels(&clip, 1, context.temp_allocator)
+	testing.expect(t, len(scale) == 1 && scale[0] == 1, "a joined row is its own group")
+	testing.expect_value(t, animation_editor.sheet_lane_channel(&clip, scale, 1), 1)
+
+	// 1.0 and 1.03 are within half a frame (0.05 s at 10 fps): one summary key.
+	times := animation_editor.sheet_keys_times(&clip, group, context.temp_allocator)
+	want := []f32{0, 0.5, 1, 1.5}
+	if !testing.expect_value(t, len(times), len(want)) do return
+	for w, i in want do testing.expect_value(t, times[i], w)
+	keys := animation_editor.sheet_keys_at(&clip, group, times, 2, context.temp_allocator)
+	if testing.expect_value(t, len(keys), 2) {
+		testing.expect_value(t, keys[0], animation_editor.Sheet_Key{ch = 0, key = 1})
+		testing.expect_value(t, keys[1], animation_editor.Sheet_Key{ch = 3, key = 0})
+	}
+	keys = animation_editor.sheet_keys_at(&clip, group, times, 1, context.temp_allocator)
+	if testing.expect_value(t, len(keys), 1) do testing.expect_value(t, keys[0], animation_editor.Sheet_Key{ch = 2, key = 0})
+}
+
 @(test)
 test_sheet_object_key_times_merge_within_half_a_frame :: proc(t: ^testing.T) {
 	defer free_all(context.temp_allocator)
@@ -228,13 +322,14 @@ test_sheet_target_split_depth_and_parent :: proc(t: ^testing.T) {
 		testing.expect_value(t, depth, c.depth)
 	}
 
-	// The rows carry it: an Object row at its path depth, its channels one deeper.
+	// The rows do not carry it: every Object row has depth 0 and its Channel
+	// rows 1, a nested target as much as the animated object.
 	defer free_all(context.temp_allocator)
 	clip := _sr_clip()
 	rows := animation_editor.sheet_rows(&clip, nil, nil, context.temp_allocator)
 	if !testing.expect_value(t, len(rows), 6) do return
-	testing.expect_value(t, rows[0].depth, 2) // Body/Arm
-	testing.expect_value(t, rows[1].depth, 3)
+	testing.expect_value(t, rows[0].depth, 0) // Body/Arm
+	testing.expect_value(t, rows[1].depth, 1)
 	testing.expect_value(t, rows[3].depth, 0) // the animated object
 	testing.expect_value(t, rows[4].depth, 1)
 }
