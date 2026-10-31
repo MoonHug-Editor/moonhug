@@ -11,7 +11,7 @@ package animation_editor
 // form: one time and one value per key instead of one per lane, and one
 // curve evaluation per sample. Split on demand.
 //
-// Pure, no imgui: the window's Split Lanes and Join Lanes menu items call
+// Pure, no imgui: the window's Split Lane Keys and Join Lane Keys items call
 // these inside an undo session on the clip document, with the document's
 // allocator in context, and the window reselects afterwards (channel
 // indices shift).

@@ -452,7 +452,7 @@ A vector row (Position, Scale, Euler, a vector field) is joined or split (`edito
 - A split row is several channels with the same target and property, one per lane, each masked to its lane through `lanes` and each with its own key times. A lane can have keys on frames the other lanes have none.
 - On disk a split row is just those channels. There is no new field: the shared target and property group them, and each channel's `lanes` says which lane it animates.
 - Joined is cheaper: one time and one value per key instead of one per lane, and one curve evaluation per sample instead of one per channel.
-- Split Lanes and Join Lanes are in the property row's context menu. Split Lanes needs a vector row with two or more enabled lanes that is not split yet. Join Lanes needs a split float row.
+- Split Lane Keys and Join Lane Keys are in the property row's context menu, each shown only when it applies. Split Lane Keys needs a vector row with two or more enabled lanes that is not split yet. Join Lane Keys needs a split float row. A clip inside a model shows neither.
 - Split copies the row once per enabled lane, times, values, modes and tangents included, and masks each copy to its lane.
 - Join puts the union of the channels' key times into the first channel. Times within half a frame of an earlier one fold into it.
 - Join samples each lane from its own channel at every time and gives the keys Free tangents from each lane's slopes, so the lanes keep their curves.

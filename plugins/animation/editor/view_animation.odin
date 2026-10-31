@@ -1633,6 +1633,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	// rows under it unless collapsed (sheet_rows.odin).
 	rows := sheet_rows(clip, _av.collapsed, _av.expanded, context.temp_allocator)
 	nrows := len(rows)
+	nrows_channels := len(clip.channels) // the channel count the rows were built from
 	rows_y := origin.y + ruler_h
 	body_h: f32
 	if _av.mode == .Dopesheet {
@@ -1853,9 +1854,11 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 					}
 				}
 				im.Separator()
-				if changed {
-					// Nothing more this frame.
-				} else if im.MenuItem("Split Lanes", nil, false, doc != nil && sheet_can_split(clip, _av.sel_ch)) {
+				// Split or join, whichever the row allows: a joined row with
+				// two or more enabled lanes splits, a split row joins.
+				can_split := doc != nil && !changed && sheet_can_split(clip, _av.sel_ch)
+				can_join := doc != nil && !changed && sheet_can_join(clip, group)
+				if can_split && im.MenuItem("Split Lane Keys") {
 					_pv_edit_begin(doc)
 					{
 						context.allocator = inspector.doc_alloc()
@@ -1863,7 +1866,8 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 					}
 					_pv_deselect() // channel indices shifted
 					_pv_edit_commit(doc)
-				} else if im.MenuItem("Join Lanes", nil, false, doc != nil && sheet_can_join(clip, group)) {
+				}
+				if can_join && im.MenuItem("Join Lane Keys") {
 					_pv_edit_begin(doc)
 					{
 						context.allocator = inspector.doc_alloc()
@@ -1872,7 +1876,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 					_pv_deselect() // channel indices shifted
 					_pv_edit_commit(doc)
 				}
-				im.Separator()
+				if can_split || can_join do im.Separator()
 			}
 		}
 		// A quaternion row of an editable clip becomes an Euler row, the
@@ -1901,6 +1905,15 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 			_pv_edit_commit(doc)
 		}
 		im.EndPopup()
+	}
+
+	// The menus above add, remove and reorder channels, so the rows built
+	// before them may name channels that are gone. The rest of the frame
+	// draws the rows as they are now.
+	if len(clip.channels) != nrows_channels {
+		rows = sheet_rows(clip, _av.collapsed, _av.expanded, context.temp_allocator)
+		nrows = len(rows)
+		if row_at >= nrows do row_at = -1
 	}
 
 	im.DrawList_PushClipRect(dl, canvas_clip_min, canvas_clip_max, true)
