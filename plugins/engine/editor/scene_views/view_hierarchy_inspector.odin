@@ -698,6 +698,25 @@ _wrap_transform_field_override :: proc(tH: engine.Transform_Handle, t: ^engine.T
 	multi_offset := uintptr(field_ptr) - uintptr(t)
 	inspector.multi_probe_field(field_ptr, field_tid, multi_offset)
 
+	// A driven field (inspector/driven.odin), the same cases field_edit_row
+	// handles: the widget draws on a buffer, never on the live field, and no
+	// session, override record or context menu runs. Read-only drops an edit,
+	// editable hands it to inspector.driven_commit when the gesture ends.
+	dv := inspector.driven_query(engine.Handle(tH), multi_offset, field_tid)
+	if dv.state != .None {
+		inspector.multi_clear_mixed()
+		prev_changed := inspector.consume_inspector_changed()
+		defer if prev_changed do inspector.mark_inspector_changed()
+		buf := rawptr(&dv.value)
+		if dv.state == .Editable do buf = inspector.driven_edit_buffer(field_ptr, &dv.value)
+		inspector.driven_draw_begin(dv.state)
+		drawer(buf, drawer_tid, label)
+		inspector.driven_draw_end(dv.state)
+		inspector.consume_inspector_changed()
+		if dv.state == .Editable do inspector.driven_edit_finish(field_ptr, buf, &dv)
+		return
+	}
+
 	pushed := _push_override_style(is_overridden)
 	committed := _wrap_transform_field(tH, field_ptr, 0, field_tid, drawer, drawer_tid, label)
 	_pop_override_style(pushed)
@@ -790,6 +809,14 @@ _wrap_transform_rotation_override :: proc(tH: engine.Transform_Handle, t: ^engin
 
 	multi_offset := uintptr(uintptr(rawptr(&t.rotation)) - uintptr(t))
 
+	// A driven rotation (inspector/driven.odin) shows the euler angles of the
+	// driven quaternion, converted the way the euler cache converts.
+	dv := inspector.driven_query(engine.Handle(tH), multi_offset, typeid_of([4]f32))
+	if dv.state != .None {
+		_wrap_transform_rotation_driven(&t.rotation, drawer, &dv)
+		return
+	}
+
 	// Mixed state is computed in EULER space, not from the stored quaternion.
 	//
 	// The row is three euler boxes but the field is a quaternion, and the two do
@@ -850,6 +877,34 @@ _wrap_transform_rotation_override :: proc(tH: engine.Transform_Handle, t: ^engin
 	if is_in_nested_ctx {
 		engine.inspector_set_nested_local_id(prev_nested_lid)
 	}
+}
+
+// A driven Rotation row: three euler fields converted from the driven
+// quaternion. Read-only drops an edit. Editable keeps the euler buffer across
+// the frames of one gesture (a drag continues from where it is), and when the
+// gesture ends hands inspector.driven_commit the quaternion built from it. The
+// live rotation is never written, and multi-edit peers are not: the row edits
+// the value the active object is driven to, which the peers do not share.
+@(private)
+_wrap_transform_rotation_driven :: proc(rot: ^[4]f32, drawer: proc(ptr: rawptr, tid: typeid, label: cstring), dv: ^inspector.Driven_Value) {
+	inspector.multi_clear_mixed()
+	prev_changed := inspector.consume_inspector_changed()
+	defer if prev_changed do inspector.mark_inspector_changed()
+
+	seed := engine.quat_to_euler_xyz((cast(^[4]f32)&dv.value)^)
+	start := seed
+	buf := &seed
+	if dv.state == .Editable do buf = cast(^[3]f32)inspector.driven_edit_buffer(rot, &seed)
+	inspector.driven_draw_begin(dv.state)
+	drawer(buf, typeid_of(^[3]f32), "Rotation")
+	inspector.driven_draw_end(dv.state)
+	inspector.consume_inspector_changed()
+	if dv.state != .Editable do return
+
+	active, finished := inspector.driven_row_state()
+	if !inspector.driven_edit_end(rot, buf, &seed, &start, size_of([3]f32), active, finished) do return
+	q := engine.quat_from_euler_xyz(seed.x, seed.y, seed.z)
+	inspector.driven_commit(dv.owner, dv.offset, dv.tid, &q)
 }
 
 // Mixed state for the rotation row, per euler axis.

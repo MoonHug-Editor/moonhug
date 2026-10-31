@@ -1043,17 +1043,46 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
         // row's transaction can look at it, so the "before" is taken here.
         // Only rows with a decorator pay for the snapshot.
         pre_before: []byte
+        // A driven field (driven.odin): the decorator draws on the driven
+        // buffer instead of the live field, as field_edit_row's drawer does.
+        decorator_dv: Driven_Value
         if decorators, has := decorator_registry[tid]; has && i < len(decorators) && decorators[i] != nil {
-            pre_before = undo.capture_json(field_ptr, field_type.id)
+            decorator_dv = driven_query_field(field_ptr, field_type.id)
+            if decorator_dv.state == .None do pre_before = undo.capture_json(field_ptr, field_type.id)
         }
         defer if pre_before != nil do delete(pre_before)
+        decorator_driven_changed := false
+        if decorator_dv.state != .None {
+            multi_clear_mixed()
+            decorator_driven_changed = consume_inspector_changed()
+            ctx.field_ptr = &decorator_dv.value
+            if decorator_dv.state == .Editable do ctx.field_ptr = driven_edit_buffer(field_ptr, &decorator_dv.value)
+        }
 
         // Grouped for the same reason field_edit_row groups its drawer: a
         // decorator that draws the row (color, range) may emit several items,
         // and the row's transaction below must see them as one gesture.
-        im.BeginGroup()
-        run_field_decorators(tid, i, &ctx)
-        im.EndGroup()
+        if decorator_dv.state != .None {
+            driven_draw_begin(decorator_dv.state)
+            run_field_decorators(tid, i, &ctx)
+            driven_draw_end(decorator_dv.state)
+            // The object did not change: an edit of the buffer is dropped
+            // (read-only) or goes to driven_commit at the gesture's end.
+            consume_inspector_changed()
+            if decorator_driven_changed do mark_inspector_changed()
+            if ctx.handled_draw {
+                if decorator_dv.state == .Editable {
+                    driven_edit_finish(field_ptr, ctx.field_ptr, &decorator_dv)
+                } else {
+                    field_edit_row_held()
+                }
+            }
+            ctx.field_ptr = field_ptr
+        } else {
+            im.BeginGroup()
+            run_field_decorators(tid, i, &ctx)
+            im.EndGroup()
+        }
 
         row_popup_done := false
 
@@ -1157,7 +1186,7 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             if !row_popup_done {
                 draw_field_context_menu(field_ptr, field_type.id, full_path)
             }
-        } else if ctx.handled_draw {
+        } else if ctx.handled_draw && decorator_dv.state == .None {
             // A decorator drew this field itself. It is still a VALUE edit, so
             // it gets the same transaction every other row does — the drawer
             // already ran, so the row is driven with a nil drawer.

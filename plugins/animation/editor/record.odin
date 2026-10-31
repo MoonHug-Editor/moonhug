@@ -14,6 +14,10 @@ package animation_editor
 //   - the object keeps its own value, and the preview shows the key through
 //     the pose it applies at the playhead
 //
+// An inspector edit of a driven field does not reach the listener: the
+// inspector hands it to inspector.driven_commit (_record_driven_commit below),
+// which keys it the same way. The listener covers gizmo drags and multi-edit.
+//
 // An entry that cannot be keyed stays an ordinary scene edit with its own undo:
 //   - the field type is not animatable (a string, a reference, an array). The
 //     window shows a note under the toolbar while Record is armed
@@ -23,6 +27,7 @@ package animation_editor
 import "base:runtime"
 import "core:encoding/uuid"
 import "core:fmt"
+import "core:math/linalg"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import engine "moonhug:packages/engine"
@@ -34,6 +39,12 @@ import "moonhug:editor/undo"
 animation_record_install :: proc() {
 	assert(undo.commit_listener == nil || undo.commit_listener == _record_commit, "undo.commit_listener is installed by another package")
 	undo.commit_listener = _record_commit
+	assert(inspector.driven_provider == nil || inspector.driven_provider == _record_driven, "inspector.driven_provider is installed by another package")
+	inspector.driven_provider = _record_driven
+	assert(inspector.driven_commit == nil || inspector.driven_commit == _record_driven_commit, "inspector.driven_commit is installed by another package")
+	inspector.driven_commit = _record_driven_commit
+	inspector.driven_tooltip_read_only = "Driven by the Animation preview. Arm Record to key this field"
+	inspector.driven_tooltip_editable = "Recording: an edit keys this field at the playhead"
 }
 
 // What one committed edit keys: the row's identity and the field's value kind.
@@ -214,6 +225,141 @@ _record_type_name :: proc(tid: typeid) -> string {
 	return name
 }
 
+// --- Driven values ----------------------------------------------------------------------
+//
+// The inspector shows the preview's value for a field the shown clip animates
+// (inspector.driven_provider, docs/core/Undo.md "Driven values"). The preview
+// applies the pose only around the scene and game render, so the live field
+// holds the object's own value while the inspector draws: this answers with
+// the clip's value at the playhead instead.
+//
+// With Record off the field is read-only. An edit there would change the
+// object's own value, which the preview pose hides at render and the
+// inspector does not show, so the edit would look lost. With Record armed the
+// inspector hands the edited value to inspector.driven_commit at the end of
+// the gesture, which keys it. The inspector's scene edit session is not used
+// for this: its "before" is the object's own value, so an edit back to that
+// value would record nothing and key nothing. Gizmo drags and multi-edit
+// still reach _record_commit through the session, where "before" is the
+// posed value.
+
+// Resolves a field the way _record_key_of resolves an undo target. Per field
+// per frame: no allocations beyond temp, no
+// logging.
+@(private = "file")
+_record_field_key :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid) -> (k: _Record_Key, ok: bool) {
+	kind, kok := anim._prop_kind_of(field_tid)
+	if !kok do return {}, false
+	w := engine.ctx_world()
+	if w == nil do return {}, false
+
+	comp_tid: typeid
+	if owner.type_key == .Transform {
+		k.owner = engine.Transform_Handle(owner)
+		switch {
+		case field_offset == offset_of(engine.Transform, position) && field_tid == typeid_of([3]f32):
+			k.path = .Position
+		case field_offset == offset_of(engine.Transform, rotation) && field_tid == typeid_of([4]f32):
+			k.path = .Rotation
+		case field_offset == offset_of(engine.Transform, scale) && field_tid == typeid_of([3]f32):
+			k.path = .Scale
+		case:
+			return {}, false
+		}
+	} else {
+		base := engine.world_pool_get(w, owner)
+		if base == nil do return {}, false
+		comp_tid = engine.get_typeid_by_type_key(owner.type_key)
+		if comp_tid == nil do return {}, false
+		k.owner = (^engine.CompData)(base).owner
+		k.property = true
+	}
+
+	target, under := _record_target_path(k.owner)
+	if !under do return {}, false
+	k.target = target
+	if k.property {
+		field, _, animatable := anim._prop_path_of_offset(comp_tid, field_offset, field_tid)
+		if !animatable do return {}, false
+		k.field = field
+		k.guid_str = uuid.to_string(engine.get_guid_by_type_key(owner.type_key), context.temp_allocator)
+	}
+	k.kind = kind
+	k.leaf = field_tid
+	return k, true
+}
+
+// Samples the field's row at the playhead.
+@(private = "file")
+_record_driven :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid, out: rawptr) -> (driven: bool, editable: bool) {
+	// State preview poses from an authored state, not from the shown clip.
+	if !_pv.active || _pv.entry != 0 || _pv.clip == {} do return false, false
+	if _, kok := anim._prop_kind_of(field_tid); !kok do return false, false
+	doc, clip := _pv_doc()
+	if clip == nil || len(clip.channels) == 0 do return false, false
+
+	k, ok := _record_field_key(owner, field_offset, field_tid)
+	if !ok do return false, false
+	idx := _record_find_channel(clip, k)
+	if idx < 0 do return false, false
+	v := anim._animation_channel_sample(&clip.channels[idx], _pv.time)
+	if k.property {
+		anim._prop_write(out, k.kind, field_tid, v)
+	} else if k.path == .Rotation {
+		(cast(^[4]f32)out)^ = v
+	} else {
+		(cast(^[3]f32)out)^ = v.xyz
+	}
+	return true, _pv.recording && doc != nil
+}
+
+// Keys an inspector edit of a driven field at the playhead: `value` holds the
+// edited value in the field's own type. A missing row is created first (its
+// key at the clip start holds the object's own value, as Add Property does).
+// One undo step on the clip document. False when Record is off or the field
+// cannot be keyed.
+@(private = "file")
+_record_driven_commit :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid, value: rawptr) -> bool {
+	if !_pv.recording || !_pv.active || _pv.entry != 0 do return false
+	doc, clip := _pv_doc()
+	if doc == nil || clip == nil do return false
+	k, ok := _record_field_key(owner, field_offset, field_tid)
+	if !ok do return false
+
+	edited := anim._prop_read(value, k.kind, k.leaf)
+	if !k.property && k.path == .Rotation do edited = _record_normalized(edited)
+
+	_record_busy = true
+	defer _record_busy = false
+	_pv_edit_begin(doc)
+	_pv_edit_held = true
+	{
+		// Channel strings and key arrays live in the document.
+		context.allocator = inspector.doc_alloc()
+		idx := _record_find_channel(clip, k)
+		if idx < 0 {
+			if k.property {
+				_pv_add_channel_property(doc, clip, k.target, k.guid_str, k.field, k.owner)
+			} else {
+				_pv_add_channel_transform(doc, clip, k.target, k.path, k.owner)
+			}
+			idx = _record_find_channel(clip, k)
+			assert(idx >= 0, "record: the new row is in the clip")
+		}
+		_pv_add_key(doc, clip, idx, _pv.time, edited)
+	}
+	_pv_edit_held = false
+	_pv_edit_commit(doc)
+	return true
+}
+
+@(private = "file")
+_record_normalized :: proc(q: [4]f32) -> [4]f32 {
+	l := linalg.length(q)
+	assert(l > 0.0001, "record: a rotation key is a nonzero quaternion")
+	return (1.0 / l) * q
+}
+
 // --- Note ------------------------------------------------------------------------------
 //
 // Why the last edit under the animated object was not keyed. Shown under the
@@ -253,6 +399,22 @@ animation_record_arm :: proc(owner: engine.Transform_Handle, clip: engine.PPtr, 
 	_pv.time = time
 	_pv.active = true
 	_pv.recording = armed
+}
+
+// Test-only: keys row `row` of the shown clip at the playhead with `value`,
+// the way the row's value field in the Animation window does.
+animation_record_key_row :: proc(row: int, value: [4]f32) {
+	doc, clip := _pv_doc()
+	if doc == nil || clip == nil do return
+	_pv_row_key(doc, clip, row, value)
+}
+
+// Test-only: keys Rotation row `row` of the shown clip at the playhead with
+// the euler angles `euler` (degrees), the way the row's euler fields do.
+animation_record_key_row_euler :: proc(row: int, euler: [3]f32) {
+	doc, clip := _pv_doc()
+	if doc == nil || clip == nil do return
+	_pv_row_key(doc, clip, row, _pv_rot_from_euler(euler))
 }
 
 // Test-only: disarms Record and lets go of the target.

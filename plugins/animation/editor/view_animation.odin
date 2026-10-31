@@ -10,9 +10,10 @@ package animation_editor
 //      transforms, evaluates the clip at the scrub time and applies the pose,
 //   3. the scene and game views render the posed world,
 //   4. animation_preview_restore writes the defaults back.
-// Outside that render window the world holds authored values, so saves, undo
-// and the inspector are untouched by construction — there is no preview state
-// to revert when preview ends, the target dies or its scene unloads.
+// Outside that render window the world holds authored values, so saves and
+// undo are untouched by construction — there is no preview state to revert
+// when preview ends, the target dies or its scene unloads. The inspector
+// shows the preview's values through inspector.driven_provider (record.odin).
 //
 // EDITING (step 6): keyframe operations edit the clip's ASSET DOCUMENT (the
 // session registry the project inspector uses), so every operation is a
@@ -43,13 +44,15 @@ import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/icons"
 
-@(private = "file") _ANIM_MIN_LEFT_W :: f32(120)
+@(private = "file") _ANIM_MIN_LEFT_W :: f32(210) // a vec4 row's value fields plus the start of its name
 @(private = "file") _ANIM_MIN_CANVAS_W :: f32(80)
 @(private = "file") _ANIM_RULER_H :: f32(22) // minimum: the band grows to a frame height
 @(private = "file") _ANIM_ROW_H :: f32(20)
 @(private = "file") _ANIM_PAD_X :: f32(10) // time gutter inside the canvas
 @(private = "file") _ANIM_KEY_R :: f32(4)  // key diamond half-size
 @(private = "file") _ANIM_HIT :: f32(6)    // key hit-test radius
+@(private = "file") _ANIM_VAL_W :: f32(42)  // one value field of a row
+@(private = "file") _ANIM_VAL_GAP :: f32(2)
 
 // Curve colors per value component (x red, y green, z blue, w grey).
 @(private = "file")
@@ -138,7 +141,7 @@ _Anim_View :: struct {
 	wheel:     widgets.Wheel_Lock, // one wheel axis per gesture
 }
 
-_ANIM_VIEW_INIT :: _Anim_View{left_w = 200, sel_ch = -1, sel_key = -1}
+_ANIM_VIEW_INIT :: _Anim_View{left_w = 300, sel_ch = -1, sel_key = -1}
 
 // The copy being drawn, and outside a draw the copy clicked in last. With no
 // copy open it points at a spare state, so a write lands nowhere.
@@ -296,9 +299,18 @@ _pv_deselect :: proc() {
 
 // --- Key selection ---------------------------------------------------------------------
 
+// The selection is cross-frame state, so it allocates from the default
+// allocator whatever the caller's context holds (Record keys under the
+// document allocator).
+@(private = "file")
+_pv_sel_pin :: proc() {
+	if _av.sel.allocator.procedure == nil do _av.sel.allocator = runtime.default_allocator()
+}
+
 // Replace the selection with one key, which becomes primary.
 @(private = "file")
 _pv_sel_set :: proc(ch, key: int) {
+	_pv_sel_pin()
 	clear(&_av.sel)
 	append(&_av.sel, _Key_Ref{ch, key})
 	_av.sel_ch = ch
@@ -324,6 +336,7 @@ _pv_sel_toggle :: proc(ch, key: int) {
 			return
 		}
 	}
+	_pv_sel_pin()
 	append(&_av.sel, _Key_Ref{ch, key})
 	_av.sel_ch = ch
 	_av.sel_key = key
@@ -802,6 +815,10 @@ _pv_sel_mask :: proc(ch_idx, count: int) -> []bool {
 // playhead advances.
 @(private = "file")
 _animation_frame :: proc() {
+	// A row value gesture whose field stopped being drawn mid-drag (the window
+	// closed) is over: nothing is active any more.
+	if _pv_row_gesture && !im.IsAnyItemActive() do _pv_row_gesture_end()
+
 	owner, a := _pv_target()
 	if a == nil {
 		_pv_preview_off()
@@ -1333,6 +1350,8 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	row_at := hovered ? int((mp.y - rows_y) / _ANIM_ROW_H) : -1
 
 	// Left panel rows (both modes: this is where curves pick their channel).
+	// The row's value fields sit at the column's right edge and the name is
+	// clipped short of them.
 	im.DrawList_PushClipRect(dl, im.Vec2{origin.x, rows_y}, im.Vec2{left_x1, rows_y + body_h}, true)
 	for &ch, i in clip.channels {
 		ry := rows_y + f32(i) * _ANIM_ROW_H
@@ -1345,7 +1364,10 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 		// Missing-binding yellow: the channel's component or field no
 		// longer resolves — it samples but never applies.
 		col := resolved ? im.GetColorU32(.Text) : im.GetColorU32ImVec4(im.Vec4{0.95, 0.83, 0.30, 1})
+		name_x1 := left_x1 - _pv_row_values_w(&ch) - 8
+		im.DrawList_PushClipRect(dl, im.Vec2{origin.x, ry}, im.Vec2{max(name_x1, origin.x), ry + _ANIM_ROW_H}, true)
 		im.DrawList_AddText(dl, im.Vec2{origin.x + 6, ry + 3}, col, label)
+		im.DrawList_PopClipRect(dl)
 	}
 	im.DrawList_PopClipRect(dl)
 
@@ -1428,6 +1450,8 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 		im.EndPopup()
 	}
 
+	_pv_draw_row_values(doc, clip, rows_y, left_x1)
+
 	// Add Property closes the track list, under the last row. Submitted after
 	// the mode handlers for the same reason as the splitter below — they read
 	// the sheet button as the last item. A press here lands in the property
@@ -1455,6 +1479,177 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	if widgets.splitter("##anim_split", true, &left_w, &canvas_w, _ANIM_MIN_LEFT_W, _ANIM_MIN_CANVAS_W) {
 		_av.left_w = left_w
 	}
+}
+
+// --- Row values -----------------------------------------------------------------------
+//
+// Each property row shows its value at the playhead after its name: one small
+// field per lane (a vec3 three, a bool a checkbox, an int or enum an int
+// field). A Rotation row shows three euler angles in degrees, converted from
+// the sampled quaternion as the inspector's Rotation row converts, and an edit
+// keys the normalized quaternion built from them. Editing a field keys the row
+// at the playhead with the edited value. A clip inside a model shows them
+// read-only.
+
+// The kind a row's fields edit, false for a property row that no longer
+// resolves (it has no live type to show). A Rotation row edits three euler
+// angles.
+@(private = "file")
+_pv_row_kind :: proc(ch: ^anim.Animation_Channel) -> (kind: anim.Prop_Kind, ok: bool) {
+	if anim.animation_channel_is_property(ch) {
+		loc, mok := anim._prop_meta(ch.component, ch.field)
+		return loc.kind, mok
+	}
+	return .Vec3, true
+}
+
+// Whether a channel is a transform Rotation row, whose fields show euler
+// angles of the stored quaternion.
+@(private = "file")
+_pv_ch_is_rotation :: proc(ch: ^anim.Animation_Channel) -> bool {
+	return !anim.animation_channel_is_property(ch) && ch.path == .Rotation
+}
+
+// The euler angles (degrees) a Rotation row or key shows for quaternion `q`.
+@(private = "file")
+_pv_rot_to_euler :: proc(q: [4]f32) -> [3]f32 {
+	return engine.quat_to_euler_xyz(q)
+}
+
+// The normalized quaternion a Rotation row or key keys for euler angles `e`.
+@(private)
+_pv_rot_from_euler :: proc(e: [3]f32) -> [4]f32 {
+	q := engine.quat_from_euler_xyz(e.x, e.y, e.z)
+	if l := linalg.length(q); l > 0.0001 do q = (1.0 / l) * q
+	return q
+}
+
+@(private = "file")
+_pv_kind_lanes :: proc(kind: anim.Prop_Kind) -> int {
+	switch kind {
+	case .Vec2: return 2
+	case .Vec3: return 3
+	case .Vec4: return 4
+	case .F32, .Bool, .Int:
+	}
+	return 1
+}
+
+// The width a row's value fields take at the column's right edge.
+@(private = "file")
+_pv_row_values_w :: proc(ch: ^anim.Animation_Channel) -> f32 {
+	kind, ok := _pv_row_kind(ch)
+	if !ok do return 0
+	if kind == .Bool do return _pv_row_field_h()
+	n := f32(_pv_kind_lanes(kind))
+	return n * _ANIM_VAL_W + (n - 1) * _ANIM_VAL_GAP
+}
+
+// Frame padding that fits a field inside one row.
+@(private = "file")
+_pv_row_pad_y :: proc() -> f32 {
+	return max((_ANIM_ROW_H - 2 - im.GetFontSize()) * 0.5, 0)
+}
+
+@(private = "file")
+_pv_row_field_h :: proc() -> f32 {
+	return im.GetFontSize() + 2 * _pv_row_pad_y()
+}
+
+// Keys row `row` at the playhead with `value`: the key already at the playhead
+// takes it, else a key is added there. One undo step, or part of the open row
+// value gesture.
+@(private)
+_pv_row_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, row: int, value: [4]f32) {
+	_pv_add_key(doc, clip, row, _pv.time, value)
+}
+
+// A drag on a row value spans frames: the document session stays open from the
+// first change until no item is active, so the drag is one undo step.
+@(private = "file")
+_pv_row_gesture: bool
+
+@(private = "file")
+_pv_row_gesture_end :: proc() {
+	_pv_row_gesture = false
+	_pv_edit_held = false
+	doc, clip := _pv_doc()
+	if doc == nil || clip == nil {
+		undo.edit_session_end(&_pv_session)
+		return
+	}
+	// A rotation key renormalizes at commit, as the key footer does.
+	if _pv_sel_valid(clip) {
+		ch := &clip.channels[_av.sel_ch]
+		if !anim.animation_channel_is_property(ch) && ch.path == .Rotation do _pv_normalize_rot_key(ch, _av.sel_key)
+	}
+	_pv_edit_commit(doc)
+}
+
+// The value fields, right-aligned in the property column. Submitted after the
+// mode handlers, which read the sheet button as the last item. The sheet
+// button allows overlap, so a field under the pointer takes the hover and the
+// press: the sheet's press logic (row selection, box select) does not run for
+// a click on a field, and typing into it is not interrupted.
+@(private = "file")
+_pv_draw_row_values :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, rows_y, left_x1: f32) {
+	field_h := _pv_row_field_h()
+	im.PushStyleVarImVec2(.FramePadding, im.Vec2{3, _pv_row_pad_y()})
+	defer im.PopStyleVar(1)
+	im.BeginDisabled(doc == nil)
+	defer im.EndDisabled()
+
+	for &ch, i in clip.channels {
+		kind, ok := _pv_row_kind(&ch)
+		if !ok do continue
+		n := _pv_kind_lanes(kind)
+		ry := rows_y + f32(i) * _ANIM_ROW_H + (_ANIM_ROW_H - field_h) * 0.5
+		x := left_x1 - _pv_row_values_w(&ch) - 4
+		v := anim._animation_channel_sample(&ch, _pv.time)
+		rot := _pv_ch_is_rotation(&ch)
+		euler: [3]f32
+		if rot do euler = _pv_rot_to_euler(v)
+		changed := false
+		im.PushIDInt(i32(i))
+		for c in 0 ..< n {
+			im.PushIDInt(i32(c))
+			im.SetCursorScreenPos(im.Vec2{x + f32(c) * (_ANIM_VAL_W + _ANIM_VAL_GAP), ry})
+			im.SetNextItemWidth(_ANIM_VAL_W)
+			#partial switch kind {
+			case .Bool:
+				b := v.x > 0.5
+				if im.Checkbox("##v", &b) {
+					v.x = b ? 1 : 0
+					changed = true
+				}
+			case .Int:
+				iv := i32(math.round(v.x))
+				if im.DragInt("##v", &iv, 0.1) {
+					v.x = f32(iv)
+					changed = true
+				}
+			case:
+				if rot {
+					if im.DragFloat("##v", &euler[c], 0.5, 0, 0, "%.1f") do changed = true
+				} else if im.DragFloat("##v", &v[c], 0.01, 0, 0, "%.2f") {
+					changed = true
+				}
+			}
+			im.PopID()
+		}
+		im.PopID()
+		if changed && rot do v = _pv_rot_from_euler(euler)
+		if changed {
+			if !_pv_row_gesture {
+				_pv_row_gesture = true
+				_pv_edit_held = true
+			}
+			_pv_row_key(doc, clip, i, v)
+		}
+	}
+	// A typed value lands on the frame its field lets go, a drag ends on
+	// release: either way nothing is active any more.
+	if _pv_row_gesture && !im.IsAnyItemActive() do _pv_row_gesture_end()
 }
 
 // --- Dopesheet ------------------------------------------------------------------------
@@ -1569,6 +1764,7 @@ _pv_sheet_dopesheet :: proc(
 			for t, k in ch.times {
 				kx := tx0 + t * pps
 				if kx < rmin.x || kx > rmax.x do continue
+				_pv_sel_pin()
 				append(&_av.sel, _Key_Ref{i, k})
 			}
 		}
@@ -1750,7 +1946,25 @@ _pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 	lo, hi := _pv_drag_time_bounds(ch, k, clip.length)
 	_pv_field_undo(doc, clip, im.DragFloat("##anim_key_t", &ch.times[k], 0.002, lo, hi, "%.3f"))
 
-	ncomp := _pv_ch_ncomp(ch)
+	// A rotation key shows three euler angles, written back as a quaternion.
+	if _pv_ch_is_rotation(ch) {
+		euler := _pv_rot_to_euler(ch.values[k])
+		axis_names := [3]cstring{"x", "y", "z"}
+		for c in 0 ..< 3 {
+			im.SameLine()
+			im.TextUnformatted(axis_names[c])
+			im.SameLine()
+			im.SetNextItemWidth(70)
+			changed := im.DragFloat(fmt.ctprintf("##anim_key_e%d", c), &euler[c], 0.5, 0, 0, "%.1f")
+			// Opened before the write, so the session holds the key from
+			// before this frame's change.
+			if im.IsItemActivated() do _pv_edit_begin(doc)
+			if changed do ch.values[k] = _pv_rot_from_euler(euler)
+			_pv_field_undo(doc, clip, changed)
+		}
+	}
+
+	ncomp := _pv_ch_is_rotation(ch) ? 0 : _pv_ch_ncomp(ch)
 	comp_names := [4]cstring{"x", "y", "z", "w"}
 	for c in 0 ..< ncomp {
 		im.SameLine()

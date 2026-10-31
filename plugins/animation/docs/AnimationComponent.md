@@ -295,7 +295,19 @@ An edit that cannot be keyed stays an ordinary scene edit with its own undo step
 - the object is neither the animated object nor under it
 - the clip has no document (a clip inside a model is read-only, and Record is off for it)
 
-Recording goes through the undo package's commit listener (docs/core/Undo.md "Commit listener"): the listener keys the clip and marks the entry consumed, and the undo package puts the object's old value back.
+An inspector edit of a field the inspector shows as driven (a field the shown clip has a row for) goes to `inspector.driven_commit` when the gesture ends (docs/core/Undo.md "Driven values"): `editor/record.odin` keys the edited value at the playhead in one undo step on the clip, and the live field is never written. Every other edit goes through the undo package's commit listener (docs/core/Undo.md "Commit listener"): the listener keys the clip and marks the entry consumed, and the undo package puts the object's old value back. Gizmo drags and multi-object edits take this path.
+
+### Preview values in the inspector and the rows
+
+The preview poses the object only around the scene and game render, so the live fields hold the object's own values. The inspector shows the preview's values anyway: `editor/record.odin` installs `inspector.driven_provider` (docs/core/Undo.md "Driven values"), which answers for a field the shown clip has a row for, on the animated object or under it, with the row's value at the playhead.
+
+- Preview on, Record off: the field shows the clip's value in the theme's accent color, with a bar left of the label, and ignores edits. An edit there would change the object's own value, which the pose hides, so the field takes no edits.
+- Record armed: the field shows the clip's value in red. When a drag is released or a typed value lands, the edited value is keyed at the playhead through `inspector.driven_commit`, one undo step on the clip. The object's own value, the scene undo stack, the prefab overrides and the other selected objects are not touched. A value equal to the object's own value is keyed like any other.
+- A field without a row, an object outside the animated object, a state preview from the States tree, or the preview off: the field shows the object's own value as usual.
+- Rotation shows the euler angles (degrees) of the clip's quaternion, and an edit keys the quaternion built from them.
+- A row drawn by a decorator (a color swatch, a range slider) shows the clip's value the same way and keys an edit the same way.
+
+Each property row in the window shows its value at the playhead after its name: one small field per lane (a vec3 three, a bool a checkbox, an int or enum an int field). A Rotation row shows three euler angles in degrees, converted from the sampled quaternion as the inspector's Rotation row converts, and an edit keys the normalized quaternion built from them. Editing a field keys the row at the playhead with the edited value: a key already at the playhead takes it, else a key is added. One drag or typed value is one undo step. A clip inside a model shows the values read-only. The selected key's footer shows a rotation key as three euler angles too.
 
 ## Sample
 

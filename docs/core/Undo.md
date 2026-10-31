@@ -366,6 +366,10 @@ the whole transform. `_wrap_transform_field_override`
 (`plugins/engine/editor/scene_views/view_hierarchy_inspector.odin`) is the bracket, because transform rows
 bypass the generic field loop and also record prefab-instance overrides.
 
+### Driven values
+
+Two seams in `editor/inspector/driven.odin`, both nil by default, let a plugin drive a pooled object's field from somewhere else. `inspector.driven_provider` says the field is driven, with the value to show and whether an edit goes anywhere. `inspector.driven_commit` takes an edit of a driven field, once, when the gesture ends. `field_edit_row`, the transform rows and decorator-drawn rows in the field loop ask the provider for the active object before drawing, and draw a driven field on a buffer, never on the live field. The row is tinted at full alpha from the theme (the green while read-only, red while editable), the frame background is blended toward the tint, and a bar marks the label. Driven and not editable: the buffer is reseeded every frame, so an edit is dropped. Driven and editable (the provider says so and `driven_commit` is installed): the buffer lives across the frames of one gesture, and when the gesture ends (released, a typed value landed, or a popup value changed with nothing active) the buffer goes to `driven_commit`. Neither runs an edit session, records an override or writes a peer. The session is not used for editable fields because its "before" is the object's own value: an edit back to that value would compare equal and record nothing. The Animation window's Record installs both seams. Edits outside the inspector rows (gizmo drags, multi-edit) still reach Record through the commit listener.
+
 For custom inspector UI outside the field loop (e.g. the `enabled` checkbox on the component header), use the ergonomic `edit_begin` / `edit_end` — an `Edit_Scope` IS a one-target `Edit_Session`, so it is the same mechanism with a two-line spelling.
 
 ### Custom rows draw through `field_edit_row`

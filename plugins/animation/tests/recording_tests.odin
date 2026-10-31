@@ -11,6 +11,7 @@ package animation_tests
 // way the gizmo records a drag.
 
 import "core:encoding/uuid"
+import "core:math/linalg"
 import "core:os"
 import "core:strings"
 import "core:testing"
@@ -54,6 +55,8 @@ _rec_open_clip :: proc(t: ^testing.T) -> ^inspector.Asset_Doc {
 _rec_close :: proc() {
 	animation_editor.animation_record_reset()
 	undo.commit_listener = nil
+	inspector.driven_provider = nil
+	inspector.driven_commit = nil
 	inspector.asset_docs_shutdown()
 	engine.asset_db_shutdown()
 	common.remove_tree(_DIR)
@@ -310,4 +313,349 @@ test_record_off_keys_nothing :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(_rec_clip(doc).channels), 0)
 	testing.expect_value(t, s.top, before + 1)
 	testing.expect(t, _has_scene_value(s.items[s.top - 1].cmd), "a scene value step")
+}
+
+// --- Driven values and row values ----------------------------------------------------
+//
+// While the preview is on, the inspector asks inspector.driven_provider for
+// each field and shows the clip's value at the playhead for a field the shown
+// clip has a row for. The Animation window's row value fields key the row at
+// the playhead.
+
+// Appends a row to the clip document, allocated the way the document's own
+// rows are.
+@(private = "file")
+_rec_add_row :: proc(clip: ^anim.AnimationClip, ch: anim.Animation_Channel, keys: []f32, values: [][4]f32) {
+	context.allocator = inspector.doc_alloc()
+	c := ch
+	c.target = strings.clone(ch.target)
+	c.component = strings.clone(ch.component)
+	c.field = strings.clone(ch.field)
+	c.times = make([dynamic]f32)
+	c.values = make([dynamic][4]f32)
+	for k in keys do append(&c.times, k)
+	for v in values do append(&c.values, v)
+	append(&clip.channels, c)
+}
+
+// A Light intensity row on "Lamp" under "Root": 1 at 0 s, 3 at 1 s.
+@(private = "file")
+_rec_intensity_row :: proc(clip: ^anim.AnimationClip) {
+	guid := uuid.to_string(engine.get_guid_by_typeid(engine.Light), context.temp_allocator)
+	_rec_add_row(clip, {target = "Lamp", component = guid, field = "intensity"}, {0, 1}, {{1, 0, 0, 0}, {3, 0, 0, 0}})
+}
+
+@(private = "file")
+_ask_f32 :: proc(owner: engine.Handle, offset: uintptr) -> (v: f32, driven, editable: bool) {
+	driven, editable = inspector.driven_provider(owner, offset, typeid_of(f32), &v)
+	return
+}
+
+// A field with a row is driven by the row's value at the playhead,
+// interpolated between keys. Editable only while Record is armed.
+@(test)
+test_driven_value_samples_the_row :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	lamp := engine.transform_new("Lamp", root)
+	_, lp := engine.transform_add_comp(lamp, .Light)
+	light := cast(^engine.Light)lp
+	light.intensity = 7
+	_rec_intensity_row(_rec_clip(doc))
+	lh := _rec_comp(lamp, .Light)
+
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = false)
+	v, driven, editable := _ask_f32(lh, offset_of(engine.Light, intensity))
+	testing.expect(t, driven, "the field with a row is driven")
+	testing.expect_value(t, v, 2)
+	testing.expect(t, !editable, "read-only with Record off")
+	testing.expect_value(t, light.intensity, 7)
+
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = true)
+	v, driven, editable = _ask_f32(lh, offset_of(engine.Light, intensity))
+	testing.expect(t, driven && editable, "editable with Record armed")
+	testing.expect_value(t, v, 2)
+
+	// Preview off: nothing is driven.
+	animation_editor.animation_record_reset()
+	_, driven, _ = _ask_f32(lh, offset_of(engine.Light, intensity))
+	testing.expect(t, !driven, "not driven with the preview off")
+}
+
+// A field without a row is not driven, and neither is the same field on an
+// object outside the animated object, even with a matching name.
+@(test)
+test_driven_value_needs_a_row_under_the_root :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	lamp := engine.transform_new("Lamp", root)
+	engine.transform_add_comp(lamp, .Light)
+	outside := engine.transform_new("Lamp")
+	engine.transform_add_comp(outside, .Light)
+	_rec_intensity_row(_rec_clip(doc))
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5)
+
+	_, driven, _ := _ask_f32(_rec_comp(lamp, .Light), offset_of(engine.Light, range))
+	testing.expect(t, !driven, "a field without a row is not driven")
+	_, driven, _ = _ask_f32(_rec_comp(outside, .Light), offset_of(engine.Light, intensity))
+	testing.expect(t, !driven, "an object outside the animated object is not driven")
+	_, driven, _ = _ask_f32(_rec_comp(lamp, .Light), offset_of(engine.Light, intensity))
+	testing.expect(t, driven, "the field with a row under the root is driven")
+}
+
+// A transform's position is driven by a Position row.
+@(test)
+test_driven_value_samples_a_position_row :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	arm := engine.transform_new("Arm", root)
+	_rec_add_row(_rec_clip(doc), {target = "Arm", path = .Position}, {0, 2}, {{0, 0, 0, 0}, {2, 4, 6, 0}})
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
+
+	pos: [3]f32
+	driven, editable := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &pos)
+	testing.expect(t, driven && !editable, "the position is driven, read-only")
+	testing.expect_value(t, pos, [3]f32{1, 2, 3})
+
+	scale: [3]f32
+	driven, _ = inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, scale), typeid_of([3]f32), &scale)
+	testing.expect(t, !driven, "the scale has no row")
+}
+
+// The row value field keys the row at the playhead: a key already there takes
+// the value, else a key is added. Each is one undo step on the clip.
+@(test)
+test_row_value_keys_at_the_playhead :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	lamp := engine.transform_new("Lamp", root)
+	engine.transform_add_comp(lamp, .Light)
+	_rec_intensity_row(_rec_clip(doc))
+
+	// A key at the playhead takes the value.
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
+	before := s.top
+	animation_editor.animation_record_key_row(0, {9, 0, 0, 0})
+	ch := &_rec_clip(doc).channels[0]
+	testing.expect_value(t, len(ch.times), 2)
+	testing.expect_value(t, ch.values[1].x, 9)
+	testing.expect_value(t, s.top, before + 1)
+	testing.expect(t, undo.apply_undo(s), "undo")
+	ch = &_rec_clip(doc).channels[0]
+	testing.expect_value(t, ch.values[1].x, 3)
+
+	// No key at the playhead: one is added between the others.
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = false)
+	before = s.top
+	animation_editor.animation_record_key_row(0, {4, 0, 0, 0})
+	ch = &_rec_clip(doc).channels[0]
+	testing.expect_value(t, len(ch.times), 3)
+	at := _key_at(ch, 0.5)
+	testing.expect_value(t, at, 1)
+	if at >= 0 do testing.expect_value(t, ch.values[at].x, 4)
+	testing.expect_value(t, s.top, before + 1)
+	testing.expect(t, undo.apply_undo(s), "undo")
+	testing.expect_value(t, len(_rec_clip(doc).channels[0].times), 2)
+}
+
+// Through the inspector's row: with Record off a driven row is read-only, so
+// a drag changes neither the object nor the undo stack. With Record armed the
+// drag keys the row at the playhead and the object keeps its own value.
+@(test)
+test_driven_row_through_the_inspector :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	lamp := engine.transform_new("Lamp", root)
+	_, lp := engine.transform_add_comp(lamp, .Light)
+	light := cast(^engine.Light)lp
+	light.intensity = 1
+	_rec_intensity_row(_rec_clip(doc))
+
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = false)
+	before := s.top
+	_drag_intensity(lamp, light)
+	testing.expect_value(t, light.intensity, 1)
+	testing.expect_value(t, s.top, before)
+	testing.expect_value(t, len(_rec_clip(doc).channels[0].times), 2)
+
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = true)
+	_drag_intensity(lamp, light)
+	testing.expect_value(t, light.intensity, 1)
+	testing.expect_value(t, s.top, before + 1)
+	testing.expect(t, !_has_scene_value(s.items[s.top - 1].cmd), "no scene value step")
+	ch := &_rec_clip(doc).channels[0]
+	at := _key_at(ch, 0.5)
+	testing.expect(t, at >= 0, "a key at the playhead")
+	if at >= 0 do testing.expect_value(t, ch.values[at].x, 5)
+}
+
+@(private = "file")
+_write_one :: proc(field_ptr: rawptr) {
+	(cast(^f32)field_ptr)^ = 1
+}
+
+// An inspector edit while recording keys the value even when it equals the
+// object's own value: the edit goes to inspector.driven_commit, not through a
+// scene session whose "before" is the object's own value. The live scale
+// stays, and the key is the gesture's one undo step.
+@(test)
+test_driven_commit_keys_the_objects_own_value :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	arm := engine.transform_new("Arm", root)
+	w := engine.ctx_world()
+	tr := engine.pool_get(&w.transforms, engine.Handle(arm))
+	tr.scale = {1, 1, 1}
+	_rec_add_row(_rec_clip(doc), {target = "Arm", path = .Scale}, {0, 2}, {{2, 2, 2, 0}, {2, 2, 2, 0}})
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+
+	shown: [3]f32
+	driven, editable := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, scale), typeid_of([3]f32), &shown)
+	testing.expect(t, driven && editable, "the scale is driven and editable")
+	testing.expect_value(t, shown, [3]f32{2, 2, 2})
+
+	before := s.top
+	one := [3]f32{1, 1, 1}
+	ok := inspector.driven_commit(engine.Handle(arm), offset_of(engine.Transform, scale), typeid_of([3]f32), &one)
+	testing.expect(t, ok, "the commit keys the field")
+
+	ch := &_rec_clip(doc).channels[0]
+	at := _key_at(ch, 1)
+	testing.expect(t, at >= 0, "a key at the playhead")
+	if at >= 0 do testing.expect_value(t, ch.values[at].xyz, [3]f32{1, 1, 1})
+	testing.expect_value(t, tr.scale, [3]f32{1, 1, 1})
+	testing.expect_value(t, s.top, before + 1)
+	testing.expect(t, !_has_scene_value(s.items[s.top - 1].cmd), "no scene value step")
+
+	testing.expect(t, undo.apply_undo(s), "undo")
+	testing.expect_value(t, len(_rec_clip(doc).channels[0].times), 2)
+
+	// Record off: the commit goes nowhere.
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
+	testing.expect(t, !inspector.driven_commit(engine.Handle(arm), offset_of(engine.Transform, scale), typeid_of([3]f32), &one), "nothing is keyed with Record off")
+}
+
+// The same through the inspector's row: a drag of a driven intensity back to
+// the light's own value keys it.
+@(test)
+test_driven_row_keys_the_objects_own_value :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	lamp := engine.transform_new("Lamp", root)
+	_, lp := engine.transform_add_comp(lamp, .Light)
+	light := cast(^engine.Light)lp
+	light.intensity = 1
+	_rec_intensity_row(_rec_clip(doc))
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5)
+
+	before := s.top
+	{
+		undo.push_component_owner(_rec_comp(lamp, .Light))
+		defer undo.pop_owner()
+		h := common.Row_Harness{
+			field_ptr = &light.intensity,
+			field_tid = typeid_of(f32),
+			offset    = offset_of(engine.Light, intensity),
+			label     = "intensity",
+		}
+		common.row_replay(&h, []common.Frame{
+			common.frame_press(_write_one),
+			common.frame_drag(_write_one),
+			common.frame_release(),
+		})
+	}
+
+	ch := &_rec_clip(doc).channels[0]
+	at := _key_at(ch, 0.5)
+	testing.expect(t, at >= 0, "a key at the playhead")
+	if at >= 0 do testing.expect_value(t, ch.values[at].x, 1)
+	testing.expect_value(t, light.intensity, 1)
+	testing.expect_value(t, s.top, before + 1)
+	testing.expect(t, !_has_scene_value(s.items[s.top - 1].cmd), "no scene value step")
+}
+
+// A Rotation row shows euler angles and keys the quaternion built from them:
+// keying (0, 90, 0) stores a unit quaternion that reads back as (0, 90, 0).
+@(test)
+test_rotation_row_euler_round_trip :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	engine.transform_new("Arm", root)
+	_rec_add_row(_rec_clip(doc), {target = "Arm", path = .Rotation}, {0}, {{0, 0, 0, 1}})
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
+
+	animation_editor.animation_record_key_row_euler(0, {0, 90, 0})
+	ch := &_rec_clip(doc).channels[0]
+	at := _key_at(ch, 1)
+	testing.expect(t, at >= 0, "a key at the playhead")
+	if at < 0 do return
+	q := ch.values[at]
+	testing.expect(t, abs(linalg.length(q) - 1) < 1e-4, "the key is a unit quaternion")
+	e := engine.quat_to_euler_xyz(q)
+	EPS :: f32(0.01)
+	testing.expectf(t, abs(e.x) < EPS && abs(e.y - 90) < EPS && abs(e.z) < EPS, "the key reads back as (0, 90, 0), got %v", e)
 }

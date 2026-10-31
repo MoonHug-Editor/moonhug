@@ -228,6 +228,7 @@ field_edit_frame_begin :: proc(any_item_active: bool) {
 	if _field_edit.active && !any_item_active {
 		field_edit_end()
 	}
+	_driven_edit_frame_begin(any_item_active)
 }
 
 // Whether the row's widget is mid-gesture. The drawer ran inside a group, so
@@ -263,7 +264,7 @@ field_edit_row_hold :: proc() {
 	_row_hold = true
 }
 
-@(private = "file")
+@(private)
 field_edit_row_held :: proc() -> bool {
 	if _widget_state_override != nil {
 		_row_hold = false
@@ -328,6 +329,17 @@ field_edit_row :: proc(
 	draw_label: cstring,
 	pre_before: []byte = nil,
 ) -> (finished: bool) {
+	// A driven field (driven.odin) shows the driven value. Asked for the active
+	// object only: peers are not queried. A row drawn by a decorator (nil
+	// drawer) is handled by the field loop, which redirects the decorator.
+	grouped := _widget_state_override == nil
+	dv: Driven_Value
+	if drawer != nil do dv = driven_query_field(field_ptr, field_tid)
+	if dv.state != .None {
+		_driven_row(field_ptr, field_tid, &dv, drawer, draw_label, grouped)
+		return false
+	}
+
 	// A picker writes from inside a popup: no drag, no focus, so its gesture has
 	// no observable start. Its value is snapshotted before the draw and compared
 	// after, and the transaction opened RETROACTIVELY only if it moved.
@@ -362,7 +374,6 @@ field_edit_row :: proc(
 	// Under the widget-state override (the test harness) there is no imgui
 	// context and the override IS the row's item state, so no group.
 	if drawer != nil {
-		grouped := _widget_state_override == nil
 		if grouped do im.BeginGroup()
 		drawer(field_ptr, field_tid, draw_label)
 		if grouped do im.EndGroup()
@@ -426,6 +437,42 @@ field_edit_row :: proc(
 		field_edit_end()
 	}
 	return finished
+}
+
+// A driven row (driven.odin). The widget draws on a buffer, never on the live
+// field, and no edit session runs, so nothing reaches the object, the scene
+// undo stack, the prefab overrides or the peers:
+//   - read-only: the buffer is the driven value, reseeded every frame, and an
+//     edit of it is dropped
+//   - editable: the buffer lives across the frames of one gesture, and when
+//     the gesture ends the edited value goes to driven_commit
+// The drawer's changed flag is dropped too: the object did not change.
+@(private = "file")
+_driven_row :: proc(
+	field_ptr: rawptr,
+	field_tid: typeid,
+	dv: ^Driven_Value,
+	drawer: proc(ptr: rawptr, tid: typeid, label: cstring),
+	draw_label: cstring,
+	grouped: bool,
+) {
+	multi_clear_mixed()
+	prev_changed := consume_inspector_changed()
+	defer if prev_changed do mark_inspector_changed()
+
+	buf := rawptr(&dv.value)
+	if dv.state == .Editable do buf = driven_edit_buffer(field_ptr, &dv.value)
+	if grouped do driven_draw_begin(dv.state)
+	drawer(buf, field_tid, draw_label)
+	if grouped do driven_draw_end(dv.state)
+	consume_inspector_changed()
+
+	if dv.state == .Editable {
+		driven_edit_finish(field_ptr, buf, dv)
+	} else {
+		field_edit_row_finished()
+		field_edit_row_held()
+	}
 }
 
 @(private = "file")
