@@ -279,6 +279,15 @@ component's full authored graph with the scrubbed clip at weight 1 and
 everything else at 0, so the preview path is the graph the component actually
 plays and the Playable Graph window shows the real topology.
 
+The sheet groups the rows by the transform they animate (`editor/sheet_rows.odin`). Each animated transform has an Object row, in the order its first channel appears in the clip, labelled with the transform's name (the animated object's own name for the object itself). Its property rows follow it, indented, labelled with the component and field or Position, Rotation and Scale.
+
+- Object rows sit at the column's edge whatever their depth, their property rows one step in. The parent path shows dimmed before the name ("Armature / node_2") when the column has room, which is what says where a transform sits. The tooltip shows the full path. A target that does not resolve under the animated object shows its name in the warning colour the unresolved property rows use.
+- Retargeting: a double-click on an Object row's name, or Edit Path in its context menu, opens a field holding the full target path. Enter, or Escape as in every text field, sets the target of every channel of that object to the typed path, spaces trimmed, as one undo step (`animation_view_retarget`). A click elsewhere cancels. A clip inside a model has no field. An unresolved path shows in the warning colour and can be edited again. The collapsed state follows the row to its new path.
+- The arrow on an Object row collapses it, hiding its property rows. Collapse state belongs to the window copy and is not saved. Adding a property under a collapsed object expands it.
+- In the dope sheet an Object row shows an outlined summary key at every time where any of its property rows has a key, hidden rows included. Keys within half a frame after the first key of a run count as one.
+- Clicking a summary key selects every key it stands for, the first of them becoming the primary key. Dragging it moves them together. A modifier click adds them to the selection or removes them. A box selection over an Object row selects its channels' keys in the band.
+- A press on an Object row's name selects nothing. Double-click, Remove Property and Add Key act on property rows only, and the curve view plots only the selected property row.
+
 ### Record
 
 While Record is armed, an edit of an animatable field keys the clip at the playhead instead of changing the object (`editor/record.odin`). Any edit that records undo counts: an inspector row, a gizmo drag, a multi-object edit.

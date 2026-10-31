@@ -53,6 +53,11 @@ import "moonhug:editor/icons"
 @(private = "file") _ANIM_HIT :: f32(6)    // key hit-test radius
 @(private = "file") _ANIM_VAL_W :: f32(42)  // one value field of a row
 @(private = "file") _ANIM_VAL_GAP :: f32(2)
+@(private = "file") _ANIM_INDENT :: f32(14) // a property row's indent under its Object row
+@(private = "file") _ANIM_ARROW_W :: f32(10) // an Object row's collapse arrow
+// Missing-binding yellow: a row whose target, component or field no longer
+// resolves. It samples but never applies.
+@(private = "file") _ANIM_WARN_COL :: im.Vec4{0.95, 0.83, 0.30, 1}
 
 // Curve colors per value component (x red, y green, z blue, w grey).
 @(private = "file")
@@ -139,6 +144,18 @@ _Anim_View :: struct {
 	zoom:      f32,
 	pan:       f32,
 	wheel:     widgets.Wheel_Lock, // one wheel axis per gesture
+	// Targets whose Object row is collapsed (sheet_rows.odin). Keys are clones
+	// under the default allocator, freed with the view. Not persisted.
+	collapsed: map[string]bool,
+	// The Object row path field (retargeting). path_target is the target being
+	// edited and ctx_target the Object row the context menu opened on, both
+	// clones under the default allocator. path_wait counts the frames left for
+	// the field to take focus, 0 once it has it.
+	path_edit:   bool,
+	path_target: string,
+	path_buf:    [256]u8,
+	path_wait:   int,
+	ctx_target:  string,
 }
 
 _ANIM_VIEW_INIT :: _Anim_View{left_w = 300, sel_ch = -1, sel_key = -1}
@@ -161,8 +178,43 @@ _anim_view_free :: proc(av: ^_Anim_View) {
 	context.allocator = runtime.default_allocator()
 	delete(av.sel)
 	delete(av.drag_t0)
+	for k in av.collapsed do delete(k)
+	delete(av.collapsed)
+	delete(av.path_target)
+	delete(av.ctx_target)
 	av.sel = nil
 	av.drag_t0 = nil
+	av.collapsed = nil
+	av.path_edit = false
+	av.path_target = ""
+	av.ctx_target = ""
+}
+
+// Replaces a view-owned string with a clone of `s`.
+@(private = "file")
+_pv_view_str_set :: proc(dst: ^string, s: string) {
+	delete(dst^, runtime.default_allocator())
+	dst^ = strings.clone(s, runtime.default_allocator())
+}
+
+// Collapses or expands `target`'s Object row in the current copy.
+@(private = "file")
+_pv_collapse_toggle :: proc(target: string) {
+	context.allocator = runtime.default_allocator()
+	if target in _av.collapsed {
+		k, _ := delete_key(&_av.collapsed, target)
+		delete(k)
+		return
+	}
+	if _av.collapsed == nil do _av.collapsed = make(map[string]bool)
+	_av.collapsed[strings.clone(target)] = true
+}
+
+// Expands `target`'s Object row in the current copy, so a channel just added
+// under it shows.
+@(private = "file")
+_pv_collapse_clear :: proc(target: string) {
+	if target in _av.collapsed do _pv_collapse_toggle(target)
 }
 
 animation_view_closed :: proc(w: ^wnd.Window) {
@@ -347,6 +399,45 @@ _pv_sel_has :: proc(ch, key: int) -> bool {
 		if r.ch == ch && r.key == key do return true
 	}
 	return false
+}
+
+// Whether every key of `keys` is selected.
+@(private = "file")
+_pv_sel_has_all :: proc(keys: []Sheet_Key) -> bool {
+	for k in keys {
+		if !_pv_sel_has(k.ch, k.key) do return false
+	}
+	return true
+}
+
+// Replace the selection with `keys` (an Object row's keys at one time). The
+// first becomes primary.
+@(private = "file")
+_pv_sel_set_keys :: proc(keys: []Sheet_Key) {
+	assert(len(keys) > 0, "an Object row summary key stands for at least one key")
+	_pv_sel_pin()
+	clear(&_av.sel)
+	for k in keys do append(&_av.sel, _Key_Ref{k.ch, k.key})
+	_av.sel_ch = keys[0].ch
+	_av.sel_key = keys[0].key
+}
+
+// Additive click on an Object row summary key: drops its keys when all of them
+// are selected, else adds the missing ones. The first of them becomes primary
+// when they stay selected.
+@(private = "file")
+_pv_sel_toggle_keys :: proc(keys: []Sheet_Key) {
+	assert(len(keys) > 0, "an Object row summary key stands for at least one key")
+	if _pv_sel_has_all(keys) {
+		for k in keys do _pv_sel_toggle(k.ch, k.key)
+		return
+	}
+	_pv_sel_pin()
+	for k in keys {
+		if !_pv_sel_has(k.ch, k.key) do append(&_av.sel, _Key_Ref{k.ch, k.key})
+	}
+	_av.sel_ch = keys[0].ch
+	_av.sel_key = keys[0].key
 }
 
 // Drop selection entries a document edit has invalidated (a channel or key
@@ -549,12 +640,12 @@ _pv_ch_ncomp :: proc(ch: ^anim.Animation_Channel) -> int {
 }
 
 // Row label + resolved flag: transform channels are always resolved,
-// property channels resolve their component guid and field path.
+// property channels resolve their component guid and field path. The target
+// is the Object row's label above, so the label leaves it out.
 @(private = "file")
 _pv_ch_label :: proc(ch: ^anim.Animation_Channel) -> (label: cstring, resolved: bool) {
-	target := ch.target == "" ? "(self)" : ch.target
 	if !anim.animation_channel_is_property(ch) {
-		return fmt.ctprintf("%s : %v", target, ch.path), true
+		return fmt.ctprintf("%v", ch.path), true
 	}
 	comp_name := "?"
 	if guid, gerr := uuid.read(ch.component); gerr == nil {
@@ -566,7 +657,7 @@ _pv_ch_label :: proc(ch: ^anim.Animation_Channel) -> (label: cstring, resolved: 
 		}
 	}
 	_, mok := anim._prop_meta(ch.component, ch.field)
-	return fmt.ctprintf("%s : %s.%s", target, comp_name, ch.field), mok
+	return fmt.ctprintf("%s.%s", comp_name, ch.field), mok
 }
 
 // --- Keyframe operations --------------------------------------------------------------
@@ -783,6 +874,7 @@ _pv_append_channel :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip,
 	append(&ch.values, v)
 	append(&clip.channels, ch)
 	_pv_sel_set(len(clip.channels) - 1, 0)
+	_pv_collapse_clear(ch.target) // the new row shows, selected
 	_pv_edit_commit(doc)
 }
 
@@ -1287,7 +1379,10 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	_av.pan = clamp(_av.pan, 0, max(length - visible, 0))
 	tx0 := x0 + _ANIM_PAD_X - _av.pan * pps // x of t=0
 
-	nrows := len(clip.channels)
+	// The visible rows: an Object row per animated transform, its property
+	// rows under it unless collapsed (sheet_rows.odin).
+	rows := sheet_rows(clip, _av.collapsed, context.temp_allocator)
+	nrows := len(rows)
 	rows_y := origin.y + ruler_h
 	body_h: f32
 	if _av.mode == .Dopesheet {
@@ -1372,36 +1467,75 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	im.InvisibleButton("##anim_sheet", im.Vec2{avail.x, body_h})
 	hovered := im.IsItemHovered()
 	mp := im.GetMousePos()
+	// The sheet row under the pointer, -1 off the rows (below the last one).
 	row_at := hovered ? int((mp.y - rows_y) / _ANIM_ROW_H) : -1
+	if row_at >= nrows do row_at = -1
+
+	// A press on an Object row's arrow (or the indent left of it) collapses or
+	// expands it, in both modes. This frame keeps the rows it built, the next
+	// frame shows the change. A double-click on its name opens the path field.
+	root_name := _pv_root_name()
+	if row_at >= 0 && rows[row_at].kind == .Object && mp.x < left_x1 {
+		r := rows[row_at]
+		name_x := _pv_obj_name_x(origin.x, _pv_row_indent(r))
+		if im.IsItemActivated() && mp.x < name_x do _pv_collapse_toggle(r.target)
+		if mp.x >= name_x && doc != nil && im.IsMouseDoubleClicked(.Left) do _pv_path_edit_begin(r.target)
+		if !(_av.path_edit && _av.path_target == r.target) {
+			full := r.target == "" ? root_name : r.target
+			if _, ok := anim._animation_resolve_target(_pv.owner, r.target); ok {
+				widgets.tooltip_unchecked(fmt.ctprintf("%s", full))
+			} else {
+				widgets.tooltip_unchecked(fmt.ctprintf("%s\nNot found under %s", full, root_name))
+			}
+		}
+	}
 
 	// Left panel rows (both modes: this is where curves pick their channel).
-	// The row's value fields sit at the column's right edge and the name is
-	// clipped short of them.
+	// An Object row shows its arrow and the transform's name. A property row's
+	// value fields sit at the column's right edge and the name is clipped
+	// short of them.
 	im.DrawList_PushClipRect(dl, im.Vec2{origin.x, rows_y}, im.Vec2{left_x1, rows_y + body_h}, true)
-	for &ch, i in clip.channels {
+	for r, i in rows {
 		ry := rows_y + f32(i) * _ANIM_ROW_H
-		if i == _av.sel_ch {
+		if r.kind == .Object {
+			im.DrawList_AddRectFilled(dl, im.Vec2{origin.x, ry}, im.Vec2{left_x1, ry + _ANIM_ROW_H}, im.GetColorU32(.FrameBg, 0.6))
+			name_x := _pv_obj_name_x(origin.x, _pv_row_indent(r))
+			_pv_draw_collapse_arrow(dl, im.Vec2{name_x - 4 - _ANIM_ARROW_W * 0.5, ry + _ANIM_ROW_H * 0.5}, !_av.collapsed[r.target])
+			if _av.path_edit && _av.path_target == r.target do continue // the path field covers the name
+			_pv_draw_obj_label(dl, r.target, root_name, name_x, ry, left_x1 - 4)
+			continue
+		}
+		ch := &clip.channels[r.ch]
+		if r.ch == _av.sel_ch {
 			im.DrawList_AddRectFilled(dl, im.Vec2{origin.x, ry}, im.Vec2{left_x1, ry + _ANIM_ROW_H}, im.GetColorU32(.Header, 0.7))
 		} else if i % 2 == 1 {
 			im.DrawList_AddRectFilled(dl, im.Vec2{origin.x, ry}, im.Vec2{left_x1, ry + _ANIM_ROW_H}, im.GetColorU32(.FrameBg, 0.25))
 		}
-		label, resolved := _pv_ch_label(&ch)
-		// Missing-binding yellow: the channel's component or field no
-		// longer resolves — it samples but never applies.
-		col := resolved ? im.GetColorU32(.Text) : im.GetColorU32ImVec4(im.Vec4{0.95, 0.83, 0.30, 1})
-		name_x1 := left_x1 - _pv_row_values_w(&ch) - 8
+		label, resolved := _pv_ch_label(ch)
+		col := resolved ? im.GetColorU32(.Text) : im.GetColorU32ImVec4(_ANIM_WARN_COL)
+		name_x1 := left_x1 - _pv_row_values_w(ch) - 8
 		im.DrawList_PushClipRect(dl, im.Vec2{origin.x, ry}, im.Vec2{max(name_x1, origin.x), ry + _ANIM_ROW_H}, true)
-		im.DrawList_AddText(dl, im.Vec2{origin.x + 6, ry + 3}, col, label)
+		im.DrawList_AddText(dl, im.Vec2{origin.x + 6 + f32(_pv_row_indent(r)) * _ANIM_INDENT, ry + 3}, col, label)
 		im.DrawList_PopClipRect(dl)
 	}
 	im.DrawList_PopClipRect(dl)
 
-	// Right-click a row: channel operations.
-	if hovered && mp.x < x0 && row_at >= 0 && row_at < len(clip.channels) &&
+	// Right-click a property row: channel operations. An Object row has none.
+	if hovered && mp.x < x0 && row_at >= 0 && rows[row_at].kind == .Channel &&
 	   im.IsMouseClicked(.Right) {
-		_av.sel_ch = row_at
+		_av.sel_ch = rows[row_at].ch
 		_av.sel_key = -1
 		im.OpenPopup("##anim_ch_ctx")
+	}
+	// Right-click an Object row: its path.
+	if hovered && mp.x < x0 && row_at >= 0 && rows[row_at].kind == .Object &&
+	   im.IsMouseClicked(.Right) {
+		_pv_view_str_set(&_av.ctx_target, rows[row_at].target)
+		im.OpenPopup("##anim_obj_ctx")
+	}
+	if im.BeginPopup("##anim_obj_ctx") {
+		if im.MenuItem("Edit Path", nil, false, doc != nil) do _pv_path_edit_begin(_av.ctx_target)
+		im.EndPopup()
 	}
 	if im.BeginPopup("##anim_ch_ctx") {
 		if im.MenuItem("Remove Property", nil, false, doc != nil) && _av.sel_ch >= 0 && _av.sel_ch < len(clip.channels) {
@@ -1415,9 +1549,9 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 
 	im.DrawList_PushClipRect(dl, canvas_clip_min, canvas_clip_max, true)
 	if _av.mode == .Dopesheet {
-		_pv_sheet_dopesheet(doc, clip, dl, origin, rows_y, body_h, x0, x1, tx0, pps, hovered, mp, row_at)
+		_pv_sheet_dopesheet(doc, clip, dl, rows, rows_y, body_h, x0, x1, tx0, pps, hovered, mp, row_at)
 	} else {
-		_pv_sheet_curves(doc, clip, dl, rows_y, body_h, x0, x1, tx0, pps, mp, row_at)
+		_pv_sheet_curves(doc, clip, dl, rows, rows_y, body_h, x0, x1, tx0, pps, mp, row_at)
 	}
 	im.DrawList_PopClipRect(dl)
 
@@ -1475,7 +1609,8 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 		im.EndPopup()
 	}
 
-	_pv_draw_row_values(doc, clip, rows_y, left_x1)
+	_pv_draw_row_values(doc, clip, rows, rows_y, left_x1)
+	_pv_draw_path_field(doc, rows, origin.x, rows_y, left_x1)
 
 	// Add Property closes the track list, under the last row. Submitted after
 	// the mode handlers for the same reason as the splitter below — they read
@@ -1486,7 +1621,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	add_w := min(f32(220), max(left_w - 8, 1))
 	im.SetCursorScreenPos(im.Vec2{
 		origin.x + (left_w - add_w) * 0.5,
-		rows_y + f32(len(clip.channels)) * _ANIM_ROW_H + 4,
+		rows_y + f32(nrows) * _ANIM_ROW_H + 4,
 	})
 	im.BeginDisabled(doc == nil)
 	if im.Button("Add Property", im.Vec2{add_w, 0}) do im.OpenPopup("##anim_add_prop")
@@ -1504,6 +1639,160 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	if widgets.splitter("##anim_split", true, &left_w, &canvas_w, _ANIM_MIN_LEFT_W, _ANIM_MIN_CANVAS_W) {
 		_av.left_w = left_w
 	}
+}
+
+// The animated object's name, the root Object row's label.
+@(private = "file")
+_pv_root_name :: proc() -> string {
+	w := engine.ctx_world()
+	if t := engine.pool_get(&w.transforms, engine.Handle(_pv.owner)); t != nil && t.name != "" do return t.name
+	return "(self)"
+}
+
+// How far a row indents: an Object row sits at the column's edge whatever its
+// path depth (the dimmed parent path says where it is), its property rows one
+// step in.
+@(private = "file")
+_pv_row_indent :: proc(r: Sheet_Row) -> int {
+	return r.kind == .Channel ? 1 : 0
+}
+
+// Where an Object row's name starts: its indent, then the arrow.
+@(private = "file")
+_pv_obj_name_x :: proc(x0: f32, depth: int) -> f32 {
+	return x0 + 6 + f32(depth) * _ANIM_INDENT + _ANIM_ARROW_W + 4
+}
+
+// An Object row's label from `x` up to `x_max`: the transform's name, after
+// its parent path dimmed when both fit ("Armature / node_2"). Warning colour
+// when the target does not resolve under the animated object.
+@(private = "file")
+_pv_draw_obj_label :: proc(dl: ^im.DrawList, target, root_name: string, x, y, x_max: f32) {
+	parent, name, _ := sheet_target_split(target)
+	if target == "" do name = root_name
+	_, resolved := anim._animation_resolve_target(_pv.owner, target)
+	col := resolved ? im.GetColorU32(.Text) : im.GetColorU32ImVec4(_ANIM_WARN_COL)
+	name_c := fmt.ctprintf("%s", name)
+	im.DrawList_PushClipRect(dl, im.Vec2{x, y}, im.Vec2{max(x_max, x), y + _ANIM_ROW_H}, true)
+	defer im.DrawList_PopClipRect(dl)
+	nx := x
+	if parent != "" {
+		prefix := fmt.ctprintf("%s / ", parent)
+		pw := im.CalcTextSize(prefix, nil, false, -1).x
+		if x + pw + im.CalcTextSize(name_c, nil, false, -1).x <= x_max {
+			im.DrawList_AddText(dl, im.Vec2{x, y + 3}, im.GetColorU32(.TextDisabled), prefix)
+			nx += pw
+		}
+	}
+	im.DrawList_AddText(dl, im.Vec2{nx, y + 3}, col, name_c)
+}
+
+// An Object row's collapse arrow centered on `c`: pointing down when open,
+// right when collapsed.
+@(private = "file")
+_pv_draw_collapse_arrow :: proc(dl: ^im.DrawList, c: im.Vec2, open: bool) {
+	r := f32(4)
+	col := im.GetColorU32(.Text)
+	if open {
+		im.DrawList_AddTriangleFilled(dl, c + {-r, -r * 0.6}, c + {r, -r * 0.6}, c + {0, r * 0.6}, col)
+	} else {
+		im.DrawList_AddTriangleFilled(dl, c + {-r * 0.6, -r}, c + {r * 0.6, 0}, c + {-r * 0.6, r}, col)
+	}
+}
+
+// --- Object row path field ------------------------------------------------------------
+//
+// Retargeting: a renamed transform leaves its rows unresolved, so the Object
+// row's path is editable. A double-click on its name or "Edit Path" in its
+// menu opens a field holding the full target path. Enter applies through
+// animation_view_retarget, Escape and a click elsewhere cancel.
+
+@(private = "file")
+_pv_path_edit_begin :: proc(target: string) {
+	_pv_view_str_set(&_av.path_target, target)
+	_av.path_edit = true
+	// A field opened from the menu races the closing popup for focus, so it
+	// asks again for a few frames before giving up.
+	_av.path_wait = 10
+	_av.path_buf = {}
+	copy(_av.path_buf[:len(_av.path_buf) - 1], target)
+}
+
+@(private = "file")
+_pv_draw_path_field :: proc(doc: ^inspector.Asset_Doc, rows: []Sheet_Row, x0, rows_y, left_x1: f32) {
+	if !_av.path_edit do return
+	row := -1
+	for r, i in rows {
+		if r.kind == .Object && r.target == _av.path_target {
+			row = i
+			break
+		}
+	}
+	// The row went away (undo, a clip switch) or the clip is read-only.
+	if row < 0 || doc == nil {
+		_av.path_edit = false
+		return
+	}
+	// Escape commits the typed path, as in every text field (editor/text_input.odin).
+	// A click elsewhere cancels.
+	field_h := _pv_row_field_h()
+	x := _pv_obj_name_x(x0, rows[row].depth)
+	im.PushStyleVarImVec2(.FramePadding, im.Vec2{3, _pv_row_pad_y()})
+	if _av.path_wait > 0 do im.SetKeyboardFocusHere(0)
+	im.SetCursorScreenPos(im.Vec2{x, rows_y + f32(row) * _ANIM_ROW_H + (_ANIM_ROW_H - field_h) * 0.5})
+	im.SetNextItemWidth(max(left_x1 - 4 - x, 40))
+	entered := im.InputText("##anim_path", cstring(raw_data(_av.path_buf[:])), uint(len(_av.path_buf)), {.EnterReturnsTrue, .AutoSelectAll})
+	active := im.IsItemActive()
+	im.PopStyleVar(1)
+
+	if entered {
+		_av.path_edit = false
+		animation_view_retarget(_av.path_target, string(cstring(raw_data(_av.path_buf[:]))))
+		return
+	}
+	if _av.path_wait > 0 {
+		if active {
+			_av.path_wait = 0
+		} else {
+			_av.path_wait -= 1
+			if _av.path_wait == 0 do _av.path_edit = false
+		}
+	} else if !active {
+		_av.path_edit = false // clicked elsewhere: cancel
+	}
+}
+
+// Sets the target of every channel of `old_target` in the shown clip to
+// `new_target` (spaces trimmed, otherwise as typed), as one undo step. The
+// collapsed state follows the row. False with nothing to change: no
+// document (a clip inside a model), no channel on `old_target`, or the same
+// path. The Object row path field applies through this.
+animation_view_retarget :: proc(old_target, new_target: string) -> bool {
+	doc, clip := _pv_doc()
+	if doc == nil || clip == nil do return false
+	// Copies: `old_target` may be a channel's own string, freed below.
+	old := strings.clone(old_target, context.temp_allocator)
+	new := strings.clone(strings.trim_space(new_target), context.temp_allocator)
+	if new == old do return false
+	found := false
+	for &c in clip.channels do if c.target == old do found = true
+	if !found do return false
+
+	_pv_edit_begin(doc)
+	// Channel strings live in the document.
+	a := inspector.doc_alloc()
+	for &c in clip.channels {
+		if c.target != old do continue
+		delete(c.target, a)
+		c.target = strings.clone(new, a)
+	}
+	_pv_edit_commit(doc)
+
+	if old in _av.collapsed {
+		_pv_collapse_toggle(old)
+		if new not_in _av.collapsed do _pv_collapse_toggle(new)
+	}
+	return true
 }
 
 // --- Row values -----------------------------------------------------------------------
@@ -1617,21 +1906,24 @@ _pv_row_gesture_end :: proc() {
 // press: the sheet's press logic (row selection, box select) does not run for
 // a click on a field, and typing into it is not interrupted.
 @(private = "file")
-_pv_draw_row_values :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, rows_y, left_x1: f32) {
+_pv_draw_row_values :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, rows: []Sheet_Row, rows_y, left_x1: f32) {
 	field_h := _pv_row_field_h()
 	im.PushStyleVarImVec2(.FramePadding, im.Vec2{3, _pv_row_pad_y()})
 	defer im.PopStyleVar(1)
 	im.BeginDisabled(doc == nil)
 	defer im.EndDisabled()
 
-	for &ch, i in clip.channels {
-		kind, ok := _pv_row_kind(&ch)
+	for r, row in rows {
+		if r.kind != .Channel do continue
+		i := r.ch
+		ch := &clip.channels[i]
+		kind, ok := _pv_row_kind(ch)
 		if !ok do continue
 		n := _pv_kind_lanes(kind)
-		ry := rows_y + f32(i) * _ANIM_ROW_H + (_ANIM_ROW_H - field_h) * 0.5
-		x := left_x1 - _pv_row_values_w(&ch) - 4
-		v := anim._animation_channel_sample(&ch, _pv.time)
-		rot := _pv_ch_is_rotation(&ch)
+		ry := rows_y + f32(row) * _ANIM_ROW_H + (_ANIM_ROW_H - field_h) * 0.5
+		x := left_x1 - _pv_row_values_w(ch) - 4
+		v := anim._animation_channel_sample(ch, _pv.time)
+		rot := _pv_ch_is_rotation(ch)
 		euler: [3]f32
 		if rot do euler = _pv_rot_to_euler(v)
 		changed := false
@@ -1758,10 +2050,10 @@ _pv_ruler_ticks :: proc(dl: ^im.DrawList, y, h, tx0, pps, length, step, minor: f
 // --- Dopesheet ------------------------------------------------------------------------
 
 @(private = "file")
-_pv_key_hit_x :: proc(ch: ^anim.Animation_Channel, mx, tx0, pps: f32) -> int {
+_pv_key_hit_x :: proc(times: []f32, mx, tx0, pps: f32) -> int {
 	best := -1
 	best_d := _ANIM_HIT
-	for t, k in ch.times {
+	for t, k in times {
 		d := abs(tx0 + t * pps - mx)
 		if d < best_d {
 			best_d = d
@@ -1771,89 +2063,183 @@ _pv_key_hit_x :: proc(ch: ^anim.Animation_Channel, mx, tx0, pps: f32) -> int {
 	return best
 }
 
+// The keys an Object row's summary key under `mx` stands for, nil when no
+// summary key is there. Temp-allocated.
+@(private = "file")
+_pv_summary_hit :: proc(clip: ^anim.AnimationClip, target: string, mx, tx0, pps: f32) -> []Sheet_Key {
+	times := sheet_object_key_times(clip, target, context.temp_allocator)
+	j := _pv_key_hit_x(times, mx, tx0, pps)
+	if j < 0 do return nil
+	return sheet_object_keys_at(clip, target, times, j, context.temp_allocator)
+}
+
+// Per summary time of an Object row: every key it stands for is selected.
+// Temp-allocated, parallel to `times`.
+@(private = "file")
+_pv_summary_selected :: proc(clip: ^anim.AnimationClip, target: string, times: []f32) -> []bool {
+	all := make([]bool, len(times), context.temp_allocator)
+	if len(_av.sel) == 0 do return all
+	for &v in all do v = true
+	for &c, ci in clip.channels {
+		if c.target != target do continue
+		for kt, k in c.times {
+			if j := sheet_object_key_index(times, kt); j >= 0 && !_pv_sel_has(ci, k) do all[j] = false
+		}
+	}
+	return all
+}
+
+// A summary key: a dimmer diamond with an outline, so it reads apart from a
+// property row's keys.
+@(private = "file")
+_pv_draw_summary_key :: proc(dl: ^im.DrawList, kx, ky: f32, sel: bool) {
+	r := sel ? _ANIM_KEY_R + 1 : _ANIM_KEY_R
+	top, right, bottom, left := im.Vec2{kx, ky - r}, im.Vec2{kx + r, ky}, im.Vec2{kx, ky + r}, im.Vec2{kx - r, ky}
+	fill := sel ? im.GetColorU32(.CheckMark) : im.GetColorU32(.TextDisabled)
+	im.DrawList_AddQuadFilled(dl, top, right, bottom, left, fill)
+	im.DrawList_AddQuad(dl, top, right, bottom, left, im.GetColorU32(.Text), 1)
+}
+
+// Adds the keys of channel `ci` inside the band [rmin, rmax] in x to the
+// selection.
+@(private = "file")
+_pv_box_add_channel :: proc(clip: ^anim.AnimationClip, ci: int, rmin, rmax: im.Vec2, tx0, pps: f32) {
+	for t, k in clip.channels[ci].times {
+		kx := tx0 + t * pps
+		if kx < rmin.x || kx > rmax.x do continue
+		_pv_sel_pin()
+		append(&_av.sel, _Key_Ref{ci, k})
+	}
+}
+
 @(private = "file")
 _pv_sheet_dopesheet :: proc(
 	doc: ^inspector.Asset_Doc,
 	clip: ^anim.AnimationClip,
 	dl: ^im.DrawList,
-	origin: im.Vec2,
+	rows: []Sheet_Row,
 	rows_y, body_h, x0, x1, tx0, pps: f32,
 	hovered: bool,
 	mp: im.Vec2,
 	row_at: int,
 ) {
-	// Row stripes + keys.
-	for &ch, i in clip.channels {
+	// Row stripes + keys. An Object row shows a summary key at every time any
+	// of its channels has one, the hidden ones included.
+	for r, i in rows {
 		ry := rows_y + f32(i) * _ANIM_ROW_H
+		ky := ry + _ANIM_ROW_H * 0.5
+		if r.kind == .Object {
+			im.DrawList_AddRectFilled(dl, im.Vec2{x0, ry}, im.Vec2{x1, ry + _ANIM_ROW_H}, im.GetColorU32(.FrameBg, 0.6))
+			times := sheet_object_key_times(clip, r.target, context.temp_allocator)
+			sel := _pv_summary_selected(clip, r.target, times)
+			for t, j in times do _pv_draw_summary_key(dl, tx0 + t * pps, ky, sel[j])
+			continue
+		}
 		if i % 2 == 1 {
 			im.DrawList_AddRectFilled(dl, im.Vec2{x0, ry}, im.Vec2{x1, ry + _ANIM_ROW_H}, im.GetColorU32(.FrameBg, 0.25))
 		}
-		ky := ry + _ANIM_ROW_H * 0.5
-		for t, k in ch.times {
+		for t, k in clip.channels[r.ch].times {
 			kx := tx0 + t * pps
-			sel := _pv_sel_has(i, k)
+			sel := _pv_sel_has(r.ch, k)
 			col := sel ? im.GetColorU32(.CheckMark) : im.GetColorU32(.Text)
-			r := sel ? _ANIM_KEY_R + 1 : _ANIM_KEY_R
+			kr := sel ? _ANIM_KEY_R + 1 : _ANIM_KEY_R
 			im.DrawList_AddQuadFilled(dl,
-				im.Vec2{kx, ky - r}, im.Vec2{kx + r, ky},
-				im.Vec2{kx, ky + r}, im.Vec2{kx - r, ky}, col)
+				im.Vec2{kx, ky - kr}, im.Vec2{kx + kr, ky},
+				im.Vec2{kx, ky + kr}, im.Vec2{kx - kr, ky}, col)
 		}
 	}
 
-	valid_row := row_at >= 0 && row_at < len(clip.channels)
+	// The row under the pointer: an Object row, or a property row's channel.
+	obj_row := row_at >= 0 && rows[row_at].kind == .Object
+	row_ch := row_at >= 0 && !obj_row ? rows[row_at].ch : -1
 
 	if im.IsItemActivated() {
 		in_canvas := mp.x >= x0
-		k := -1
-		if in_canvas && valid_row do k = _pv_key_hit_x(&clip.channels[row_at], mp.x, tx0, pps)
-		switch {
-		case k >= 0 && _pv_additive():
-			// Add to or drop from the selection, no drag: a modifier click is
-			// for building a set, not moving it.
-			_pv_sel_toggle(row_at, k)
-		case k >= 0:
-			// Dragging a key that is already selected moves the whole
-			// selection; grabbing an unselected one selects just it.
-			if !_pv_sel_has(row_at, k) do _pv_sel_set(row_at, k)
-			_av.sel_ch = row_at
-			_av.sel_key = k
-			_pv_drag_begin(doc, clip, (mp.x - tx0) / pps, comp = -1)
-		case in_canvas:
-			// Empty canvas, on a track row or below the last one: rubber-band
-			// a new selection. The row under the press only sets the channel
-			// when there is one, so a band started below the tracks leaves
-			// the current channel alone.
-			if valid_row do _av.sel_ch = row_at
-			_av.sel_key = -1
-			clear(&_av.sel)
-			_av.box = true
-			_av.box_from = mp
-		case valid_row:
-			// Left panel: pick the channel.
-			_av.sel_ch = row_at
-			_av.sel_key = -1
-			clear(&_av.sel)
+		if obj_row {
+			// A summary key selects every key it stands for and drags them, as
+			// a property row's key does. The name selects nothing: its arrow
+			// is the sheet's (collapse), the rest of it is inert.
+			keys: []Sheet_Key
+			if in_canvas do keys = _pv_summary_hit(clip, rows[row_at].target, mp.x, tx0, pps)
+			switch {
+			case len(keys) > 0 && _pv_additive():
+				_pv_sel_toggle_keys(keys)
+			case len(keys) > 0:
+				if !_pv_sel_has_all(keys) do _pv_sel_set_keys(keys)
+				_av.sel_ch = keys[0].ch
+				_av.sel_key = keys[0].key
+				_pv_drag_begin(doc, clip, (mp.x - tx0) / pps, comp = -1)
+			case in_canvas:
+				// Empty canvas on an Object row: rubber-band, the channel stays.
+				_av.sel_key = -1
+				clear(&_av.sel)
+				_av.box = true
+				_av.box_from = mp
+			}
+		} else {
+			k := -1
+			if in_canvas && row_ch >= 0 do k = _pv_key_hit_x(clip.channels[row_ch].times[:], mp.x, tx0, pps)
+			switch {
+			case k >= 0 && _pv_additive():
+				// Add to or drop from the selection, no drag: a modifier click is
+				// for building a set, not moving it.
+				_pv_sel_toggle(row_ch, k)
+			case k >= 0:
+				// Dragging a key that is already selected moves the whole
+				// selection; grabbing an unselected one selects just it.
+				if !_pv_sel_has(row_ch, k) do _pv_sel_set(row_ch, k)
+				_av.sel_ch = row_ch
+				_av.sel_key = k
+				_pv_drag_begin(doc, clip, (mp.x - tx0) / pps, comp = -1)
+			case in_canvas:
+				// Empty canvas, on a track row or below the last one: rubber-band
+				// a new selection. The row under the press only sets the channel
+				// when there is one, so a band started below the tracks leaves
+				// the current channel alone.
+				if row_ch >= 0 do _av.sel_ch = row_ch
+				_av.sel_key = -1
+				clear(&_av.sel)
+				_av.box = true
+				_av.box_from = mp
+			case row_ch >= 0:
+				// Left panel: pick the channel.
+				_av.sel_ch = row_ch
+				_av.sel_key = -1
+				clear(&_av.sel)
+			}
 		}
 	}
-	if im.IsItemClicked(.Right) && valid_row {
-		if k := _pv_key_hit_x(&clip.channels[row_at], mp.x, tx0, pps); k >= 0 && mp.x >= x0 {
-			// Right-clicking outside the selection retargets it, so the menu
-			// always acts on what is under the cursor.
-			if !_pv_sel_has(row_at, k) do _pv_sel_set(row_at, k)
-			_av.sel_ch = row_at
-			_av.sel_key = k
-			im.OpenPopup("##anim_key_ctx")
+	if im.IsItemClicked(.Right) && mp.x >= x0 {
+		// Right-clicking outside the selection retargets it, so the menu
+		// always acts on what is under the cursor.
+		if obj_row {
+			if keys := _pv_summary_hit(clip, rows[row_at].target, mp.x, tx0, pps); len(keys) > 0 {
+				if !_pv_sel_has_all(keys) do _pv_sel_set_keys(keys)
+				_av.sel_ch = keys[0].ch
+				_av.sel_key = keys[0].key
+				im.OpenPopup("##anim_key_ctx")
+			}
+		} else if row_ch >= 0 {
+			if k := _pv_key_hit_x(clip.channels[row_ch].times[:], mp.x, tx0, pps); k >= 0 {
+				if !_pv_sel_has(row_ch, k) do _pv_sel_set(row_ch, k)
+				_av.sel_ch = row_ch
+				_av.sel_key = k
+				im.OpenPopup("##anim_key_ctx")
+			}
 		}
 	}
-	// Double-click on empty canvas: add a key there (sampled, shape-preserving).
-	if hovered && valid_row && mp.x >= x0 && im.IsMouseDoubleClicked(.Left) {
-		if _pv_key_hit_x(&clip.channels[row_at], mp.x, tx0, pps) < 0 {
+	// Double-click on empty canvas of a property row: add a key there
+	// (sampled, shape-preserving). An Object row has no channel to key.
+	if hovered && row_ch >= 0 && mp.x >= x0 && im.IsMouseDoubleClicked(.Left) {
+		if _pv_key_hit_x(clip.channels[row_ch].times[:], mp.x, tx0, pps) < 0 {
 			_av.box = false // the press that opened the band was this click
-			_pv_add_key(doc, clip, row_at, _pv_snap_time(clip, (mp.x - tx0) / pps))
+			_pv_add_key(doc, clip, row_ch, _pv_snap_time(clip, (mp.x - tx0) / pps))
 		}
 	}
 
-	// --- Box select: every key inside the band, across channels.
+	// --- Box select: every key inside the band, across rows. An Object row in
+	// the band takes the keys of all its channels, hidden ones included, and
+	// its property rows then add nothing more.
 	if _av.box {
 		rmin := im.Vec2{min(_av.box_from.x, mp.x), min(_av.box_from.y, mp.y)}
 		rmax := im.Vec2{max(_av.box_from.x, mp.x), max(_av.box_from.y, mp.y)}
@@ -1861,15 +2247,19 @@ _pv_sheet_dopesheet :: proc(
 		im.DrawList_AddRect(dl, rmin, rmax, im.GetColorU32(.CheckMark))
 
 		clear(&_av.sel)
-		for &ch, i in clip.channels {
+		object_in_band := false // the Object row the rows below belong to
+		for r, i in rows {
 			ky := rows_y + f32(i) * _ANIM_ROW_H + _ANIM_ROW_H * 0.5
-			if ky < rmin.y || ky > rmax.y do continue
-			for t, k in ch.times {
-				kx := tx0 + t * pps
-				if kx < rmin.x || kx > rmax.x do continue
-				_pv_sel_pin()
-				append(&_av.sel, _Key_Ref{i, k})
+			in_band := ky >= rmin.y && ky <= rmax.y
+			if r.kind == .Object {
+				object_in_band = in_band
+				if !in_band do continue
+				for &c, ci in clip.channels {
+					if c.target == r.target do _pv_box_add_channel(clip, ci, rmin, rmax, tx0, pps)
+				}
+				continue
 			}
+			if in_band && !object_in_band do _pv_box_add_channel(clip, r.ch, rmin, rmax, tx0, pps)
 		}
 		// Primary is the first key the band caught, so the value footer has
 		// something to edit.
@@ -1920,13 +2310,15 @@ _pv_sheet_curves :: proc(
 	doc: ^inspector.Asset_Doc,
 	clip: ^anim.AnimationClip,
 	dl: ^im.DrawList,
+	rows: []Sheet_Row,
 	rows_y, body_h, x0, x1, tx0, pps: f32,
 	mp: im.Vec2,
 	row_at: int,
 ) {
-	// Left-panel click selects the channel whose curves show.
-	if im.IsItemActivated() && mp.x < x0 && row_at >= 0 && row_at < len(clip.channels) {
-		_av.sel_ch = row_at
+	// Left-panel click on a property row selects the channel whose curves
+	// show. An Object row plots nothing.
+	if im.IsItemActivated() && mp.x < x0 && row_at >= 0 && rows[row_at].kind == .Channel {
+		_av.sel_ch = rows[row_at].ch
 		_av.sel_key = -1
 		clear(&_av.sel)
 	}
@@ -2023,7 +2415,7 @@ _pv_sheet_curves :: proc(
 		}
 	}
 	if im.IsItemClicked(.Right) && mp.x >= x0 {
-		if k := _pv_key_hit_x(ch, mp.x, tx0, pps); k >= 0 {
+		if k := _pv_key_hit_x(ch.times[:], mp.x, tx0, pps); k >= 0 {
 			if !_pv_sel_has(_av.sel_ch, k) do _pv_sel_set(_av.sel_ch, k)
 			_av.sel_key = k
 			im.OpenPopup("##anim_key_ctx")
