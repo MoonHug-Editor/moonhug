@@ -288,7 +288,6 @@ _pv_deselect_all :: proc() {
 	}
 }
 
-@(private = "file")
 _pv_deselect :: proc() {
 	_av.sel_ch = -1
 	_av.sel_key = -1
@@ -640,7 +639,6 @@ _pv_delete_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 }
 
 // Frees a channel's own allocations and drops it from the clip.
-@(private = "file")
 _pv_channel_remove :: proc(clip: ^anim.AnimationClip, i: int) {
 	ch := &clip.channels[i]
 	delete(ch.target)

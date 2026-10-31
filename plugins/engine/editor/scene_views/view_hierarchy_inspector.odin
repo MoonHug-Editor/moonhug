@@ -700,8 +700,9 @@ _wrap_transform_field_override :: proc(tH: engine.Transform_Handle, t: ^engine.T
 
 	// A driven field (inspector/driven.odin), the same cases field_edit_row
 	// handles: the widget draws on a buffer, never on the live field, and no
-	// session, override record or context menu runs. Read-only drops an edit,
-	// editable hands it to inspector.driven_commit when the gesture ends.
+	// session or override record runs. Read-only drops an edit, editable hands
+	// it to inspector.driven_commit when the gesture ends. The context menu
+	// offers "Add Key" alone, which keys the driven value.
 	dv := inspector.driven_query(engine.Handle(tH), multi_offset, field_tid)
 	if dv.state != .None {
 		inspector.multi_clear_mixed()
@@ -711,15 +712,20 @@ _wrap_transform_field_override :: proc(tH: engine.Transform_Handle, t: ^engine.T
 		if dv.state == .Editable do buf = inspector.driven_edit_buffer(field_ptr, &dv.value)
 		inspector.driven_draw_begin(dv.state)
 		drawer(buf, drawer_tid, label)
-		inspector.driven_draw_end(dv.state)
+		inspector.driven_draw_end(dv.state, dv.keyed)
+		inspector.driven_context_menu(field_ptr, &dv)
 		inspector.consume_inspector_changed()
 		if dv.state == .Editable do inspector.driven_edit_finish(field_ptr, buf, &dv)
 		return
 	}
 
+	// The row's top-left corner, for the mark of a field with a row in the
+	// shown clip (inspector/driven.odin).
+	row_min := im.GetCursorScreenPos()
 	pushed := _push_override_style(is_overridden)
 	committed := _wrap_transform_field(tH, field_ptr, 0, field_tid, drawer, drawer_tid, label)
 	_pop_override_style(pushed)
+	inspector.driven_mark(engine.Handle(tH), multi_offset, field_tid, row_min)
 
 	inspector.multi_clear_mixed()
 
@@ -842,6 +848,9 @@ _wrap_transform_rotation_override :: proc(tH: engine.Transform_Handle, t: ^engin
 	pushed := _push_override_style(is_overridden)
 	committed := _wrap_transform_rotation(tH, t, drawer)
 	_pop_override_style(pushed)
+	// The row is the last item (a group): the mark of a field with a row in
+	// the shown clip (inspector/driven.odin).
+	inspector.driven_mark(engine.Handle(tH), multi_offset, typeid_of([4]f32), im.GetItemRectMin())
 
 	inspector.multi_clear_mixed()
 	euler_after := _inspector_euler_cache
@@ -884,7 +893,8 @@ _wrap_transform_rotation_override :: proc(tH: engine.Transform_Handle, t: ^engin
 // the frames of one gesture (a drag continues from where it is), and when the
 // gesture ends hands inspector.driven_commit the quaternion built from it. The
 // live rotation is never written, and multi-edit peers are not: the row edits
-// the value the active object is driven to, which the peers do not share.
+// the value the active object is driven to, which the peers do not share. The
+// context menu offers "Add Key" alone, which keys the driven quaternion.
 @(private)
 _wrap_transform_rotation_driven :: proc(rot: ^[4]f32, drawer: proc(ptr: rawptr, tid: typeid, label: cstring), dv: ^inspector.Driven_Value) {
 	inspector.multi_clear_mixed()
@@ -897,11 +907,12 @@ _wrap_transform_rotation_driven :: proc(rot: ^[4]f32, drawer: proc(ptr: rawptr, 
 	if dv.state == .Editable do buf = cast(^[3]f32)inspector.driven_edit_buffer(rot, &seed)
 	inspector.driven_draw_begin(dv.state)
 	drawer(buf, typeid_of(^[3]f32), "Rotation")
-	inspector.driven_draw_end(dv.state)
+	inspector.driven_draw_end(dv.state, dv.keyed)
+	inspector.driven_context_menu(rot, dv)
 	inspector.consume_inspector_changed()
 	if dv.state != .Editable do return
 
-	active, finished := inspector.driven_row_state()
+	active, finished := inspector.driven_gesture_state()
 	if !inspector.driven_edit_end(rot, buf, &seed, &start, size_of([3]f32), active, finished) do return
 	q := engine.quat_from_euler_xyz(seed.x, seed.y, seed.z)
 	inspector.driven_commit(dv.owner, dv.offset, dv.tid, &q)

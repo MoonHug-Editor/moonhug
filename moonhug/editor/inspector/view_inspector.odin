@@ -908,6 +908,11 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid, property_p
     popup_id := strings.clone_to_cstring(fmt.tprintf("##vcp_%x", uintptr(field_ptr)), context.temp_allocator)
     im.OpenPopupOnItemClick(popup_id, im.PopupFlags_MouseButtonRight)
     if im.BeginPopup(popup_id) {
+        // A field the shown clip can key (driven.odin): keys the value the
+        // row shows.
+        if driven_add_key_item_field(field_ptr, field_tid) {
+            im.Separator()
+        }
         readonly := core.inspector_is_readonly()
         if _draw_field_context_menu_reset(field_ptr, field_tid, readonly, record) {
             im.Separator()
@@ -1065,7 +1070,9 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
         if decorator_dv.state != .None {
             driven_draw_begin(decorator_dv.state)
             run_field_decorators(tid, i, &ctx)
-            driven_draw_end(decorator_dv.state)
+            driven_draw_end(decorator_dv.state, decorator_dv.keyed)
+            // The row draws no other menu: "Add Key" keys the driven value.
+            if ctx.handled_draw do driven_context_menu(field_ptr, &decorator_dv)
             // The object did not change: an edit of the buffer is dropped
             // (read-only) or goes to driven_commit at the gesture's end.
             consume_inspector_changed()
@@ -1082,6 +1089,7 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             im.BeginGroup()
             run_field_decorators(tid, i, &ctx)
             im.EndGroup()
+            if ctx.handled_draw do driven_mark_field(field_ptr, field_type.id)
         }
 
         row_popup_done := false

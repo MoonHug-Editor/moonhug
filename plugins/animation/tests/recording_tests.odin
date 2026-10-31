@@ -10,6 +10,7 @@ package animation_tests
 // (replayed by the field-row harness) and an edit session on a transform, the
 // way the gizmo records a drag.
 
+import "base:runtime"
 import "core:encoding/uuid"
 import "core:math/linalg"
 import "core:os"
@@ -20,6 +21,7 @@ import "moonhug:editor/inspector"
 import undo "moonhug:editor/undo"
 import "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
+import "moonhug:packages/engine/editor/importers"
 import animation_editor "moonhug:packages/animation/editor"
 import common "moonhug:tests/common"
 
@@ -57,6 +59,8 @@ _rec_close :: proc() {
 	undo.commit_listener = nil
 	inspector.driven_provider = nil
 	inspector.driven_commit = nil
+	inspector.driven_row_state = nil
+	inspector.driven_add_key = nil
 	inspector.asset_docs_shutdown()
 	engine.asset_db_shutdown()
 	common.remove_tree(_DIR)
@@ -659,3 +663,217 @@ test_rotation_row_euler_round_trip :: proc(t: ^testing.T) {
 	EPS :: f32(0.01)
 	testing.expectf(t, abs(e.x) < EPS && abs(e.y - 90) < EPS && abs(e.z) < EPS, "the key reads back as (0, 90, 0), got %v", e)
 }
+
+// The mark and "Add Key" ask inspector.driven_row_state: a field with a row
+// in the shown clip has one, a field without has none, and both are keyable
+// on the animated object or under it, Record armed or not. An object outside
+// the animated object is neither.
+@(test)
+test_row_state_answers_rows_and_keyable :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	lamp := engine.transform_new("Lamp", root)
+	engine.transform_add_comp(lamp, .Light)
+	outside := engine.transform_new("Lamp")
+	engine.transform_add_comp(outside, .Light)
+	_rec_intensity_row(_rec_clip(doc))
+	lh := _rec_comp(lamp, .Light)
+
+	// Keyable only while recording. Keyed when the playhead sits on a key:
+	// the intensity row has keys at 0 and 1, so 0.5 sits between them.
+	for armed in ([2]bool{false, true}) {
+		animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = armed)
+		has_row, keyable, keyed := inspector.driven_row_state(lh, offset_of(engine.Light, intensity), typeid_of(f32))
+		testing.expect(t, has_row && keyable == armed && !keyed, "the field with a row has a row, is keyable while recording, and has no key at 0.5")
+		has_row, keyable, keyed = inspector.driven_row_state(lh, offset_of(engine.Light, range), typeid_of(f32))
+		testing.expect(t, !has_row && keyable == armed && !keyed, "a field without a row has none and is keyable while recording")
+		has_row, keyable, keyed = inspector.driven_row_state(_rec_comp(outside, .Light), offset_of(engine.Light, intensity), typeid_of(f32))
+		testing.expect(t, !has_row && !keyable && !keyed, "an object outside the animated object is neither")
+		has_row, keyable, keyed = inspector.driven_row_state(engine.Handle(lamp), offset_of(engine.Transform, position), typeid_of([3]f32))
+		testing.expect(t, !has_row && keyable == armed && !keyed, "a transform channel without a row is keyable while recording")
+	}
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1.0, armed = false)
+	_, _, keyed := inspector.driven_row_state(lh, offset_of(engine.Light, intensity), typeid_of(f32))
+	testing.expect(t, keyed, "the playhead on the row's key at 1.0 reads keyed")
+
+	// No clip shown: nothing has a row, nothing is keyable.
+	animation_editor.animation_record_reset()
+	has_row, keyable, _ := inspector.driven_row_state(lh, offset_of(engine.Light, intensity), typeid_of(f32))
+	testing.expect(t, !has_row && !keyable, "nothing without a shown clip")
+}
+
+// "Add Key" with Record off keys the field's live value at the playhead: the
+// row is created (its start key holds the object's own value), the light
+// keeps its value, and the key is one undo step on the clip.
+@(test)
+test_add_key_with_record_off_keys_the_live_value :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	lamp := engine.transform_new("Lamp", root)
+	_, lp := engine.transform_add_comp(lamp, .Light)
+	light := cast(^engine.Light)lp
+	light.intensity = 3
+	lh := _rec_comp(lamp, .Light)
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = false)
+
+	before := s.top
+	ok := inspector.driven_add_key(lh, offset_of(engine.Light, intensity), typeid_of(f32), &light.intensity)
+	testing.expect(t, ok, "the field is keyed with Record off")
+
+	clip := _rec_clip(doc)
+	testing.expect_value(t, len(clip.channels), 1)
+	if len(clip.channels) != 1 do return
+	ch := &clip.channels[0]
+	testing.expect_value(t, ch.target, "Lamp")
+	testing.expect_value(t, ch.field, "intensity")
+	at := _key_at(ch, 0.5)
+	testing.expect(t, at >= 0, "a key at the playhead")
+	if at >= 0 do testing.expect_value(t, ch.values[at].x, 3)
+	start := _key_at(ch, 0)
+	testing.expect(t, start >= 0, "the new row starts at the clip start")
+	if start >= 0 do testing.expect_value(t, ch.values[start].x, 3)
+	testing.expect_value(t, light.intensity, 3)
+	testing.expect_value(t, s.top, before + 1)
+	testing.expect(t, !_has_scene_value(s.items[s.top - 1].cmd), "no scene value step")
+
+	has_row, _, _ := inspector.driven_row_state(lh, offset_of(engine.Light, intensity), typeid_of(f32))
+	testing.expect(t, has_row, "the field has a row after the key")
+
+	testing.expect(t, undo.apply_undo(s), "undo")
+	testing.expect_value(t, len(_rec_clip(doc).channels), 0)
+	testing.expect_value(t, light.intensity, 3)
+
+	// An object outside the animated object is not keyed.
+	outside := engine.transform_new("Lamp")
+	_, op := engine.transform_add_comp(outside, .Light)
+	before = s.top
+	testing.expect(t, !inspector.driven_add_key(_rec_comp(outside, .Light), offset_of(engine.Light, intensity), typeid_of(f32), &(cast(^engine.Light)op).intensity), "nothing is keyed outside the root")
+	testing.expect_value(t, s.top, before)
+}
+
+// A clip inside a model has no document: no field is keyable, and "Add Key"
+// keys nothing.
+@(test)
+test_row_state_not_keyable_in_a_model_clip :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+
+	dir :: "moonhug/tests/fixtures/_record_model_tmp"
+	gltf :: dir + "/box.gltf"
+	os.make_directory(dir)
+	bytes, rerr := os.read_entire_file("moonhug/tests/fixtures/meshes/box_animated.gltf", context.temp_allocator)
+	testing.expect(t, rerr == nil, "the model fixture reads")
+	if rerr != nil do return
+	testing.expect(t, os.write_entire_file(gltf, bytes) == nil, "the model is written")
+	asset_pipeline.asset_pipeline_init()
+	importers.gltf_clip_baker = animation_editor.bake_gltf_clip
+	engine.asset_db_init(dir)
+	defer {
+		engine.asset_db_shutdown()
+		common.remove_tree(dir)
+		common.remove_tree(engine.library_dir())
+	}
+	_ = asset_pipeline.asset_pipeline_import_asset(gltf)
+	animation_editor.animation_record_install()
+	defer {
+		animation_editor.animation_record_reset()
+		undo.commit_listener = nil
+		inspector.driven_provider = nil
+		inspector.driven_commit = nil
+		inspector.driven_row_state = nil
+		inspector.driven_add_key = nil
+	}
+
+	model_raw, mok := engine.asset_db_get_guid(gltf)
+	testing.expect(t, mok, "the model is registered")
+	if !mok do return
+	model := engine.Asset_GUID(model_raw)
+	clips := engine.mesh_clips(model)
+	testing.expect(t, len(clips) >= 1, "the model lists its clips")
+	if len(clips) == 0 do return
+
+	root := engine.transform_new("Root")
+	lamp := engine.transform_new("Lamp", root)
+	_, lp := engine.transform_add_comp(lamp, .Light)
+	light := cast(^engine.Light)lp
+	lh := _rec_comp(lamp, .Light)
+
+	// The clip cache allocates under the default allocator and frees under
+	// the ambient one, so the whole exchange runs under default.
+	context.allocator = runtime.default_allocator()
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	model_clip := engine.PPtr{guid = model, local_id = clips[0].id}
+	loaded, lok := anim.animation_clip_load(model_clip)
+	testing.expect(t, lok && loaded != nil, "the clip inside the model loads")
+	animation_editor.animation_record_arm(root, model_clip, 0.5, armed = false)
+
+	_, keyable, _ := inspector.driven_row_state(lh, offset_of(engine.Light, intensity), typeid_of(f32))
+	testing.expect(t, !keyable, "a field is not keyable in a clip inside a model")
+	_, keyable, _ = inspector.driven_row_state(engine.Handle(root), offset_of(engine.Transform, position), typeid_of([3]f32))
+	testing.expect(t, !keyable, "a transform channel is not keyable in a clip inside a model")
+	before := s.top
+	testing.expect(t, !inspector.driven_add_key(lh, offset_of(engine.Light, intensity), typeid_of(f32), &light.intensity), "nothing is keyed in a clip inside a model")
+	testing.expect_value(t, s.top, before)
+}
+
+// "Delete Key" removes the row's key on the playhead's frame as one undo
+// step, and a row left without keys goes with it.
+@(test)
+test_delete_key_removes_the_playhead_key :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	lamp := engine.transform_new("Lamp", root)
+	engine.transform_add_comp(lamp, .Light)
+	_rec_intensity_row(_rec_clip(doc))
+	lh := _rec_comp(lamp, .Light)
+	off := offset_of(engine.Light, intensity)
+
+	// Between the keys there is nothing to delete.
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5)
+	testing.expect(t, !inspector.driven_delete_key(lh, off, typeid_of(f32)), "no key at 0.5 to delete")
+
+	// On the key at 1.0: gone, one undo step, the row keeps its other key.
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1.0)
+	top := s.top
+	testing.expect(t, inspector.driven_delete_key(lh, off, typeid_of(f32)), "the key at 1.0 is deleted")
+	testing.expect_value(t, s.top, top + 1)
+	_, _, keyed := inspector.driven_row_state(lh, off, typeid_of(f32))
+	testing.expect(t, !keyed, "no key at 1.0 any more")
+	has_row, _, _ := inspector.driven_row_state(lh, off, typeid_of(f32))
+	testing.expect(t, has_row, "the row stays while it has a key")
+
+	// The last key takes the row with it.
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.0)
+	testing.expect(t, inspector.driven_delete_key(lh, off, typeid_of(f32)), "the key at 0 is deleted")
+	has_row, _, _ = inspector.driven_row_state(lh, off, typeid_of(f32))
+	testing.expect(t, !has_row, "a row without keys is gone")
+}
+

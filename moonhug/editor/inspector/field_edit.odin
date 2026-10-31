@@ -373,10 +373,15 @@ field_edit_row :: proc(
 	//
 	// Under the widget-state override (the test harness) there is no imgui
 	// context and the override IS the row's item state, so no group.
+	//
+	// A field with a row in the shown clip gets its mark beside the group.
 	if drawer != nil {
 		if grouped do im.BeginGroup()
 		drawer(field_ptr, field_tid, draw_label)
-		if grouped do im.EndGroup()
+		if grouped {
+			im.EndGroup()
+			driven_mark_field(field_ptr, field_tid)
+		}
 	}
 	multi_clear_mixed()
 
@@ -464,7 +469,7 @@ _driven_row :: proc(
 	if dv.state == .Editable do buf = driven_edit_buffer(field_ptr, &dv.value)
 	if grouped do driven_draw_begin(dv.state)
 	drawer(buf, field_tid, draw_label)
-	if grouped do driven_draw_end(dv.state)
+	if grouped do driven_draw_end(dv.state, dv.keyed)
 	consume_inspector_changed()
 
 	if dv.state == .Editable {

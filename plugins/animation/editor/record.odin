@@ -18,6 +18,9 @@ package animation_editor
 // inspector hands it to inspector.driven_commit (_record_driven_commit below),
 // which keys it the same way. The listener covers gizmo drags and multi-edit.
 //
+// "Add Key" in a field's context menu (inspector.driven_add_key,
+// _record_add_key below) keys the value the field shows without Record armed.
+//
 // An entry that cannot be keyed stays an ordinary scene edit with its own undo:
 //   - the field type is not animatable (a string, a reference, an array). The
 //     window shows a note under the toolbar while Record is armed
@@ -30,6 +33,7 @@ import "core:fmt"
 import "core:math/linalg"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
+import wnd "moonhug:editor/window"
 import engine "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
 import "moonhug:editor/inspector"
@@ -43,8 +47,14 @@ animation_record_install :: proc() {
 	inspector.driven_provider = _record_driven
 	assert(inspector.driven_commit == nil || inspector.driven_commit == _record_driven_commit, "inspector.driven_commit is installed by another package")
 	inspector.driven_commit = _record_driven_commit
+	assert(inspector.driven_row_state == nil || inspector.driven_row_state == _record_row_state, "inspector.driven_row_state is installed by another package")
+	inspector.driven_row_state = _record_row_state
+	assert(inspector.driven_add_key == nil || inspector.driven_add_key == _record_add_key, "inspector.driven_add_key is installed by another package")
+	inspector.driven_add_key = _record_add_key
+	inspector.driven_delete_key = _record_delete_key
 	inspector.driven_tooltip_read_only = "Driven by the Animation preview. Arm Record to key this field"
 	inspector.driven_tooltip_editable = "Recording: an edit keys this field at the playhead"
+	inspector.driven_tooltip_add_key = "Keys the value shown here at the playhead, adding the row when it is missing. On a field the preview drives, that is the clip's value, so the key pins the current pose"
 }
 
 // What one committed edit keys: the row's identity and the field's value kind.
@@ -314,13 +324,102 @@ _record_driven :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: t
 }
 
 // Keys an inspector edit of a driven field at the playhead: `value` holds the
-// edited value in the field's own type. A missing row is created first (its
-// key at the clip start holds the object's own value, as Add Property does).
-// One undo step on the clip document. False when Record is off or the field
-// cannot be keyed.
+// edited value in the field's own type, keyed as _record_add_key keys it.
+// False when Record is off or the field cannot be keyed.
 @(private = "file")
 _record_driven_commit :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid, value: rawptr) -> bool {
 	if !_pv.recording || !_pv.active || _pv.entry != 0 do return false
+	return _record_add_key(owner, field_offset, field_tid, value)
+}
+
+// --- Rows of the shown clip --------------------------------------------------------------
+//
+// While the Animation window shows a clip, preview on or off and Record armed
+// or not, the inspector marks a field the clip has a row for
+// (inspector.driven_row_state) and offers "Add Key" in the field's context
+// menu (inspector.driven_add_key).
+
+// Set by animation_record_arm: a test has no window, so arming stands in for
+// an open Animation window.
+@(private = "file")
+_record_test_shown: bool
+
+// Whether an Animation window shows a clip.
+@(private = "file")
+_record_clip_shown :: proc() -> bool {
+	if _pv.clip == {} do return false
+	return _record_test_shown || wnd.is_open(ANIMATION_VIEW)
+}
+
+// `has_row`: the shown clip has a row for the field. `keyable`: the clip has
+// a document (a clip inside a model has none), and the field is animatable on
+// the animated object or under it. Per field per frame: no allocations beyond
+// temp.
+@(private = "file")
+_record_row_state :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid) -> (has_row, keyable, keyed: bool) {
+	if !_record_clip_shown() do return false, false, false
+	if _, kok := anim._prop_kind_of(field_tid); !kok do return false, false, false
+	doc, clip := _pv_doc()
+	if clip == nil do return false, false, false
+	k, ok := _record_field_key(owner, field_offset, field_tid)
+	if !ok do return false, false, false
+	// Keyable only while recording: "Add Key" is a recording tool.
+	keyable = doc != nil && _pv.recording
+	row := _record_find_channel(clip, k)
+	if row < 0 do return false, keyable, false
+	// Keyed when a key sits on the playhead's frame.
+	half := 0.5 / anim.animation_clip_frame_rate(clip)
+	for t in clip.channels[row].times do if abs(t - _pv.time) <= half {
+		keyed = true
+		break
+	}
+	return true, keyable, keyed
+}
+
+// Keys `value` (the field's own type) at the playhead. A missing row is
+// created first (its key at the clip start holds the object's own value, as
+// Add Property does). One undo step on the clip document. Record need not be
+// armed. False when the field cannot be keyed.
+// Deletes the row's key on the playhead's frame. A row left with no keys goes
+// too, as the window's Delete does. One undo step. False when there is no
+// such key.
+@(private = "file")
+_record_delete_key :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid) -> bool {
+	if !_record_clip_shown() do return false
+	doc, clip := _pv_doc()
+	if doc == nil || clip == nil do return false
+	k, ok := _record_field_key(owner, field_offset, field_tid)
+	if !ok do return false
+	row := _record_find_channel(clip, k)
+	if row < 0 do return false
+	half := 0.5 / anim.animation_clip_frame_rate(clip)
+	key := -1
+	for t, i in clip.channels[row].times do if abs(t - _pv.time) <= half {
+		key = i
+		break
+	}
+	if key < 0 do return false
+
+	_record_busy = true
+	defer _record_busy = false
+	_pv_edit_begin(doc)
+	{
+		context.allocator = inspector.doc_alloc()
+		ch := &clip.channels[row]
+		ordered_remove(&ch.times, key)
+		ordered_remove(&ch.values, key)
+		if len(ch.times) == 0 {
+			_pv_channel_remove(clip, row)
+			_pv_deselect()
+		}
+	}
+	_pv_edit_commit(doc)
+	return true
+}
+
+@(private = "file")
+_record_add_key :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid, value: rawptr) -> bool {
+	if !_record_clip_shown() do return false
 	doc, clip := _pv_doc()
 	if doc == nil || clip == nil do return false
 	k, ok := _record_field_key(owner, field_offset, field_tid)
@@ -392,13 +491,15 @@ _record_draw_note :: proc() {
 
 // Test-only: points the preview at `owner` and `clip` with the playhead at
 // `time`, and arms Record when `armed`, as picking the clip and pressing
-// Record in the window does. Nothing in the editor calls this.
+// Record in the window does, and stands in for an open Animation window.
+// Nothing in the editor calls this.
 animation_record_arm :: proc(owner: engine.Transform_Handle, clip: engine.PPtr, time: f32, armed := true) {
 	_pv.owner = owner
 	_pv.clip = clip
 	_pv.time = time
 	_pv.active = true
 	_pv.recording = armed
+	_record_test_shown = true
 }
 
 // Test-only: keys row `row` of the shown clip at the playhead with `value`,
@@ -424,6 +525,7 @@ animation_record_reset :: proc() {
 	_pv.owner = {}
 	_pv.clip = {}
 	_pv.time = 0
+	_record_test_shown = false
 }
 
 // The note the window shows under the toolbar, "" for none.

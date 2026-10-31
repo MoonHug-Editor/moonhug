@@ -4,9 +4,12 @@ package inspector
 // the object itself (the Animation window's preview pose). The inspector shows
 // that value instead of the field's own value.
 //
-// Two seams, nil by default. A plugin installs both at EditorInit:
+// Four seams, nil by default. A plugin installs them at EditorInit:
 //   - driven_provider answers whether a field is driven, with its value
 //   - driven_commit takes an edit of a driven field (Record keys the clip)
+//   - driven_row_state answers whether the field has a row in the shown
+//     clip, and whether a key can be added for it
+//   - driven_add_key keys a value of the field ("Add Key" in its menu)
 //
 // field_edit_row, the transform rows and decorator-drawn rows ask the provider
 // for the active object's field before they draw:
@@ -22,7 +25,15 @@ package inspector
 //
 // The live field holds the object's own value while the inspector draws, so a
 // driven row never reads it.
+//
+// A field that is not driven but has a row (driven_row_state) gets a mark: the
+// driven bar left of the label, in a quieter color. A driven row also shows a
+// filled diamond when the playhead's frame has a key for it. The field's
+// context menu shows "Add Key" or "Delete Key" while the field can be keyed,
+// which is while recording. It keys the value the row shows: the driven value on a driven
+// row, the live value on any other.
 
+import "core:fmt"
 import "core:mem"
 import im "moonhug:external/odin-imgui"
 import core "moonhug:libs/core"
@@ -41,9 +52,26 @@ driven_provider: proc(owner: core.Handle, field_offset: uintptr, field_tid: type
 // when the edit went nowhere. Without it every driven field is read-only.
 driven_commit: proc(owner: core.Handle, field_offset: uintptr, field_tid: typeid, value: rawptr) -> bool
 
-// Tooltips the provider's owner sets for driven rows, "" for none.
+// For the same field: whether the clip the plugin shows has a row for it
+// (`has_row`), and whether a key can be added for it now (`keyable`). Called
+// per field per frame for the mark and the context menu, so it must be cheap
+// and allocate nothing beyond temp.
+driven_row_state: proc(owner: core.Handle, field_offset: uintptr, field_tid: typeid) -> (has_row, keyable, keyed: bool)
+
+// Deletes the row's key on the playhead's frame (a row left without keys
+// goes with it). One undo step. False when there is no such key.
+driven_delete_key: proc(owner: core.Handle, field_offset: uintptr, field_tid: typeid) -> bool
+
+// Keys `value` (the field's own type) at the playhead, creating the row when
+// it is missing, as one undo step. Returns false when the field is not
+// keyable. Unlike driven_commit it needs no recording gesture.
+driven_add_key: proc(owner: core.Handle, field_offset: uintptr, field_tid: typeid, value: rawptr) -> bool
+
+// Tooltips the provider's owner sets for driven rows and the "Add Key" menu
+// item, "" for none.
 driven_tooltip_read_only: cstring
 driven_tooltip_editable: cstring
+driven_tooltip_add_key: cstring
 
 // Text colors of a driven field, full alpha: green while the preview drives
 // it, red while recording. The green has a darker shade for light themes,
@@ -54,6 +82,10 @@ DRIVEN_EDITABLE_TEXT_COLOR :: im.Vec4{0.95, 0.35, 0.35, 1.0}
 
 // How far a driven field's frame background moves toward the tint.
 DRIVEN_FRAME_BLEND :: f32(0.3)
+
+// How far the mark of a field with a row moves from the theme's disabled text
+// color toward the read-only tint: a dimmed green.
+DRIVEN_MARK_BLEND :: f32(0.5)
 
 Driven_State :: enum u8 {
 	None,
@@ -69,6 +101,7 @@ DRIVEN_VALUE_MAX :: 64
 // `tid` name the field for driven_commit.
 Driven_Value :: struct {
 	state:  Driven_State,
+	keyed:  bool, // the row has a key on the playhead's frame
 	owner:  core.Handle,
 	offset: uintptr,
 	tid:    typeid,
@@ -84,6 +117,7 @@ driven_query :: proc(owner: core.Handle, field_offset: uintptr, field_tid: typei
 	driven, editable := driven_provider(owner, field_offset, field_tid, &dv.value)
 	if !driven do return {}
 	dv.state = editable && driven_commit != nil ? .Editable : .Read_Only
+	_, _, dv.keyed = driven_row_query(owner, field_offset, field_tid)
 	dv.owner = owner
 	dv.offset = field_offset
 	dv.tid = field_tid
@@ -92,14 +126,31 @@ driven_query :: proc(owner: core.Handle, field_offset: uintptr, field_tid: typei
 }
 
 // Asks the provider about the row at `field_ptr`, with the owner from the
-// inspector's owner stack. Only a pooled owner can be driven, and only a field
-// inside the owner's own memory: a dynamic-array element lives elsewhere.
+// inspector's owner stack.
 driven_query_field :: proc(field_ptr: rawptr, field_tid: typeid) -> Driven_Value {
-	if driven_provider == nil || field_ptr == nil do return {}
-	o, ok := undo.current_owner()
-	if !ok || o.kind != .Pooled || o.base_ptr == nil do return {}
-	if uintptr(field_ptr) < uintptr(o.base_ptr) do return {}
-	return driven_query(o.handle, uintptr(field_ptr) - uintptr(o.base_ptr), field_tid)
+	if driven_provider == nil do return {}
+	owner, offset, ok := _driven_field_owner(field_ptr)
+	if !ok do return {}
+	return driven_query(owner, offset, field_tid)
+}
+
+// The owner and offset of the row at `field_ptr`, from the inspector's owner
+// stack. Only a pooled owner can be driven, and only a field inside the
+// owner's own memory: a dynamic-array element lives elsewhere. A field inside
+// a fixed array is left to the plugin, which resolves no path into an array.
+@(private = "file")
+_driven_field_owner :: proc(field_ptr: rawptr) -> (owner: core.Handle, offset: uintptr, ok: bool) {
+	if field_ptr == nil do return
+	o, has := undo.current_owner()
+	if !has || o.kind != .Pooled || o.base_ptr == nil do return
+	if uintptr(field_ptr) < uintptr(o.base_ptr) do return
+	return o.handle, uintptr(field_ptr) - uintptr(o.base_ptr), true
+}
+
+// Asks driven_row_state about the field at `field_offset` of `owner`.
+driven_row_query :: proc(owner: core.Handle, field_offset: uintptr, field_tid: typeid) -> (has_row, keyable, keyed: bool) {
+	if driven_row_state == nil || field_tid == nil do return
+	return driven_row_state(owner, field_offset, field_tid)
 }
 
 // --- Drawing -------------------------------------------------------------------------
@@ -119,11 +170,24 @@ driven_tint :: proc(state: Driven_State) -> im.Vec4 {
 	return DRIVEN_READ_ONLY_TEXT_COLOR_DARK_THEME
 }
 
+// The mark color of a field with a row that is not driven now.
+driven_mark_color :: proc() -> im.Vec4 {
+	return _driven_blend(im.GetStyleColorVec4(.TextDisabled)^, driven_tint(.Read_Only), DRIVEN_MARK_BLEND)
+}
+
 @(private = "file")
-_driven_blend :: proc(base, tint: im.Vec4) -> im.Vec4 {
-	c := base + (tint - base) * DRIVEN_FRAME_BLEND
+_driven_blend :: proc(base, tint: im.Vec4, t := DRIVEN_FRAME_BLEND) -> im.Vec4 {
+	c := base + (tint - base) * t
 	c.w = 1
 	return c
+}
+
+// The bar left of a row's label, from the row's top-left corner `rmin` down
+// to `rmax`.
+@(private = "file")
+_driven_bar :: proc(rmin, rmax: im.Vec2, color: im.Vec4) {
+	if rmax.y <= rmin.y do return
+	im.DrawList_AddRectFilled(im.GetWindowDrawList(), {rmin.x - 4, rmin.y}, {rmin.x - 2, rmax.y}, im.GetColorU32ImVec4(color))
 }
 
 // Opens a driven row: pushes the tint and opens the group the row's widgets
@@ -140,18 +204,99 @@ driven_draw_begin :: proc(state: Driven_State) {
 
 // Closes the group, pops the tint, marks the row and sets its tooltip. The
 // group stays the last item, so imgui's item state describes the whole row.
-driven_draw_end :: proc(state: Driven_State) {
+// A filled diamond left of the bar marks a row whose playhead frame has a
+// key. No key, no mark.
+driven_draw_end :: proc(state: Driven_State, keyed := false) {
 	if state == .None do return
 	im.EndGroup()
 	im.PopStyleColor(4)
-	rmin := im.GetItemRectMin()
-	rmax := im.GetItemRectMax()
-	if rmax.y > rmin.y {
-		col := im.GetColorU32ImVec4(driven_tint(state))
-		im.DrawList_AddRectFilled(im.GetWindowDrawList(), {rmin.x - 4, rmin.y}, {rmin.x - 2, rmax.y}, col)
-	}
+	rmin, rmax := im.GetItemRectMin(), im.GetItemRectMax()
+	tint := driven_tint(state)
+	_driven_bar(rmin, rmax, tint)
+	_driven_diamond(rmin, rmax, tint, keyed)
 	text := state == .Editable ? driven_tooltip_editable : driven_tooltip_read_only
 	if text != "" do widgets.tooltip(text)
+}
+
+// The key diamond of a driven row whose playhead frame has a key, centred on
+// the row's height, left of the bar.
+@(private = "file")
+_driven_diamond :: proc(rmin, rmax: im.Vec2, color: im.Vec4, keyed: bool) {
+	if !keyed || rmax.y <= rmin.y do return
+	r := f32(4)
+	c := im.Vec2{rmin.x - 11, (rmin.y + rmax.y) * 0.5}
+	im.DrawList_AddQuadFilled(im.GetWindowDrawList(), {c.x, c.y - r}, {c.x + r, c.y}, {c.x, c.y + r}, {c.x - r, c.y}, im.GetColorU32ImVec4(color))
+}
+
+// Marks a row that is not driven when its field has a row in the shown clip:
+// the bar a driven row draws, in the mark color. `row_min` is the row's
+// top-left corner, the last item's bottom is the row's bottom. A driven row
+// draws its own bar instead, so callers mark only rows that are not driven.
+driven_mark :: proc(owner: core.Handle, field_offset: uintptr, field_tid: typeid, row_min: im.Vec2) {
+	if driven_row_state == nil do return
+	if has_row, _, _ := driven_row_query(owner, field_offset, field_tid); !has_row do return
+	_driven_bar(row_min, im.GetItemRectMax(), driven_mark_color())
+}
+
+// driven_mark for the row at `field_ptr` that is the last item (a group), with
+// the owner from the inspector's owner stack.
+driven_mark_field :: proc(field_ptr: rawptr, field_tid: typeid) {
+	if driven_row_state == nil do return
+	owner, offset, ok := _driven_field_owner(field_ptr)
+	if !ok do return
+	driven_mark(owner, offset, field_tid, im.GetItemRectMin())
+}
+
+// --- Add Key -------------------------------------------------------------------------
+
+// The key item of a field's context menu, drawn inside the open popup: shown
+// only while the field can be keyed, which the provider's owner limits to
+// recording. "Add Key" when the playhead's frame has no key for the row,
+// keying `value` (the value the row shows, in the field's own type), else
+// "Delete Key", removing that key. Returns whether an item was drawn.
+driven_add_key_item :: proc(owner: core.Handle, field_offset: uintptr, field_tid: typeid, value: rawptr) -> bool {
+	if driven_add_key == nil do return false
+	_, keyable, keyed := driven_row_query(owner, field_offset, field_tid)
+	if !keyable do return false
+	if keyed && driven_delete_key != nil {
+		if im.MenuItem("Delete Key") {
+			ok := driven_delete_key(owner, field_offset, field_tid)
+			assert(ok, "driven: a keyed field loses its key")
+		}
+		return true
+	}
+	if im.MenuItem("Add Key") {
+		ok := driven_add_key(owner, field_offset, field_tid, value)
+		assert(ok, "driven: a keyable field takes a key")
+	}
+	if driven_tooltip_add_key != "" do widgets.tooltip(driven_tooltip_add_key, im.HoveredFlags_AllowWhenDisabled)
+	return true
+}
+
+// driven_add_key_item for the row at `field_ptr`, with the owner from the
+// inspector's owner stack. Keys the value the row shows: the driven value
+// when the field is driven, else the live value.
+driven_add_key_item_field :: proc(field_ptr: rawptr, field_tid: typeid) -> bool {
+	if driven_add_key == nil do return false
+	owner, offset, ok := _driven_field_owner(field_ptr)
+	if !ok do return false
+	dv := driven_query(owner, offset, field_tid)
+	value := dv.state != .None ? rawptr(&dv.start) : field_ptr
+	return driven_add_key_item(owner, offset, field_tid, value)
+}
+
+// The context menu of a driven row that draws no other menu (the transform
+// rows, a row drawn by a decorator): "Add Key" alone, keying the driven value.
+// Opens on a right-click on the last item, the row's group. The popup id is
+// the one draw_field_context_menu uses for the same field.
+driven_context_menu :: proc(field_ptr: rawptr, dv: ^Driven_Value) {
+	if driven_add_key == nil || dv.state == .None do return
+	popup_id := fmt.ctprintf("##vcp_%x", uintptr(field_ptr))
+	im.OpenPopupOnItemClick(popup_id, im.PopupFlags_MouseButtonRight)
+	if im.BeginPopup(popup_id) {
+		if !driven_add_key_item(dv.owner, dv.offset, dv.tid, &dv.start) do im.TextDisabled("No actions")
+		im.EndPopup()
+	}
 }
 
 // --- Editable rows -------------------------------------------------------------------
@@ -186,7 +331,7 @@ driven_edit_buffer :: proc(key: rawptr, seed: rawptr) -> rawptr {
 // the last item): whether it is mid-gesture, and whether the gesture ended
 // this frame with an edit. A row whose popup is open (the color picker) is
 // mid-gesture while any item in the popup is active. Consumes the row latches.
-driven_row_state :: proc() -> (active, finished: bool) {
+driven_gesture_state :: proc() -> (active, finished: bool) {
 	finished = field_edit_row_finished()
 	held := field_edit_row_held()
 	active = _widget_active()
@@ -227,7 +372,7 @@ driven_edit_end :: proc(key, buf, seed, start: rawptr, n: int, active, finished:
 // driven_edit_end for a row whose buffer is the field's own type: commits the
 // edited value through driven_commit. Returns whether an edit was committed.
 driven_edit_finish :: proc(key, buf: rawptr, dv: ^Driven_Value) -> bool {
-	active, finished := driven_row_state()
+	active, finished := driven_gesture_state()
 	n := type_info_of(dv.tid).size
 	if !driven_edit_end(key, buf, &dv.value, &dv.start, n, active, finished) do return false
 	return driven_commit != nil && driven_commit(dv.owner, dv.offset, dv.tid, &dv.value)
