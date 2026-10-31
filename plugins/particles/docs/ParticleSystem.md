@@ -211,6 +211,18 @@ enable checkboxes. Every field runs through the inspector's row machinery
 overrides behave like generic rows. Burst edits and module toggles bracket
 with `structural_edit_begin/end`. Bursts don't propagate to multiedit peers.
 
+## Scaling steps
+
+The particle store is `[dynamic]Particle` per system, dead particles leave by swap-remove, and every particle has the same fields. Below 10 000 live particles in total, no change is measurable. The steps below apply in order as counts grow. The thresholds are bandwidth estimates for one core at 60 fps with a 1 ms update budget, not measurements. A timer around `particles_update` on a stress scene confirms them.
+
+1. **Measure first.** A stress scene with a few systems at `max_particles` 50 000, and the update time per frame. Nothing below is worth doing without the number.
+2. **Move trails out of `Particle`** (from about 10 000 live particles). `trail: [TRAIL_MAX]Trail_Point` is 256 bytes inline in a row of about 316, so the update loop streams five cache lines per particle to use one, also with trails off. Trails go to a per-system array, used only when `trail_ratio > 0`. The row shrinks to about 64 bytes.
+3. **`#soa[dynamic]Particle`** (from about 50 000). The update loop touches only the arrays it reads (position, velocity, life, lifetime). Loops keep the `ps.particles[i].field` form, removal is `unordered_remove_soa`, rendering reads a whole row with `ps.particles[i]`.
+4. **Cheaper per-particle math** (from about 200 000). The limit is no longer memory but the curve and gradient sampling per particle per frame and the random numbers at emission. Sample over-lifetime curves into a small table per system once per frame and index it by life fraction. Batch emission.
+5. **Upload size** (same range). Instance data per particle per frame is the GPU-side cost: 48 bytes × 200 000 is 9.6 MB each frame. A smaller instance layout (half floats, packed color) before any update-loop work past this point.
+
+Bitmaps per particle are not a step: every particle has every field, and dead ones are removed, so there is no "which particles have X" question.
+
 ## Sample
 
 `packages/particles/samples/particles_sample` ships
