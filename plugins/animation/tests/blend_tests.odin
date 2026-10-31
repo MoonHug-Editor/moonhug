@@ -505,10 +505,10 @@ test_clip_settings_trim_keeps_the_edges :: proc(t: ^testing.T) {
 	testing.expectf(t, abs(clip.length - 1) < 0.001, "length is the kept range, got %v", clip.length)
 	ch := &clip.channels[0]
 	testing.expectf(t, abs(ch.times[0]) < 0.001, "times rebase to 0, got %v", ch.times[0])
-	testing.expectf(t, abs(ch.values[0].x - 2.5) < 0.01, "starts on the interpolated edge, got %v", ch.values[0].x)
+	testing.expectf(t, abs(ch.values.([dynamic][4]f32)[0].x - 2.5) < 0.01, "starts on the interpolated edge, got %v", ch.values.([dynamic][4]f32)[0].x)
 	last := len(ch.times) - 1
 	testing.expectf(t, abs(ch.times[last] - 1) < 0.001, "ends at the new length, got %v", ch.times[last])
-	testing.expectf(t, abs(ch.values[last].x - 7.5) < 0.01, "ends on the interpolated edge, got %v", ch.values[last].x)
+	testing.expectf(t, abs(ch.values.([dynamic][4]f32)[last].x - 7.5) < 0.01, "ends on the interpolated edge, got %v", ch.values.([dynamic][4]f32)[last].x)
 }
 
 // Cycle offset shifts where in a loop sampling starts, applied at the ONE place

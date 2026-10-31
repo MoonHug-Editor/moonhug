@@ -46,6 +46,7 @@ import "moonhug:editor/icons"
 
 @(private = "file") _ANIM_MIN_LEFT_W :: f32(210) // a vec4 row's value fields plus the start of its name
 @(private = "file") _ANIM_MIN_CANVAS_W :: f32(80)
+@(private = "file") _ANIM_DRAG_PX :: f32(4) // a press that moves less is a click
 @(private = "file") _ANIM_RULER_H :: f32(22) // minimum: the band grows to a frame height
 @(private = "file") _ANIM_ROW_H :: f32(20)
 @(private = "file") _ANIM_PAD_X :: f32(10) // time gutter inside the canvas
@@ -55,6 +56,8 @@ import "moonhug:editor/icons"
 @(private = "file") _ANIM_VAL_GAP :: f32(2)
 @(private = "file") _ANIM_INDENT :: f32(14) // a property row's indent under its Object row
 @(private = "file") _ANIM_ARROW_W :: f32(10) // an Object row's collapse arrow
+@(private = "file") _ANIM_TAN_LEN :: f32(40) // a tangent handle's distance from its key, in pixels
+@(private = "file") _ANIM_TAN_R :: f32(3.5)  // a tangent handle's circle radius
 // Missing-binding yellow: a row whose target, component or field no longer
 // resolves. It samples but never applies.
 @(private = "file") _ANIM_WARN_COL :: im.Vec4{0.95, 0.83, 0.30, 1}
@@ -134,7 +137,16 @@ _Anim_View :: struct {
 	drag_key:  bool, // canvas key drag in progress (undo snapshot open)
 	drag_comp: int,  // curves: value component the drag edits, -1 = time only
 	drag_from: f32,  // time under the cursor when the drag began
+	drag_press: im.Vec2, // mouse at the press: a drag moves keys only past _ANIM_DRAG_PX
+	drag_live: bool, // the press moved far enough to be a drag, not a click
 	drag_t0:   [dynamic]f32, // each selected key's time then, parallel to sel
+	// Curves: a tangent handle drag in progress (undo session open), on key
+	// tan_key of the selected channel, lane tan_comp, the out handle when
+	// tan_out, else the in handle.
+	drag_tan:  bool,
+	tan_key:   int,
+	tan_comp:  int,
+	tan_out:   bool,
 	// Box select in progress, and where it started (screen space).
 	box:       bool,
 	box_from:  im.Vec2,
@@ -345,6 +357,7 @@ _pv_deselect :: proc() {
 	_av.sel_key = -1
 	clear(&_av.sel)
 	_av.drag_key = false
+	_av.drag_tan = false
 	_av.box = false
 }
 
@@ -609,8 +622,9 @@ _pv_field_undo :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cha
 
 @(private = "file")
 _pv_normalize_rot_key :: proc(ch: ^anim.Animation_Channel, k: int) {
-	v := ch.values[k]
-	if l := linalg.length(v); l > 0.0001 do ch.values[k] = (1.0 / l) * v
+	vals := anim.animation_channel_floats(ch)
+	v := vals[k]
+	if l := linalg.length(v); l > 0.0001 do vals[k] = (1.0 / l) * v
 }
 
 @(private = "file")
@@ -620,9 +634,8 @@ _pv_sel_valid :: proc(clip: ^anim.AnimationClip) -> bool {
 }
 
 // Value lanes a channel edits: transform channels by path, property channels
-// by the LIVE field kind (clip_property.odin — the file stores untyped
-// floats). An unresolved property channel edits one lane, painted yellow in
-// the row list.
+// by the LIVE field kind (clip_property.odin). An unresolved property channel
+// edits one lane, painted yellow in the row list.
 @(private = "file")
 _pv_ch_ncomp :: proc(ch: ^anim.Animation_Channel) -> int {
 	if anim.animation_channel_is_property(ch) {
@@ -664,9 +677,10 @@ _pv_ch_label :: proc(ch: ^anim.Animation_Channel) -> (label: cstring, resolved: 
 
 // Insert a key at `t` sampling the curve's current value there, so adding a
 // key never changes the curve's shape. With `value` given (recording) the key
-// holds that value instead, and a key already at `t` takes it.
+// holds that value instead, and a key already at `t` takes it. A string value
+// is cloned into the row.
 @(private)
-_pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx: int, t: f32, value: Maybe([4]f32) = nil) {
+_pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx: int, t: f32, value: Maybe(anim.Channel_Value) = nil) {
 	if doc == nil do return // read-only clip
 	if ch_idx < 0 || ch_idx >= len(clip.channels) do return
 	ch := &clip.channels[ch_idx]
@@ -676,12 +690,12 @@ _pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx
 		if abs(kt - t) >= 0.0005 do continue
 		if !has_value do return
 		_pv_edit_begin(doc)
-		ch.values[i] = given
+		anim.animation_channel_set_value(ch, i, given)
 		_pv_sel_set(ch_idx, i)
 		_pv_edit_commit(doc)
 		return
 	}
-	v := has_value ? given : anim._animation_channel_sample(ch, t)
+	v := has_value ? given : anim._animation_channel_sample_value(ch, t)
 	idx := len(ch.times)
 	for kt, i in ch.times {
 		if kt > t {
@@ -690,8 +704,7 @@ _pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx
 		}
 	}
 	_pv_edit_begin(doc)
-	inject_at(&ch.times, idx, t)
-	inject_at(&ch.values, idx, v)
+	anim.animation_channel_insert_key(ch, idx, t, v)
 	_pv_sel_set(ch_idx, idx)
 	_pv_edit_commit(doc)
 }
@@ -716,9 +729,7 @@ _pv_delete_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 
 	_pv_edit_begin(doc)
 	for r in refs {
-		ch := &clip.channels[r.ch]
-		ordered_remove(&ch.times, r.key)
-		ordered_remove(&ch.values, r.key)
+		anim.animation_channel_remove_key(&clip.channels[r.ch], r.key)
 	}
 	// Emptied channels, highest index first for the same reason.
 	for i := len(clip.channels) - 1; i >= 0; i -= 1 {
@@ -736,8 +747,159 @@ _pv_channel_remove :: proc(clip: ^anim.AnimationClip, i: int) {
 	delete(ch.component)
 	delete(ch.field)
 	delete(ch.times)
-	delete(ch.values)
+	anim.animation_channel_values_delete(&ch.values)
+	delete(ch.modes)
+	delete(ch.tangents)
 	ordered_remove(&clip.channels, i)
+}
+
+// --- Key interpolation ------------------------------------------------------------------
+//
+// The key context menu and the footer set the selected keys' modes and apply
+// tangent presets (curve_tools.odin). Each action is one undo step over every
+// selected key. Keys of int, reference and string rows always hold, so the
+// actions skip them.
+
+// The modes every selected float key's row allows, and whether the selection
+// holds a float key at all.
+@(private = "file")
+_pv_sel_modes :: proc(clip: ^anim.AnimationClip) -> (allowed: Key_Modes, floats: bool) {
+	allowed = {.Linear, .Smooth, .Step, .Free}
+	for r in _av.sel {
+		if r.ch < 0 || r.ch >= len(clip.channels) do continue
+		ch := &clip.channels[r.ch]
+		if r.key < 0 || r.key >= len(ch.times) || !anim.animation_channel_is_float(ch) do continue
+		floats = true
+		allowed &= channel_modes_allowed(ch)
+	}
+	if !floats do allowed = {}
+	return
+}
+
+// Whether every selected float key has `mode`.
+@(private = "file")
+_pv_sel_mode_all :: proc(clip: ^anim.AnimationClip, mode: anim.Key_Mode) -> bool {
+	found := false
+	for r in _av.sel {
+		if r.ch < 0 || r.ch >= len(clip.channels) do continue
+		ch := &clip.channels[r.ch]
+		if r.key < 0 || r.key >= len(ch.times) || !anim.animation_channel_is_float(ch) do continue
+		found = true
+		if anim._animation_key_mode(ch, r.key) != mode do return false
+	}
+	return found
+}
+
+// Sets `mode` on every selected float key, one undo step. A key turning Free
+// keeps the tangents it had. Nothing happens when a selected row does not
+// allow the mode.
+@(private)
+_pv_keys_set_mode :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, mode: anim.Key_Mode) {
+	if doc == nil do return
+	_pv_sel_prune(clip)
+	allowed, floats := _pv_sel_modes(clip)
+	if !floats || mode not_in allowed do return
+	_pv_edit_begin(doc)
+	{
+		// `modes` and `tangents` may be created here, and they live in the
+		// document.
+		context.allocator = inspector.doc_alloc()
+		for r in _av.sel {
+			ch := &clip.channels[r.ch]
+			if anim.animation_channel_is_float(ch) do channel_set_key_mode(ch, r.key, mode)
+		}
+	}
+	_pv_edit_commit(doc)
+}
+
+// Applies `preset` to every selected float key, one undo step: each becomes a
+// Free key with the preset's tangents. Nothing happens when a selected row
+// does not allow Free keys.
+@(private)
+_pv_keys_apply_preset :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, preset: Key_Preset) {
+	if doc == nil do return
+	_pv_sel_prune(clip)
+	allowed, floats := _pv_sel_modes(clip)
+	if !floats || .Free not_in allowed do return
+	_pv_edit_begin(doc)
+	{
+		context.allocator = inspector.doc_alloc()
+		for r in _av.sel {
+			ch := &clip.channels[r.ch]
+			if anim.animation_channel_is_float(ch) do channel_apply_preset(ch, r.key, preset)
+		}
+	}
+	_pv_edit_commit(doc)
+}
+
+@(private = "file")
+_pv_preset_label :: proc(p: Key_Preset) -> cstring {
+	switch p {
+	case .Flat:     return "Flat"
+	case .Ease_In:  return "Ease In"
+	case .Ease_Out: return "Ease Out"
+	case .Auto:     return "Auto"
+	}
+	unreachable()
+}
+
+// The Mode group and the presets of the key context menu. A selection of
+// discrete keys shows Step, disabled: those keys always hold.
+@(private = "file")
+_pv_draw_mode_items :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
+	allowed, floats := _pv_sel_modes(clip)
+	im.SeparatorText("Mode")
+	if !floats {
+		im.MenuItem("Step", nil, true, false)
+		return
+	}
+	for mode in anim.Key_Mode {
+		if mode not_in allowed do continue
+		if im.MenuItem(fmt.ctprintf("%v", mode), nil, _pv_sel_mode_all(clip, mode), doc != nil) {
+			_pv_keys_set_mode(doc, clip, mode)
+		}
+	}
+	if .Free not_in allowed do return
+	im.SeparatorText("Tangents")
+	for p in Key_Preset {
+		if im.MenuItem(_pv_preset_label(p), nil, false, doc != nil) do _pv_keys_apply_preset(doc, clip, p)
+	}
+}
+
+// The footer's mode combo: the primary key's mode, and the modes the
+// selection allows to pick from. A pick applies to every selected key, as
+// the context menu does. A discrete key shows Step, disabled.
+@(private = "file")
+_pv_draw_mode_combo :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch: ^anim.Animation_Channel, k: int) {
+	im.SetNextItemWidth(80)
+	if channel_modes_allowed(ch) == {} {
+		im.BeginDisabled()
+		if im.BeginCombo("##anim_key_mode", "Step") do im.EndCombo()
+		im.EndDisabled()
+		return
+	}
+	cur := anim._animation_key_mode(ch, k)
+	if im.BeginCombo("##anim_key_mode", fmt.ctprintf("%v", cur)) {
+		allowed, _ := _pv_sel_modes(clip)
+		for mode in anim.Key_Mode {
+			if mode not_in allowed do continue
+			if im.Selectable(fmt.ctprintf("%v", mode), mode == cur) do _pv_keys_set_mode(doc, clip, mode)
+		}
+		im.EndCombo()
+	}
+}
+
+// Sets key `k` of row `ch_idx` to `v`, one undo step. A string is cloned into
+// the row.
+@(private = "file")
+_pv_set_key_value :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx, k: int, v: anim.Channel_Value) {
+	if doc == nil do return
+	_pv_edit_begin(doc)
+	{
+		context.allocator = inspector.doc_alloc()
+		anim.animation_channel_set_value(&clip.channels[ch_idx], k, v)
+	}
+	_pv_edit_commit(doc)
 }
 
 // --- Add Property ------------------------------------------------------------------------
@@ -796,7 +958,8 @@ _pv_add_prop_object :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 
 // Animatable leaves of a component type as dotted field paths. Walks plain
 // struct nesting the way the runtime resolver does, skipping identity
-// plumbing (base) and reference types (never animatable).
+// plumbing (base) and the reference types that are not animatable (a PPtr is
+// a leaf).
 @(private = "file")
 _pv_prop_leaves :: proc(tid: typeid, prefix: string, out: ^[dynamic]string, depth: int) {
 	if depth > 4 do return
@@ -806,8 +969,7 @@ _pv_prop_leaves :: proc(tid: typeid, prefix: string, out: ^[dynamic]string, dept
 		name := names[i]
 		if name == "base" do continue
 		ftid := types[i].id
-		if ftid == typeid_of(engine.PPtr) || ftid == typeid_of(engine.Ref) ||
-		   ftid == typeid_of(engine.Ref_Local) || ftid == typeid_of(engine.Owned) {
+		if ftid == typeid_of(engine.Ref) || ftid == typeid_of(engine.Ref_Local) || ftid == typeid_of(engine.Owned) {
 			continue
 		}
 		full := prefix == "" ? name : fmt.tprintf("%s.%s", prefix, name)
@@ -839,7 +1001,7 @@ _pv_add_channel_transform :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.Animati
 	_pv_append_channel(doc, clip, anim.Animation_Channel{
 		target = strings.clone(target),
 		path   = path,
-	}, v)
+	}, anim.Channel_Value(v))
 }
 
 @(private)
@@ -848,30 +1010,27 @@ _pv_add_channel_property :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.Animatio
 		if c.target == target && c.component == guid_str && c.field == field do return
 	}
 	// First key holds the field's CURRENT value, so adding a property never
-	// visibly changes the object.
-	v: [4]f32
-	step := false
+	// visibly changes the object. The row's kind follows the field's: floats,
+	// ints, references or strings (a string is cloned into the row).
+	v: anim.Channel_Value = [4]f32{}
 	if ptr, kind, leaf, ok := anim._prop_locate(tH, guid_str, field); ok {
-		v = anim._prop_read(ptr, kind, leaf)
-		step = anim.prop_kind_discrete(kind)
+		v = anim._prop_read_value(ptr, kind, leaf)
 	}
 	_pv_append_channel(doc, clip, anim.Animation_Channel{
 		target    = strings.clone(target),
 		component = strings.clone(guid_str),
 		field     = strings.clone(field),
-		step      = step,
 	}, v)
 }
 
 @(private = "file")
-_pv_append_channel :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch: anim.Animation_Channel, v: [4]f32) {
+_pv_append_channel :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch: anim.Animation_Channel, v: anim.Channel_Value) {
 	if doc == nil do return // read-only clip
 	ch := ch
 	_pv_edit_begin(doc)
 	ch.times = make([dynamic]f32)
-	ch.values = make([dynamic][4]f32)
-	append(&ch.times, 0)
-	append(&ch.values, v)
+	ch.values = anim.animation_channel_values_make(v)
+	anim.animation_channel_insert_key(&ch, 0, 0, v)
 	append(&clip.channels, ch)
 	_pv_sel_set(len(clip.channels) - 1, 0)
 	_pv_collapse_clear(ch.target) // the new row shows, selected
@@ -1549,6 +1708,8 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 
 	im.DrawList_PushClipRect(dl, canvas_clip_min, canvas_clip_max, true)
 	if _av.mode == .Dopesheet {
+		// A tangent drag belongs to the curve view: leaving it ends the drag.
+		if _av.drag_tan do _pv_tan_drag_end(doc, true)
 		_pv_sheet_dopesheet(doc, clip, dl, rows, rows_y, body_h, x0, x1, tx0, pps, hovered, mp, row_at)
 	} else {
 		_pv_sheet_curves(doc, clip, dl, rows, rows_y, body_h, x0, x1, tx0, pps, mp, row_at)
@@ -1570,6 +1731,12 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 			_av.drag_key = false
 			undo.edit_session_abort(&_pv_session)
 		} else if im.IsMouseDown(.Left) {
+			// A press is a click until the mouse has moved a few pixels: a
+			// click selects and must not nudge the key's time or value.
+			if !_av.drag_live {
+				if linalg.length(mp - _av.drag_press) < _ANIM_DRAG_PX do return
+				_av.drag_live = true
+			}
 			// One delta for the whole selection, snapped, then clamped by the
 			// tightest neighbour bound among the dragged keys so none of them
 			// can cross another and reorder the channel.
@@ -1586,13 +1753,17 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 			for r, i in _av.sel {
 				clip.channels[r.ch].times[r.key] = _av.drag_t0[i] + d
 			}
-			if _av.drag_comp >= 0 {
+			if _av.drag_comp >= 0 && anim.animation_channel_is_float(&clip.channels[_av.sel_ch]) {
 				// Curves: y edits the grabbed component's value on the primary
 				// key only — the others have their own values to keep.
 				ch := &clip.channels[_av.sel_ch]
-				ch.values[_av.sel_key][_av.drag_comp] = _pv_curve_y_to_v(mp.y, rows_y, body_h)
+				anim.animation_channel_floats(ch)[_av.sel_key][_av.drag_comp] = _pv_curve_y_to_v(mp.y, rows_y, body_h)
 			}
 			_pv_mark_edited(doc)
+		} else if !_av.drag_live {
+			// Released without moving: a click, nothing to record.
+			undo.edit_session_abort(&_pv_session)
+			_av.drag_key = false
 		} else {
 			ch := &clip.channels[_av.sel_ch]
 			if ch.path == .Rotation && _av.drag_comp >= 0 do _pv_normalize_rot_key(ch, _av.sel_key)
@@ -1603,6 +1774,8 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 
 	// Key context menu (opened by the mode-specific right-click handling).
 	if im.BeginPopup("##anim_key_ctx") {
+		_pv_draw_mode_items(doc, clip)
+		im.Separator()
 		can_delete := doc != nil && _pv_sel_valid(clip)
 		label: cstring = len(_av.sel) > 1 ? fmt.ctprintf("Delete %d Keys", len(_av.sel)) : "Delete Key"
 		if im.MenuItem(label, nil, false, can_delete) do _pv_delete_key(doc, clip)
@@ -1799,11 +1972,12 @@ animation_view_retarget :: proc(old_target, new_target: string) -> bool {
 //
 // Each property row shows its value at the playhead after its name: one small
 // field per lane (a vec3 three, a bool a checkbox, an int or enum an int
-// field). A Rotation row shows three euler angles in degrees, converted from
-// the sampled quaternion as the inspector's Rotation row converts, and an edit
-// keys the normalized quaternion built from them. Editing a field keys the row
-// at the playhead with the edited value. A clip inside a model shows them
-// read-only.
+// field, a string a text field committed by Enter, a reference the asset
+// picker the inspector uses). A Rotation row shows three euler angles in
+// degrees, converted from the sampled
+// quaternion as the inspector's Rotation row converts, and an edit keys the
+// normalized quaternion built from them. Editing a field keys the row at the
+// playhead with the edited value. A clip inside a model shows them read-only.
 
 // The kind a row's fields edit, false for a property row that no longer
 // resolves (it has no live type to show). A Rotation row edits three euler
@@ -1844,9 +2018,119 @@ _pv_kind_lanes :: proc(kind: anim.Prop_Kind) -> int {
 	case .Vec2: return 2
 	case .Vec3: return 3
 	case .Vec4: return 4
-	case .F32, .Bool, .Int:
+	case .F32, .Bool, .Int, .Ref, .Text:
 	}
 	return 1
+}
+
+// A key value as float lanes, an int in the first lane. A reference or string
+// has none.
+@(private = "file")
+_pv_value_floats :: proc(v: anim.Channel_Value) -> [4]f32 {
+	#partial switch x in v {
+	case [4]f32: return x
+	case i64:    return {f32(x), 0, 0, 0}
+	}
+	return {}
+}
+
+// A key value as an int: the first lane rounded for floats.
+@(private = "file")
+_pv_value_int :: proc(v: anim.Channel_Value) -> i64 {
+	#partial switch x in v {
+	case i64:    return x
+	case [4]f32: return i64(math.round(x.x))
+	}
+	return 0
+}
+
+// A key value as read-only text, for a key of an int row in the footer: an int
+// in decimal, a reference as its guid's first 8 digits (":local id" for a
+// sub-asset, "None" when empty), a string as it is. Temp-allocated.
+@(private = "file")
+_pv_value_text :: proc(v: anim.Channel_Value) -> string {
+	switch x in v {
+	case [4]f32: return fmt.tprintf("%.2f", x.x)
+	case i64:    return fmt.tprintf("%d", x)
+	case engine.PPtr:
+		if engine.asset_guid_is_empty(x.guid) do return "None"
+		g := uuid.to_string(uuid.Identifier(x.guid), context.temp_allocator)[:8]
+		if x.local_id != 0 do return fmt.tprintf("%s:%d", g, x.local_id)
+		return g
+	case string: return x
+	}
+	unreachable()
+}
+
+// The struct tag of the field a property row animates, "" when the row does
+// not resolve. A reference row's picker reads its `ext:` and `ref:` tags.
+@(private = "file")
+_pv_field_tag :: proc(ch: ^anim.Animation_Channel) -> reflect.Struct_Tag {
+	guid, gerr := uuid.read(ch.component)
+	if gerr != nil do return ""
+	cur, ok := engine.get_typeid_by_guid_ok(guid)
+	if !ok do return ""
+	tag: reflect.Struct_Tag
+	rest := ch.field
+	for len(rest) > 0 {
+		key := rest
+		if dot := strings.index_byte(rest, '.'); dot >= 0 {
+			key = rest[:dot]
+			rest = rest[dot + 1:]
+		} else {
+			rest = ""
+		}
+		names := reflect.struct_field_names(cur)
+		types := reflect.struct_field_types(cur)
+		tags := reflect.struct_field_tags(cur)
+		found := false
+		for name, i in names {
+			if name != key do continue
+			cur = types[i].id
+			tag = tags[i]
+			found = true
+			break
+		}
+		if !found do return ""
+	}
+	return tag
+}
+
+// The field of a string or reference value, `w` wide at the cursor. A string
+// shows a text field: Enter returns the typed text (temp-allocated), a click
+// elsewhere drops it. A reference shows the inspector's asset picker on a
+// copy, filtered by the field's tags: a pick or a drop returns the new value.
+@(private = "file")
+_pv_discrete_field :: proc(ch: ^anim.Animation_Channel, kind: anim.Prop_Kind, value: anim.Channel_Value, w: f32) -> (edited: anim.Channel_Value, ok: bool) {
+	#partial switch kind {
+	case .Text:
+		buf: [256]u8
+		if s, is_str := value.(string); is_str do copy(buf[:len(buf) - 1], s)
+		im.SetNextItemWidth(w)
+		// The field shows the value until it is typed into, then keeps its own
+		// text until Enter (or Escape, editor/text_input.odin) commits it.
+		if im.InputText("##anim_str", cstring(raw_data(buf[:])), uint(len(buf)), {.EnterReturnsTrue}) {
+			return strings.clone(string(cstring(raw_data(buf[:]))), context.temp_allocator), true
+		}
+	case .Ref:
+		orig, _ := value.(engine.PPtr)
+		picked := orig
+		prev_tags := inspector.field_tags_set(_pv_field_tag(ch))
+		defer inspector.field_tags_restore(prev_tags)
+		// The picker sizes its value button to the remaining width, so the
+		// width past this field counts as trailing.
+		prev_trailing := inspector.current_field_trailing_w
+		inspector.current_field_trailing_w = max(im.GetContentRegionAvail().x - w, 0)
+		defer inspector.current_field_trailing_w = prev_trailing
+		// The picker flags the inspector as changed. The flag belongs to the
+		// inspector's own rows, so this draw leaves it as it found it.
+		prev_changed := inspector.consume_inspector_changed()
+		inspector.draw_pptr_property(&picked, typeid_of(engine.PPtr), "##anim_ref")
+		inspector.consume_inspector_changed()
+		if prev_changed do inspector.mark_inspector_changed()
+		if picked != orig do return picked, true
+	}
+	return {}, false
 }
 
 // The width a row's value fields take at the column's right edge.
@@ -1855,6 +2139,7 @@ _pv_row_values_w :: proc(ch: ^anim.Animation_Channel) -> f32 {
 	kind, ok := _pv_row_kind(ch)
 	if !ok do return 0
 	if kind == .Bool do return _pv_row_field_h()
+	if kind == .Ref || kind == .Text do return 3 * _ANIM_VAL_W + 2 * _ANIM_VAL_GAP
 	n := f32(_pv_kind_lanes(kind))
 	return n * _ANIM_VAL_W + (n - 1) * _ANIM_VAL_GAP
 }
@@ -1874,7 +2159,7 @@ _pv_row_field_h :: proc() -> f32 {
 // takes it, else a key is added there. One undo step, or part of the open row
 // value gesture.
 @(private)
-_pv_row_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, row: int, value: [4]f32) {
+_pv_row_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, row: int, value: anim.Channel_Value) {
 	_pv_add_key(doc, clip, row, _pv.time, value)
 }
 
@@ -1922,7 +2207,22 @@ _pv_draw_row_values :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 		n := _pv_kind_lanes(kind)
 		ry := rows_y + f32(row) * _ANIM_ROW_H + (_ANIM_ROW_H - field_h) * 0.5
 		x := left_x1 - _pv_row_values_w(ch) - 4
-		v := anim._animation_channel_sample(ch, _pv.time)
+		sampled := anim._animation_channel_sample_value(ch, _pv.time)
+		if kind == .Ref || kind == .Text {
+			im.PushIDInt(i32(i))
+			im.SetCursorScreenPos(im.Vec2{x, ry})
+			edited, ok := _pv_discrete_field(ch, kind, sampled, _pv_row_values_w(ch))
+			im.PopID()
+			if ok {
+				// A new key's string, and any array the key grows, live in
+				// the document, as recording keys them.
+				context.allocator = inspector.doc_alloc()
+				_pv_row_key(doc, clip, i, edited)
+			}
+			continue
+		}
+		v := _pv_value_floats(sampled)
+		iv := _pv_value_int(sampled)
 		rot := _pv_ch_is_rotation(ch)
 		euler: [3]f32
 		if rot do euler = _pv_rot_to_euler(v)
@@ -1934,15 +2234,15 @@ _pv_draw_row_values :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 			im.SetNextItemWidth(_ANIM_VAL_W)
 			#partial switch kind {
 			case .Bool:
-				b := v.x > 0.5
+				b := iv != 0
 				if im.Checkbox("##v", &b) {
-					v.x = b ? 1 : 0
+					iv = b ? 1 : 0
 					changed = true
 				}
 			case .Int:
-				iv := i32(math.round(v.x))
-				if im.DragInt("##v", &iv, 0.1) {
-					v.x = f32(iv)
+				i32v := i32(clamp(iv, i64(min(i32)), i64(max(i32))))
+				if im.DragInt("##v", &i32v, 0.1) {
+					iv = i64(i32v)
 					changed = true
 				}
 			case:
@@ -1956,12 +2256,14 @@ _pv_draw_row_values :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 		}
 		im.PopID()
 		if changed && rot do v = _pv_rot_from_euler(euler)
+		edited: anim.Channel_Value = v
+		if kind == .Bool || kind == .Int do edited = iv
 		if changed {
 			if !_pv_row_gesture {
 				_pv_row_gesture = true
 				_pv_edit_held = true
 			}
-			_pv_row_key(doc, clip, i, v)
+			_pv_row_key(doc, clip, i, edited)
 		}
 	}
 	// A typed value lands on the frame its field lets go, a drag ends on
@@ -2280,6 +2582,8 @@ _pv_drag_begin :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, fro
 	if doc == nil do return // read-only: the press only selects
 	_pv_edit_begin(doc)
 	_av.drag_key = true
+	_av.drag_press = im.GetMousePos()
+	_av.drag_live = false
 	_av.drag_comp = comp
 	_av.drag_from = _pv_snap_time(clip, from)
 	clear(&_av.drag_t0)
@@ -2289,7 +2593,8 @@ _pv_drag_begin :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, fro
 // --- Curves ---------------------------------------------------------------------------
 
 // Value range of the curve area this frame (set during draw, read by the drag
-// update). Range follows the selected channel's keys with 10% padding.
+// update). Range follows the selected channel's keys and its Free keys'
+// tangent handles, with 10% padding.
 @(private = "file")
 _curve_vmin, _curve_vmax: f32
 
@@ -2303,6 +2608,43 @@ _pv_curve_v_to_y :: proc(v, rows_y, body_h: f32) -> f32 {
 _pv_curve_y_to_v :: proc(y, rows_y, body_h: f32) -> f32 {
 	span := max(_curve_vmax - _curve_vmin, 0.0001)
 	return _curve_vmin + (1 - (y - rows_y - 6) / max(body_h - 12, 1)) * span
+}
+
+// Pixels per value unit on the curve area's y axis.
+@(private = "file")
+_pv_curve_vpx :: proc(body_h: f32) -> f32 {
+	return max(body_h - 12, 1) / max(_curve_vmax - _curve_vmin, 0.0001)
+}
+
+// Whether the curve view draws tangent handles for a channel: a float row
+// whose keys can be Free (a Rotation row slerps and has no tangents).
+@(private = "file")
+_pv_curve_has_handles :: proc(ch: ^anim.Animation_Channel) -> bool {
+	return .Free in channel_modes_allowed(ch)
+}
+
+// The screen point of a tangent handle of key `k`, lane `c`: the out handle
+// when `out`, else the in handle. `tin` and `tout` are the key's tangents.
+@(private = "file")
+_pv_tan_handle_pos :: proc(key_pt: im.Vec2, tin, tout: [4]f32, c: int, out: bool, pps, vpx: f32) -> im.Vec2 {
+	if out {
+		d := tangent_handle_offset(tout[c], pps, vpx, _ANIM_TAN_LEN)
+		return {key_pt.x + d.x, key_pt.y + d.y}
+	}
+	d := tangent_handle_offset(tin[c], pps, vpx, _ANIM_TAN_LEN)
+	return {key_pt.x - d.x, key_pt.y - d.y}
+}
+
+// Ends a tangent handle drag: records the undo step, or drops the session
+// when the key it edited went away.
+@(private = "file")
+_pv_tan_drag_end :: proc(doc: ^inspector.Asset_Doc, commit: bool) {
+	_av.drag_tan = false
+	if commit && doc != nil {
+		_pv_edit_commit(doc)
+	} else {
+		undo.edit_session_abort(&_pv_session)
+	}
 }
 
 @(private = "file")
@@ -2324,17 +2666,25 @@ _pv_sheet_curves :: proc(
 	}
 
 	if _av.sel_ch < 0 || _av.sel_ch >= len(clip.channels) {
+		if _av.drag_tan do _pv_tan_drag_end(doc, false)
 		im.DrawList_AddText(dl, im.Vec2{x0 + 12, rows_y + 8}, im.GetColorU32(.TextDisabled), "Select a property to edit its curves.")
 		return
 	}
 	ch := &clip.channels[_av.sel_ch]
+	if !anim.animation_channel_is_float(ch) {
+		if _av.drag_tan do _pv_tan_drag_end(doc, false)
+		im.DrawList_AddText(dl, im.Vec2{x0 + 12, rows_y + 8}, im.GetColorU32(.TextDisabled), "This property holds discrete keys: it has no curve.")
+		return
+	}
+	vals := anim.animation_channel_floats(ch)
 	ncomp := _pv_ch_ncomp(ch)
+	handles := _pv_curve_has_handles(ch)
 
 	// Freeze the value range while dragging — a range that follows the edited
 	// value makes the curve chase the cursor.
-	if !_av.drag_key {
+	if !_av.drag_key && !_av.drag_tan {
 		vmin, vmax := max(f32), min(f32)
-		for v in ch.values {
+		for v in vals {
 			for c in 0 ..< ncomp {
 				vmin = min(vmin, v[c])
 				vmax = max(vmax, v[c])
@@ -2349,6 +2699,85 @@ _pv_sheet_curves :: proc(
 		}
 		pad := (vmax - vmin) * 0.1
 		_curve_vmin, _curve_vmax = vmin - pad, vmax + pad
+		// The range takes in the Free keys' handle points too, so a steep
+		// handle on a flat curve is not clipped away. A handle's value depends
+		// on the range it is drawn in, so the range settles over a few passes.
+		if handles {
+			for _ in 0 ..< 3 {
+				vpx := _pv_curve_vpx(body_h)
+				hmin, hmax := vmin, vmax
+				for k in 0 ..< len(ch.times) {
+					if anim._animation_key_mode(ch, k) != .Free do continue
+					tin, tout := anim._animation_key_tangents(ch, vals[:], k)
+					for c in 0 ..< ncomp {
+						dout := tangent_handle_offset(tout[c], pps, vpx, _ANIM_TAN_LEN)
+						din := tangent_handle_offset(tin[c], pps, vpx, _ANIM_TAN_LEN)
+						hi_v := vals[k][c] - dout.y / vpx
+						lo_v := vals[k][c] + din.y / vpx
+						hmin = min(hmin, hi_v, lo_v)
+						hmax = max(hmax, hi_v, lo_v)
+					}
+				}
+				hpad := (hmax - hmin) * 0.1
+				_curve_vmin, _curve_vmax = hmin - hpad, hmax + hpad
+			}
+		}
+	}
+	vpx := _pv_curve_vpx(body_h)
+
+	// A tangent handle drag: the dragged tangent follows the pointer, Shift
+	// sets the other side to the same slope (a smooth joint). Updated before
+	// drawing, so the curve shows this frame's tangent.
+	if _av.drag_tan {
+		k, c := _av.tan_key, _av.tan_comp
+		switch {
+		case doc == nil || !handles || k < 0 || k >= len(ch.times) || c >= ncomp || anim._animation_key_mode(ch, k) != .Free:
+			_pv_tan_drag_end(doc, false)
+		case im.IsMouseDown(.Left):
+			key_pt := im.Vec2{tx0 + ch.times[k] * pps, _pv_curve_v_to_y(vals[k][c], rows_y, body_h)}
+			m := tangent_from_handle({mp.x - key_pt.x, mp.y - key_pt.y}, pps, vpx, _av.tan_out)
+			tin, tout := anim._animation_key_tangents(ch, vals[:], k)
+			joint := im.GetIO().KeyShift
+			if _av.tan_out {
+				tout[c] = m
+				if joint do tin[c] = m
+			} else {
+				tin[c] = m
+				if joint do tout[c] = m
+			}
+			{
+				// A key past the end of `tangents` grows it, in the document.
+				context.allocator = inspector.doc_alloc()
+				channel_set_key_tangents(ch, k, tin, tout)
+			}
+			_pv_mark_edited(doc)
+		case:
+			_pv_tan_drag_end(doc, true)
+		}
+	}
+
+	// The handle under the pointer: the dragged one, else the nearest within
+	// the hit radius. Handles take a press before keys do.
+	hov_k, hov_c, hov_out := -1, -1, false
+	if _av.drag_tan {
+		hov_k, hov_c, hov_out = _av.tan_key, _av.tan_comp, _av.tan_out
+	} else if handles && im.IsItemHovered() && mp.x >= x0 {
+		best_d := _ANIM_HIT
+		for t, k in ch.times {
+			if anim._animation_key_mode(ch, k) != .Free do continue
+			tin, tout := anim._animation_key_tangents(ch, vals[:], k)
+			for c in 0 ..< ncomp {
+				key_pt := im.Vec2{tx0 + t * pps, _pv_curve_v_to_y(vals[k][c], rows_y, body_h)}
+				for out in ([2]bool{false, true}) {
+					hp := _pv_tan_handle_pos(key_pt, tin, tout, c, out, pps, vpx)
+					d := max(abs(hp.x - mp.x), abs(hp.y - mp.y))
+					if d < best_d {
+						best_d = d
+						hov_k, hov_c, hov_out = k, c, out
+					}
+				}
+			}
+		}
 	}
 
 	// Value grid: min, max and zero when visible.
@@ -2374,9 +2803,27 @@ _pv_sheet_curves :: proc(
 		if len(pts) >= 2 {
 			im.DrawList_AddPolyline(dl, raw_data(pts[:]), i32(len(pts)), col, 1.5)
 		}
+		// Tangent handles of the Free keys, under the key squares. The
+		// hovered or dragged handle draws brighter.
+		if handles {
+			bright := im.GetColorU32ImVec4(linalg.lerp(comp_cols[c], im.Vec4{1, 1, 1, 1}, 0.55))
+			dim := im.GetColorU32ImVec4(im.Vec4{comp_cols[c].x, comp_cols[c].y, comp_cols[c].z, 0.75})
+			for t, k in ch.times {
+				if anim._animation_key_mode(ch, k) != .Free do continue
+				tin, tout := anim._animation_key_tangents(ch, vals[:], k)
+				key_pt := im.Vec2{tx0 + t * pps, _pv_curve_v_to_y(vals[k][c], rows_y, body_h)}
+				for out in ([2]bool{false, true}) {
+					hp := _pv_tan_handle_pos(key_pt, tin, tout, c, out, pps, vpx)
+					hot := k == hov_k && c == hov_c && out == hov_out
+					hcol := hot ? bright : dim
+					im.DrawList_AddLine(dl, key_pt, hp, hcol, 1)
+					im.DrawList_AddCircleFilled(dl, hp, hot ? _ANIM_TAN_R + 1 : _ANIM_TAN_R, hcol)
+				}
+			}
+		}
 		for t, k in ch.times {
 			kx := tx0 + t * pps
-			ky := _pv_curve_v_to_y(ch.values[k][c], rows_y, body_h)
+			ky := _pv_curve_v_to_y(vals[k][c], rows_y, body_h)
 			sel := k == _av.sel_key && c == _av.drag_comp
 			r := sel ? f32(4) : f32(3)
 			im.DrawList_AddRectFilled(dl, im.Vec2{kx - r, ky - r}, im.Vec2{kx + r, ky + r}, sel ? im.GetColorU32(.CheckMark) : col)
@@ -2384,14 +2831,24 @@ _pv_sheet_curves :: proc(
 	}
 	im.DrawList_PopClipRect(dl)
 
-	// Press on a key square: drag edits (time, value[comp]).
-	if im.IsItemActivated() && mp.x >= x0 {
+	// Press on a tangent handle: drag edits that tangent. It selects the key,
+	// and a read-only clip only selects.
+	if im.IsItemActivated() && mp.x >= x0 && hov_k >= 0 && !_av.drag_tan {
+		if !_pv_sel_has(_av.sel_ch, hov_k) do _pv_sel_set(_av.sel_ch, hov_k)
+		_av.sel_key = hov_k
+		if doc != nil {
+			_pv_edit_begin(doc)
+			_av.drag_tan = true
+			_av.tan_key, _av.tan_comp, _av.tan_out = hov_k, hov_c, hov_out
+		}
+	} else if im.IsItemActivated() && mp.x >= x0 {
+		// Press on a key square: drag edits (time, value[comp]).
 		best_k, best_c := -1, -1
 		best_d := _ANIM_HIT
 		for t, k in ch.times {
 			kx := tx0 + t * pps
 			for c in 0 ..< ncomp {
-				ky := _pv_curve_v_to_y(ch.values[k][c], rows_y, body_h)
+				ky := _pv_curve_v_to_y(vals[k][c], rows_y, body_h)
 				d := max(abs(kx - mp.x), abs(ky - mp.y))
 				if d < best_d {
 					best_d = d
@@ -2440,10 +2897,28 @@ _pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 	im.SetNextItemWidth(70)
 	lo, hi := _pv_drag_time_bounds(ch, k, clip.length)
 	_pv_field_undo(doc, clip, im.DragFloat("##anim_key_t", &ch.times[k], 0.002, lo, hi, "%.3f"))
+	im.SameLine()
+	_pv_draw_mode_combo(doc, clip, ch, k)
+
+	// A key of a string row shows a text field and a key of a reference row
+	// the asset picker, both setting this key's value. A key of an int row,
+	// or of a row that no longer resolves, shows its value as text.
+	if !anim.animation_channel_is_float(ch) {
+		im.SameLine()
+		kind, kok := _pv_row_kind(ch)
+		if kok && (kind == .Ref || kind == .Text) {
+			if v, edited := _pv_discrete_field(ch, kind, anim.animation_channel_value(ch, k), 200); edited {
+				_pv_set_key_value(doc, clip, _av.sel_ch, k, v)
+			}
+		} else {
+			im.TextUnformatted(fmt.ctprintf("%s", _pv_value_text(anim.animation_channel_value(ch, k))))
+		}
+	}
 
 	// A rotation key shows three euler angles, written back as a quaternion.
 	if _pv_ch_is_rotation(ch) {
-		euler := _pv_rot_to_euler(ch.values[k])
+		vals := anim.animation_channel_floats(ch)
+		euler := _pv_rot_to_euler(vals[k])
 		axis_names := [3]cstring{"x", "y", "z"}
 		for c in 0 ..< 3 {
 			im.SameLine()
@@ -2454,19 +2929,19 @@ _pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 			// Opened before the write, so the session holds the key from
 			// before this frame's change.
 			if im.IsItemActivated() do _pv_edit_begin(doc)
-			if changed do ch.values[k] = _pv_rot_from_euler(euler)
+			if changed do vals[k] = _pv_rot_from_euler(euler)
 			_pv_field_undo(doc, clip, changed)
 		}
 	}
 
-	ncomp := _pv_ch_is_rotation(ch) ? 0 : _pv_ch_ncomp(ch)
+	ncomp := _pv_ch_is_rotation(ch) || !anim.animation_channel_is_float(ch) ? 0 : _pv_ch_ncomp(ch)
 	comp_names := [4]cstring{"x", "y", "z", "w"}
 	for c in 0 ..< ncomp {
 		im.SameLine()
 		im.TextUnformatted(comp_names[c])
 		im.SameLine()
 		im.SetNextItemWidth(70)
-		_pv_field_undo(doc, clip, im.DragFloat(fmt.ctprintf("##anim_key_v%d", c), &ch.values[k][c], 0.01))
+		_pv_field_undo(doc, clip, im.DragFloat(fmt.ctprintf("##anim_key_v%d", c), &anim.animation_channel_floats(ch)[k][c], 0.01))
 	}
 
 	im.SameLine()
@@ -2627,4 +3102,37 @@ animation_preview_restore :: proc() {
 	if !_pv.applied do return
 	_pv.applied = false
 	anim.animation_binding_write_defaults(_pv_binding())
+}
+
+// --- Test access -----------------------------------------------------------------------
+
+// Test-only: selects key `key` of row `ch`, replacing the selection, or added
+// to it when `add`, as a click and a modifier click on the key do.
+animation_view_select_key :: proc(ch, key: int, add := false) {
+	if add && !_pv_sel_has(ch, key) {
+		_pv_sel_toggle(ch, key)
+		return
+	}
+	_pv_sel_set(ch, key)
+}
+
+// Test-only: sets `mode` on every selected key of the shown clip, as the key
+// context menu's Mode items and the footer's combo do.
+animation_view_set_key_mode :: proc(mode: anim.Key_Mode) {
+	doc, clip := _pv_doc()
+	if doc == nil || clip == nil do return
+	_pv_keys_set_mode(doc, clip, mode)
+}
+
+// Test-only: applies `preset` to every selected key of the shown clip, as the
+// key context menu's tangent presets do.
+animation_view_apply_preset :: proc(preset: Key_Preset) {
+	doc, clip := _pv_doc()
+	if doc == nil || clip == nil do return
+	_pv_keys_apply_preset(doc, clip, preset)
+}
+
+// Test-only: clears the key selection.
+animation_view_deselect :: proc() {
+	_pv_deselect()
 }

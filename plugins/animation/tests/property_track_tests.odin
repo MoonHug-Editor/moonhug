@@ -25,7 +25,7 @@ _prop_clip :: proc(component: string, field: string, value: [4]f32, length: f32 
 	ch.times = make([dynamic]f32)
 	ch.values = make([dynamic][4]f32)
 	append(&ch.times, 0)
-	append(&ch.values, value)
+	append(&ch.values.([dynamic][4]f32), value)
 	append(&clip.channels, ch)
 	return clip
 }

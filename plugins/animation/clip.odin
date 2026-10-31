@@ -1,7 +1,8 @@
 package animation
 
 // AnimationClip asset: keyframe curves that animate transform
-// position/rotation/scale — or any POD component field via property channels
+// position/rotation/scale — or any animatable component field (numbers,
+// vectors, ints, enums, bools, references, strings) via property channels
 // (clip_property.odin) — over time. Clips are JSON files under assets/
 // (".anim"), cached by guid like materials. The Animation component
 // (component_Animation.odin) plays one — a single-clip player, not
@@ -14,6 +15,10 @@ package animation
 
 import "base:runtime"
 import "core:encoding/json"
+import "core:fmt"
+import "core:io"
+import "core:mem"
+import "core:reflect"
 import "moonhug:packages/engine"
 import "core:math"
 import "core:math/linalg"
@@ -34,23 +39,76 @@ Animation_Path :: enum u8 {
 }
 
 // One curve: keyframe times plus values for a single target property.
-// Values pack into [4]f32 — xyz for position/scale, xyzw quat for rotation,
-// x (or the leading lanes) for property channels.
 //
 // A channel with a non-empty `component` is a PROPERTY channel (bound by
 // path + component type + property name): `component` is the
-// component's type guid, `field` a dotted path to a POD leaf on it
-// ("emission.rate.value_min"). The file stores untyped floats — the live
-// field's typeid at bind time is the single authority for how many lanes
-// apply, discrete vs continuous, and the write conversion (clip_property.odin).
+// component's type guid, `field` a dotted path to a leaf on it
+// ("emission.rate.value_min"). The live field's typeid at bind time is the
+// authority for how many lanes apply, discrete vs continuous, and the write
+// conversion (clip_property.odin).
+//
+// `values` holds one typed array per row, parallel to `times`
+// (Channel_Values). Float rows also carry per-key interpolation: `modes` and
+// `tangents`, both optional and parallel to `times` when present.
 Animation_Channel :: struct {
 	target:    string, // name path relative to the playing owner ("" = owner)
 	path:      Animation_Path,
 	component: string, // component type guid, "" = transform channel
 	field:     string, // dotted field path on the component
-	step:      bool, // STEP interpolation: hold the previous key (else lerp/slerp)
+	// Every key holds (Step) while `modes` is absent. A channel with `modes`
+	// ignores it.
+	step:      bool,
 	times:     [dynamic]f32,
-	values:    [dynamic][4]f32,
+	values:    Channel_Values,
+	// Per-key interpolation of a float row. A key past the end of `modes` is
+	// Linear (or Step, see `step`).
+	modes:     [dynamic]Key_Mode `json:"modes,omitempty"`,
+	// In and out slopes per lane of a Free key, in value units per second. A
+	// Free key past the end of `tangents` has flat tangents.
+	tangents:  [dynamic][2][4]f32 `json:"tangents,omitempty"`,
+}
+
+// The keys of one row, one array per value kind. A row animates one field, so
+// all its keys share a type:
+//   - floats: f32 fields, vectors, colours, quaternions. xyz for position and
+//     scale, xyzw for rotation, the leading lanes for property channels.
+//     Interpolated and blended
+//   - i64: ints, enums and bools. Exact, held between keys
+//   - PPtr: asset and sub-asset references. A bare Asset_GUID field reads as
+//     a PPtr with local id 0. Held
+//   - string: owned by the row, allocated with the row's own allocator. Held
+//
+// On disk the variant is told by the element type (_channel_values_unmarshal).
+// The zero value is an empty float row.
+Channel_Values :: union #no_nil {
+	[dynamic][4]f32,
+	[dynamic]i64,
+	[dynamic]engine.PPtr,
+	[dynamic]string,
+}
+
+// One key's value, the scalar counterpart of Channel_Values. A string is
+// borrowed from wherever it was read.
+Channel_Value :: union #no_nil {
+	[4]f32,
+	i64,
+	engine.PPtr,
+	string,
+}
+
+// How a float row interpolates from a key to the next one:
+//   - Linear: straight toward the neighbour
+//   - Smooth: tangents from the neighbouring keys (Catmull-Rom style), flat at
+//     the first and last key. Computed at sample time, nothing stored
+//   - Step: holds the key's value until the next key
+//   - Free: the key's own tangents (Animation_Channel.tangents)
+// A segment between two Linear keys is a lerp, any other segment a cubic
+// Hermite curve. Rotation rows slerp and ignore tangents.
+Key_Mode :: enum u8 {
+	Linear,
+	Smooth,
+	Step,
+	Free,
 }
 
 // Whether the channel animates a component field instead of the transform.
@@ -225,8 +283,15 @@ animation_clip_preview :: proc(ref: engine.PPtr, clip: AnimationClip) {
 		}
 		c.times = make([dynamic]f32, len(ch.times))
 		copy(c.times[:], ch.times[:])
-		c.values = make([dynamic][4]f32, len(ch.values))
-		copy(c.values[:], ch.values[:])
+		c.values = animation_channel_values_clone(ch.values)
+		if len(ch.modes) > 0 {
+			c.modes = make([dynamic]Key_Mode, len(ch.modes))
+			copy(c.modes[:], ch.modes[:])
+		}
+		if len(ch.tangents) > 0 {
+			c.tangents = make([dynamic][2][4]f32, len(ch.tangents))
+			copy(c.tangents[:], ch.tangents[:])
+		}
 		append(&cp.channels, c)
 	}
 	animation_clip_cache[ref] = cp
@@ -258,10 +323,247 @@ cleanup_AnimationClip :: proc(clip: ^AnimationClip) {
 		delete(ch.component)
 		delete(ch.field)
 		delete(ch.times)
-		delete(ch.values)
+		animation_channel_values_delete(&ch.values)
+		delete(ch.modes)
+		delete(ch.tangents)
 	}
 	delete(clip.channels)
 	clip^ = {}
+}
+
+// --- Row values ---------------------------------------------------------------------
+//
+// Every change to a row's keys goes through these, so `values`, `modes` and
+// `tangents` stay parallel to `times`.
+
+// The float row of a channel. A channel of another kind is a caller bug.
+animation_channel_floats :: proc(ch: ^Animation_Channel) -> ^[dynamic][4]f32 {
+	f, ok := &ch.values.([dynamic][4]f32)
+	fmt.assertf(ok, "animation: channel %q %q holds %v keys, not floats", ch.target, ch.field, reflect.union_variant_typeid(ch.values))
+	return f
+}
+
+// Whether a channel's keys are floats (interpolated, blended, plotted).
+animation_channel_is_float :: proc(ch: ^Animation_Channel) -> bool {
+	_, ok := ch.values.([dynamic][4]f32)
+	return ok
+}
+
+animation_channel_values_len :: proc(v: Channel_Values) -> int {
+	switch a in v {
+	case [dynamic][4]f32:     return len(a)
+	case [dynamic]i64:        return len(a)
+	case [dynamic]engine.PPtr: return len(a)
+	case [dynamic]string:     return len(a)
+	}
+	unreachable()
+}
+
+// An empty row of the kind `v` belongs to, on context.allocator.
+animation_channel_values_make :: proc(v: Channel_Value) -> Channel_Values {
+	switch _ in v {
+	case [4]f32:      return make([dynamic][4]f32)
+	case i64:         return make([dynamic]i64)
+	case engine.PPtr: return make([dynamic]engine.PPtr)
+	case string:      return make([dynamic]string)
+	}
+	unreachable()
+}
+
+// A deep copy on context.allocator. Strings are cloned.
+animation_channel_values_clone :: proc(v: Channel_Values) -> Channel_Values {
+	switch a in v {
+	case [dynamic][4]f32:
+		c := make([dynamic][4]f32, len(a))
+		copy(c[:], a[:])
+		return c
+	case [dynamic]i64:
+		c := make([dynamic]i64, len(a))
+		copy(c[:], a[:])
+		return c
+	case [dynamic]engine.PPtr:
+		c := make([dynamic]engine.PPtr, len(a))
+		copy(c[:], a[:])
+		return c
+	case [dynamic]string:
+		c := make([dynamic]string, len(a))
+		for str, i in a do c[i] = strings.clone(str, c.allocator)
+		return c
+	}
+	unreachable()
+}
+
+// Frees a row (its strings with it) and leaves it an empty float row.
+animation_channel_values_delete :: proc(v: ^Channel_Values) {
+	switch &a in v {
+	case [dynamic][4]f32:     delete(a)
+	case [dynamic]i64:        delete(a)
+	case [dynamic]engine.PPtr: delete(a)
+	case [dynamic]string:
+		for str in a do delete(str, a.allocator)
+		delete(a)
+	}
+	v^ = [dynamic][4]f32{}
+}
+
+// Key `k`'s value. A string is borrowed from the row.
+animation_channel_value :: proc(ch: ^Animation_Channel, k: int) -> Channel_Value {
+	switch a in ch.values {
+	case [dynamic][4]f32:     return a[k]
+	case [dynamic]i64:        return a[k]
+	case [dynamic]engine.PPtr: return a[k]
+	case [dynamic]string:     return a[k]
+	}
+	unreachable()
+}
+
+// `v` as the row's kind. Floats and ints convert into each other (the first
+// lane, rounded), so a float row on an int field and an int row on a float
+// field both key. Any other mismatch is a caller bug.
+@(private = "file")
+_channel_value_as_row :: proc(ch: ^Animation_Channel, v: Channel_Value) -> Channel_Value {
+	switch _ in ch.values {
+	case [dynamic][4]f32:
+		#partial switch x in v {
+		case [4]f32: return x
+		case i64:    return [4]f32{f32(x), 0, 0, 0}
+		}
+	case [dynamic]i64:
+		#partial switch x in v {
+		case i64:    return x
+		case [4]f32: return i64(math.round(x.x))
+		}
+	case [dynamic]engine.PPtr:
+		if x, ok := v.(engine.PPtr); ok do return x
+	case [dynamic]string:
+		if x, ok := v.(string); ok do return x
+	}
+	fmt.panicf("animation: a %v key cannot go into channel %q %q, which holds %v keys",
+		reflect.union_variant_typeid(v), ch.target, ch.field, reflect.union_variant_typeid(ch.values))
+}
+
+// Sets key `k`'s value. A string is cloned with the row's allocator and the
+// old one freed.
+animation_channel_set_value :: proc(ch: ^Animation_Channel, k: int, v: Channel_Value) {
+	v := _channel_value_as_row(ch, v)
+	switch &a in ch.values {
+	case [dynamic][4]f32:     a[k] = v.([4]f32)
+	case [dynamic]i64:        a[k] = v.(i64)
+	case [dynamic]engine.PPtr: a[k] = v.(engine.PPtr)
+	case [dynamic]string:
+		if a[k] == v.(string) do return
+		delete(a[k], a.allocator)
+		a[k] = strings.clone(v.(string), a.allocator)
+	}
+}
+
+// Inserts a key at index `idx` (the times stay sorted: the caller picks the
+// index). A string is cloned with the row's allocator. When the channel has
+// `modes`, the new key takes the mode of the key before it (the key after it
+// at the front). A Free key gets the curve's slope at `t` on both sides, so
+// a key added to an imported cubic curve keeps its shape.
+animation_channel_insert_key :: proc(ch: ^Animation_Channel, idx: int, t: f32, v: Channel_Value) {
+	mode := Key_Mode.Linear
+	slope: [4]f32
+	if len(ch.modes) > 0 && idx <= len(ch.modes) {
+		src := idx > 0 ? idx - 1 : 0
+		mode = ch.modes[src]
+		if mode == .Free do slope = _animation_channel_slope(ch, t)
+	}
+
+	inject_at(&ch.times, idx, t)
+	_channel_values_inject(ch, idx, v)
+	if len(ch.modes) > 0 && idx <= len(ch.modes) {
+		inject_at(&ch.modes, idx, mode)
+	}
+	if len(ch.tangents) > 0 && idx <= len(ch.tangents) {
+		inject_at(&ch.tangents, idx, [2][4]f32{slope, slope})
+	} else if mode == .Free {
+		// A Free key past the end of `tangents` is flat, so the gap fills
+		// with flat entries before this key's own.
+		for len(ch.tangents) < idx do append(&ch.tangents, [2][4]f32{})
+		append(&ch.tangents, [2][4]f32{slope, slope})
+	}
+}
+
+// Inserts `v` into the row alone at `idx`, converted to the row's kind. A
+// string is cloned with the row's allocator.
+_channel_values_inject :: proc(ch: ^Animation_Channel, idx: int, v: Channel_Value) {
+	v := _channel_value_as_row(ch, v)
+	switch &a in ch.values {
+	case [dynamic][4]f32:     inject_at(&a, idx, v.([4]f32))
+	case [dynamic]i64:        inject_at(&a, idx, v.(i64))
+	case [dynamic]engine.PPtr: inject_at(&a, idx, v.(engine.PPtr))
+	case [dynamic]string:
+		if a.allocator.procedure == nil do a.allocator = context.allocator
+		inject_at(&a, idx, strings.clone(v.(string), a.allocator))
+	}
+}
+
+// Removes key `idx` from every parallel array that reaches it.
+animation_channel_remove_key :: proc(ch: ^Animation_Channel, idx: int) {
+	ordered_remove(&ch.times, idx)
+	switch &a in ch.values {
+	case [dynamic][4]f32:     ordered_remove(&a, idx)
+	case [dynamic]i64:        ordered_remove(&a, idx)
+	case [dynamic]engine.PPtr: ordered_remove(&a, idx)
+	case [dynamic]string:
+		delete(a[idx], a.allocator)
+		ordered_remove(&a, idx)
+	}
+	if idx < len(ch.modes) do ordered_remove(&ch.modes, idx)
+	if idx < len(ch.tangents) do ordered_remove(&ch.tangents, idx)
+}
+
+// --- Row values on disk ------------------------------------------------------------
+//
+// `values` stays one JSON array whatever the row's kind, and the element type
+// tells the kind:
+//   - an array ([x, y, z, w]): floats
+//   - a number: i64
+//   - a string: strings
+//   - an object ({"local_id": ..., "guid": ...}): PPtr
+//   - an empty array: floats
+// A float row writes exactly the array of [x, y, z, w] arrays a clip has
+// always held, so every .anim and every baked artifact reads unchanged.
+
+@(phase={key=SerializationInit, order=1})
+animation_clip_serialization_init :: proc() {
+	@(static) done := false
+	if done do return
+	done = true
+	json.register_user_marshaler(Channel_Values, _channel_values_marshal)
+	json.register_user_unmarshaler(Channel_Values, _channel_values_unmarshal)
+}
+
+// The active variant through the plain writer, so a float row writes the
+// bytes the array writer has always produced.
+@(private = "file")
+_channel_values_marshal :: proc(w: io.Writer, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
+	tid := reflect.union_variant_typeid(v)
+	assert(tid != nil, "animation: Channel_Values is #no_nil")
+	return json.marshal_to_writer(w, any{v.data, tid}, opt)
+}
+
+// Peeks the first element on a copy of the parser to pick the variant, then
+// reads the array straight into it. The destination is never read: unmarshal
+// targets can be uninitialized memory (dynamic-array slots).
+@(private = "file")
+_channel_values_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
+	tid := typeid_of([dynamic][4]f32)
+	if p.curr_token.kind == .Open_Bracket {
+		peek := p^
+		if _, err := json.advance_token(&peek); err != nil do return err
+		#partial switch peek.curr_token.kind {
+		case .Integer, .Float: tid = typeid_of([dynamic]i64)
+		case .String:          tid = typeid_of([dynamic]string)
+		case .Open_Brace:      tid = typeid_of([dynamic]engine.PPtr)
+		}
+	}
+	mem.zero(v.data, size_of(Channel_Values))
+	if err := json.unmarshal_value(p, any{v.data, tid}); err != nil do return err
+	reflect.set_union_variant_typeid(v, tid)
+	return nil
 }
 
 // --- Sampling ---------------------------------------------------------------------
@@ -279,13 +581,13 @@ animation_clip_apply :: proc(clip: ^AnimationClip, owner: engine.Transform_Handl
 		if len(ch.times) == 0 do continue
 		tH, ok := _animation_resolve_target(owner, ch.target)
 		if !ok do continue
-		v := _animation_channel_sample(&ch, time)
 		if animation_channel_is_property(&ch) {
 			ptr, kind, leaf_tid, pok := _prop_locate(tH, ch.component, ch.field)
 			if !pok do continue
-			_prop_write(ptr, kind, leaf_tid, v)
+			_prop_write_value(ptr, kind, leaf_tid, _animation_channel_sample_value(&ch, time))
 			continue
 		}
+		v := _animation_channel_sample(&ch, time)
 		t := engine.pool_get(&w.transforms, engine.Handle(tH))
 		if t == nil do continue
 		switch ch.path {
@@ -326,31 +628,166 @@ _animation_resolve_target :: proc(owner: engine.Transform_Handle, path: string) 
 	return cur, true
 }
 
-// Value at `time`: clamped outside the key range, held (step) or
-// interpolated (lerp, slerp for rotations) between the bracketing keys.
+// Value of a float row at `time`: clamped outside the key range, else
+// interpolated between the bracketing keys per their modes (Key_Mode).
+// Rotation rows slerp, or hold on a Step key. A row of another kind is a
+// caller bug: _animation_channel_sample_value samples any row.
 _animation_channel_sample :: proc(ch: ^Animation_Channel, time: f32) -> [4]f32 {
+	vals := animation_channel_floats(ch)[:]
 	n := len(ch.times)
 	if n == 0 do return {}
-	if time <= ch.times[0] do return ch.values[0]
-	if time >= ch.times[n - 1] do return ch.values[n - 1]
+	if time <= ch.times[0] do return vals[0]
+	if time >= ch.times[n - 1] do return vals[n - 1]
 
-	// Binary search for the last key at or before `time`.
-	lo, hi := 0, n - 1
+	lo, hi := _animation_key_bracket(ch.times[:], time)
+	v, _ := _animation_segment_eval(ch, vals, lo, hi, time)
+	return v
+}
+
+// Value of any row at `time`. Float rows interpolate as
+// _animation_channel_sample does, the other kinds hold the last key at or
+// before `time` (the first key before it). A string is borrowed from the row.
+_animation_channel_sample_value :: proc(ch: ^Animation_Channel, time: f32) -> Channel_Value {
+	switch vals in ch.values {
+	case [dynamic][4]f32:
+		return _animation_channel_sample(ch, time)
+	case [dynamic]i64:
+		if len(vals) == 0 do return i64(0)
+		return vals[_animation_key_hold(ch.times[:], time)]
+	case [dynamic]engine.PPtr:
+		if len(vals) == 0 do return engine.PPtr{}
+		return vals[_animation_key_hold(ch.times[:], time)]
+	case [dynamic]string:
+		if len(vals) == 0 do return ""
+		return vals[_animation_key_hold(ch.times[:], time)]
+	}
+	unreachable()
+}
+
+// Slope of a float row at `time`, in value units per second: the derivative
+// of the segment `time` falls in, 0 outside the key range, on a Step segment
+// and on rotation rows. On a key the segment after it counts, or the one
+// before it with `from_left` (and always at the last key).
+_animation_channel_slope :: proc(ch: ^Animation_Channel, time: f32, from_left := false) -> [4]f32 {
+	vals := animation_channel_floats(ch)[:]
+	n := len(ch.times)
+	if n < 2 || time < ch.times[0] || time > ch.times[n - 1] do return {}
+	lo, hi := _animation_key_bracket(ch.times[:], time)
+	if from_left && lo > 0 && time == ch.times[lo] {
+		lo, hi = lo - 1, lo
+	}
+	_, d := _animation_segment_eval(ch, vals, lo, hi, time)
+	return d
+}
+
+// The bracketing keys of `time`, which lies inside the key range: the last
+// key at or before it and the one after.
+@(private = "file")
+_animation_key_bracket :: proc(times: []f32, time: f32) -> (lo, hi: int) {
+	lo, hi = 0, len(times) - 1
 	for lo + 1 < hi {
 		mid := (lo + hi) / 2
-		if ch.times[mid] <= time do lo = mid
+		if times[mid] <= time do lo = mid
 		else do hi = mid
 	}
-	if ch.step do return ch.values[lo]
+	return
+}
+
+// The key a held row shows at `time`: the last key at or before it, the
+// first key before the first key's time.
+_animation_key_hold :: proc(times: []f32, time: f32) -> int {
+	n := len(times)
+	if n == 0 || time <= times[0] do return 0
+	if time >= times[n - 1] do return n - 1
+	lo, _ := _animation_key_bracket(times, time)
+	return lo
+}
+
+// The interpolation mode of key `k`. A key past the end of `modes` is Linear,
+// or Step when the channel has no `modes` and sets `step`.
+_animation_key_mode :: proc(ch: ^Animation_Channel, k: int) -> Key_Mode {
+	if k < len(ch.modes) do return ch.modes[k]
+	if len(ch.modes) == 0 && ch.step do return .Step
+	return .Linear
+}
+
+// The straight-line slope from key `a` to key `b` of a float row, in value
+// units per second. 0 when `b` is not later than `a`.
+animation_key_slope :: proc(times: []f32, vals: [][4]f32, a, b: int) -> [4]f32 {
+	dt := times[b] - times[a]
+	if dt <= 0 do return {}
+	return (vals[b] - vals[a]) / dt
+}
+
+// The tangents a Smooth key `k` has: the slope between its two neighbours on
+// both sides, flat at the first and last key.
+animation_key_smooth_tangents :: proc(times: []f32, vals: [][4]f32, k: int) -> (tin, tout: [4]f32) {
+	if k > 0 && k < len(vals) - 1 {
+		tin = animation_key_slope(times, vals, k - 1, k + 1)
+		tout = tin
+	}
+	return
+}
+
+// In and out slopes of key `k` of a float row, in value units per second:
+//   - Linear and Step: the slope toward the neighbour on that side
+//   - Smooth: animation_key_smooth_tangents
+//   - Free: the stored tangents, flat past the end of `tangents`
+_animation_key_tangents :: proc(ch: ^Animation_Channel, vals: [][4]f32, k: int) -> (tin, tout: [4]f32) {
+	n := len(vals)
+	switch _animation_key_mode(ch, k) {
+	case .Linear, .Step:
+		if k > 0 do tin = animation_key_slope(ch.times[:], vals, k - 1, k)
+		if k < n - 1 do tout = animation_key_slope(ch.times[:], vals, k, k + 1)
+	case .Smooth:
+		tin, tout = animation_key_smooth_tangents(ch.times[:], vals, k)
+	case .Free:
+		if k < len(ch.tangents) {
+			tin = ch.tangents[k][0]
+			tout = ch.tangents[k][1]
+		}
+	}
+	return
+}
+
+// Value and slope (per second) of the segment from key `lo` to key `hi` at
+// `time`, which lies between them.
+@(private = "file")
+_animation_segment_eval :: proc(ch: ^Animation_Channel, vals: [][4]f32, lo, hi: int, time: f32) -> (v, d: [4]f32) {
+	ma := _animation_key_mode(ch, lo)
+	if ma == .Step do return vals[lo], {}
 
 	span := ch.times[hi] - ch.times[lo]
-	k := span > 0 ? (time - ch.times[lo]) / span : 0
-	if ch.path == .Rotation {
-		a := engine.quat_to_native(ch.values[lo])
-		b := engine.quat_to_native(ch.values[hi])
-		return engine.quat_from_native(linalg.quaternion_slerp(a, b, k))
+	if span <= 0 do return vals[hi], {}
+	s := (time - ch.times[lo]) / span
+	if ch.path == .Rotation && !animation_channel_is_property(ch) {
+		a := engine.quat_to_native(vals[lo])
+		b := engine.quat_to_native(vals[hi])
+		return engine.quat_from_native(linalg.quaternion_slerp(a, b, s)), {}
 	}
-	return linalg.lerp(ch.values[lo], ch.values[hi], k)
+	mb := _animation_key_mode(ch, hi)
+	if ma == .Linear && (mb == .Linear || mb == .Step) {
+		return linalg.lerp(vals[lo], vals[hi], s), (vals[hi] - vals[lo]) / span
+	}
+
+	// Cubic Hermite with A's out slope and B's in slope, scaled to the segment.
+	_, out_a := _animation_key_tangents(ch, vals, lo)
+	in_b, _ := _animation_key_tangents(ch, vals, hi)
+	m0 := out_a * span
+	m1 := in_b * span
+	s2 := s * s
+	s3 := s2 * s
+	h00 := 2 * s3 - 3 * s2 + 1
+	h10 := s3 - 2 * s2 + s
+	h01 := -2 * s3 + 3 * s2
+	h11 := s3 - s2
+	v = h00 * vals[lo] + h10 * m0 + h01 * vals[hi] + h11 * m1
+	d00 := 6 * s2 - 6 * s
+	d10 := 3 * s2 - 4 * s + 1
+	d01 := -6 * s2 + 6 * s
+	d11 := 3 * s2 - 2 * s
+	d = (d00 * vals[lo] + d10 * m0 + d01 * vals[hi] + d11 * m1) / span
+	return
 }
 
 // Play position for a raw time per the wrap mode; done=true when a Once clip

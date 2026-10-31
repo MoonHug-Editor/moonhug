@@ -26,7 +26,7 @@ _make_test_clip :: proc(alloc := context.allocator) -> anim.AnimationClip {
 	pos.times = make([dynamic]f32, alloc)
 	pos.values = make([dynamic][4]f32, alloc)
 	append(&pos.times, 0, 1)
-	append(&pos.values, [4]f32{0, 0, 0, 0}, [4]f32{2, 0, 0, 0})
+	append(&pos.values.([dynamic][4]f32), [4]f32{0, 0, 0, 0}, [4]f32{2, 0, 0, 0})
 	append(&clip.channels, pos)
 
 	arm := anim.Animation_Channel{path = .Scale, step = true}
@@ -35,7 +35,7 @@ _make_test_clip :: proc(alloc := context.allocator) -> anim.AnimationClip {
 	arm.times = make([dynamic]f32, alloc)
 	arm.values = make([dynamic][4]f32, alloc)
 	append(&arm.times, 0, 0.5)
-	append(&arm.values, [4]f32{1, 1, 1, 0}, [4]f32{3, 3, 3, 0})
+	append(&arm.values.([dynamic][4]f32), [4]f32{1, 1, 1, 0}, [4]f32{3, 3, 3, 0})
 	append(&clip.channels, arm)
 	return clip
 }
@@ -134,11 +134,11 @@ test_animation_clip_from_gltf :: proc(t: ^testing.T) {
 	pos := clip.channels[0]
 	testing.expect(t, pos.target == "Root/Cube", "target should be the node name path")
 	testing.expect(t, pos.path == .Position, "first channel should be position")
-	testing.expect(t, len(pos.times) == 2 && pos.values[1] == [4]f32{2, 0, 0, 0}, "position keys should unpack")
+	testing.expect(t, len(pos.times) == 2 && pos.values.([dynamic][4]f32)[1] == [4]f32{2, 0, 0, 0}, "position keys should unpack")
 
 	rot := clip.channels[1]
 	testing.expect(t, rot.path == .Rotation, "second channel should be rotation")
-	testing.expect(t, abs(rot.values[1].z - 0.7071) < 0.001 && abs(rot.values[1].w - 0.7071) < 0.001,
+	testing.expect(t, abs(rot.values.([dynamic][4]f32)[1].z - 0.7071) < 0.001 && abs(rot.values.([dynamic][4]f32)[1].w - 0.7071) < 0.001,
 		"rotation quat should unpack xyzw")
 }
 

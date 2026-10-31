@@ -22,8 +22,9 @@ package animation_editor
 // _record_add_key below) keys the value the field shows without Record armed.
 //
 // An entry that cannot be keyed stays an ordinary scene edit with its own undo:
-//   - the field type is not animatable (a string, a reference, an array). The
-//     window shows a note under the toolbar while Record is armed
+//   - the field type is not animatable (an array, a plain struct, a Ref,
+//     Ref_Local or Owned reference). The window shows a note under the
+//     toolbar while Record is armed
 //   - the object is neither the animated object nor under it
 //   - the window has no clip document (a clip inside a model is read-only)
 
@@ -163,7 +164,8 @@ _record_key_of :: proc(e: undo.Edit_Commit) -> (k: _Record_Key, ok: bool) {
 // changes the object only from where the key was recorded.
 @(private = "file")
 _record_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, k: _Record_Key, e: undo.Edit_Commit) {
-	edited := anim._prop_read(e.ptr, k.kind, k.leaf)
+	// A string is borrowed from the live field: the row clones it.
+	edited := anim._prop_read_value(e.ptr, k.kind, k.leaf)
 	idx := _record_find_channel(clip, k)
 	if idx < 0 {
 		if k.property {
@@ -173,7 +175,10 @@ _record_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, k: _Re
 		}
 		idx = _record_find_channel(clip, k)
 		assert(idx >= 0, "record: the new row is in the clip")
-		clip.channels[idx].values[0] = _record_old_value(e, k)
+		old := _record_old_value(e, k)
+		// The decoded string is the scratch's, on context.allocator.
+		defer if str, is_str := old.(string); is_str do delete(str)
+		anim.animation_channel_set_value(&clip.channels[idx], 0, old)
 	}
 	_pv_add_key(doc, clip, idx, _pv.time, edited)
 }
@@ -192,14 +197,15 @@ _record_find_channel :: proc(clip: ^anim.AnimationClip, k: _Record_Key) -> int {
 }
 
 // The field's value from before the edit, decoded from the session's payload
-// into a scratch of the field's own type.
+// into a scratch of the field's own type. A string is the decoded copy, on
+// context.allocator, for the caller to free.
 @(private = "file")
-_record_old_value :: proc(e: undo.Edit_Commit, k: _Record_Key) -> [4]f32 {
-	scratch: [2]u64 // the largest animatable type is [4]f32, aligned for an i64
+_record_old_value :: proc(e: undo.Edit_Commit, k: _Record_Key) -> anim.Channel_Value {
+	scratch: [4]u64 // the largest animatable type is a PPtr (24 bytes), aligned for an i64
 	assert(size_of(scratch) >= type_info_of(k.leaf).size, "record: an animatable field fits the scratch")
 	ok := undo.write_json_value(&scratch, k.leaf, e.old_json, {})
 	assert(ok, "record: the old value decodes")
-	return anim._prop_read(&scratch, k.kind, k.leaf)
+	return anim._prop_read_value(&scratch, k.kind, k.leaf)
 }
 
 // The name path from the animated object down to `tH`, the shape Add Property
@@ -300,11 +306,17 @@ _record_field_key :: proc(owner: engine.Handle, field_offset: uintptr, field_tid
 }
 
 // Samples the field's row at the playhead.
+//
+// A string field is never driven: the inspector's string drawer frees the
+// string in the buffer it draws on when it is edited, and a driven string
+// would be the clip's own. The field shows its own value, and recording and
+// Add Key still key it.
 @(private = "file")
 _record_driven :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid, out: rawptr) -> (driven: bool, editable: bool) {
 	// State preview poses from an authored state, not from the shown clip.
 	if !_pv.active || _pv.entry != 0 || _pv.clip == {} do return false, false
-	if _, kok := anim._prop_kind_of(field_tid); !kok do return false, false
+	kind, kok := anim._prop_kind_of(field_tid)
+	if !kok || kind == .Text do return false, false
 	doc, clip := _pv_doc()
 	if clip == nil || len(clip.channels) == 0 do return false, false
 
@@ -312,10 +324,12 @@ _record_driven :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: t
 	if !ok do return false, false
 	idx := _record_find_channel(clip, k)
 	if idx < 0 do return false, false
-	v := anim._animation_channel_sample(&clip.channels[idx], _pv.time)
 	if k.property {
-		anim._prop_write(out, k.kind, field_tid, v)
-	} else if k.path == .Rotation {
+		anim._prop_write_value(out, k.kind, field_tid, anim._animation_channel_sample_value(&clip.channels[idx], _pv.time))
+		return true, _pv.recording && doc != nil
+	}
+	v := anim._animation_channel_sample(&clip.channels[idx], _pv.time)
+	if k.path == .Rotation {
 		(cast(^[4]f32)out)^ = v
 	} else {
 		(cast(^[3]f32)out)^ = v.xyz
@@ -406,8 +420,7 @@ _record_delete_key :: proc(owner: engine.Handle, field_offset: uintptr, field_ti
 	{
 		context.allocator = inspector.doc_alloc()
 		ch := &clip.channels[row]
-		ordered_remove(&ch.times, key)
-		ordered_remove(&ch.values, key)
+		anim.animation_channel_remove_key(ch, key)
 		if len(ch.times) == 0 {
 			_pv_channel_remove(clip, row)
 			_pv_deselect()
@@ -425,8 +438,9 @@ _record_add_key :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: 
 	k, ok := _record_field_key(owner, field_offset, field_tid)
 	if !ok do return false
 
-	edited := anim._prop_read(value, k.kind, k.leaf)
-	if !k.property && k.path == .Rotation do edited = _record_normalized(edited)
+	// A string is borrowed from `value`: the row clones it.
+	edited := anim._prop_read_value(value, k.kind, k.leaf)
+	if !k.property && k.path == .Rotation do edited = _record_normalized(edited.([4]f32))
 
 	_record_busy = true
 	defer _record_busy = false

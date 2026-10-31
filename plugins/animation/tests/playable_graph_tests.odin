@@ -21,7 +21,7 @@ _const_clip :: proc(path: anim.Animation_Path, value: [4]f32, length: f32 = 1, w
 	ch.times = make([dynamic]f32)
 	ch.values = make([dynamic][4]f32)
 	append(&ch.times, 0)
-	append(&ch.values, value)
+	append(&ch.values.([dynamic][4]f32), value)
 	append(&clip.channels, ch)
 	return clip
 }
@@ -415,9 +415,9 @@ test_playable_scrub_preview_cycle :: proc(t: ^testing.T) {
 	ch.times = make([dynamic]f32)
 	ch.values = make([dynamic][4]f32)
 	append(&ch.times, 0)
-	append(&ch.values, [4]f32{0, 0, 0, 0})
+	append(&ch.values.([dynamic][4]f32), [4]f32{0, 0, 0, 0})
 	append(&ch.times, 1)
-	append(&ch.values, [4]f32{8, 0, 0, 0})
+	append(&ch.values.([dynamic][4]f32), [4]f32{8, 0, 0, 0})
 	append(&clip.channels, ch)
 	anim.animation_clip_cache[engine.PPtr{guid = guid}] = clip
 
@@ -483,12 +483,12 @@ test_animation_clip_preview_replaces_cache :: proc(t: ^testing.T) {
 	cached, ok := anim.animation_clip_load(engine.PPtr{guid = guid})
 	testing.expect(t, ok, "cache entry survives the preview swap")
 	testing.expect(t, abs(cached.length - 2) < 0.001, "preview replaced the cached length")
-	testing.expect(t, abs(cached.channels[0].values[0].x - 7) < 0.001, "preview replaced the cached values")
+	testing.expect(t, abs(cached.channels[0].values.([dynamic][4]f32)[0].x - 7) < 0.001, "preview replaced the cached values")
 
 	// Independence: mutating the source must not reach the cache.
-	doc.channels[0].values[0].x = 9
+	doc.channels[0].values.([dynamic][4]f32)[0].x = 9
 	cached2, _ := anim.animation_clip_load(engine.PPtr{guid = guid})
-	testing.expect(t, abs(cached2.channels[0].values[0].x - 7) < 0.001, "cache copy is deep")
+	testing.expect(t, abs(cached2.channels[0].values.([dynamic][4]f32)[0].x - 7) < 0.001, "cache copy is deep")
 }
 
 // A two-key linear ramp clip: `prop` goes a -> b over `length`.
@@ -499,7 +499,7 @@ _ramp_clip :: proc(path: anim.Animation_Path, a, b: [4]f32, length: f32 = 1, wra
 	ch.times = make([dynamic]f32)
 	ch.values = make([dynamic][4]f32)
 	append(&ch.times, 0, length)
-	append(&ch.values, a, b)
+	append(&ch.values.([dynamic][4]f32), a, b)
 	append(&clip.channels, ch)
 	return clip
 }

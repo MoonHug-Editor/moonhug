@@ -24,7 +24,7 @@ _const_clip :: proc(path: anim.Animation_Path, value: [4]f32, length: f32 = 1, w
 	ch.times = make([dynamic]f32)
 	ch.values = make([dynamic][4]f32)
 	append(&ch.times, 0)
-	append(&ch.values, value)
+	append(&ch.values.([dynamic][4]f32), value)
 	append(&clip.channels, ch)
 	return clip
 }
@@ -37,7 +37,7 @@ _ramp_clip :: proc(path: anim.Animation_Path, a, b: [4]f32, length: f32 = 1, wra
 	ch.times = make([dynamic]f32)
 	ch.values = make([dynamic][4]f32)
 	append(&ch.times, 0, length)
-	append(&ch.values, a, b)
+	append(&ch.values.([dynamic][4]f32), a, b)
 	append(&clip.channels, ch)
 	return clip
 }

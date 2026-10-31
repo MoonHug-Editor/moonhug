@@ -27,7 +27,7 @@ _sr_channel :: proc(target: string, path: anim.Animation_Path, times: []f32, fie
 	ch.values = make([dynamic][4]f32, context.temp_allocator)
 	for t in times {
 		append(&ch.times, t)
-		append(&ch.values, [4]f32{})
+		append(&ch.values.([dynamic][4]f32), [4]f32{})
 	}
 	return ch
 }

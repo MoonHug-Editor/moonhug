@@ -164,10 +164,10 @@ test_record_keys_a_field_without_a_row :: proc(t: ^testing.T) {
 	testing.expect_value(t, ch.field, "intensity")
 	at := _key_at(ch, 0.5)
 	testing.expect(t, at >= 0, "a key at the playhead")
-	if at >= 0 do testing.expect_value(t, ch.values[at].x, 5)
+	if at >= 0 do testing.expect_value(t, ch.values.([dynamic][4]f32)[at].x, 5)
 	start := _key_at(ch, 0)
 	testing.expect(t, start >= 0, "the new row starts at the clip start")
-	if start >= 0 do testing.expect_value(t, ch.values[start].x, 1)
+	if start >= 0 do testing.expect_value(t, ch.values.([dynamic][4]f32)[start].x, 1)
 	testing.expect_value(t, light.intensity, 1)
 
 	testing.expect_value(t, s.top, before + 1)
@@ -181,7 +181,7 @@ test_record_keys_a_field_without_a_row :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(clip.channels), 1)
 	if len(clip.channels) == 1 {
 		at = _key_at(&clip.channels[0], 0.5)
-		testing.expect(t, at >= 0 && clip.channels[0].values[at].x == 5, "redo restores the key")
+		testing.expect(t, at >= 0 && clip.channels[0].values.([dynamic][4]f32)[at].x == 5, "redo restores the key")
 	}
 	testing.expect_value(t, light.intensity, 1)
 }
@@ -218,16 +218,17 @@ test_record_keys_a_transform_drag :: proc(t: ^testing.T) {
 	testing.expect(t, !anim.animation_channel_is_property(ch), "a transform row")
 	testing.expect_value(t, ch.path, anim.Animation_Path.Position)
 	at := _key_at(ch, 1)
-	testing.expect(t, at >= 0 && ch.values[at].xyz == [3]f32{1, 2, 3}, "the key at the playhead holds the dragged position")
+	testing.expect(t, at >= 0 && ch.values.([dynamic][4]f32)[at].xyz == [3]f32{1, 2, 3}, "the key at the playhead holds the dragged position")
 	testing.expect_value(t, tr.position, [3]f32{0, 0, 0})
 	testing.expect_value(t, s.top, before + 1)
 	testing.expect(t, !_has_scene_value(s.items[s.top - 1].cmd), "no scene value step")
 }
 
-// A string field cannot be keyed: the edit stays a scene edit and the window
-// says why.
+// A string field keys a string row: the key at the playhead holds the typed
+// text, the key at the clip start the camera's own, the camera keeps its own
+// value, and undo and redo take the row away and bring it back.
 @(test)
-test_record_leaves_a_string_edit_alone :: proc(t: ^testing.T) {
+test_record_keys_a_string_edit :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	s := common.setup_undo(tc)
@@ -241,6 +242,7 @@ test_record_leaves_a_string_edit_alone :: proc(t: ^testing.T) {
 	eye := engine.transform_new("Eye", root)
 	_, cp := engine.transform_add_comp(eye, .Camera)
 	cam := cast(^engine.Camera)cp
+	own := strings.clone(cam.slot, context.temp_allocator)
 	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5)
 
 	before := s.top
@@ -256,11 +258,32 @@ test_record_leaves_a_string_edit_alone :: proc(t: ^testing.T) {
 		common.row_replay(&h, []common.Frame{common.frame_press(_write_slot), common.frame_release()})
 	}
 
-	testing.expect_value(t, cam.slot, "Main")
-	testing.expect_value(t, len(_rec_clip(doc).channels), 0)
+	testing.expect_value(t, cam.slot, own)
 	testing.expect_value(t, s.top, before + 1)
-	testing.expect(t, _has_scene_value(s.items[s.top - 1].cmd), "a scene value step")
-	testing.expect_value(t, animation_editor.animation_record_note(), "Cannot key slot: string is not animatable")
+	testing.expect(t, !_has_scene_value(s.items[s.top - 1].cmd), "no scene value step")
+	clip := _rec_clip(doc)
+	testing.expect_value(t, len(clip.channels), 1)
+	if len(clip.channels) != 1 do return
+	ch := &clip.channels[0]
+	testing.expect_value(t, ch.field, "slot")
+	strs, is_str := ch.values.([dynamic]string)
+	testing.expect(t, is_str, "a string row")
+	if !is_str do return
+	at := _key_at(ch, 0.5)
+	start := _key_at(ch, 0)
+	testing.expect(t, at >= 0 && strs[at] == "Main", "the key at the playhead holds the typed text")
+	testing.expect(t, start >= 0 && strs[start] == own, "the key at the clip start holds the camera's own text")
+
+	testing.expect(t, undo.apply_undo(s), "undo")
+	testing.expect_value(t, len(_rec_clip(doc).channels), 0)
+	testing.expect(t, undo.apply_redo(s), "redo")
+	clip = _rec_clip(doc)
+	testing.expect_value(t, len(clip.channels), 1)
+	if len(clip.channels) == 1 {
+		strs2, ok2 := clip.channels[0].values.([dynamic]string)
+		at = _key_at(&clip.channels[0], 0.5)
+		testing.expect(t, ok2 && at >= 0 && strs2[at] == "Main", "redo restores the string key")
+	}
 }
 
 // An object outside the animated object's subtree is not the clip's to key.
@@ -338,7 +361,7 @@ _rec_add_row :: proc(clip: ^anim.AnimationClip, ch: anim.Animation_Channel, keys
 	c.times = make([dynamic]f32)
 	c.values = make([dynamic][4]f32)
 	for k in keys do append(&c.times, k)
-	for v in values do append(&c.values, v)
+	for v in values do append(&c.values.([dynamic][4]f32), v)
 	append(&clip.channels, c)
 }
 
@@ -474,11 +497,11 @@ test_row_value_keys_at_the_playhead :: proc(t: ^testing.T) {
 	animation_editor.animation_record_key_row(0, {9, 0, 0, 0})
 	ch := &_rec_clip(doc).channels[0]
 	testing.expect_value(t, len(ch.times), 2)
-	testing.expect_value(t, ch.values[1].x, 9)
+	testing.expect_value(t, ch.values.([dynamic][4]f32)[1].x, 9)
 	testing.expect_value(t, s.top, before + 1)
 	testing.expect(t, undo.apply_undo(s), "undo")
 	ch = &_rec_clip(doc).channels[0]
-	testing.expect_value(t, ch.values[1].x, 3)
+	testing.expect_value(t, ch.values.([dynamic][4]f32)[1].x, 3)
 
 	// No key at the playhead: one is added between the others.
 	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = false)
@@ -488,7 +511,7 @@ test_row_value_keys_at_the_playhead :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(ch.times), 3)
 	at := _key_at(ch, 0.5)
 	testing.expect_value(t, at, 1)
-	if at >= 0 do testing.expect_value(t, ch.values[at].x, 4)
+	if at >= 0 do testing.expect_value(t, ch.values.([dynamic][4]f32)[at].x, 4)
 	testing.expect_value(t, s.top, before + 1)
 	testing.expect(t, undo.apply_undo(s), "undo")
 	testing.expect_value(t, len(_rec_clip(doc).channels[0].times), 2)
@@ -530,7 +553,7 @@ test_driven_row_through_the_inspector :: proc(t: ^testing.T) {
 	ch := &_rec_clip(doc).channels[0]
 	at := _key_at(ch, 0.5)
 	testing.expect(t, at >= 0, "a key at the playhead")
-	if at >= 0 do testing.expect_value(t, ch.values[at].x, 5)
+	if at >= 0 do testing.expect_value(t, ch.values.([dynamic][4]f32)[at].x, 5)
 }
 
 @(private = "file")
@@ -574,7 +597,7 @@ test_driven_commit_keys_the_objects_own_value :: proc(t: ^testing.T) {
 	ch := &_rec_clip(doc).channels[0]
 	at := _key_at(ch, 1)
 	testing.expect(t, at >= 0, "a key at the playhead")
-	if at >= 0 do testing.expect_value(t, ch.values[at].xyz, [3]f32{1, 1, 1})
+	if at >= 0 do testing.expect_value(t, ch.values.([dynamic][4]f32)[at].xyz, [3]f32{1, 1, 1})
 	testing.expect_value(t, tr.scale, [3]f32{1, 1, 1})
 	testing.expect_value(t, s.top, before + 1)
 	testing.expect(t, !_has_scene_value(s.items[s.top - 1].cmd), "no scene value step")
@@ -628,7 +651,7 @@ test_driven_row_keys_the_objects_own_value :: proc(t: ^testing.T) {
 	ch := &_rec_clip(doc).channels[0]
 	at := _key_at(ch, 0.5)
 	testing.expect(t, at >= 0, "a key at the playhead")
-	if at >= 0 do testing.expect_value(t, ch.values[at].x, 1)
+	if at >= 0 do testing.expect_value(t, ch.values.([dynamic][4]f32)[at].x, 1)
 	testing.expect_value(t, light.intensity, 1)
 	testing.expect_value(t, s.top, before + 1)
 	testing.expect(t, !_has_scene_value(s.items[s.top - 1].cmd), "no scene value step")
@@ -657,7 +680,7 @@ test_rotation_row_euler_round_trip :: proc(t: ^testing.T) {
 	at := _key_at(ch, 1)
 	testing.expect(t, at >= 0, "a key at the playhead")
 	if at < 0 do return
-	q := ch.values[at]
+	q := ch.values.([dynamic][4]f32)[at]
 	testing.expect(t, abs(linalg.length(q) - 1) < 1e-4, "the key is a unit quaternion")
 	e := engine.quat_to_euler_xyz(q)
 	EPS :: f32(0.01)
@@ -744,10 +767,10 @@ test_add_key_with_record_off_keys_the_live_value :: proc(t: ^testing.T) {
 	testing.expect_value(t, ch.field, "intensity")
 	at := _key_at(ch, 0.5)
 	testing.expect(t, at >= 0, "a key at the playhead")
-	if at >= 0 do testing.expect_value(t, ch.values[at].x, 3)
+	if at >= 0 do testing.expect_value(t, ch.values.([dynamic][4]f32)[at].x, 3)
 	start := _key_at(ch, 0)
 	testing.expect(t, start >= 0, "the new row starts at the clip start")
-	if start >= 0 do testing.expect_value(t, ch.values[start].x, 3)
+	if start >= 0 do testing.expect_value(t, ch.values.([dynamic][4]f32)[start].x, 3)
 	testing.expect_value(t, light.intensity, 3)
 	testing.expect_value(t, s.top, before + 1)
 	testing.expect(t, !_has_scene_value(s.items[s.top - 1].cmd), "no scene value step")

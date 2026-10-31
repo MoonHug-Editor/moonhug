@@ -2,13 +2,14 @@ package animation
 
 // Property channel resolution (clip.odin holds the channel format): turning a
 // channel's (component guid, dotted field path) into a live memory location
-// and moving [4]f32 values in and out of it.
+// and moving key values (Channel_Value) in and out of it.
 //
-// The value kind derives from the LIVE field typeid at resolve time — the
-// file stores untyped floats, so a channel whose component or field no longer
-// resolves is skipped (same rule as unresolved transform targets). The one
-// undetected edge is a field retyped IN PLACE to another animatable type: old
-// float data then applies under the new interpretation.
+// The value kind derives from the LIVE field typeid at resolve time, so a
+// channel whose component or field no longer resolves is skipped (same rule
+// as unresolved transform targets). A row whose kind does not fit the field
+// writes nothing, except that floats and ints convert into each other. The
+// one undetected edge is a field retyped IN PLACE to another animatable type
+// of the same row kind: old data then applies under the new interpretation.
 //
 // The resolved location is (component handle, byte offset) — never a cached
 // pointer, since pools relocate on growth. Field paths walk plain struct
@@ -17,30 +18,42 @@ package animation
 
 import "base:runtime"
 import "core:encoding/uuid"
+import "core:fmt"
 import "core:math"
 import "core:reflect"
 import "core:strings"
 import "moonhug:packages/engine"
 
+// The kind of an animatable field. F32 to Vec4 key a float row, Bool and Int
+// an i64 row, Ref a PPtr row, Text a string row.
 Prop_Kind :: enum u8 {
 	F32,
 	Vec2,
 	Vec3,
 	Vec4,
 	Bool,
-	Int, // ints and enums
+	Int,  // ints and enums
+	Ref,  // an engine.PPtr or engine.Asset_GUID field
+	Text, // a string field
 }
 
 // Discrete kinds hold instead of lerp and take the highest-weight contributor
 // instead of accumulating in the mixer.
 prop_kind_discrete :: proc(kind: Prop_Kind) -> bool {
-	return kind == .Bool || kind == .Int
+	switch kind {
+	case .Bool, .Int, .Ref, .Text: return true
+	case .F32, .Vec2, .Vec3, .Vec4:
+	}
+	return false
 }
 
-// The animatable kind of a field type, unwrapping named aliases. References,
-// strings, and structs are not animatable.
+// The animatable kind of a field type, unwrapping named aliases. PPtr and
+// Asset_GUID are Ref. Every other reference type (Ref, Ref_Local, Owned) and
+// plain structs are not animatable.
 _prop_kind_of :: proc(tid: typeid) -> (Prop_Kind, bool) {
+	if tid == typeid_of(engine.PPtr) || tid == typeid_of(engine.Asset_GUID) do return .Ref, true
 	ti := runtime.type_info_base(type_info_of(tid))
+	if ti.id == typeid_of(string) do return .Text, true
 	#partial switch v in ti.variant {
 	case runtime.Type_Info_Float:
 		if ti.size == 4 do return .F32, true
@@ -104,7 +117,6 @@ _prop_path_of_offset :: proc(tid: typeid, offset: uintptr, want: typeid) -> (pat
 	path, leaf = _prop_path_walk(tid, offset, want, "", 0)
 	if leaf == nil do return "", nil, false
 	_, ok = _prop_kind_of(leaf)
-	if ok && _prop_is_reference(leaf) do ok = false
 	return
 }
 
@@ -123,7 +135,8 @@ _prop_path_walk :: proc(tid: typeid, offset: uintptr, want: typeid, prefix: stri
 		if offset < lo || offset >= hi do continue
 		ftid := types[i].id
 		full := prefix == "" ? names[i] : strings.concatenate({prefix, ".", names[i]}, context.temp_allocator)
-		// A reference is one value: an offset inside it names the reference.
+		// A reference is one value: an offset inside it names the reference
+		// (animatable for a PPtr, not for the others).
 		if _prop_is_reference(ftid) {
 			if offset == lo do return full, ftid
 			return "", nil
@@ -198,7 +211,9 @@ _int_spec :: proc(leaf: typeid) -> (size: int, signed: bool) {
 	return 8, true
 }
 
-// Read the live field into [4]f32 lanes (defaults capture).
+// Read a float, bool or int field into [4]f32 lanes (a bool or int in the
+// first lane). A Ref or Text field has no lanes: _prop_read_value reads
+// every kind.
 _prop_read :: proc(ptr: rawptr, kind: Prop_Kind, leaf: typeid) -> [4]f32 {
 	v: [4]f32
 	switch kind {
@@ -212,11 +227,13 @@ _prop_read :: proc(ptr: rawptr, kind: Prop_Kind, leaf: typeid) -> [4]f32 {
 	case .Int:
 		size, signed := _int_spec(leaf)
 		v.x = f32(_load_int(ptr, size, signed))
+	case .Ref, .Text:
+		fmt.panicf("animation: a %v field has no float lanes", kind)
 	}
 	return v
 }
 
-// Write [4]f32 lanes back into the live field.
+// Write [4]f32 lanes back into a float, bool or int field.
 _prop_write :: proc(ptr: rawptr, kind: Prop_Kind, leaf: typeid, v: [4]f32) {
 	switch kind {
 	case .F32:  (cast(^f32)ptr)^ = v.x
@@ -229,6 +246,75 @@ _prop_write :: proc(ptr: rawptr, kind: Prop_Kind, leaf: typeid, v: [4]f32) {
 	case .Int:
 		size, _ := _int_spec(leaf)
 		_store_int(ptr, size, i64(math.round(v.x)))
+	case .Ref, .Text:
+		fmt.panicf("animation: a %v field has no float lanes", kind)
+	}
+}
+
+// Read the live field as the key value its row holds: floats for F32 to Vec4,
+// i64 for Bool and Int, a PPtr for Ref (an Asset_GUID field reads with local
+// id 0), the field's own string for Text (borrowed, not cloned).
+_prop_read_value :: proc(ptr: rawptr, kind: Prop_Kind, leaf: typeid) -> Channel_Value {
+	switch kind {
+	case .F32, .Vec2, .Vec3, .Vec4:
+		return _prop_read(ptr, kind, leaf)
+	case .Bool:
+		size, _ := _int_spec(leaf)
+		return i64(_load_int(ptr, size, false) != 0 ? 1 : 0)
+	case .Int:
+		size, signed := _int_spec(leaf)
+		return _load_int(ptr, size, signed)
+	case .Ref:
+		if leaf == typeid_of(engine.Asset_GUID) do return engine.PPtr{guid = (cast(^engine.Asset_GUID)ptr)^}
+		return (cast(^engine.PPtr)ptr)^
+	case .Text:
+		return (cast(^string)ptr)^
+	}
+	unreachable()
+}
+
+// Write a key value into the live field. Floats and ints convert into each
+// other (the first lane, rounded). A value of any other kind than the field's
+// writes nothing: the row no longer matches the field's type.
+//
+// A Text field owns its string on context.allocator, as every component
+// string does (scene load, undo and the inspector allocate it there): a new
+// value frees the old string and stores a clone. An equal value writes
+// nothing, so a held key does not allocate every frame.
+_prop_write_value :: proc(ptr: rawptr, kind: Prop_Kind, leaf: typeid, v: Channel_Value) {
+	switch kind {
+	case .F32, .Vec2, .Vec3, .Vec4:
+		#partial switch x in v {
+		case [4]f32: _prop_write(ptr, kind, leaf, x)
+		case i64:    _prop_write(ptr, kind, leaf, {f32(x), 0, 0, 0})
+		}
+	case .Bool:
+		size, _ := _int_spec(leaf)
+		#partial switch x in v {
+		case i64:    _store_int(ptr, size, x != 0 ? 1 : 0)
+		case [4]f32: _store_int(ptr, size, x.x > 0.5 ? 1 : 0)
+		}
+	case .Int:
+		size, _ := _int_spec(leaf)
+		#partial switch x in v {
+		case i64:    _store_int(ptr, size, x)
+		case [4]f32: _store_int(ptr, size, i64(math.round(x.x)))
+		}
+	case .Ref:
+		x, ok := v.(engine.PPtr)
+		if !ok do return
+		if leaf == typeid_of(engine.Asset_GUID) {
+			(cast(^engine.Asset_GUID)ptr)^ = x.guid
+		} else {
+			(cast(^engine.PPtr)ptr)^ = x
+		}
+	case .Text:
+		x, ok := v.(string)
+		if !ok do return
+		field := cast(^string)ptr
+		if field^ == x do return
+		delete(field^)
+		field^ = strings.clone(x)
 	}
 }
 

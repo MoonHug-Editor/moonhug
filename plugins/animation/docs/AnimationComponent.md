@@ -300,7 +300,7 @@ While Record is armed, an edit of an animatable field keys the clip at the playh
 
 An edit that cannot be keyed stays an ordinary scene edit with its own undo step:
 
-- the field type is not animatable (a string, a reference, an array). The window shows a note under the toolbar, for example "Cannot key slot: string is not animatable", until the next note or until Record is disarmed
+- the field type is not animatable (an array, a plain struct, a `Ref`, `Ref_Local` or `Owned` reference). The window shows a note under the toolbar naming the field and its type, until the next note or until Record is disarmed
 - the object is neither the animated object nor under it
 - the clip has no document (a clip inside a model is read-only, and Record is off for it)
 
@@ -314,12 +314,38 @@ The preview poses the object only around the scene and game render, so the live 
 - Record armed: the field shows the clip's value in red. When a drag is released or a typed value lands, the edited value is keyed at the playhead through `inspector.driven_commit`, one undo step on the clip. The object's own value, the scene undo stack, the prefab overrides and the other selected objects are not touched. A value equal to the object's own value is keyed like any other.
 - A field without a row, an object outside the animated object, a state preview from the States tree, or the preview off: the field shows the object's own value as usual.
 - Rotation shows the euler angles (degrees) of the clip's quaternion, and an edit keys the quaternion built from them.
+- A string field is never driven: the inspector's string drawer frees the string it edits, and a driven string would be the clip's own. The field shows the object's own value, and recording and Add Key still key it.
 - A row drawn by a decorator (a color swatch, a range slider) shows the clip's value the same way and keys an edit the same way.
 - While the window shows a clip, preview on or off and Record armed or not, a field the clip has a row for and the preview does not drive now has a dimmed green bar left of its label (`inspector.driven_row_state`). A driven field shows the driven tint and bar instead.
 - While recording, the field's context menu has "Add Key" (`inspector.driven_add_key`) for an animatable field on the animated object or under it, when the clip has a document. It keys the value the field shows at the playhead, creating the row when missing, in one undo step. On a driven field that is the clip's value, so the key pins the current pose. When the playhead's frame already has a key for the row, the item is "Delete Key" (`inspector.driven_delete_key`) instead, and a row left without keys goes with it. The transform rows have both too.
 - A driven field whose row has a key on the playhead's frame shows a filled diamond beside its bar. No key, no diamond.
 
-Each property row in the window shows its value at the playhead after its name: one small field per lane (a vec3 three, a bool a checkbox, an int or enum an int field). A Rotation row shows three euler angles in degrees, converted from the sampled quaternion as the inspector's Rotation row converts, and an edit keys the normalized quaternion built from them. Editing a field keys the row at the playhead with the edited value: a key already at the playhead takes it, else a key is added. One drag or typed value is one undo step. A clip inside a model shows the values read-only. The selected key's footer shows a rotation key as three euler angles too.
+Each property row in the window shows its value at the playhead after its name: one small field per lane (a vec3 three, a bool a checkbox, an int or enum an int field). A string row shows a text field: Enter (or Escape, as in every text field) keys the typed text at the playhead, and a click elsewhere drops it. A reference row shows the asset picker the inspector's `PPtr` fields use, filtered by the field's `ext:` and `ref:` tags: a pick or a drop keys the new reference at the playhead. In the selected key's footer the same fields set that key's value instead, and a key of an int row shows its value as text. The dope sheet draws the keys of these rows as diamonds like any other. The curve view plots float rows only. A Rotation row shows three euler angles in degrees, converted from the sampled quaternion as the inspector's Rotation row converts, and an edit keys the normalized quaternion built from them. Editing a field keys the row at the playhead with the edited value: a key already at the playhead takes it, else a key is added. One drag or typed value is one undo step. A clip inside a model shows the values read-only. The selected key's footer shows a rotation key as three euler angles too.
+
+### Key modes and tangents
+
+The key context menu (a right-click on a key, in the dope sheet or the curve view) starts with a Mode group, above Delete:
+
+- Linear, Smooth, Step and Free, each checked when every selected key has that mode. A pick sets the mode on every selected key, one undo step.
+- A row stored without `modes` gets them on the first pick: every key takes the mode it already plays with (Step for a row with `step` set, else Linear), `step` is cleared, and then the selected keys change.
+- A key turning Free keeps the tangents it plays with (the Smooth or Linear slopes), so the curve does not move.
+- A Rotation row offers Linear and Step only, since rotations slerp and ignore tangents. A key of an int, reference or string row always holds: the group shows Step, disabled.
+
+Below the modes, the tangent presets turn every selected key into a Free key with these tangents (`editor/curve_tools.odin`):
+
+- **Flat**: both tangents zero, an ease in and out
+- **Ease In**: the in tangent zero, the out tangent the straight slope to the next key
+- **Ease Out**: the out tangent zero, the in tangent the straight slope from the previous key
+- **Auto**: the tangents a Smooth key has, stored on the key
+
+The selected key's footer shows the primary key's mode as a combo next to its time field, with the same choices. A pick applies to every selected key, as in the menu.
+
+In the curve view every Free key of the plotted row shows its tangent handles: a line from the key along each tangent to a small circle 40 px away, in the lane's colour, the hovered or dragged handle brighter. Smooth and Linear keys show none.
+
+- Dragging a handle sets that side's tangent of that lane to the slope from the key to the pointer, one undo step per drag. The in handle changes only the in tangent and the out handle only the out tangent.
+- Holding Shift while dragging sets both tangents to the same slope: a smooth joint.
+- A press near both a handle and a key takes the handle.
+- The value range of the view takes in the handle points, so a steep handle on a flat curve stays visible.
 
 ## Sample
 
@@ -335,6 +361,68 @@ than on change is deliberate: it is the shape real gameplay has.
 serialization, and plays the blend through to a posed joint. The scene is
 hand-generated JSON carrying hand-written union tags, which is exactly the kind
 of asset that rots silently.
+
+## Clip format
+
+A `.anim` file, a baked clip artifact and a clip inside a model share one JSON shape: `length` and `channels`. A channel is one row of the sheet:
+
+```json
+{
+  "target": "Body/Arm", "path": 0, "component": "", "field": "", "step": false,
+  "times": [0.0, 0.5, 1.0],
+  "values": [[0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0]],
+  "modes": [1, 3, 0],
+  "tangents": [[[0, 0, 0, 0], [0, 0, 0, 0]], [[0, 2, 0, 0], [0, -1, 0, 0]]]
+}
+```
+
+`times` and `values` are parallel. A row animates one field, so all its keys share one kind (`Channel_Values` in `clip.odin`):
+
+| kind | fields | between keys | in the mixer |
+|------|--------|--------------|--------------|
+| floats, `[x, y, z, w]` | f32, `[2..4]f32`, colours, position, scale, rotation | interpolated | weighted sum, rotations nlerp |
+| ints | ints, enums, bools | held | the highest weight wins |
+| references, `PPtr` | `PPtr` and `Asset_GUID` fields (a bare guid reads as local id 0) | held | the highest weight wins |
+| strings | `string` fields | held | the highest weight wins |
+
+Ints are i64, so an id or a bitmask keys exactly. A string belongs to its row. On a string field the write frees the field's old string and stores a clone, and an equal value writes nothing.
+
+The variant is told by the element type of `values`, so the key stays `values` for every kind:
+
+- an array (`[x, y, z, w]`): floats
+- a number: ints
+- a string: strings
+- an object (`{"local_id": 7, "guid": "..."}`): references
+- an empty array: floats
+
+A float row is the array of 4-lane arrays it has always been, so every `.anim`, artifact and model clip reads as it is. The rule lives in a JSON marshaler and unmarshaler for `Channel_Values`, registered on SerializationInit with the marshaler maps every load and save goes through (the artifact load, asset documents, undo).
+
+The live field's type decides how a row applies. A float row on an int or bool field writes its first lane rounded, an int row on a float field writes the int. A row of any other kind than the field's writes nothing, like a row whose field does not resolve.
+
+### Interpolation
+
+A float row carries per-key interpolation in two optional arrays parallel to `times`:
+
+- `modes`: one `Key_Mode` per key, `0` Linear, `1` Smooth, `2` Step, `3` Free. A key past the end of `modes` is Linear. A channel with no `modes` and `step` set holds on every key, which is how STEP clips are stored.
+- `tangents`: in and out slopes per lane, in value units per second, read by Free keys only. A Free key past the end of `tangents` has flat tangents.
+
+Between key A and key B:
+
+- A is Step: A's value holds until B
+- A and B are Linear (or B is Step): lerp
+- otherwise a cubic Hermite curve with A's out slope and B's in slope. A Linear key uses the slope toward that neighbour, a Smooth key the slope between its two neighbours (flat at the first and last key), computed when sampled, so nothing is stored for it. A Free key uses its tangents
+
+Rotation rows slerp and ignore tangents. Step still holds. Int, reference and string rows always hold.
+
+Adding a key keeps the parallel arrays in step: when the row has `modes` the new key takes the mode of the key before it, and a Free key gets the curve's slope at its time on both sides, so the curve keeps its shape. Deleting a key removes its mode and tangents. The trim setting keeps curves too: kept keys become Free with the slopes they had, and the edge keys are Free with the slope at the cut.
+
+glTF samplers bake as follows:
+
+- LINEAR: Linear keys, no `modes`
+- STEP: `step` set
+- CUBICSPLINE: every key Free, with the sampler's in and out tangents. glTF tangents are already in value units per second, so the clip plays the exact curve
+
+The Animation window sets modes, applies tangent presets and drags tangent handles ("Key modes and tangents" above), and keeps `modes` and `tangents` in step as it adds, moves and deletes keys.
 
 ## Clip settings live in the meta
 

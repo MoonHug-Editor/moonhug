@@ -235,11 +235,12 @@ Pose_Value :: struct {
 	scl_w: f32,
 }
 
-// One accumulated property channel: value = sum(w_i * v_i), w = sum(w_i) for
-// continuous kinds. Discrete kinds carry the dominant contributor instead —
-// val is that contributor's raw value, w its effective weight.
+// One accumulated property channel. Continuous kinds hold floats:
+// value = sum(w_i * v_i), w = sum(w_i). Discrete kinds carry the dominant
+// contributor instead: val is that contributor's raw value (any row kind, a
+// string borrowed from its clip), w its effective weight.
 Prop_Value :: struct {
-	val: [4]f32,
+	val: Channel_Value,
 	w:   f32,
 }
 
@@ -262,7 +263,10 @@ Prop_Slot :: struct {
 	target:      engine.Transform_Handle,
 	loc:         Prop_Location,
 	resolved:    bool,
-	default:     [4]f32,
+	// The field's value at bind time. A Text default is an owned clone on the
+	// default allocator: the live string it was read from is freed by the
+	// first write.
+	default:     Channel_Value,
 }
 
 // One bound channel target. `animated` records which properties any clip ever
@@ -301,7 +305,10 @@ animation_binding_destroy :: proc(b: ^Animation_Binding) {
 	for &s in b.slots do delete(s.path)
 	delete(b.slots)
 	delete(b.by_path)
-	for &s in b.prop_slots do delete(s.key)
+	for &s in b.prop_slots {
+		delete(s.key)
+		_prop_default_free(&s)
+	}
 	delete(b.prop_slots)
 	delete(b.by_prop)
 	b^ = {}
@@ -376,7 +383,23 @@ _prop_resolve :: proc(b: ^Animation_Binding, s: ^Prop_Slot) {
 	s.target = tH
 	s.loc = loc
 	s.resolved = true
-	s.default = _prop_read(rawptr(uintptr(base) + loc.offset), loc.kind, loc.leaf)
+	_prop_default_capture(s, rawptr(uintptr(base) + loc.offset))
+}
+
+// Reads the slot's default from the live field at `ptr`, cloning a string.
+@(private = "file")
+_prop_default_capture :: proc(s: ^Prop_Slot, ptr: rawptr) {
+	_prop_default_free(s)
+	s.default = _prop_read_value(ptr, s.loc.kind, s.loc.leaf)
+	if str, is_str := s.default.(string); is_str {
+		s.default = strings.clone(str, runtime.default_allocator())
+	}
+}
+
+@(private = "file")
+_prop_default_free :: proc(s: ^Prop_Slot) {
+	if str, is_str := s.default.(string); is_str do delete(str, runtime.default_allocator())
+	s.default = [4]f32{}
 }
 
 // The prop slot's live field pointer, or nil when the component is gone.
@@ -416,7 +439,7 @@ animation_binding_refresh_defaults :: proc(b: ^Animation_Binding) {
 			s.resolved = false
 			continue
 		}
-		s.default = _prop_read(ptr, s.loc.kind, s.loc.leaf)
+		_prop_default_capture(&s, ptr)
 	}
 }
 
@@ -436,7 +459,7 @@ animation_binding_write_defaults :: proc(b: ^Animation_Binding) {
 		if !s.resolved || !engine.pool_valid(&w.transforms, engine.Handle(s.target)) do continue
 		ptr := _prop_slot_ptr(&s)
 		if ptr == nil do continue
-		_prop_write(ptr, s.loc.kind, s.loc.leaf, s.default)
+		_prop_write_value(ptr, s.loc.kind, s.loc.leaf, s.default)
 	}
 }
 
@@ -551,13 +574,21 @@ _eval_node :: proc(
 			// No keys, nothing to contribute: sampling would write zeros over
 			// the pose (see animation_clip_apply).
 			if len(ch.times) == 0 do continue
-			val := _animation_channel_sample(&ch, t)
 			if animation_channel_is_property(&ch) {
 				idx, found := b.by_prop[_prop_key(ch.target, ch.component, ch.field)]
 				if !found do continue
-				out.props[idx] = {val, 1}
+				pval := _animation_channel_sample_value(&ch, t)
+				// A continuous slot accumulates floats: an int row converts,
+				// a row of another kind does not fit the field and adds nothing.
+				if !prop_kind_discrete(b.prop_slots[idx].loc.kind) {
+					f, fok := _channel_value_floats(pval)
+					if !fok do continue
+					pval = f
+				}
+				out.props[idx] = {pval, 1}
 				continue
 			}
+			val := _animation_channel_sample(&ch, t)
 			idx, found := b.by_path[ch.target]
 			if !found do continue
 			pv := &out.trs[idx]
@@ -608,7 +639,7 @@ _pose_accumulate :: proc(out, child: Pose, w: f32, b: ^Animation_Binding) {
 			}
 			continue
 		}
-		o.val += (w * cw / c.w) * c.val
+		o.val = o.val.([4]f32) + (w * cw / c.w) * c.val.([4]f32)
 		o.w += w * cw
 	}
 	for i in 0 ..< len(out.trs) {
@@ -674,7 +705,7 @@ _pose_blend_over :: proc(out, child: Pose, layer_w: f32, b: ^Animation_Binding) 
 		if prop_kind_discrete(b.prop_slots[i].loc.kind) {
 			if eff >= 0.5 do o.val = c.val
 		} else {
-			o.val = linalg.lerp(o.val, (1.0 / c.w) * c.val, eff)
+			o.val = linalg.lerp(o.val.([4]f32), (1.0 / c.w) * c.val.([4]f32), eff)
 		}
 		o.w = 1
 	}
@@ -768,7 +799,7 @@ animation_pose_apply :: proc(b: ^Animation_Binding, pose: Pose) {
 			continue
 		}
 		p := &pose.props[i]
-		_prop_write(ptr, s.loc.kind, s.loc.leaf, _finalize_prop(p.val, p.w, s.default, prop_kind_discrete(s.loc.kind)))
+		_prop_write_value(ptr, s.loc.kind, s.loc.leaf, _finalize_prop(p.val, p.w, s.default, prop_kind_discrete(s.loc.kind)))
 	}
 }
 
@@ -791,11 +822,29 @@ _finalize_vec :: proc(acc: [3]f32, w: f32, def: [3]f32) -> [3]f32 {
 // writes the accumulated winner only when it is the dominant contributor
 // against the default (the winner's raw value rides in acc unscaled).
 @(private = "file")
-_finalize_prop :: proc(acc: [4]f32, w: f32, def: [4]f32, discrete: bool) -> [4]f32 {
+_finalize_prop :: proc(acc: Channel_Value, w: f32, def: Channel_Value, discrete: bool) -> Channel_Value {
 	if discrete do return w >= 0.5 ? acc : def
 	if w <= PLAYABLE_WEIGHT_EPS do return def
-	if w >= 1 do return (1.0 / w) * acc
-	return acc + (1 - w) * def
+	a := acc.([4]f32)
+	r: [4]f32
+	if w >= 1 {
+		r = (1.0 / w) * a
+	} else {
+		d, _ := _channel_value_floats(def)
+		r = a + (1 - w) * d
+	}
+	return r
+}
+
+// A key value as float lanes: floats as they are, an int in the first lane.
+// False for a PPtr or a string.
+@(private = "file")
+_channel_value_floats :: proc(v: Channel_Value) -> ([4]f32, bool) {
+	#partial switch x in v {
+	case [4]f32: return x, true
+	case i64:    return {f32(x), 0, 0, 0}, true
+	}
+	return {}, false
 }
 
 @(private = "file")

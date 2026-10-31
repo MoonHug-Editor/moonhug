@@ -76,6 +76,10 @@ animation_clip_apply_settings :: proc(clip: ^AnimationClip, s: Animation_Clip_Se
 // Keep only `start..stop` and rebase to 0. A channel keeps an interpolated key
 // at each edge, so a trim that cuts between keys still starts and ends on the
 // value the clip actually had there rather than on the nearest key.
+//
+// A float row with `modes` keeps its curve: every kept key that is not Step
+// becomes Free with the slopes it had, and the edge keys are Free with the
+// curve's slope at the cut, so the trimmed segments are the same cubics.
 @(private = "file")
 _animation_clip_trim :: proc(clip: ^AnimationClip, start, stop: f32) {
 	if stop <= start do return
@@ -85,25 +89,60 @@ _animation_clip_trim :: proc(clip: ^AnimationClip, start, stop: f32) {
 
 	for &ch in clip.channels {
 		if len(ch.times) == 0 do continue
-		edge_lo := _animation_channel_sample(&ch, lo)
-		edge_hi := _animation_channel_sample(&ch, hi)
+		edge_lo := _animation_channel_sample_value(&ch, lo)
+		edge_hi := _animation_channel_sample_value(&ch, hi)
+		curved := len(ch.modes) > 0 && animation_channel_is_float(&ch)
 
-		times := make([dynamic]f32)
-		values := make([dynamic][4]f32)
-		append(&times, 0)
-		append(&values, edge_lo)
+		out := Animation_Channel{path = ch.path, step = ch.step}
+		out.times = make([dynamic]f32)
+		out.values = animation_channel_values_make(edge_lo)
+		if curved {
+			out.modes = make([dynamic]Key_Mode)
+			out.tangents = make([dynamic][2][4]f32)
+		}
+		keep :: proc(out: ^Animation_Channel, curved: bool, t: f32, v: Channel_Value, mode: Key_Mode, tan: [2][4]f32) {
+			_channel_values_inject(out, len(out.times), v)
+			append(&out.times, t)
+			if curved {
+				append(&out.modes, mode)
+				append(&out.tangents, tan)
+			}
+		}
+		// The start edge inside a Step segment holds like the key it cuts
+		// from. Any other edge is Free with the slope on its kept side (the
+		// end edge is the last key, so only its in slope matters).
+		edge_tan :: proc(ch: ^Animation_Channel, curved: bool, t: f32, from_left: bool) -> (Key_Mode, [2][4]f32) {
+			if !curved do return .Linear, {}
+			if !from_left && _animation_key_mode(ch, _animation_key_hold(ch.times[:], t)) == .Step do return .Step, {}
+			d := _animation_channel_slope(ch, t, from_left)
+			return .Free, {d, d}
+		}
+
+		m, tan := edge_tan(&ch, curved, lo, false)
+		keep(&out, curved, 0, edge_lo, m, tan)
 		for t, i in ch.times {
 			if t <= lo || t >= hi do continue
-			append(&times, t - lo)
-			append(&values, ch.values[i])
+			mode := Key_Mode.Linear
+			ktan: [2][4]f32
+			if curved {
+				mode = _animation_key_mode(&ch, i)
+				tin, tout := _animation_key_tangents(&ch, animation_channel_floats(&ch)[:], i)
+				ktan = {tin, tout}
+				if mode != .Step do mode = .Free
+			}
+			keep(&out, curved, t - lo, animation_channel_value(&ch, i), mode, ktan)
 		}
-		append(&times, hi - lo)
-		append(&values, edge_hi)
+		m, tan = edge_tan(&ch, curved, hi, true)
+		keep(&out, curved, hi - lo, edge_hi, m, tan)
 
 		delete(ch.times)
-		delete(ch.values)
-		ch.times = times
-		ch.values = values
+		animation_channel_values_delete(&ch.values)
+		delete(ch.modes)
+		delete(ch.tangents)
+		ch.times = out.times
+		ch.values = out.values
+		ch.modes = out.modes
+		ch.tangents = out.tangents
 	}
 	clip.length = hi - lo
 }

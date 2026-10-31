@@ -58,5 +58,5 @@ test_clip_cache_does_not_borrow_caller_allocator :: proc(t: ^testing.T) {
 	testing.expect(t, ok, "the preview entry is cached")
 	if !ok do return
 	testing.expect(t, abs(cached.length - 2) < 0.001, "cached length survives")
-	testing.expect(t, abs(cached.channels[0].values[0].x - 7) < 0.001, "cached values survive")
+	testing.expect(t, abs(cached.channels[0].values.([dynamic][4]f32)[0].x - 7) < 0.001, "cached values survive")
 }

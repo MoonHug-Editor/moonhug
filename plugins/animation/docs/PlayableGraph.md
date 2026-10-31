@@ -252,18 +252,14 @@ the transform — Unity's EditorCurveBinding model `(path, type, propertyName)`:
 `target` resolves the transform, `component` is the component's type guid,
 `field` a dotted path to a POD leaf on it (`"emission.rate.value_min"`).
 
-- The file stores untyped `[4]f32` keys. The LIVE field's typeid at bind time
-  is the single authority: how many lanes apply, discrete vs continuous, the
-  write conversion (clip_property.odin). Animatable kinds: f32, [2..4]f32,
-  bool, ints, enums. References, strings, and whole structs are not
-  animatable — same boundary as Unity.
+- Each row holds typed keys: floats, ints, references or strings (AnimationComponent.md "Clip format"). The LIVE field's typeid at bind time is the authority: how many lanes apply, discrete vs continuous, the write conversion (clip_property.odin). Animatable kinds: f32, [2..4]f32, bool, ints, enums, `PPtr` and `Asset_GUID`, strings. Other reference types and whole structs are not animatable.
 - Binding caches the location meta (type key, byte offset, kind) in a prop
   slot and re-fetches only the component base pointer per apply — pools
   relocate on growth, so pointers are never cached. Dead handles re-resolve,
   unresolvable channels are skipped (the rule transform channels already
   follow).
 - Continuous kinds blend exactly like transform channels, defaults included.
-  Discrete kinds (bool/int/enum) cannot lerp: the DOMINANT contributor wins
+  Discrete kinds (bool, int, enum, reference, string) cannot lerp: the DOMINANT contributor wins
   at every blend site — highest weight in a mixer, majority against the
   default at apply, majority owner in a layer stack.
 - Defaults capture and restore ride the same slots, so the scrub preview and
@@ -275,7 +271,7 @@ the transform — Unity's EditorCurveBinding model `(path, type, propertyName)`:
 - Authoring lives in the Animation window: Add Property walks the owner's
   subtree as nested menus (transform channels plus each component's
   animatable leaves via reflection), the first key holds the field's current
-  value, discrete kinds set step, rows show `target : Component.field` with
+  value in a row of the field's kind, rows show `target : Component.field` with
   unresolved channels in yellow, and Remove Property is on the row's context
   menu. Lane count in curves and the key footer follows the live field kind.
 

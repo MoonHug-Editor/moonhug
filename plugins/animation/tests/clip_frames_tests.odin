@@ -111,7 +111,7 @@ test_empty_channel_does_not_apply :: proc(t: ^testing.T) {
 	append(&clip.channels, anim.Animation_Channel{path = .Position})
 	defer for &ch in clip.channels {
 		delete(ch.times)
-		delete(ch.values)
+		anim.animation_channel_values_delete(&ch.values)
 	}
 
 	anim.animation_clip_apply(&clip, tH, 0.5)
