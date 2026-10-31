@@ -407,6 +407,8 @@ The playback toggle after the transport buttons overrides it. A click steps thro
 
 The state is a per-developer preference in `UserSettings/animation.json`, next to Play Ends on Last Frame, which decides where a Once playback comes to rest in every state. A saved value outside the three states reads as Match the clip's wrap setting.
 
+The ruler over the time canvas is a three-way choice in the view's ⋮ menu, saved in the same file: Frames and Time (two rulers sharing the band, time above, frames below), Frames, or Time. Keys snap to frames while dragging, and Alt held drags freely.
+
 ## Non-goals
 
 - No transitions, conditions or parameters. A blend reads one value that
