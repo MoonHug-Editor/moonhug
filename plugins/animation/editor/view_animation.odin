@@ -73,7 +73,7 @@ _Anim_Mode :: enum {
 	Curves,
 }
 
-@(private = "file")
+@(private)
 _pv: struct {
 	active:  bool, // preview on: the world renders the scrubbed pose
 	applied: bool, // pose applied this frame, restore pending
@@ -99,12 +99,7 @@ _pv: struct {
 	entry_done:  bool,
 
 	playing:   bool, // transport running: time advances every frame
-	recording: bool, // armed: an edited animated field keys itself at the playhead
-	// Live value of each channel when recording armed (or last keyed), parallel
-	// to clip.channels. A channel whose live value leaves this is a user edit,
-	// which is what recording keys — no inspector hook needed, and scrubbing
-	// alone never keys because authored values do not move with the playhead.
-	rec_shadow: [dynamic][4]f32,
+	recording: bool, // armed: an edit of an animatable field keys it at the playhead (record.odin)
 
 	sync:      bool, // document edited this frame -> push to the clip cache
 }
@@ -202,6 +197,7 @@ animation_views_shutdown :: proc() {
 
 shutdown_animation_view :: proc() {
 	_pv_teardown()
+	_record_note_clear()
 	_anim_view_free(&_av_none)
 }
 
@@ -215,12 +211,13 @@ animation_preview_stop :: proc() {
 // no reason, and it surprises you later: turning preview back on resumes
 // mid-clip, and the button sat on Pause the whole time. A previewed STATE is
 // the same — it poses through this preview, so it ends with it.
-@(private = "file")
+@(private)
 _pv_preview_off :: proc() {
 	_pv.active = false
 	_pv.playing = false
 	_pv.recording = false
 	_pv.entry = 0
+	_record_note_clear()
 }
 
 // The scrub graph's single output binding.
@@ -230,7 +227,7 @@ _pv_binding :: proc() -> ^anim.Animation_Binding {
 	return o != nil ? &o.binding : nil
 }
 
-@(private = "file")
+@(private)
 _pv_teardown :: proc() {
 	if _pv.ready {
 		anim.playable_graph_destroy(&_pv.graph)
@@ -440,7 +437,7 @@ _pv_clip_name :: proc(g: engine.PPtr) -> string {
 // undo/redo swaps the document payload, so pointers never survive a frame.
 // A clip inside a model is baked from the model and has no document: it comes
 // back as the cached clip with a nil doc, which the view shows read-only.
-@(private = "file")
+@(private)
 _pv_doc :: proc() -> (doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	if _pv.clip == {} do return nil, nil
 	if _pv.clip.local_id != 0 {
@@ -463,7 +460,7 @@ _pv_session: undo.Edit_Session
 // One whole-document undo step: the session captures the document before the
 // mutation and records the result after. Drags open on press and close on
 // release, mutating in between.
-@(private = "file")
+@(private)
 _pv_edit_begin :: proc(doc: ^inspector.Asset_Doc) {
 	// Idempotent: the drag calls this on activation, and a second call while the
 	// same gesture is open would otherwise capture the already-edited value.
@@ -472,11 +469,17 @@ _pv_edit_begin :: proc(doc: ^inspector.Asset_Doc) {
 		{undo.edit_target_asset(doc.guid, doc.data.id)}, "Animation Edit")
 }
 
-@(private = "file")
+@(private)
 _pv_edit_commit :: proc(doc: ^inspector.Asset_Doc) {
-	undo.edit_session_end(&_pv_session)
+	if !_pv_edit_held do undo.edit_session_end(&_pv_session)
 	_pv_mark_edited(doc)
 }
+
+// Set while one gesture runs several keyframe operations that each open and
+// commit (recording a new row is a channel plus a key): _pv_edit_commit then
+// leaves the session open, and the caller commits once at the end.
+@(private)
+_pv_edit_held: bool
 
 @(private = "file")
 _pv_mark_edited :: proc(doc: ^inspector.Asset_Doc) {
@@ -557,17 +560,25 @@ _pv_ch_label :: proc(ch: ^anim.Animation_Channel) -> (label: cstring, resolved: 
 // --- Keyframe operations --------------------------------------------------------------
 
 // Insert a key at `t` sampling the curve's current value there, so adding a
-// key never changes the curve's shape.
-@(private = "file")
-_pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx: int, t: f32) {
+// key never changes the curve's shape. With `value` given (recording) the key
+// holds that value instead, and a key already at `t` takes it.
+@(private)
+_pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx: int, t: f32, value: Maybe([4]f32) = nil) {
 	if doc == nil do return // read-only clip
 	if ch_idx < 0 || ch_idx >= len(clip.channels) do return
 	ch := &clip.channels[ch_idx]
 	t := clamp(t, 0, clip.length)
-	for kt in ch.times {
-		if abs(kt - t) < 0.0005 do return
+	given, has_value := value.?
+	for kt, i in ch.times {
+		if abs(kt - t) >= 0.0005 do continue
+		if !has_value do return
+		_pv_edit_begin(doc)
+		ch.values[i] = given
+		_pv_sel_set(ch_idx, i)
+		_pv_edit_commit(doc)
+		return
 	}
-	v := anim._animation_channel_sample(ch, t)
+	v := has_value ? given : anim._animation_channel_sample(ch, t)
 	idx := len(ch.times)
 	for kt, i in ch.times {
 		if kt > t {
@@ -709,7 +720,7 @@ _pv_prop_leaves :: proc(tid: typeid, prefix: string, out: ^[dynamic]string, dept
 	}
 }
 
-@(private = "file")
+@(private)
 _pv_add_channel_transform :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, target: string, path: anim.Animation_Path, tH: engine.Transform_Handle) {
 	for &c in clip.channels {
 		if !anim.animation_channel_is_property(&c) && c.target == target && c.path == path do return
@@ -729,7 +740,7 @@ _pv_add_channel_transform :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.Animati
 	}, v)
 }
 
-@(private = "file")
+@(private)
 _pv_add_channel_property :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, target: string, guid_str: string, field: string, tH: engine.Transform_Handle) {
 	for &c in clip.channels {
 		if c.target == target && c.component == guid_str && c.field == field do return
@@ -787,8 +798,8 @@ _pv_sel_mask :: proc(ch_idx, count: int) -> []bool {
 
 // --- Window ---------------------------------------------------------------------------
 
-// The target and the transport: retargeting follows the selection, the
-// playhead advances, recording keys edits.
+// The target and the transport: retargeting follows the selection and the
+// playhead advances.
 @(private = "file")
 _animation_frame :: proc() {
 	owner, a := _pv_target()
@@ -820,10 +831,9 @@ _animation_frame :: proc() {
 		_pv.time = 0
 	}
 
-	doc, clip := _pv_doc()
+	_, clip := _pv_doc()
 	length := clip != nil ? max(clip.length, 0.0001) : 0.0001
 	_pv_advance(clip, length)
-	_pv_rec_poll(doc, clip)
 }
 
 @(editor_window={id="Animation", title="Animation", icon="ANIMATION", closed=animation_view_closed})
@@ -852,6 +862,7 @@ animation_view_draw :: proc(w: ^wnd.Window) {
 	// document either, and the edit guards stop on that, but it is not marked
 	// Read-Only: the sheet says the clip is missing.
 	_pv_draw_toolbar(clip, length, read_only = _pv.clip.local_id != 0)
+	_record_draw_note()
 
 	if clip == nil {
 		// The picker still draws, so a broken clip is not a dead end.
@@ -923,27 +934,24 @@ _pv_draw_toolbar :: proc(clip: ^anim.AnimationClip, length: f32, read_only: bool
 	if tinted do im.PopStyleColor()
 	widgets.tooltip("Pose the object from this clip while the window is open")
 
-	// Record: while armed, editing an animated field writes a key at the
-	// playhead. Drawn in red like a record light, lit while armed.
-	// The record light is red whether armed or not, brighter while armed. The
-	// Text push is what colors the glyph the shared button draws.
-	// A read-only clip has nothing to record into.
+	// Record: while armed, an edit of an animatable field keys the clip at the
+	// playhead (record.odin). The record light is red whether armed or not,
+	// brighter while armed. The Text push is what colors the glyph the shared
+	// button draws. A read-only clip has nothing to record into.
 	im.SameLine()
 	if read_only do _pv.recording = false
 	rec := _pv.recording
 	im.PushStyleColorImVec4(.Text, rec ? im.Vec4{0.95, 0.25, 0.25, 1} : im.Vec4{0.75, 0.35, 0.35, 1})
 	im.BeginDisabled(read_only)
 	armed := widgets.icon_button(icons.ICON_MD_RECORD, "##rec",
-		"Record: an edited animated field keys itself at the playhead", active = rec)
+		"Record: editing any animatable field keys it at the playhead, the object keeps its own value", active = rec)
 	im.EndDisabled()
 	im.PopStyleColor()
 	if armed {
 		_pv.recording = !_pv.recording
-		if _pv.recording {
-			_pv.active = true // recording poses the object, as previewing does
-			_pv_rec_resync(clip)
-		}
+		if _pv.recording do _pv.active = true // recording poses the object, as previewing does
 	}
+	if !_pv.recording do _record_note_clear()
 
 	// Transport: start, previous key, play, next key, end.
 	im.SameLine()
@@ -1195,64 +1203,6 @@ anim_playback_step :: proc(time, dt, length: f32, clip_wrap: anim.Animation_Wrap
 		return ends_on_last_frame ? length : 0, false
 	}
 	return new_time, true
-}
-
-// --- Record ------------------------------------------------------------------------
-//
-// Recording needs no hook into the inspector: a channel's live value only
-// leaves the shadow when something wrote the field, and scrubbing never does
-// (authored values do not move with the playhead). One key per changed
-// channel per frame, each its own undo step like any keyframe edit.
-
-@(private = "file")
-_pv_rec_resync :: proc(clip: ^anim.AnimationClip) {
-	clear(&_pv.rec_shadow)
-	if clip == nil do return
-	for &ch in clip.channels {
-		v, _ := _pv_live_value(&ch)
-		append(&_pv.rec_shadow, v)
-	}
-}
-
-@(private = "file")
-_pv_rec_poll :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
-	if !_pv.recording || clip == nil || doc == nil do return
-	// A channel added or removed since the last resync invalidates the pairing.
-	if len(_pv.rec_shadow) != len(clip.channels) {
-		_pv_rec_resync(clip)
-		return
-	}
-	EPS :: f32(1e-6)
-	for &ch, i in clip.channels {
-		v, ok := _pv_live_value(&ch)
-		if !ok do continue
-		d := v - _pv.rec_shadow[i]
-		if abs(d.x) < EPS && abs(d.y) < EPS && abs(d.z) < EPS && abs(d.w) < EPS do continue
-		_pv.rec_shadow[i] = v
-		_pv_add_key(doc, clip, i, _pv.time)
-	}
-}
-
-// A channel's value as the object holds it right now: the transform for a
-// transform channel, the resolved field for a property channel.
-@(private = "file")
-_pv_live_value :: proc(ch: ^anim.Animation_Channel) -> (v: [4]f32, ok: bool) {
-	tH, tok := anim._animation_resolve_target(_pv.owner, ch.target)
-	if !tok do return {}, false
-	if anim.animation_channel_is_property(ch) {
-		ptr, kind, leaf, pok := anim._prop_locate(tH, ch.component, ch.field)
-		if !pok do return {}, false
-		return anim._prop_read(ptr, kind, leaf), true
-	}
-	w := engine.ctx_world()
-	t := engine.pool_get(&w.transforms, engine.Handle(tH))
-	if t == nil do return {}, false
-	switch ch.path {
-	case .Position: v.xyz = t.position
-	case .Rotation: v = t.rotation
-	case .Scale:    v.xyz = t.scale
-	}
-	return v, true
 }
 
 // The sheet: property rows on the left, the time canvas (ruler + dopesheet

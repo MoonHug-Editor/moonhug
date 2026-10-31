@@ -92,6 +92,62 @@ _prop_field_resolve :: proc(tid: typeid, path: string) -> (offset: uintptr, leaf
 	return offset, cur, true
 }
 
+// The inverse of _prop_field_resolve: the dotted path of the field of type
+// `want` that starts exactly at byte `offset` inside `tid`, walking plain
+// struct nesting the way Add Property lists leaves (identity plumbing `base`
+// skipped, reference types never entered). With `want` nil the field is the
+// first animatable leaf at that offset. `ok` is whether the field is found and
+// animatable. A field that is found but not animatable comes back with its
+// path and type and `ok` false, so a caller can name it. The path is
+// temp-allocated.
+_prop_path_of_offset :: proc(tid: typeid, offset: uintptr, want: typeid) -> (path: string, leaf: typeid, ok: bool) {
+	path, leaf = _prop_path_walk(tid, offset, want, "", 0)
+	if leaf == nil do return "", nil, false
+	_, ok = _prop_kind_of(leaf)
+	if ok && _prop_is_reference(leaf) do ok = false
+	return
+}
+
+@(private = "file")
+_prop_path_walk :: proc(tid: typeid, offset: uintptr, want: typeid, prefix: string, depth: int) -> (path: string, leaf: typeid) {
+	if depth > 8 do return "", nil
+	ti := runtime.type_info_base(type_info_of(tid))
+	if _, is_struct := ti.variant.(runtime.Type_Info_Struct); !is_struct do return "", nil
+	names := reflect.struct_field_names(tid)
+	types := reflect.struct_field_types(tid)
+	offsets := reflect.struct_field_offsets(tid)
+	for i in 0 ..< len(names) {
+		if names[i] == "base" do continue
+		lo := offsets[i]
+		hi := lo + uintptr(types[i].size)
+		if offset < lo || offset >= hi do continue
+		ftid := types[i].id
+		full := prefix == "" ? names[i] : strings.concatenate({prefix, ".", names[i]}, context.temp_allocator)
+		// A reference is one value: an offset inside it names the reference.
+		if _prop_is_reference(ftid) {
+			if offset == lo do return full, ftid
+			return "", nil
+		}
+		if offset == lo {
+			if (want != nil ? ftid == want : _prop_is_animatable(ftid)) do return full, ftid
+		}
+		if p, l := _prop_path_walk(ftid, offset - lo, want, full, depth + 1); l != nil do return p, l
+	}
+	return "", nil
+}
+
+@(private = "file")
+_prop_is_animatable :: proc(tid: typeid) -> bool {
+	_, ok := _prop_kind_of(tid)
+	return ok
+}
+
+@(private = "file")
+_prop_is_reference :: proc(tid: typeid) -> bool {
+	return tid == typeid_of(engine.PPtr) || tid == typeid_of(engine.Ref) ||
+	       tid == typeid_of(engine.Ref_Local) || tid == typeid_of(engine.Owned)
+}
+
 // The cacheable half of property resolution: component guid -> type key,
 // field path -> byte offset + kind. No world access — binding slots cache
 // this and re-fetch only the base pointer each apply (pools relocate).

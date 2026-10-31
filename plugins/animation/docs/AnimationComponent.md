@@ -279,6 +279,24 @@ component's full authored graph with the scrubbed clip at weight 1 and
 everything else at 0, so the preview path is the graph the component actually
 plays and the Playable Graph window shows the real topology.
 
+### Record
+
+While Record is armed, an edit of an animatable field keys the clip at the playhead instead of changing the object (`editor/record.odin`). Any edit that records undo counts: an inspector row, a gizmo drag, a multi-object edit.
+
+- The field belongs to the animated object or an object under it: a component field whose type is animatable (the kinds Add Property lists) or a transform's position, rotation or scale.
+- A missing row is created the way Add Property creates one. Its key at the clip start holds the value from before the edit, and the key at the playhead holds the edited value. An existing row gets a key at the playhead, or its key there takes the edited value.
+- The object keeps its own value. The preview poses it from the clip, so the key shows at the playhead, and leaving the preview shows the object's own values again. The scene is not changed.
+- The clip edit is the only undo step: one Ctrl+Z removes the key, and the row with it when the edit created the row.
+- Each object of a multi-object edit is keyed or left alone on its own.
+
+An edit that cannot be keyed stays an ordinary scene edit with its own undo step:
+
+- the field type is not animatable (a string, a reference, an array). The window shows a note under the toolbar, for example "Cannot key slot: string is not animatable", until the next note or until Record is disarmed
+- the object is neither the animated object nor under it
+- the clip has no document (a clip inside a model is read-only, and Record is off for it)
+
+Recording goes through the undo package's commit listener (docs/core/Undo.md "Commit listener"): the listener keys the clip and marks the entry consumed, and the undo package puts the object's old value back.
+
 ## Sample
 
 `packages/animation/samples/animation_sample` (installed as the

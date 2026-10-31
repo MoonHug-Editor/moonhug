@@ -147,6 +147,24 @@ edit_session_begin :: proc(
 	return sess
 }
 
+// One changed entry of a closing session, as the commit listener sees it. The
+// live field holds the new value while the listener runs.
+Edit_Commit :: struct {
+	target:   Property_Target,
+	old_json: []byte, // the value at edit_session_begin
+	new_json: []byte, // the value now
+	ptr:      rawptr, // the live field, resolved at edit_session_end
+}
+
+// Sees every session's changed entries before anything is recorded. An entry
+// it marks consumed records no undo step: the session writes the entry's old
+// value back into the live field instead, so the edit leaves the object as it
+// was. What the listener records itself (an edit of another document) lands
+// in the session's group, so the whole gesture stays one undo step.
+//
+// One global, nil by default. The Animation window's Record installs it.
+commit_listener: proc(edits: []Edit_Commit, consumed: []bool)
+
 // Captures after-state and records ONE grouped action for every target that
 // actually changed. Targets whose value is unchanged contribute nothing, so a
 // gesture that ends where it started records nothing at all.
@@ -162,8 +180,9 @@ edit_session_end :: proc(sess: ^Edit_Session) {
 
 	// One group for the whole session: an N-target edit is one Ctrl+Z.
 	begin_group_command(s)
-	wrote := false
 
+	// Every changed entry's after-state first, so the listener sees them all.
+	commits := make([dynamic]Edit_Commit, 0, len(sess.entries), context.temp_allocator)
 	for &e in sess.entries {
 		ptr := e.ptr
 		if e.target.kind == .Pooled {
@@ -187,19 +206,44 @@ edit_session_end :: proc(sess: ^Edit_Session) {
 			e.old_json = nil
 			continue
 		}
-		// push_value takes ownership of both payloads.
-		push_value(s, e.target, e.old_json, new_json, sess.label)
+		append(&commits, Edit_Commit{target = e.target, old_json = e.old_json, new_json = new_json, ptr = ptr})
 		e.old_json = nil
-		wrote = true
-		value_written(e.target)
 	}
 
-	if wrote {
+	consumed := make([]bool, len(commits), context.temp_allocator)
+	if commit_listener != nil && len(commits) > 0 {
+		commit_listener(commits[:], consumed)
+	}
+
+	wrote := false
+	for c, i in commits {
+		if consumed[i] {
+			// The listener took the edit: the object gets its old value back,
+			// through the same write an undo makes.
+			_value_apply(Value_Command{target = c.target}, c.old_json)
+			delete(c.old_json)
+			delete(c.new_json)
+			continue
+		}
+		// push_value takes ownership of both payloads.
+		push_value(s, c.target, c.old_json, c.new_json, sess.label)
+		wrote = true
+		value_written(c.target)
+	}
+
+	// The listener's own records sit in the group too, so it closes when it
+	// holds anything at all. An empty group is dropped.
+	if wrote || _top_group_has_subs(s) {
 		end_group_command(s, sess.label)
 	} else {
 		abort_group_command(s)
 	}
+}
 
+@(private = "file")
+_top_group_has_subs :: proc(s: ^Undo_Stack) -> bool {
+	if len(s.txn_stack) == 0 do return false
+	return len(s.txn_stack[len(s.txn_stack) - 1].subs) > 0
 }
 
 // Abandons the transaction without recording. Values the caller already wrote

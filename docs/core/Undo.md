@@ -254,6 +254,15 @@ Sessions do not nest. A component never contains another component, and
 within one component, hence one target. Opening a session for a key that
 already has one open is a no-op, which is what makes per-frame calling safe.
 
+### Commit listener
+
+`undo.commit_listener` sees every closing session's changed entries before anything is recorded. It is one global, nil by default, and the Animation window's Record installs it (plugins/animation/docs/AnimationComponent.md "Record").
+
+- `edit_session_end` captures the new value of every entry first, then calls the listener with the entries that changed, as `Edit_Commit {target, old_json, new_json, ptr}`. The live field holds the new value during the call.
+- An entry the listener marks in `consumed` records no undo step. The session writes the entry's old value back into the live field with the same write an undo makes, so the object ends as it was before the gesture.
+- What the listener records itself (an edit of another document) lands in the session's group. The group closes when it holds anything, so the gesture stays one undo step.
+- Every other entry records as usual.
+
 ### Testing rows
 
 `tests/common/field_row_harness.odin` replays a SEQUENCE of frames through the
