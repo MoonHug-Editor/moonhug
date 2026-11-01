@@ -455,8 +455,9 @@ A vector row (Position, Scale, Euler, a vector field) is joined or split (`edito
 - Split Lane Keys and Join Lane Keys are in the property row's context menu, each shown only when it applies. Split Lane Keys needs a vector row with two or more enabled lanes that is not split yet. Join Lane Keys needs a split float row. A clip inside a model shows neither.
 - Split copies the row once per enabled lane, times, values, modes and tangents included, and masks each copy to its lane.
 - Join puts the union of the channels' key times into the first channel. Times within half a frame of an earlier one fold into it.
-- Join samples each lane from its own channel at every time and gives the keys Free tangents from each lane's slopes, so the lanes keep their curves.
-- A joined key is Step only where every lane steps there. Otherwise it is Free.
+- Join samples each lane from its own channel at every time. A joined key keeps the lanes' mode where they agree, Linear or Step, and is Free with each lane's slopes where they differ, which rebuilds a Linear, Smooth or Free lane exactly. A row left all Linear or all Step writes no modes and no tangents.
+- A Smooth lane comes back as Free keys with frozen tangents. The curve is the same, later edits do not re-smooth it.
+- The one join that changes the animation is a lane that holds where another lane interpolates: the hold becomes a ramp. Join Lane Keys asks first in that case (`sheet_join_mixed_step`).
 - A lane no channel animates is disabled in the joined row. Join frees the other channels.
 - In the sheet a split row is one property row. It shows summary keys like an Object row, one per time where any of its lanes has a key, and its Lane rows own their keys: each Lane row shows and edits the keys of its lane's channel.
 - The Lanes menu on a split row adds a channel for an enabled lane (a copy of the first channel masked to that lane, after the group) or removes the lane's channel.

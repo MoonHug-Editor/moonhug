@@ -120,16 +120,42 @@ sheet_can_join :: proc(clip: ^anim.AnimationClip, group: []int) -> bool {
 	return true
 }
 
+// Whether joining `group` (sheet_can_join) changes the animation: at some
+// key time one lane holds (a Step key or a Step segment there) while
+// another interpolates. A joined key has one mode for every lane, so the
+// hold becomes a ramp. Every other join is exact (sheet_join_lanes).
+sheet_join_mixed_step :: proc(clip: ^anim.AnimationClip, group: []int) -> bool {
+	if !sheet_can_join(clip, group) do return false
+	times := sheet_keys_times(clip, group, context.temp_allocator)
+	width := anim.animation_channel_mask_width(&clip.channels[group[0]])
+	for t in times {
+		step, other := false, false
+		for l in 0 ..< width {
+			ci := sheet_lane_channel(clip, group, l)
+			if ci < 0 do continue
+			if _lane_mode_at(clip, &clip.channels[ci], t) == .Step {
+				step = true
+			} else {
+				other = true
+			}
+		}
+		if step && other do return true
+	}
+	return false
+}
+
 // Joins the channels `group` (sheet_group_channels, in channel order) into
 // the first: the union of their key times (times within half a frame of an
 // earlier one fold into it), each lane sampled from the channel that
 // animates it at every time, the lanes the group animates enabled. The
-// joined keys are Free with each lane's slopes at the time, so every lane
-// keeps its curve: a Step key stays Step only where every lane steps. The
-// other channels are removed, their memory freed. Returns the joined
-// channel's index, which is the first of `group` less the removed channels
-// before it (none, as the group is in channel order). Nothing changes when
-// the group cannot join (sheet_can_join).
+// joined key's mode is the lanes' mode where they agree, Linear or Step,
+// else Free with each lane's slopes at the time, which rebuilds a Linear,
+// Smooth or Free lane exactly. A Smooth lane becomes Free: its tangents
+// are frozen, so later edits do not re-smooth it. Only a Step lane next to
+// an interpolating lane changes (sheet_join_mixed_step). A row left all
+// Linear or all Step writes no modes and no tangents. The other channels
+// are removed, their memory freed. Returns the joined channel's index.
+// Nothing changes when the group cannot join (sheet_can_join).
 sheet_join_lanes :: proc(clip: ^anim.AnimationClip, group: []int) -> int {
 	if !sheet_can_join(clip, group) do return len(group) > 0 ? group[0] : -1
 	dst := group[0]
@@ -146,8 +172,9 @@ sheet_join_lanes :: proc(clip: ^anim.AnimationClip, group: []int) -> int {
 	vals := make([][4]f32, n, context.temp_allocator)
 	modes := make([]anim.Key_Mode, n, context.temp_allocator)
 	tans := make([][2][4]f32, n, context.temp_allocator)
+	any_free := false
 	for t, i in times {
-		all_step := true
+		all_linear, all_step := true, true
 		for l in 0 ..< width {
 			ci := lane_ch[l]
 			if ci < 0 do continue
@@ -158,15 +185,24 @@ sheet_join_lanes :: proc(clip: ^anim.AnimationClip, group: []int) -> int {
 				kin, kout := anim._animation_key_tangents(c, anim.animation_channel_floats(c)[:], k)
 				tans[i][0][l] = kin[l]
 				tans[i][1][l] = kout[l]
-				if anim._animation_key_mode(c, k) != .Step do all_step = false
 			} else {
 				tans[i][0][l] = anim._animation_channel_slope(c, t, from_left = true)[l]
 				tans[i][1][l] = anim._animation_channel_slope(c, t)[l]
-				all_step = false
 			}
+			m := _lane_mode_at(clip, c, t)
+			if m != .Linear do all_linear = false
+			if m != .Step do all_step = false
 		}
-		modes[i] = all_step ? .Step : .Free
+		switch {
+		case all_linear: modes[i] = .Linear
+		case all_step:   modes[i] = .Step
+		case:
+			modes[i] = .Free
+			any_free = true
+		}
 	}
+	uniform := true
+	for m in modes do if m != modes[0] do uniform = false
 
 	d := &clip.channels[dst]
 	clear(&d.times)
@@ -174,17 +210,38 @@ sheet_join_lanes :: proc(clip: ^anim.AnimationClip, group: []int) -> int {
 	f := anim.animation_channel_floats(d)
 	clear(f)
 	append(f, ..vals)
-	if d.modes == nil do d.modes = make([dynamic]anim.Key_Mode)
 	clear(&d.modes)
-	append(&d.modes, ..modes)
-	if d.tangents == nil do d.tangents = make([dynamic][2][4]f32)
 	clear(&d.tangents)
-	append(&d.tangents, ..tans)
+	d.step = false
+	if uniform && !any_free {
+		// All Linear or all Step: the row's `step` flag says it, no modes.
+		d.step = modes[0] == .Step
+	} else {
+		if d.modes == nil do d.modes = make([dynamic]anim.Key_Mode)
+		append(&d.modes, ..modes)
+		if d.tangents == nil do d.tangents = make([dynamic][2][4]f32)
+		append(&d.tangents, ..tans)
+	}
 	d.lanes_off = anim.Channel_Lanes_Off(off)
 
 	// The other channels, last first so the indices before them hold.
 	for i := len(group) - 1; i >= 1; i -= 1 do sheet_channel_free(clip, group[i])
 	return dst
+}
+
+// The mode of lane channel `c` at `t`: its key's mode when it has a key
+// there, else the mode of the segment `t` falls in (the key before it).
+// Outside the key range the lane holds a constant, which any mode rebuilds,
+// so Linear.
+@(private = "file")
+_lane_mode_at :: proc(clip: ^anim.AnimationClip, c: ^anim.Animation_Channel, t: f32) -> anim.Key_Mode {
+	if k := _lane_key_near(clip, c, t); k >= 0 do return anim._animation_key_mode(c, k)
+	n := len(c.times)
+	if n < 2 || t < c.times[0] || t > c.times[n - 1] do return .Linear
+	// The last key at or before t.
+	lo := 0
+	for kt, i in c.times do if kt <= t do lo = i
+	return anim._animation_key_mode(c, lo)
 }
 
 // The key of `c` within half a frame of `t`, -1 for none.

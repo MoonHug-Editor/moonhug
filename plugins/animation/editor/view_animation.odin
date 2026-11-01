@@ -843,6 +843,52 @@ _pv_split_lane_set :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip,
 	_pv_edit_commit(doc)
 }
 
+// Joins the channels `group` of one property, one undo step.
+@(private = "file")
+_pv_join_group :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, group: []int) {
+	_pv_edit_begin(doc)
+	{
+		context.allocator = inspector.doc_alloc()
+		sheet_join_lanes(clip, group)
+	}
+	_pv_deselect() // channel indices shifted
+	_pv_edit_commit(doc)
+}
+
+// A join that changes the animation (a lane holds where another
+// interpolates, sheet_join_mixed_step) asks first. The dialog answers on a
+// later frame, when channel indices may have moved, so the row is kept by
+// its stable key (sheet_channel_key) and found again on Join.
+@(private = "file")
+_pv_join_key: string // default allocator, "" = no join waiting
+
+@(private = "file")
+_pv_join_ask :: proc(clip: ^anim.AnimationClip, ch: int) {
+	context.allocator = runtime.default_allocator()
+	delete(_pv_join_key)
+	_pv_join_key = sheet_channel_key(&clip.channels[ch])
+	widgets.dialog_open({
+		title       = "Join Lane Keys",
+		description = "A lane holds between keys where another lane interpolates. A joined key has one mode for every lane, so that hold becomes a ramp.\nJoin anyway?",
+		buttons     = {
+			{label = "Join", action = _pv_join_confirmed, is_default = true},
+			{label = "Cancel", is_cancel = true},
+		},
+	})
+}
+
+@(private = "file")
+_pv_join_confirmed :: proc() {
+	doc, clip := _pv_doc()
+	if doc == nil || clip == nil || _pv_join_key == "" do return
+	for &c, i in clip.channels {
+		if sheet_channel_key(&c, context.temp_allocator) != _pv_join_key do continue
+		group := sheet_group_channels(clip, i, context.temp_allocator)
+		if sheet_can_join(clip, group) do _pv_join_group(doc, clip, group)
+		break
+	}
+}
+
 // --- Key interpolation ------------------------------------------------------------------
 //
 // The key context menu and the footer set the selected keys' modes and apply
@@ -1868,13 +1914,11 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 					_pv_edit_commit(doc)
 				}
 				if can_join && im.MenuItem("Join Lane Keys") {
-					_pv_edit_begin(doc)
-					{
-						context.allocator = inspector.doc_alloc()
-						sheet_join_lanes(clip, group)
+					if sheet_join_mixed_step(clip, group) {
+						_pv_join_ask(clip, _av.sel_ch)
+					} else {
+						_pv_join_group(doc, clip, group)
 					}
-					_pv_deselect() // channel indices shifted
-					_pv_edit_commit(doc)
 				}
 				if can_split || can_join do im.Separator()
 			}

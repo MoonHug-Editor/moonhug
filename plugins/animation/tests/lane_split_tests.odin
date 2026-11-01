@@ -252,3 +252,42 @@ test_lane_quaternion_row_converts_to_unwound_euler :: proc(t: ^testing.T) {
 	testing.expect(t, !animation_editor.sheet_rotation_to_euler(&clip, 0), "an Euler row does not convert again")
 }
 
+// Lanes that are all Linear join to a Linear row with no modes and no
+// tangents. A Step lane next to a Linear lane is the one lossy join, and
+// the join reports it. Lanes that all step join to a Step row.
+@(test)
+test_lane_join_keeps_shared_modes_and_reports_mixed_step :: proc(t: ^testing.T) {
+	defer free_all(context.temp_allocator)
+	clip := anim.AnimationClip{length = 2, frame_rate = 30}
+	clip.channels = make([dynamic]anim.Animation_Channel, context.temp_allocator)
+	_ls_row(&clip, .Position, {0, 1}, {{0, 0, 0, 0}, {2, 0, 0, 0}}, off = {1, 2})
+	_ls_row(&clip, .Position, {0, 0.5, 2}, {{0, 0, 0, 0}, {0, 1, 0, 0}, {0, 3, 0, 0}}, off = {0, 2})
+	group := animation_editor.sheet_group_channels(&clip, 0, context.temp_allocator)
+	testing.expect(t, !animation_editor.sheet_join_mixed_step(&clip, group), "linear lanes join exactly")
+	dst := animation_editor.sheet_join_lanes(&clip, group)
+	c := &clip.channels[dst]
+	testing.expect_value(t, len(c.times), 4)
+	testing.expect_value(t, len(c.modes), 0)
+	testing.expect_value(t, len(c.tangents), 0)
+	testing.expect(t, !c.step, "a linear row")
+	// x at 0.5 sits on its line, y at 1 on its.
+	v := anim.animation_channel_floats(c)
+	testing.expectf(t, abs(v[1].x - 1) < 1e-5 && abs(v[2].y - 1.6666666) < 1e-4, "inserted keys lie on the lanes, got %v %v", v[1], v[2])
+
+	clip2 := anim.AnimationClip{length = 2, frame_rate = 30}
+	clip2.channels = make([dynamic]anim.Animation_Channel, context.temp_allocator)
+	_ls_row(&clip2, .Position, {0, 1}, {{0, 0, 0, 0}, {2, 0, 0, 0}}, off = {1, 2}, modes = {.Step, .Step})
+	_ls_row(&clip2, .Position, {0, 1}, {{0, 0, 0, 0}, {0, 3, 0, 0}}, off = {0, 2})
+	group2 := animation_editor.sheet_group_channels(&clip2, 0, context.temp_allocator)
+	testing.expect(t, animation_editor.sheet_join_mixed_step(&clip2, group2), "a step lane next to a linear lane is reported")
+
+	clip3 := anim.AnimationClip{length = 2, frame_rate = 30}
+	clip3.channels = make([dynamic]anim.Animation_Channel, context.temp_allocator)
+	_ls_row(&clip3, .Position, {0, 1}, {{0, 0, 0, 0}, {2, 0, 0, 0}}, off = {1, 2}, modes = {.Step, .Step})
+	_ls_row(&clip3, .Position, {0, 1}, {{0, 0, 0, 0}, {0, 3, 0, 0}}, off = {0, 2}, modes = {.Step, .Step})
+	group3 := animation_editor.sheet_group_channels(&clip3, 0, context.temp_allocator)
+	testing.expect(t, !animation_editor.sheet_join_mixed_step(&clip3, group3), "lanes that all step join exactly")
+	d3 := &clip3.channels[animation_editor.sheet_join_lanes(&clip3, group3)]
+	testing.expect(t, d3.step && len(d3.modes) == 0, "a step row with no modes")
+}
+
