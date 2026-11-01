@@ -56,8 +56,24 @@ game_gizmos: bool
 
 A window declares a padlock with `lock` on its `@(editor_window)`: `lock="instance"` gives each instance its own lock, `lock="shared"` one lock all its instances share, for a view whose instances show one state, as the Animation window's copies share one preview. The shell draws the padlock first in the view's tab bar, the same for every such view (`editor/view_lock.odin`). The Inspector, the Project Inspector and the Animation window have one.
 
+A plugin window with a lock:
+
+```odin
+import wnd "moonhug:editor/window"
+import "moonhug:editor/session"
+
+@(editor_window={id="my_view", title="My View", lock="instance"})
+my_view_draw :: proc(w: ^wnd.Window) {
+    if session.view_lock_missing_note(w.key) do return
+    tH := session.view_object(w.key) // the selection, or what the lock holds
+    // draw tH
+}
+```
+
 - Locking takes the selection as it is now, both sets: the selected objects, or the ones kept while assets are selected, and the selected assets with their sub-asset ids, or the ones kept while objects are selected. With nothing selected the view stays unlocked.
 - A view reads what to show through the session package, locked or not: `session.view_objects` and `session.view_object` for scene objects, `session.view_assets` and `session.view_asset` for assets. Unlocked these are the selection. Locked they are what the lock holds.
+- Every read takes the instance's key, `w.key`, for both kinds of lock. A shared lock is found from it.
+- A view that reads the selection itself, through `session.selection`, `session.active`, `session.project_active` or `engine.inspector_inspected_selection`, gets a padlock that changes nothing. All of its targets come from the `session.view_*` reads.
 - A lock holds references, not handles: an object as its scene's asset guid and its local id, an asset as its guid and sub-asset id. A locked target that does not resolve now is missing, not gone: its scene is closed or it was deleted. The lock stays, the view shows `session.view_lock_missing_note` where its target would be, and shows the target again when it is back, after an undo or when the scene reopens.
 - The same local id never names another object: the engine mints ids at random among 2^63 and checks the live ones, and undo restores an object with its own id.
 - A lock goes when the view is unlocked, or when its view closes after it was open. A lock waiting for its view, restored after a restart or in a workspace not hosted yet, waits as long as it takes.
