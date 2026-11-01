@@ -167,3 +167,39 @@ _quat_same_orientation :: proc(a, b: [4]f32) -> bool {
 	dot := a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w
 	return abs(abs(dot) - 1) < 1e-4
 }
+
+// A read-only driven Rotation row whose clip leaves x and z to the object (an
+// Euler row animating y): an edit of x replaces x of the object's rotation and
+// keeps its own y and z, the gesture is one undo step, and undo restores it.
+// The driven angle the row showed is never written.
+@(test)
+test_rotation_row_driven_edits_the_objects_own_angles :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	a := engine.transform_new("A")
+	w := engine.ctx_world()
+	ta := engine.pool_get(&w.transforms, engine.Handle(a))
+	ta.rotation = engine.quat_from_euler_xyz(10, 20, 30)
+	original := ta.rotation
+	undo.push_transform_owner(a)
+	defer undo.pop_owner()
+
+	// The row showed y = 70 from the clip over the object's x and z.
+	start := [3]f32{10, 70, 30}
+	own := inspector.Driven_Lanes{0, 2}
+	before := s.top
+	testing.expect(t, !scene_views.rotation_own_angles_drive_for_test(a, {15, 70, 30}, start, own, active = true, finished = false), "mid-drag")
+	testing.expect(t, !scene_views.rotation_own_angles_drive_for_test(a, {25, 70, 30}, {15, 70, 30}, own, active = true, finished = false), "mid-drag")
+	testing.expect(t, scene_views.rotation_own_angles_drive_for_test(a, {25, 70, 30}, {25, 70, 30}, own, active = false, finished = true), "the release ends it")
+
+	e := engine.quat_to_euler_xyz(ta.rotation)
+	testing.expectf(t, abs(e.x - 25) < 0.01 && abs(e.y - 20) < 0.01 && abs(e.z - 30) < 0.01, "x edited, own y and z kept, got %v", e)
+	testing.expect_value(t, s.top, before + 1)
+	testing.expect(t, undo.apply_undo(s), "undo")
+	testing.expectf(t, ta.rotation == original, "undo restores the rotation, got %v", ta.rotation)
+}
+

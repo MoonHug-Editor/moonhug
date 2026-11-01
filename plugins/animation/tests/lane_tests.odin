@@ -406,12 +406,12 @@ test_lane_driven_value_fills_disabled_lanes :: proc(t: ^testing.T) {
 	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
 
 	pos: [3]f32
-	driven, _ := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &pos)
+	driven, _, _ := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &pos)
 	testing.expect(t, driven, "the position is driven")
 	testing.expect_value(t, pos, [3]f32{5, 2, 7})
 
 	size: [3]f32
-	driven, _ = inspector.driven_provider(_lane_comp(arm, .Volume), offset_of(engine.Volume, size), typeid_of([3]f32), &size)
+	driven, _, _ = inspector.driven_provider(_lane_comp(arm, .Volume), offset_of(engine.Volume, size), typeid_of([3]f32), &size)
 	testing.expect(t, driven, "the size is driven")
 	testing.expect_value(t, size, [3]f32{1, 10, 3})
 

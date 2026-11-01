@@ -336,8 +336,7 @@ field_edit_row :: proc(
 	dv: Driven_Value
 	if drawer != nil do dv = driven_query_field(field_ptr, field_tid)
 	if dv.state != .None {
-		_driven_row(field_ptr, field_tid, &dv, drawer, draw_label, grouped)
-		return false
+		return _driven_row(field_ptr, field_tid, offset, label, &dv, drawer, draw_label, grouped)
 	}
 
 	// A picker writes from inside a popup: no drag, no focus, so its gesture has
@@ -445,39 +444,43 @@ field_edit_row :: proc(
 }
 
 // A driven row (driven.odin). The widget draws on a buffer, never on the live
-// field, and no edit session runs, so nothing reaches the object, the scene
-// undo stack, the prefab overrides or the peers:
+// field, and the driven lanes reach neither the object, the scene undo stack,
+// the prefab overrides nor the peers:
 //   - read-only: the buffer is the driven value, reseeded every frame, and an
-//     edit of it is dropped
+//     edit of a driven lane is dropped. An edit of a lane the driver leaves to
+//     the object (dv.own) is an ordinary edit of it (driven_own_lanes_edit)
 //   - editable: the buffer lives across the frames of one gesture, and when
 //     the gesture ends the edited value goes to driven_commit
-// The drawer's changed flag is dropped too: the object did not change.
+// The drawer's changed flag is dropped too, unless an own lane changed the
+// object. Returns whether an own-lane edit ended this frame.
 @(private = "file")
 _driven_row :: proc(
 	field_ptr: rawptr,
 	field_tid: typeid,
+	offset: uintptr,
+	label: string,
 	dv: ^Driven_Value,
 	drawer: proc(ptr: rawptr, tid: typeid, label: cstring),
 	draw_label: cstring,
 	grouped: bool,
-) {
+) -> (finished: bool) {
 	multi_clear_mixed()
 	prev_changed := consume_inspector_changed()
 	defer if prev_changed do mark_inspector_changed()
 
 	buf := rawptr(&dv.value)
 	if dv.state == .Editable do buf = driven_edit_buffer(field_ptr, &dv.value)
-	if grouped do driven_draw_begin(dv.state)
+	if grouped do driven_draw_begin(dv.state, dv.own)
 	drawer(buf, field_tid, draw_label)
 	if grouped do driven_draw_end(dv.state, dv.keyed)
 	consume_inspector_changed()
 
 	if dv.state == .Editable {
 		driven_edit_finish(field_ptr, buf, dv)
-	} else {
-		field_edit_row_finished()
-		field_edit_row_held()
+		return false
 	}
+	active, ended := driven_gesture_state()
+	return driven_own_lanes_edit(field_ptr, buf, dv, offset, label, active, ended)
 }
 
 @(private = "file")

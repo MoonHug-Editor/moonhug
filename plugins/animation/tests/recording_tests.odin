@@ -379,7 +379,7 @@ _rec_intensity_row :: proc(clip: ^anim.AnimationClip) {
 
 @(private = "file")
 _ask_f32 :: proc(owner: engine.Handle, offset: uintptr) -> (v: f32, driven, editable: bool) {
-	driven, editable = inspector.driven_provider(owner, offset, typeid_of(f32), &v)
+	driven, editable, _ = inspector.driven_provider(owner, offset, typeid_of(f32), &v)
 	return
 }
 
@@ -469,12 +469,12 @@ test_driven_value_samples_a_position_row :: proc(t: ^testing.T) {
 	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
 
 	pos: [3]f32
-	driven, editable := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &pos)
+	driven, editable, _ := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &pos)
 	testing.expect(t, driven && !editable, "the position is driven, read-only")
 	testing.expect_value(t, pos, [3]f32{1, 2, 3})
 
 	scale: [3]f32
-	driven, _ = inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, scale), typeid_of([3]f32), &scale)
+	driven, _, _ = inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, scale), typeid_of([3]f32), &scale)
 	testing.expect(t, !driven, "the scale has no row")
 }
 
@@ -590,7 +590,7 @@ test_driven_commit_keys_the_objects_own_value :: proc(t: ^testing.T) {
 	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
 
 	shown: [3]f32
-	driven, editable := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, scale), typeid_of([3]f32), &shown)
+	driven, editable, _ := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, scale), typeid_of([3]f32), &shown)
 	testing.expect(t, driven && editable, "the scale is driven and editable")
 	testing.expect_value(t, shown, [3]f32{2, 2, 2})
 
@@ -988,7 +988,7 @@ test_driven_value_merges_split_channels :: proc(t: ^testing.T) {
 	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
 
 	pos: [3]f32
-	driven, _ := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &pos)
+	driven, _, _ := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &pos)
 	testing.expect(t, driven, "the position is driven")
 	testing.expect_value(t, pos, [3]f32{1, 7, 5})
 }
@@ -1103,12 +1103,12 @@ test_driven_rotation_reads_an_euler_row_as_angles_or_quaternion :: proc(t: ^test
 	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
 
 	e: [3]f32
-	driven, _ := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, rotation), typeid_of([3]f32), &e)
+	driven, _, _ := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, rotation), typeid_of([3]f32), &e)
 	testing.expect(t, driven, "the rotation is driven as euler angles")
 	testing.expectf(t, _near_euler(e, {20, 45, 0}), "y from the row, x and z from the transform, got %v", e)
 
 	q: [4]f32
-	driven, _ = inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, rotation), typeid_of([4]f32), &q)
+	driven, _, _ = inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, rotation), typeid_of([4]f32), &q)
 	testing.expect(t, driven, "the rotation is driven as a quaternion")
 	want := anim.animation_quat_from_euler({20, 45, 0})
 	testing.expectf(t, linalg.length(q - want) < 1e-4 || linalg.length(q + want) < 1e-4, "the quaternion of the same angles, got %v want %v", q, want)
@@ -1479,3 +1479,133 @@ test_record_into_a_joined_row_fills_the_disabled_lanes :: proc(t: ^testing.T) {
 	testing.expect_value(t, vals[k1].xyz, [3]f32{5, 2, 3})
 	testing.expect_value(t, vals[k0].xyz, [3]f32{7, 2, 9})
 }
+
+// --- Lanes the clip leaves to the object ---------------------------------------------
+
+// A Volume size row on "Box" under "Root" animating x only: 1 at 0 s, 3 at 1 s.
+@(private = "file")
+_rec_size_x_row :: proc(clip: ^anim.AnimationClip) {
+	guid := uuid.to_string(engine.get_guid_by_typeid(engine.Volume), context.temp_allocator)
+	_rec_add_row(clip, {target = "Box", component = guid, field = "size", lanes_off = {1, 2}}, {0, 1}, {{1, 0, 0, 0}, {3, 0, 0, 0}})
+}
+
+// The provider names the lanes no row animates: a masked vector field, a
+// masked Position row, a masked Euler row read as angles. A quaternion and a
+// row with every lane are driven whole.
+@(test)
+test_driven_provider_names_the_objects_own_lanes :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	box := engine.transform_new("Box", root)
+	_, vp := engine.transform_add_comp(box, .Volume)
+	vol := cast(^engine.Volume)vp
+	vol.size = {5, 6, 7}
+	clip := _rec_clip(doc)
+	_rec_size_x_row(clip)
+	_rec_add_row(clip, {target = "Box", path = .Position, lanes_off = {0, 2}}, {0}, {{0, 2, 0, 0}})
+	_rec_add_row(clip, {target = "Box", path = .Euler, lanes_off = {0, 1}}, {0}, {{0, 0, 30, 0}})
+	_rec_add_row(clip, {target = "Box", path = .Scale}, {0}, {{2, 2, 2, 0}})
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = false)
+
+	size: [3]f32
+	driven, _, own := inspector.driven_provider(_rec_comp(box, .Volume), offset_of(engine.Volume, size), typeid_of([3]f32), &size)
+	testing.expect(t, driven, "the size is driven")
+	testing.expect_value(t, own, inspector.Driven_Lanes{1, 2})
+	testing.expect_value(t, size, [3]f32{2, 6, 7})
+
+	pos: [3]f32
+	_, _, own = inspector.driven_provider(engine.Handle(box), offset_of(engine.Transform, position), typeid_of([3]f32), &pos)
+	testing.expect_value(t, own, inspector.Driven_Lanes{0, 2})
+
+	e: [3]f32
+	_, _, own = inspector.driven_provider(engine.Handle(box), offset_of(engine.Transform, rotation), typeid_of([3]f32), &e)
+	testing.expect_value(t, own, inspector.Driven_Lanes{0, 1})
+	q: [4]f32
+	_, _, own = inspector.driven_provider(engine.Handle(box), offset_of(engine.Transform, rotation), typeid_of([4]f32), &q)
+	testing.expect_value(t, own, inspector.Driven_Lanes{})
+
+	scl: [3]f32
+	_, _, own = inspector.driven_provider(engine.Handle(box), offset_of(engine.Transform, scale), typeid_of([3]f32), &scl)
+	testing.expect_value(t, own, inspector.Driven_Lanes{})
+}
+
+@(private = "file")
+_write_size_xy :: proc(field_ptr: rawptr) {
+	v := cast(^[3]f32)field_ptr
+	v.x = 9 // driven: dropped in preview
+	v.y = 8 // the object's own
+}
+
+@(private = "file")
+_drag_size :: proc(box: engine.Transform_Handle, vol: ^engine.Volume) {
+	undo.push_component_owner(_rec_comp(box, .Volume))
+	defer undo.pop_owner()
+	h := common.Row_Harness{
+		field_ptr = &vol.size,
+		field_tid = typeid_of([3]f32),
+		offset    = offset_of(engine.Volume, size),
+		label     = "size",
+	}
+	common.row_replay(&h, []common.Frame{
+		common.frame_press(_write_size_xy),
+		common.frame_drag(_write_size_xy),
+		common.frame_release(),
+	})
+}
+
+// In preview an edit of a lane the clip does not drive changes the object, as
+// an ordinary row edit: the lane takes the value, the driven lane keeps the
+// object's own value, the clip is untouched, and the gesture is one scene
+// undo step that undo takes back. While recording the same edit keys the
+// clip, as every edit does, and the object keeps its value.
+@(test)
+test_driven_row_edits_the_objects_own_lanes :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	box := engine.transform_new("Box", root)
+	_, vp := engine.transform_add_comp(box, .Volume)
+	vol := cast(^engine.Volume)vp
+	vol.size = {5, 6, 7}
+	_rec_size_x_row(_rec_clip(doc))
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = false)
+
+	before := s.top
+	_drag_size(box, vol)
+	testing.expect_value(t, vol.size, [3]f32{5, 8, 7})
+	testing.expect_value(t, s.top, before + 1)
+	testing.expect(t, _has_scene_value(s.items[s.top - 1].cmd), "a scene value step")
+	ch := &_rec_clip(doc).channels[0]
+	testing.expect_value(t, len(ch.times), 2)
+	testing.expect_value(t, ch.lanes_off, anim.Channel_Lanes_Off{1, 2})
+	testing.expect(t, undo.apply_undo(s), "undo")
+	testing.expect_value(t, vol.size, [3]f32{5, 6, 7})
+
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = true)
+	before = s.top
+	_drag_size(box, vol)
+	testing.expect_value(t, vol.size, [3]f32{5, 6, 7})
+	testing.expect_value(t, s.top, before + 1)
+	testing.expect(t, !_has_scene_value(s.items[s.top - 1].cmd), "no scene value step")
+	ch = &_rec_clip(doc).channels[0]
+	at := _key_at(ch, 0.5)
+	testing.expect(t, at >= 0, "a key at the playhead")
+	if at >= 0 do testing.expect_value(t, ch.values.([dynamic][4]f32)[at].xyz, [3]f32{9, 8, 7})
+	testing.expect_value(t, ch.lanes_off, anim.Channel_Lanes_Off{})
+}
+

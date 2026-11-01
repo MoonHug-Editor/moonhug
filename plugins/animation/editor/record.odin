@@ -560,49 +560,73 @@ _record_memo_lookup :: proc(owner: engine.Handle, field_offset: uintptr, field_t
 // would be the clip's own. The field shows its own value, and recording and
 // Add Key still key it.
 @(private = "file")
-_record_driven :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid, out: rawptr) -> (driven: bool, editable: bool) {
+_record_driven :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid, out: rawptr) -> (driven: bool, editable: bool, own: inspector.Driven_Lanes) {
 	// State preview poses from an authored state, not from the shown clip.
-	if !_pv.active || _pv.entry != 0 || _pv.clip == {} do return false, false
+	if !_pv.active || _pv.entry != 0 || _pv.clip == {} do return
 	kind, kok := anim._prop_kind_of(field_tid)
-	if !kok || kind == .Text do return false, false
+	if !kok || kind == .Text do return
 	doc, clip := _pv_doc()
-	if clip == nil || len(clip.channels) == 0 do return false, false
+	if clip == nil || len(clip.channels) == 0 do return
 
 	k, chans, ok := _record_memo_lookup(owner, field_offset, field_tid, doc, clip)
-	if !ok || len(chans) == 0 do return false, false
+	if !ok || len(chans) == 0 do return
 	editable = _pv.recording && doc != nil
 	if k.property {
 		ch0 := &clip.channels[chans[0]]
 		if !anim.animation_channel_is_float(ch0) {
 			anim._prop_write_value(out, k.kind, field_tid, anim._animation_channel_sample_value(ch0, _pv.time))
-			return true, editable
+			return true, editable, {}
 		}
 		cur: [4]f32
 		if live, _, _, lok := anim._prop_locate(k.owner, k.guid_str, k.field); lok do cur = anim._prop_read(live, k.kind, field_tid)
 		anim._prop_write_value(out, k.kind, field_tid, _record_sample_lanes(clip, chans, k.kind, cur))
-		return true, editable
+		// The lanes no row animates show and edit the object's own value.
+		n := anim.prop_kind_lanes(k.kind)
+		if n >= 2 {
+			animated: anim.Lane_Set
+			for idx in chans {
+				ch := &clip.channels[idx]
+				off := anim.animation_channel_lanes_off(ch, k.kind)
+				for l in 0 ..< anim.animation_channel_lane_count(ch, k.kind) do if l not_in off do animated += {l}
+			}
+			for l in 0 ..< n do if l not_in animated do own += {l}
+		}
+		return true, editable, own
 	}
 	w := engine.ctx_world()
 	t := engine.pool_get(&w.transforms, engine.Handle(k.owner))
-	if t == nil do return false, false
+	if t == nil do return
 	// The field's rows over the object's own values, by the one combining
 	// rule (anim.Clip_TRS). The rotation reads as a quaternion or as euler
-	// angles, by the type asked for.
+	// angles, by the type asked for. The lanes no row sets are the object's
+	// own: a quaternion is driven whole, euler angles per angle.
 	trs: anim.Clip_TRS
 	for idx in chans do anim.animation_trs_add(&trs, &clip.channels[idx], _pv.time)
 	switch k.path {
-	case .Position: (cast(^[3]f32)out)^ = anim.animation_trs_lanes_over(trs.pos, trs.pos_lanes, t.position)
-	case .Scale:    (cast(^[3]f32)out)^ = anim.animation_trs_lanes_over(trs.scl, trs.scl_lanes, t.scale)
+	case .Position:
+		(cast(^[3]f32)out)^ = anim.animation_trs_lanes_over(trs.pos, trs.pos_lanes, t.position)
+		own = _record_own_xyz(trs.pos_lanes)
+	case .Scale:
+		(cast(^[3]f32)out)^ = anim.animation_trs_lanes_over(trs.scl, trs.scl_lanes, t.scale)
+		own = _record_own_xyz(trs.scl_lanes)
 	case .Rotation:
 		if k.leaf == typeid_of([3]f32) {
 			(cast(^[3]f32)out)^ = anim.animation_trs_euler(trs, t.rotation)
+			if !trs.has_rot do own = _record_own_xyz(trs.eul_lanes)
 		} else {
 			(cast(^[4]f32)out)^ = anim.animation_trs_rotation(trs, t.rotation)
 		}
 	case .Euler:
 		unreachable() // a field key names the rotation field, never a row form
 	}
-	return true, editable
+	return true, editable, own
+}
+
+// The lanes of x, y, z outside `animated`.
+@(private = "file")
+_record_own_xyz :: proc(animated: anim.Lane_Set) -> (own: inspector.Driven_Lanes) {
+	for l in 0 ..< 3 do if l not_in animated do own += {l}
+	return
 }
 
 // Keys an inspector edit of a driven field at the playhead: `value` holds the
@@ -745,7 +769,7 @@ _record_key_value :: proc(owner: engine.Handle, field_offset: uintptr, field_tid
 	ref: Maybe(anim.Channel_Value)
 	if !whole {
 		scratch: [4]u64
-		if driven, _ := _record_driven(owner, field_offset, field_tid, &scratch); driven {
+		if driven, _, _ := _record_driven(owner, field_offset, field_tid, &scratch); driven {
 			ref = anim._prop_read_value(&scratch, k.kind, k.leaf)
 		}
 	}

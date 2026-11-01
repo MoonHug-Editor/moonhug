@@ -710,12 +710,25 @@ _wrap_transform_field_override :: proc(tH: engine.Transform_Handle, t: ^engine.T
 		defer if prev_changed do inspector.mark_inspector_changed()
 		buf := rawptr(&dv.value)
 		if dv.state == .Editable do buf = inspector.driven_edit_buffer(field_ptr, &dv.value)
-		inspector.driven_draw_begin(dv.state)
+		inspector.driven_draw_begin(dv.state, dv.own)
 		drawer(buf, drawer_tid, label)
 		inspector.driven_draw_end(dv.state, dv.keyed)
 		inspector.driven_context_menu(field_ptr, &dv)
 		inspector.consume_inspector_changed()
-		if dv.state == .Editable do inspector.driven_edit_finish(field_ptr, buf, &dv)
+		if dv.state == .Editable {
+			inspector.driven_edit_finish(field_ptr, buf, &dv)
+			return
+		}
+		// A lane the clip does not drive is the object's own value: its edit is
+		// an ordinary one, and in a prefab instance it records an override.
+		active, finished := inspector.driven_gesture_state()
+		ended := inspector.driven_own_lanes_edit(field_ptr, buf, &dv, multi_offset, prop_path, active, finished)
+		if is_in_nested_ctx && ended {
+			prev_nested_lid := engine.inspector_get_nested_local_id()
+			engine.inspector_set_nested_local_id(target_id)
+			inspector.record_nested_override(field_ptr, field_tid, prop_path, true)
+			engine.inspector_set_nested_local_id(prev_nested_lid)
+		}
 		return
 	}
 
@@ -820,7 +833,13 @@ _wrap_transform_rotation_override :: proc(tH: engine.Transform_Handle, t: ^engin
 	// Euler row's angles reach the row as typed, without a quaternion between.
 	dv := inspector.driven_query(engine.Handle(tH), multi_offset, typeid_of([3]f32))
 	if dv.state != .None {
-		_wrap_transform_rotation_driven(&t.rotation, drawer, &dv)
+		ended := _wrap_transform_rotation_driven(&t.rotation, drawer, &dv, multi_offset)
+		if is_in_nested_ctx && ended {
+			prev_nested_lid := engine.inspector_get_nested_local_id()
+			engine.inspector_set_nested_local_id(target_id)
+			inspector.record_nested_override(&t.rotation, typeid_of([4]f32), "rotation", true)
+			engine.inspector_set_nested_local_id(prev_nested_lid)
+		}
 		return
 	}
 
@@ -890,14 +909,19 @@ _wrap_transform_rotation_override :: proc(tH: engine.Transform_Handle, t: ^engin
 }
 
 // A driven Rotation row: three euler fields, the driven euler angles.
-// Read-only drops an edit. Editable keeps the euler buffer across the frames
-// of one gesture (a drag continues from where it is), and when the gesture
-// ends hands inspector.driven_commit the angles. The live rotation is never
-// written, and multi-edit peers are not: the row edits the value the active
-// object is driven to, which the peers do not share. The context menu offers
-// "Add Key" alone, which keys the driven angles.
+// Read-only drops an edit of a driven angle. Editable keeps the euler buffer
+// across the frames of one gesture (a drag continues from where it is), and
+// when the gesture ends hands inspector.driven_commit the angles. Multi-edit
+// peers are not written: the row edits the value the active object is driven
+// to, which the peers do not share. The context menu offers "Add Key" alone,
+// which keys the driven angles.
+//
+// An angle the clip does not drive (dv.own, an Euler row with disabled
+// lanes) is the object's own: on a read-only row its edit replaces that angle
+// of the object's rotation, as one undoable edit of the rotation field.
+// Returns whether such an edit ended this frame.
 @(private)
-_wrap_transform_rotation_driven :: proc(rot: ^[4]f32, drawer: proc(ptr: rawptr, tid: typeid, label: cstring), dv: ^inspector.Driven_Value) {
+_wrap_transform_rotation_driven :: proc(rot: ^[4]f32, drawer: proc(ptr: rawptr, tid: typeid, label: cstring), dv: ^inspector.Driven_Value, offset: uintptr) -> (ended: bool) {
 	inspector.multi_clear_mixed()
 	prev_changed := inspector.consume_inspector_changed()
 	defer if prev_changed do inspector.mark_inspector_changed()
@@ -906,16 +930,17 @@ _wrap_transform_rotation_driven :: proc(rot: ^[4]f32, drawer: proc(ptr: rawptr, 
 	start := seed
 	buf := &seed
 	if dv.state == .Editable do buf = cast(^[3]f32)inspector.driven_edit_buffer(rot, &seed)
-	inspector.driven_draw_begin(dv.state)
+	inspector.driven_draw_begin(dv.state, dv.own)
 	drawer(buf, typeid_of(^[3]f32), "Rotation")
 	inspector.driven_draw_end(dv.state, dv.keyed)
 	inspector.driven_context_menu(rot, dv)
 	inspector.consume_inspector_changed()
-	if dv.state != .Editable do return
 
 	active, finished := inspector.driven_gesture_state()
-	if !inspector.driven_edit_end(rot, buf, &seed, &start, size_of([3]f32), active, finished) do return
+	if dv.state != .Editable do return _rotation_own_angles_edit(rot, buf^, start, dv.own, offset, active, finished)
+	if !inspector.driven_edit_end(rot, buf, &seed, &start, size_of([3]f32), active, finished) do return false
 	inspector.driven_commit(dv.owner, dv.offset, dv.tid, &seed)
+	return false
 }
 
 // Mixed state for the rotation row, per euler axis.
@@ -1094,6 +1119,42 @@ rotation_row_drive_for_test :: proc(
 			_inspector_euler_cache, _rotation_moved_axes, commit)
 	}
 	if commit do _rotation_moved_axes = {}
+}
+
+// The own-angle edit of a read-only driven Rotation row: `shown` the angles
+// the row drew after the user's edit, `start` the angles it was seeded with,
+// `own` the angles the clip leaves to the object. A changed own angle
+// replaces that angle of the object's rotation (its own angles are its
+// rotation's, as the provider shows them), inside the row's undo session,
+// opened on the first changed frame and ended with the gesture. Returns
+// whether the edit ended this frame.
+@(private)
+_rotation_own_angles_edit :: proc(rot: ^[4]f32, shown, start: [3]f32, own: inspector.Driven_Lanes, offset: uintptr, active, finished: bool) -> (ended: bool) {
+	if own == {} do return false
+	moved := false
+	for l in own do if l < 3 && shown[l] != start[l] do moved = true
+	if moved {
+		if !inspector.field_edit_in_flight(rot) do inspector.field_edit_begin(rot, typeid_of([4]f32), offset, "rotation")
+		e := engine.quat_to_euler_xyz(rot^)
+		for l in own do if l < 3 do e[l] = shown[l]
+		rot^ = engine.quat_from_euler_xyz(e.x, e.y, e.z)
+		inspector.mark_inspector_changed()
+	}
+	if inspector.field_edit_in_flight(rot) && (finished || !active) {
+		inspector.field_edit_end()
+		return true
+	}
+	return false
+}
+
+// Test-only: one frame of a read-only driven Rotation row's own-angle edit on
+// `tH`, as the drawn row runs it after its widgets drew `shown` over `start`.
+rotation_own_angles_drive_for_test :: proc(tH: engine.Transform_Handle, shown, start: [3]f32, own: inspector.Driven_Lanes, active, finished: bool) -> bool {
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(tH))
+	if t == nil do return false
+	offset := uintptr(rawptr(&t.rotation)) - uintptr(t)
+	return _rotation_own_angles_edit(&t.rotation, shown, start, own, offset, active, finished)
 }
 
 // Refreshes the euler cache for `tH` and returns the pre-edit angles. Shared by

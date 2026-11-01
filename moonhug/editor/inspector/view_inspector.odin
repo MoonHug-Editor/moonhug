@@ -1077,7 +1077,7 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
         // decorator that draws the row (color, range) may emit several items,
         // and the row's transaction below must see them as one gesture.
         if decorator_dv.state != .None {
-            driven_draw_begin(decorator_dv.state)
+            driven_draw_begin(decorator_dv.state, decorator_dv.own)
             run_field_decorators(tid, i, &ctx)
             // A decorator that only adds to the row (a header) leaves the
             // field to the row's own drawer below, which marks it. The marks
@@ -1093,7 +1093,11 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
                 if decorator_dv.state == .Editable {
                     driven_edit_finish(field_ptr, ctx.field_ptr, &decorator_dv)
                 } else {
-                    field_edit_row_held()
+                    // A lane the driver leaves to the object is an ordinary
+                    // edit of it, with its prefab override.
+                    active, finished := driven_gesture_state()
+                    ended := driven_own_lanes_edit(field_ptr, ctx.field_ptr, &decorator_dv, multi_offset_of(field_ptr, ptr), field_name, active, finished)
+                    record_nested_override(field_ptr, field_type.id, full_path, ended)
                 }
             }
             ctx.field_ptr = field_ptr

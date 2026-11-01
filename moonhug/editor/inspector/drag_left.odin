@@ -220,7 +220,10 @@ _drag_scalar_n :: proc(
 		// Each component reports its own mixed state, so a selection agreeing on
 		// X and Y but not Z dashes Z alone.
 		_drag_component_index = int(i)
+		// A lane a driven row leaves to the object draws plain (driven.odin).
+		plain := driven_lane_style_begin(int(i))
 		if _drag_scalar("", data_type, p, v_speed, p_min, p_max, format, flags) do changed = true
+		driven_lane_style_end(plain)
 		// Each component is its OWN imgui item. A caller that wants the row's
 		// gesture as a whole wraps this call in im.BeginGroup/EndGroup: imgui
 		// forwards the active item, its release and its edited flag to the

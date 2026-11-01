@@ -29,6 +29,14 @@ package inspector
 // The live field holds the object's own value while the inspector draws, so a
 // driven row never reads it.
 //
+// A vector field can be driven in some lanes only (a clip row with disabled
+// lanes): the provider names the lanes it leaves to the object (`own`), and
+// fills them with the object's own value. The row draws those lanes in the
+// normal colors. On a read-only row an edit of one of them changes the object
+// as an ordinary row does: one undoable edit of the live field, which the
+// driver leaves alone (driven_own_lanes_edit). On an editable row an edit of
+// any lane goes to driven_commit, as every edit does while recording.
+//
 // A field that is not driven but has a row (driven_row_state) gets a mark: the
 // driven bar left of the label, in a quieter color. A driven row also shows a
 // filled diamond when the playhead's frame has a key for it. The field's
@@ -48,7 +56,12 @@ import "moonhug:editor/widgets"
 // the field now, writes the driven value into `out` (size_of(field_tid) bytes,
 // the field's own type) and returns driven=true. `editable` says an edit of
 // the field goes somewhere. Called per field per frame, so it must be cheap.
-driven_provider: proc(owner: core.Handle, field_offset: uintptr, field_tid: typeid, out: rawptr) -> (driven: bool, editable: bool)
+// `own` names the lanes of a vector field the driver leaves to the object:
+// `out` holds the object's own value in them. Empty for a field driven whole.
+driven_provider: proc(owner: core.Handle, field_offset: uintptr, field_tid: typeid, out: rawptr) -> (driven: bool, editable: bool, own: Driven_Lanes)
+
+// Lanes of a vector field, 0 x to 3 w.
+Driven_Lanes :: bit_set[0 ..< 4; u8]
 
 // Takes an edit of a driven, editable field: `value` holds the edited value in
 // the field's own type. Called once per gesture, when it ends. Returns false
@@ -104,7 +117,8 @@ DRIVEN_VALUE_MAX :: 64
 // `tid` name the field for driven_commit.
 Driven_Value :: struct {
 	state:  Driven_State,
-	keyed:  bool, // the row has a key on the playhead's frame
+	keyed:  bool,         // the row has a key on the playhead's frame
+	own:    Driven_Lanes, // lanes left to the object (driven_provider)
 	owner:  core.Handle,
 	offset: uintptr,
 	tid:    typeid,
@@ -117,8 +131,9 @@ driven_query :: proc(owner: core.Handle, field_offset: uintptr, field_tid: typei
 	if driven_provider == nil || field_tid == nil do return
 	ti := type_info_of(field_tid)
 	if ti == nil || ti.size > DRIVEN_VALUE_MAX do return
-	driven, editable := driven_provider(owner, field_offset, field_tid, &dv.value)
+	driven, editable, own := driven_provider(owner, field_offset, field_tid, &dv.value)
 	if !driven do return {}
+	dv.own = own
 	dv.state = editable && driven_commit != nil ? .Editable : .Read_Only
 	_, _, dv.keyed = driven_row_query(owner, field_offset, field_tid)
 	dv.owner = owner
@@ -198,10 +213,27 @@ _driven_bar :: proc(rmin, rmax: im.Vec2, color: im.Vec4) {
 	im.DrawList_AddRectFilled(im.GetWindowDrawList(), {rmin.x - 4, rmin.y}, {rmin.x - 2, rmax.y}, im.GetColorU32ImVec4(color))
 }
 
+// The lanes of the row being drawn that the driver leaves to the object, and
+// the colors before the tint, so a vector widget draws those lanes plain
+// (driven_lane_style_begin). Set from driven_draw_begin to driven_draw_end.
+@(private = "file")
+_driven_row_own: Driven_Lanes
+
+@(private = "file")
+_driven_row_plain: [4]im.Vec4
+
 // Opens a driven row: pushes the tint and opens the group the row's widgets
-// draw in. Pair with driven_draw_end.
-driven_draw_begin :: proc(state: Driven_State) {
+// draw in. `own` names the lanes the row draws in the plain colors. Pair with
+// driven_draw_end.
+driven_draw_begin :: proc(state: Driven_State, own := Driven_Lanes{}) {
 	if state == .None do return
+	_driven_row_own = own
+	_driven_row_plain = {
+		im.GetStyleColorVec4(.Text)^,
+		im.GetStyleColorVec4(.FrameBg)^,
+		im.GetStyleColorVec4(.FrameBgHovered)^,
+		im.GetStyleColorVec4(.FrameBgActive)^,
+	}
 	tint := driven_tint(state)
 	im.PushStyleColorImVec4(.Text, tint)
 	im.PushStyleColorImVec4(.FrameBg, _driven_blend(im.GetStyleColorVec4(.FrameBg)^, tint))
@@ -217,6 +249,7 @@ driven_draw_begin :: proc(state: Driven_State) {
 // the tint: the group drew no field (a decorator that draws a header alone).
 driven_draw_end :: proc(state: Driven_State, keyed := false, marks := true) {
 	if state == .None do return
+	_driven_row_own = {}
 	im.EndGroup()
 	im.PopStyleColor(4)
 	if !marks do return
@@ -226,6 +259,53 @@ driven_draw_end :: proc(state: Driven_State, keyed := false, marks := true) {
 	_driven_diamond(rmin, rmax, tint, keyed)
 	text := state == .Editable ? driven_tooltip_editable : driven_tooltip_read_only
 	if text != "" do widgets.tooltip(text)
+}
+
+// Called by a vector widget around lane `lane` of the row being drawn: a
+// lane the driver leaves to the object draws in the colors from before the
+// tint. Returns whether colors were pushed, for driven_lane_style_end.
+driven_lane_style_begin :: proc(lane: int) -> bool {
+	if lane < 0 || lane >= 4 || lane not_in _driven_row_own do return false
+	im.PushStyleColorImVec4(.Text, _driven_row_plain[0])
+	im.PushStyleColorImVec4(.FrameBg, _driven_row_plain[1])
+	im.PushStyleColorImVec4(.FrameBgHovered, _driven_row_plain[2])
+	im.PushStyleColorImVec4(.FrameBgActive, _driven_row_plain[3])
+	return true
+}
+
+driven_lane_style_end :: proc(pushed: bool) {
+	if pushed do im.PopStyleColor(4)
+}
+
+// After a read-only driven row drew on `buf` (seeded with the driven value,
+// the object's own value in the lanes dv.own): an edit of one of those lanes
+// is an ordinary edit of the object. The first changed frame opens the row's
+// undo session (field_edit_begin, as an ordinary row does), the changed lanes
+// are written to the live field, and the session ends with the gesture. The
+// driven lanes of `buf` are never written: the driver owns them. `active`
+// and `finished` are the row's gesture state (driven_gesture_state). Returns
+// whether the edit ended this frame, the moment a caller records a prefab
+// override. The field's lanes are f32 (a vector field).
+driven_own_lanes_edit :: proc(field_ptr, buf: rawptr, dv: ^Driven_Value, offset: uintptr, label: string, active, finished: bool) -> (ended: bool) {
+	if dv.state != .Read_Only || dv.own == {} || field_ptr == nil do return false
+	src := cast([^]f32)buf
+	dst := cast([^]f32)field_ptr
+	lanes := type_info_of(dv.tid).size / size_of(f32)
+	moved := false
+	for l in dv.own {
+		assert(l < lanes, "driven: an own lane lies inside the field")
+		if src[l] != dst[l] do moved = true
+	}
+	if moved {
+		if !field_edit_in_flight(field_ptr) do field_edit_begin(field_ptr, dv.tid, offset, label)
+		for l in dv.own do dst[l] = src[l]
+		mark_inspector_changed()
+	}
+	if field_edit_in_flight(field_ptr) && (finished || !active) {
+		field_edit_end()
+		return true
+	}
+	return false
 }
 
 // The key diamond of a driven row whose playhead frame has a key, centred on
