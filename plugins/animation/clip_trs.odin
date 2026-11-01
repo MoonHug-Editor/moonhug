@@ -14,6 +14,8 @@ package animation
 //   - a lane no row sets keeps `base`
 
 import "core:fmt"
+import "core:math"
+import "core:math/linalg"
 import "moonhug:packages/engine"
 
 Clip_TRS :: struct {
@@ -68,6 +70,33 @@ animation_trs_euler :: proc(trs: Clip_TRS, base: [4]f32) -> [3]f32 {
 	return e
 }
 
+// The euler angles (degrees) of quaternion `q` nearest to `near`: of the two
+// euler solutions of `q`, each lane moved by whole turns toward `near`, the
+// one with the smaller largest lane step. The second solution counts only
+// when it rebuilds `q`. A turn from 170 to 190 degrees reads 190, not -170.
+// Recording a rotation into an Euler row and Convert to Euler both unwind
+// this way.
+animation_euler_nearest :: proc(q: [4]f32, near: [3]f32) -> [3]f32 {
+	e := engine.quat_to_euler_xyz(q)
+	best := _euler_unwind(e, near)
+	alt := _euler_unwind({e.x + 180, 180 - e.y, e.z + 180}, near)
+	if abs(linalg.dot(animation_quat_from_euler(alt), q)) < 0.9999 do return best
+	if _euler_step(alt, near) < _euler_step(best, near) do return alt
+	return best
+}
+
+@(private = "file")
+_euler_unwind :: proc(e, near: [3]f32) -> [3]f32 {
+	out := e
+	for l in 0 ..< 3 do out[l] = e[l] + 360 * math.round((near[l] - e[l]) / 360)
+	return out
+}
+
+@(private = "file")
+_euler_step :: proc(e, near: [3]f32) -> f32 {
+	return max(abs(e.x - near.x), abs(e.y - near.y), abs(e.z - near.z))
+}
+
 // `v` with the lanes in `lanes` taken from `src`.
 animation_trs_lanes_over :: proc(src: [4]f32, lanes: Lane_Set, v: [3]f32) -> [3]f32 {
 	out := v
@@ -101,15 +130,33 @@ animation_clip_property_channels :: proc(clip: ^AnimationClip, ch: int, allocato
 	return out[:]
 }
 
-// The invariant a loaded clip holds: two channels of one property never
-// animate the same lane, so every lane of every property has one row that
-// says its value. Returns the first violation as a message, temp-allocated,
-// or "" and true.
+// The invariants a loaded clip holds, so sampling never reads past an array
+// or casts a row to the wrong kind:
+//   - every row has as many values as times, and no more modes or tangents
+//   - a transform row holds floats
+//   - two channels of one property never animate the same lane, so every
+//     lane of every property has one row that says its value
+// A property whose component type is not registered (its plugin is off)
+// has no known width: its rows compare their masks over all four lanes,
+// so its split rows still load. Returns the first violation as a message,
+// temp-allocated, or "" and true.
 animation_clip_validate :: proc(clip: ^AnimationClip) -> (msg: string, ok: bool) {
+	for &c in clip.channels {
+		n := len(c.times)
+		if animation_channel_values_len(c.values) != n || len(c.modes) > n || len(c.tangents) > n {
+			return fmt.tprintf("a row of %s has %d times, %d values, %d modes and %d tangents", _clip_target_name(&c), n, animation_channel_values_len(c.values), len(c.modes), len(c.tangents)), false
+		}
+		if !animation_channel_is_property(&c) && !animation_channel_is_float(&c) {
+			return fmt.tprintf("the %v row of %s holds no float keys", c.path, _clip_target_name(&c)), false
+		}
+	}
 	for &a, i in clip.channels {
 		for &b in clip.channels[i + 1:] {
 			if !animation_channel_same_property(&a, &b) do continue
 			width := animation_channel_mask_width(&a)
+			if width == 0 && animation_channel_is_property(&a) {
+				if _, known := _prop_meta(a.component, a.field); !known do width = 4
+			}
 			shared := Lane_Set(a.lanes_off) | Lane_Set(b.lanes_off)
 			both: Lane_Set
 			if width == 0 {
@@ -125,11 +172,16 @@ animation_clip_validate :: proc(clip: ^AnimationClip) -> (msg: string, ok: bool)
 }
 
 @(private = "file")
+_clip_target_name :: proc(c: ^Animation_Channel) -> string {
+	return c.target == "" ? "the animated object" : c.target
+}
+
+@(private = "file")
 _clip_dup_message :: proc(c: ^Animation_Channel, lanes: Lane_Set) -> string {
 	names := [4]string{"x", "y", "z", "w"}
 	ls := ""
 	for l in lanes do ls = len(ls) == 0 ? names[l] : fmt.tprintf("%s %s", ls, names[l])
-	target := c.target == "" ? "the animated object" : c.target
+	target := _clip_target_name(c)
 	if animation_channel_is_property(c) {
 		return fmt.tprintf("two rows animate lane %s of %s on %s", ls, c.field, target)
 	}

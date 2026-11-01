@@ -31,7 +31,6 @@ package animation_editor
 import "base:runtime"
 import "core:encoding/uuid"
 import "core:fmt"
-import "core:math"
 import "core:math/linalg"
 import "core:slice"
 import "core:strings"
@@ -290,35 +289,9 @@ _record_euler_near :: proc(clip: ^anim.AnimationClip, chans: []int, k: _Record_K
 	return anim.animation_trs_euler(trs, t.rotation)
 }
 
-// The euler angles of `q` nearest to `near`: of the two euler solutions of
-// `q`, each lane moved by whole turns toward `near`, the one with the smaller
-// largest lane step. The second solution counts only when it rebuilds `q`.
-// A turn from 170 to 190 degrees so keys 190, not -170.
-@(private = "file")
-_record_euler_nearest :: proc(q: [4]f32, near: [3]f32) -> [3]f32 {
-	e := engine.quat_to_euler_xyz(q)
-	best := _record_euler_unwind(e, near)
-	alt := _record_euler_unwind({e.x + 180, 180 - e.y, e.z + 180}, near)
-	if abs(linalg.dot(anim.animation_quat_from_euler(alt), q)) < 0.9999 do return best
-	if _record_euler_step(alt, near) < _record_euler_step(best, near) do return alt
-	return best
-}
-
-@(private = "file")
-_record_euler_unwind :: proc(e, near: [3]f32) -> [3]f32 {
-	out := e
-	for l in 0 ..< 3 do out[l] = e[l] + 360 * math.round((near[l] - e[l]) / 360)
-	return out
-}
-
-@(private = "file")
-_record_euler_step :: proc(e, near: [3]f32) -> f32 {
-	return max(abs(e.x - near.x), abs(e.y - near.y), abs(e.z - near.z))
-}
-
 // `v`, a value of the field (its type is k.leaf), in the form row `ch`
 // holds: euler angles for an Euler row given a quaternion, unwound toward
-// `near` (_record_euler_nearest), a normalized quaternion for a Rotation
+// `near` (anim.animation_euler_nearest), a normalized quaternion for a Rotation
 // row, else `v` itself.
 @(private = "file")
 _record_row_value :: proc(ch: ^anim.Animation_Channel, k: _Record_Key, v: anim.Channel_Value, near: [3]f32) -> anim.Channel_Value {
@@ -327,7 +300,7 @@ _record_row_value :: proc(ch: ^anim.Animation_Channel, k: _Record_Key, v: anim.C
 	if !is_f do return v
 	switch {
 	case ch.path == .Euler && k.leaf == typeid_of([4]f32):
-		e := _record_euler_nearest(_record_normalized(f), near)
+		e := anim.animation_euler_nearest(_record_normalized(f), near)
 		return [4]f32{e.x, e.y, e.z, 0}
 	case ch.path == .Rotation && k.leaf == typeid_of([3]f32):
 		return anim.animation_quat_from_euler(f.xyz)

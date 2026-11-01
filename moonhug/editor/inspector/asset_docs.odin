@@ -200,7 +200,6 @@ asset_doc_apply_json :: proc(guid: core.Asset_GUID, kind: undo.Doc_Kind, json_by
     core.type_on_validate_by_typeid(tid, fresh.data)
 
     _doc_replace(doc, fresh, dirty = true)
-    doc.edits += 1
     return true
 }
 
@@ -243,6 +242,7 @@ _doc_replace :: proc(doc: ^Asset_Doc, fresh: any, dirty: bool) {
     tid := fresh.id
     doc_data_retire(doc.data)
     doc.data = fresh
+    doc.edits += 1 // a new value: undo, redo, discard
     doc.dirty = dirty
     // The inspector may be showing this doc — repoint its view.
     for data in _all_data() do if data.doc == doc do data.fileData = doc.data

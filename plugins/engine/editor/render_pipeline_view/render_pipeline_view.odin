@@ -778,7 +778,7 @@ _rp_record :: proc(undo_allocator: runtime.Allocator) {
 	}
 	delete(_rp.baseline, runtime.default_allocator())
 	_rp.baseline = recorded
-	_rp.asset.dirty = true
+	inspector.asset_doc_mark_edited(_rp.asset)
 }
 
 // --- Helpers ------------------------------------------------------------------------

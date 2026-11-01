@@ -700,6 +700,6 @@ _sg_record :: proc(undo_allocator: runtime.Allocator) {
 	}
 	delete(_sg.baseline, runtime.default_allocator())
 	_sg.baseline = recorded
-	_sg.asset.dirty = true
+	inspector.asset_doc_mark_edited(_sg.asset)
 	_sg_regen()
 }

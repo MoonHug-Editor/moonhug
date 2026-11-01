@@ -16,7 +16,6 @@ package animation_editor
 // allocator in context, and the window reselects afterwards (channel
 // indices shift).
 
-import "core:math"
 import "core:math/linalg"
 import engine "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
@@ -282,8 +281,7 @@ sheet_rotation_to_euler :: proc(clip: ^anim.AnimationClip, ch: int) -> bool {
 	for &v, k in vals {
 		q := v
 		if l := linalg.length(q); l > 0.0001 do q = (1.0 / l) * q
-		e := engine.quat_to_euler_xyz(q)
-		if k > 0 do e = _euler_nearest(q, e, prev)
+		e := k > 0 ? anim.animation_euler_nearest(q, prev) : engine.quat_to_euler_xyz(q)
 		v = {e.x, e.y, e.z, 0}
 		prev = e
 	}
@@ -293,29 +291,3 @@ sheet_rotation_to_euler :: proc(clip: ^anim.AnimationClip, ch: int) -> bool {
 	clear(&c.tangents)
 	return true
 }
-
-// The euler angles for `q` nearest to `prev`: `e` (a solution of `q`) and
-// its alternate solution, each lane shifted by whole turns toward `prev`,
-// the candidate with the smallest largest lane step. The alternate is kept
-// only when it rebuilds `q`.
-@(private = "file")
-_euler_nearest :: proc(q: [4]f32, e, prev: [3]f32) -> [3]f32 {
-	best := _euler_unwind(e, prev)
-	alt := _euler_unwind({e.x + 180, 180 - e.y, e.z + 180}, prev)
-	if abs(linalg.dot(anim.animation_quat_from_euler(alt), q)) < 0.9999 do return best
-	if _euler_step(alt, prev) < _euler_step(best, prev) do return alt
-	return best
-}
-
-@(private = "file")
-_euler_unwind :: proc(e, prev: [3]f32) -> [3]f32 {
-	out := e
-	for l in 0 ..< 3 do out[l] = e[l] + 360 * math.round((prev[l] - e[l]) / 360)
-	return out
-}
-
-@(private = "file")
-_euler_step :: proc(e, prev: [3]f32) -> f32 {
-	return max(abs(e.x - prev.x), abs(e.y - prev.y), abs(e.z - prev.z))
-}
-

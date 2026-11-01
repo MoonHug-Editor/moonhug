@@ -530,7 +530,7 @@ draw_asset_doc :: proc(doc: ^Asset_Doc) {
     prev_changed := inspector_changed
     inspector_changed = false
     draw_inspector(doc.data)
-    if inspector_changed do doc.dirty = true
+    if inspector_changed do asset_doc_mark_edited(doc)
     inspector_changed |= prev_changed
     undo.pop_owner()
     if hook.after != nil do hook.after(doc)

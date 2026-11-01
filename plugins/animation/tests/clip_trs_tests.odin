@@ -304,3 +304,55 @@ test_clip_load_refuses_an_invalid_clip :: proc(t: ^testing.T) {
 _capture_log :: proc(data: rawptr, level: log.Level, text: string, options: log.Options, location := #caller_location) {
 	if strings.contains(text, "two rows animate lane x of Position on Arm") do (cast(^bool)data)^ = true
 }
+
+// A property of a component type nobody registered (its plugin is off) has
+// no known width: split rows of it with disjoint masks load, two unmasked
+// rows of it do not. A row whose values and times differ in count, and a
+// transform row of ints, are refused.
+@(test)
+test_clip_validate_unknown_component_and_malformed_rows :: proc(t: ^testing.T) {
+	defer free_all(context.temp_allocator)
+	unknown :: "11111111-2222-3333-4444-555555555555"
+	row :: proc(c: ^anim.AnimationClip, comp: string, path: anim.Animation_Path, off: anim.Channel_Lanes_Off, nvals := 1) {
+		ch := anim.Animation_Channel{target = "Arm", component = comp, field = comp == "" ? "" : "size", path = path, lanes_off = off}
+		ch.times = make([dynamic]f32, context.temp_allocator)
+		append(&ch.times, 0)
+		vals := make([dynamic][4]f32, context.temp_allocator)
+		for _ in 0 ..< nvals do append(&vals, [4]f32{})
+		ch.values = vals
+		append(&c.channels, ch)
+	}
+
+	split := anim.AnimationClip{length = 1}
+	split.channels = make([dynamic]anim.Animation_Channel, context.temp_allocator)
+	row(&split, unknown, .Position, {1, 2, 3})
+	row(&split, unknown, .Position, {0, 2, 3})
+	_, ok := anim.animation_clip_validate(&split)
+	testing.expect(t, ok, "split rows of an unknown component load")
+
+	dup := anim.AnimationClip{length = 1}
+	dup.channels = make([dynamic]anim.Animation_Channel, context.temp_allocator)
+	row(&dup, unknown, .Position, {})
+	row(&dup, unknown, .Position, {})
+	_, ok = anim.animation_clip_validate(&dup)
+	testing.expect(t, !ok, "two unmasked rows of an unknown component do not")
+
+	short := anim.AnimationClip{length = 1}
+	short.channels = make([dynamic]anim.Animation_Channel, context.temp_allocator)
+	row(&short, "", .Position, {}, nvals = 2)
+	_, ok = anim.animation_clip_validate(&short)
+	testing.expect(t, !ok, "a row with more values than times does not")
+
+	ints := anim.AnimationClip{length = 1}
+	ints.channels = make([dynamic]anim.Animation_Channel, context.temp_allocator)
+	ich := anim.Animation_Channel{target = "Arm", path = .Position}
+	ich.times = make([dynamic]f32, context.temp_allocator)
+	append(&ich.times, 0)
+	ivals := make([dynamic]i64, context.temp_allocator)
+	append(&ivals, 1)
+	ich.values = ivals
+	append(&ints.channels, ich)
+	_, ok = anim.animation_clip_validate(&ints)
+	testing.expect(t, !ok, "a transform row of ints does not")
+}
+

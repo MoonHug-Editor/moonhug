@@ -4,12 +4,15 @@ package inspector
 // the object itself (the Animation window's preview pose). The inspector shows
 // that value instead of the field's own value.
 //
-// Four seams, nil by default. A plugin installs them at EditorInit:
+// Five seams, nil by default, plus three tooltip texts. A plugin installs
+// them at EditorInit:
 //   - driven_provider answers whether a field is driven, with its value
 //   - driven_commit takes an edit of a driven field (Record keys the clip)
 //   - driven_row_state answers whether the field has a row in the shown
-//     clip, and whether a key can be added for it
+//     clip, whether a key can be added for it, and whether the playhead's
+//     frame has a key
 //   - driven_add_key keys a value of the field ("Add Key" in its menu)
+//   - driven_delete_key deletes the key on the playhead's frame ("Delete Key")
 //
 // field_edit_row, the transform rows and decorator-drawn rows ask the provider
 // for the active object's field before they draw:
@@ -30,8 +33,8 @@ package inspector
 // driven bar left of the label, in a quieter color. A driven row also shows a
 // filled diamond when the playhead's frame has a key for it. The field's
 // context menu shows "Add Key" or "Delete Key" while the field can be keyed,
-// which is while recording. It keys the value the row shows: the driven value on a driven
-// row, the live value on any other.
+// which is while recording. Add Key keys the value the row shows: the driven
+// value on a driven row, the live value on any other.
 
 import "core:fmt"
 import "core:mem"

@@ -284,7 +284,7 @@ test_sheet_object_key_times_merge_within_half_a_frame :: proc(t: ^testing.T) {
 	append(&clip.channels, _sr_channel("Leg", .Position, {0.7}))
 	append(&clip.channels, _sr_channel("Arm", .Scale, {1.04, 1.5}))
 
-	times := animation_editor.sheet_object_key_times(&clip, "Arm", context.temp_allocator)
+	times := animation_editor.sheet_keys_times(&clip, animation_editor.sheet_target_channels(&clip, "Arm", context.temp_allocator), context.temp_allocator)
 	// 0 and 0.03 are one, 0.5 twice is one, 1.0 and 1.04 are one. Leg's 0.7
 	// belongs to another target.
 	want := []f32{0, 0.5, 1.0, 1.2, 1.5}
@@ -292,16 +292,16 @@ test_sheet_object_key_times_merge_within_half_a_frame :: proc(t: ^testing.T) {
 	for w, i in want do testing.expect_value(t, times[i], w)
 
 	// The summary key at 1.0 stands for 1.0 and 1.04, across two channels.
-	keys := animation_editor.sheet_object_keys_at(&clip, "Arm", times, 2, context.temp_allocator)
+	keys := animation_editor.sheet_keys_at(&clip, animation_editor.sheet_target_channels(&clip, "Arm", context.temp_allocator), times, 2, context.temp_allocator)
 	if testing.expect_value(t, len(keys), 2) {
 		testing.expect_value(t, keys[0], animation_editor.Sheet_Key{ch = 0, key = 2})
 		testing.expect_value(t, keys[1], animation_editor.Sheet_Key{ch = 3, key = 0})
 	}
 	// The one at 0 stands for both keys near the start.
-	keys = animation_editor.sheet_object_keys_at(&clip, "Arm", times, 0, context.temp_allocator)
+	keys = animation_editor.sheet_keys_at(&clip, animation_editor.sheet_target_channels(&clip, "Arm", context.temp_allocator), times, 0, context.temp_allocator)
 	testing.expect_value(t, len(keys), 2)
 
-	testing.expect_value(t, len(animation_editor.sheet_object_key_times(&clip, "Nobody", context.temp_allocator)), 0)
+	testing.expect_value(t, len(animation_editor.sheet_keys_times(&clip, animation_editor.sheet_target_channels(&clip, "Nobody", context.temp_allocator), context.temp_allocator)), 0)
 }
 
 @(test)

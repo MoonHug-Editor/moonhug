@@ -133,7 +133,7 @@ sheet_row_of_channel :: proc(clip: ^anim.AnimationClip, rows: []Sheet_Row, ch: i
 // The key times across the channels `chans`, sorted. Times within half a
 // frame of the first time of a run count as one, and that first time stands
 // for the run. An Object row's summary keys come from this over the target's
-// channels, a split row's over its lanes' channels.
+// channels (sheet_target_channels), a split row's over its lanes' channels.
 sheet_keys_times :: proc(clip: ^anim.AnimationClip, chans: []int, allocator := context.allocator) -> []f32 {
 	all := make([dynamic]f32, context.temp_allocator)
 	for idx in chans do append(&all, ..clip.channels[idx].times[:])
@@ -159,16 +159,6 @@ sheet_keys_at :: proc(clip: ^anim.AnimationClip, chans: []int, times: []f32, i: 
 		}
 	}
 	return keys[:]
-}
-
-// sheet_keys_times over every channel of `target`.
-sheet_object_key_times :: proc(clip: ^anim.AnimationClip, target: string, allocator := context.allocator) -> []f32 {
-	return sheet_keys_times(clip, sheet_target_channels(clip, target, context.temp_allocator), allocator)
-}
-
-// sheet_keys_at over every channel of `target`.
-sheet_object_keys_at :: proc(clip: ^anim.AnimationClip, target: string, times: []f32, i: int, allocator := context.allocator) -> []Sheet_Key {
-	return sheet_keys_at(clip, sheet_target_channels(clip, target, context.temp_allocator), times, i, allocator)
 }
 
 // The summary time a key at `kt` falls under: the last index of `times`
