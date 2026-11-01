@@ -47,15 +47,16 @@ _inspector_view := "Inspector"
 
 // The Inspector window (@(editor_window)): the components of what its
 // instance shows, the selection or what its padlock keeps
-// (editor/inspector_lock.odin).
-@(editor_window={id="Inspector", title="Inspector", icon="TUNE", width=360, height=600})
+// (editor/view_lock.odin).
+@(editor_window={id="Inspector", title="Inspector", icon="TUNE", width=360, height=600, lock="instance"})
 scene_inspector_window_draw :: proc(w: ^wnd.Window) {
 	_inspector_view = w.key
 	defer _inspector_view = "Inspector"
 
 	// Through the lock: a pinned inspector keeps drawing what it was pinned
-	// to while the selection moves on (editor/inspector_lock.odin).
-	tH := session.inspected_active(_inspector_view)
+	// to while the selection moves on (editor/view_lock.odin).
+	if session.view_lock_missing_note(_inspector_view) do return
+	tH := session.view_object(_inspector_view)
 	if tH == _HANDLE_NONE {
 		im.TextDisabled("No object selected")
 		return
@@ -70,7 +71,7 @@ scene_inspector_window_draw :: proc(w: ^wnd.Window) {
 	// which now multi-edit like anything else, so the only case left is a
 	// destroyed handle — a transient frame that prunes itself. A qualifier that
 	// is always true is noise.
-	sel := session.inspected(_inspector_view)
+	sel := session.view_objects(_inspector_view)
 	multi := multi_selection_editable(sel)
 	if n := len(sel); n > 1 {
 		im.TextDisabled(strings.clone_to_cstring(fmt.tprintf("%d selected", n), context.temp_allocator))
@@ -593,7 +594,7 @@ _inspector_euler_quat_src: [4]f32
 _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handle, peers: []inspector.Multi_Peer) {
 	// UI nodes show one transform block: the RectTransform inspector draws
 	// position, rotation and scale (view_rect_transform.odin).
-	if rect_transform_covers_selection(tH, session.inspected(_inspector_view) if len(peers) > 0 else nil) do return
+	if rect_transform_covers_selection(tH, session.view_objects(_inspector_view) if len(peers) > 0 else nil) do return
 	im.SetNextItemOpen(_inspector_transform_open, .Once)
 	if im.CollapsingHeader("Transform", {.DefaultOpen}) {
 		_inspector_transform_open = true

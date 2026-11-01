@@ -360,31 +360,45 @@ _is_inspector_asset :: proc(path: string) -> bool {
     return strings.has_suffix(path, ".asset") || strings.has_suffix(path, ".mat")
 }
 
-// Selection-driven inspector routing — the ONE code path shared by mouse
-// clicks and keyboard navigation in both panes: package roots open the
-// package inspector, JSON assets the asset inspector, importables their
-// import settings. Anything else leaves the inspector as it is.
-_project_inspect_path :: proc(full_path: string) {
-    // Every unlocked Project Inspector instance shows the selection. A locked
-    // one keeps its asset, unsaved edits included.
-    for data in inspector.route_targets() {
-        inspector.inspectorData = data
-        _project_inspect_one(full_path)
-    }
-    inspector.inspector_data_reset()
+// Brings every Project Inspector instance in line with what it should show
+// now (project_inspectors_follow), at once rather than next frame: called
+// right after a click changed the selection.
+_project_inspectors_refresh :: proc() {
+    project_inspectors_follow()
 }
 
-// Shows `full_path` in the Project Inspector instance `key` and locks it
-// there: a lock it held when the editor last quit (selection_persist.odin).
-// Nothing when the instance is not open.
-project_inspector_lock_restore :: proc(key, full_path: string) {
-    data := inspector.project_inspector_data(key)
-    locked := inspector.project_inspector_lock(key)
-    if data == nil || locked == nil do return
-    inspector.inspectorData = data
-    _project_inspect_one(full_path)
-    inspector.inspector_data_reset()
-    locked^ = true
+// Every Project Inspector instance shows what session.view_asset names for
+// it, as every view with a lock reads its target (view_lock.odin): its lock's
+// asset while it is locked, else the project selection, the assets kept while
+// objects are selected included. Nothing named, or nothing an inspector can
+// show (a plain folder), and it shows nothing. A target is loaded once, when
+// it changes, so a path no inspector can show is not retried every frame.
+// Once per frame before the views draw, and at once after a click
+// (_project_inspectors_refresh).
+project_inspectors_follow :: proc() {
+    context.allocator = runtime.default_allocator()
+    keys := make([dynamic]string, context.temp_allocator)
+    append(&keys, inspector.PROJECT_INSPECTOR)
+    for w in wnd.instances(inspector.PROJECT_INSPECTOR) do if w.key != inspector.PROJECT_INSPECTOR do append(&keys, w.key)
+    // The target each instance was last given, by key: default allocator.
+    @(static) given: map[string]string
+    for key in keys {
+        data := inspector.project_inspector_data(key)
+        if data == nil do continue
+        target := session.view_asset(key).path
+        if prev, has := given[key]; has && prev == target do continue
+        if prev, has := given[key]; has {
+            delete(prev)
+            given[key] = strings.clone(target)
+        } else {
+            given[strings.clone(key)] = strings.clone(target)
+        }
+        if target == data.filePath && target != "" do continue
+        inspector.inspectorData = data
+        inspector.unload()
+        if target != "" do _project_inspect_one(target)
+        inspector.inspector_data_reset()
+    }
 }
 
 // Shows `full_path` in the Project Inspector instance inspector.inspectorData
@@ -413,7 +427,7 @@ _project_inspect_one :: proc(full_path: string) {
 
 // Same side effects as clicking/double-clicking the file row.
 _project_activate_file :: proc(full_path: string) {
-    _project_inspect_path(full_path)
+    _project_inspectors_refresh()
     _project_open_file(full_path)
 }
 
@@ -667,10 +681,13 @@ _project_draw_tree_node :: proc(full_path: string, name: string, is_link := fals
         _pv.scroll_to_tree_sel = false
     }
 
-    // Handle selection (a package root also opens the package inspector).
+    // A click in the tree selects the folder and shows it, as a click on a
+    // file row selects the file. The Project Inspector shows the selection,
+    // so a package root opens the package inspector.
     if im.IsItemClicked() {
         _project_set_current(full_path)
-        _project_inspect_path(full_path)
+        _project_set_selected(full_path)
+        _project_inspectors_refresh()
     }
 
     if node_open && !is_leaf {
@@ -770,7 +787,8 @@ _project_handle_tree_keys :: proc() {
 
     _tree_select :: proc(idx: int) {
         _project_set_current(_pv.tree_rows[idx].path)
-        _project_inspect_path(_pv.tree_rows[idx].path)
+        _project_set_selected(_pv.tree_rows[idx].path)
+        _project_inspectors_refresh()
         _pv.scroll_to_tree_sel = true
     }
 
@@ -891,7 +909,7 @@ _project_handle_list_keys :: proc() {
         } else {
             _project_set_selected(path)
         }
-        _project_inspect_path(path)
+        _project_inspectors_refresh()
         _pv.scroll_to_list_sel = true
     }
 
@@ -1277,7 +1295,7 @@ _project_sub_assets :: proc(path: string, is_dir: bool) -> ([]subassets.Sub_Asse
 _project_sub_asset_clicked :: proc(parent_path: string, guid: core.Asset_GUID, s: subassets.Sub_Asset, provider: subassets.Provider) {
     sel_proj_only(parent_path, s.id)
     _project_set_active(parent_path)
-    _project_inspect_path(parent_path)
+    _project_inspectors_refresh()
     if im.IsMouseDoubleClicked(.Left) && provider.open != nil {
         provider.open(parent_path, guid, s.id)
     }
@@ -1346,7 +1364,7 @@ _project_item_clicked :: proc(full_path: string, is_dir: bool) {
             _project_enter_dir(full_path)
         }
     } else if !toggled_off {
-        _project_inspect_path(full_path)
+        _project_inspectors_refresh()
         if im.IsMouseDoubleClicked(.Left) do _project_open_file(full_path)
     }
 }
@@ -1533,7 +1551,7 @@ _project_reveal_path :: proc(path: string, select: bool) {
         // Same as clicking the row: selecting a file in this view loads it into
         // the inspector, and a reveal that skipped that left the panel showing
         // whatever was there before.
-        _project_inspect_path(path)
+        _project_inspectors_refresh()
         _pv.scroll_to_list_sel = true
     } else {
         if _pv.ping_path != "" do delete(_pv.ping_path)

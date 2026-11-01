@@ -225,23 +225,23 @@ test_inspector_instances_lock_apart :: proc(t: ^testing.T) {
 	defer teardown(tc)
 	_selection_reset()
 	defer _selection_reset()
-	defer editor.inspector_lock_shutdown()
+	defer editor.view_locks_shutdown()
 
 	a := engine.transform_new("A")
 	b := engine.transform_new("B")
 	editor.sel_scene_only(a)
-	editor.inspector_lock_set("Inspector/2", true)
+	editor.view_lock_set("Inspector/2", true)
 	editor.sel_scene_only(b)
 
-	first := editor.inspector_targets("Inspector")
-	second := editor.inspector_targets("Inspector/2")
+	first := editor.view_objects("Inspector")
+	second := editor.view_objects("Inspector/2")
 	testing.expect(t, len(first) == 1 && first[0] == b, "the first Inspector follows the selection")
 	testing.expect(t, len(second) == 1 && second[0] == a, "the locked Inspector keeps A")
-	testing.expect(t, editor.inspector_active_target("Inspector/2") == a, "the locked Inspector draws A")
+	testing.expect(t, editor.view_object("Inspector/2") == a, "the locked Inspector draws A")
 
 	// No window is open under "Inspector/2", so the prune drops its lock.
-	editor.inspector_locks_prune()
-	second = editor.inspector_targets("Inspector/2")
+	editor.view_locks_prune()
+	second = editor.view_objects("Inspector/2")
 	testing.expect(t, len(second) == 1 && second[0] == b, "a closed Inspector's lock is gone")
 }
 
@@ -291,7 +291,7 @@ test_selection_and_inspector_lock_survive_a_restart :: proc(t: ^testing.T) {
 	defer teardown_undo(tc, s)
 	_selection_reset()
 	defer _selection_reset()
-	defer editor.inspector_lock_set("Inspector", false)
+	defer editor.view_lock_set("Inspector", false)
 	defer editor.selection_persist_set_restored_for_test(false)
 
 	scene := engine.sm_scene_get_active()
@@ -303,17 +303,17 @@ test_selection_and_inspector_lock_survive_a_restart :: proc(t: ^testing.T) {
 	c := engine.transform_new("C")
 	editor.sel_scene_only(b)
 	editor.sel_scene_add(a)
-	editor.inspector_lock_set("Inspector", true)
+	editor.view_lock_set("Inspector", true)
 	editor.sel_scene_only(c)
 	editor.sel_scene_add(a)
 
 	editor.selection_persist_set_restored_for_test(true)
 	editor.selection_persist_capture()
 	testing.expect_value(t, len(editor.editor_settings.selection.objects), 2)
-	testing.expect_value(t, len(editor.editor_settings.inspector_locks), 1)
+	testing.expect_value(t, len(editor.editor_settings.view_locks), 1)
 
 	// Next run: nothing selected, nothing locked, C deleted meanwhile.
-	editor.inspector_lock_set("Inspector", false)
+	editor.view_lock_set("Inspector", false)
 	editor.sel_scene_clear()
 	engine.transform_destroy(c)
 	editor.selection_undo_track()
@@ -323,7 +323,7 @@ test_selection_and_inspector_lock_survive_a_restart :: proc(t: ^testing.T) {
 	editor.selection_persist_restore()
 	items := editor.sel_scene_items()
 	testing.expect(t, len(items) == 1 && items[0] == a, "the selection is back, without the deleted object")
-	locked := editor.inspector_targets("Inspector")
+	locked := editor.view_objects("Inspector")
 	testing.expect(t, len(locked) == 2 && locked[0] == b && locked[1] == a, "the Inspector lock holds its objects again")
 
 	editor.selection_undo_track()
@@ -343,19 +343,153 @@ test_tool_windows_follow_the_selection_not_a_locked_inspector :: proc(t: ^testin
 	defer teardown(tc)
 	_selection_reset()
 	defer _selection_reset()
-	defer editor.inspector_lock_set("Inspector", false)
+	defer editor.view_lock_set("Inspector", false)
 
 	a := engine.transform_new("A")
 	b := engine.transform_new("B")
 	editor.sel_scene_only(a)
-	editor.inspector_lock_set("Inspector", true)
+	editor.view_lock_set("Inspector", true)
 	editor.sel_scene_only(b)
 	editor.selection_publish()
 	testing.expect_value(t, engine.inspector_inspected_selection(), b)
-	testing.expect_value(t, editor.inspector_active_target("Inspector"), a)
+	testing.expect_value(t, editor.view_object("Inspector"), a)
 
 	editor.sel_proj_only("assets/Some.mat")
 	editor.selection_publish()
 	testing.expect_value(t, engine.inspector_inspected_selection(), b)
+}
+
+// A lock holds references, not handles. While its scene is not loaded the
+// locked object is missing: the view stays locked and says so. Once a scene
+// with that asset is loaded the same object shows again. A restored lock
+// waits for its view however late the view opens, and the lock goes only
+// when its view closes after having been open.
+@(test)
+test_view_lock_waits_for_missing_objects_and_views :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	_selection_reset()
+	defer _selection_reset()
+	defer editor.view_locks_shutdown()
+
+	scene := engine.sm_scene_get_active()
+	if !testing.expect(t, scene != nil, "a scene is active") do return
+	a := engine.transform_new("A")
+	w := engine.ctx_world()
+	lid := engine.pool_get(&w.transforms, engine.Handle(a)).local_id
+	guid := engine.Asset_GUID{0 = 0x10, 15 = 0x07}
+
+	// Restored for a view not open yet, naming a scene not loaded yet.
+	editor.view_lock_restore("Inspector/7", {{scene_guid = guid, local_id = lid}}, {})
+	editor.view_locks_prune()
+	testing.expect(t, editor.view_locked("Inspector/7"), "a restored lock waits for its view")
+	testing.expect(t, editor.view_lock_missing("Inspector/7"), "its object is missing while its scene is not loaded")
+	testing.expect_value(t, len(editor.view_objects("Inspector/7")), 0)
+
+	// The scene is back: the same object shows.
+	scene.asset_guid = guid
+	testing.expect(t, !editor.view_lock_missing("Inspector/7"), "the object is back")
+	testing.expect_value(t, editor.view_object("Inspector/7"), a)
+}
+
+// Locking takes both sets of the selection, the kept ones included: with an
+// object selected after an asset, the lock holds the object and the asset
+// the project views keep showing, with its sub-asset id.
+@(test)
+test_view_lock_takes_kept_assets_with_their_sub_ids :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	_selection_reset()
+	defer _selection_reset()
+	defer editor.view_locks_shutdown()
+
+	a := engine.transform_new("A")
+	editor.sel_proj_only("moonhug/tests", 42)
+	editor.sel_scene_only(a)
+	kept := editor.sel_proj_inspected()
+	testing.expect(t, len(kept) == 1 && kept[0].path == "moonhug/tests" && kept[0].sub_id == 42, "the scene selection keeps the asset")
+
+	editor.view_lock_set("Project Inspector", true)
+	editor.sel_scene_clear()
+	editor.sel_proj_clear()
+	held := editor.view_assets("Project Inspector")
+	testing.expect(t, len(held) == 1 && held[0].path == "moonhug/tests" && held[0].sub_id == 42, "the lock holds the kept asset and its sub id")
+	testing.expect_value(t, editor.view_object("Project Inspector"), a)
+	testing.expect_value(t, len(editor.view_assets("Inspector")), 0)
+}
+
+// A window whose instances share one lock: every instance key names the
+// window's lock.
+@(test)
+test_view_lock_key_of_a_shared_lock :: proc(t: ^testing.T) {
+	ID :: "_Shared_Lock_Test"
+	if wnd.lock_mode(ID) == .None {
+		wnd.register(ID, ID, "X", proc(w: ^wnd.Window) {}, 0, 0, lock = .Shared)
+	}
+	testing.expect_value(t, editor.view_lock_key(ID + "/3"), ID)
+	testing.expect_value(t, editor.view_lock_key("Inspector/2"), "Inspector/2")
+}
+
+// The assets the Project Inspector keeps while an object is selected come
+// back with the saved selection after a restart, as the kept objects do.
+@(test)
+test_kept_assets_survive_a_restart :: proc(t: ^testing.T) {
+	src_dir :: "moonhug/tests/fixtures/_selection_kept_tmp"
+	path :: src_dir + "/cube.glb"
+	os.make_directory(src_dir)
+	bytes, rerr := os.read_entire_file("moonhug/tests/fixtures/meshes/cube.glb", context.temp_allocator)
+	testing.expect(t, rerr == nil)
+	if rerr != nil do return
+	testing.expect(t, os.write_entire_file(path, bytes) == nil)
+	defer {
+		_remove_tree(src_dir)
+		_remove_tree(engine.library_dir())
+	}
+
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+	editor.selection_undo_install()
+	_selection_reset()
+	defer _selection_reset()
+	defer editor.selection_persist_set_restored_for_test(false)
+
+	asset_pipeline.asset_pipeline_init()
+	engine.asset_db_init(src_dir)
+	defer engine.asset_db_shutdown()
+	if _, registered := engine.asset_db_get_guid(path); !testing.expect(t, registered, "the fixture is registered") do return
+
+	scene := engine.sm_scene_get_active()
+	if !testing.expect(t, scene != nil, "a scene is active") do return
+	scene.asset_guid = engine.Asset_GUID{0 = 0x6B, 15 = 0x03}
+	a := engine.transform_new("A")
+
+	editor.sel_proj_only(path)
+	editor.selection_undo_track() // baseline
+	editor.sel_scene_only(a)
+	editor.selection_undo_track()
+	kept := editor.sel_proj_inspected()
+	testing.expect(t, len(kept) == 1 && kept[0].path == path, "the object click keeps the asset")
+
+	// Saved, cleared, restored.
+	editor.selection_persist_set_restored_for_test(true)
+	editor.selection_persist_capture()
+	testing.expect_value(t, len(editor.editor_settings.selection.kept_assets), 1)
+	editor.sel_scene_clear()
+	editor.sel_proj_clear()
+	editor.selection_persist_set_restored_for_test(false)
+	editor.selection_persist_restore()
+	kept = editor.sel_proj_inspected()
+	testing.expect(t, len(kept) == 1 && kept[0].path == path, "the restart keeps the asset")
+	items := editor.sel_scene_items()
+	testing.expect(t, len(items) == 1 && items[0] == a, "and the object stays selected")
 }
 

@@ -37,6 +37,7 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import gfx "moonhug:libs/gfx"
 import "moonhug:editor/session"
+import wnd "moonhug:editor/window"
 import "moonhug:editor/widgets"
 import "menu"
 
@@ -137,7 +138,17 @@ _view_tab_bar_items_for :: proc(view: string) -> []View_Tab_Bar_Item {
 	out := make([dynamic]View_Tab_Bar_Item, context.temp_allocator)
 	for it in _view_tab_bar_items do if it.view == view do append(&out, it)
 	slice.sort_by(out[:], proc(a, b: View_Tab_Bar_Item) -> bool { return a.order < b.order })
+	// A view whose window declares a lock gets its padlock first, from the
+	// shell, the same for every such view (view_lock.odin).
+	if wnd.lock_mode(view) != .None {
+		inject_at(&out, 0, View_Tab_Bar_Item{view = view, draw = _view_lock_tab_item, origin = "@(editor_window lock)  moonhug/editor/view_chrome.odin"})
+	}
 	return out[:]
+}
+
+@(private = "file")
+_view_lock_tab_item :: proc(view: session.View) {
+	session.view_lock_button(view.key)
 }
 
 // The view id a title carries: everything after "###", up to the `/` an

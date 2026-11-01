@@ -64,13 +64,21 @@ selection_capture_state :: proc() -> undo.Selection_State {
 	if sel_in_project() do kept = as_items(sel_scene_inspected())
 	// Project items as PPtr{guid, sub_id} — the guid survives renames, sub_id
 	// carries a selected sub-asset (a sprite slice).
-	proj := make([dynamic]core.PPtr)
-	for e in sel_proj_entries() {
-		if guid, ok := assets.asset_db_get_guid(e.path); ok {
-			append(&proj, core.PPtr{guid = core.Asset_GUID(guid), local_id = e.sub_id})
+	as_refs :: proc(entries: []Proj_Sel) -> []core.PPtr {
+		out := make([dynamic]core.PPtr)
+		for e in entries {
+			if guid, ok := assets.asset_db_get_guid(e.path); ok {
+				append(&out, core.PPtr{guid = core.Asset_GUID(guid), local_id = e.sub_id})
+			}
 		}
+		return out[:]
 	}
-	return undo.Selection_State{scene = items, proj = proj[:], kept = kept}
+	proj := as_refs(sel_proj_entries())
+	// The Project Inspector's kept assets, only meaningful while the scene
+	// holds the selection (sel_proj_inspected falls back to them then).
+	kept_proj: []core.PPtr
+	if len(_sel_proj) == 0 do kept_proj = as_refs(sel_proj_inspected())
+	return undo.Selection_State{scene = items, proj = proj, kept = kept, kept_proj = kept_proj}
 }
 
 selection_apply_state :: proc(state: undo.Selection_State) {
@@ -80,6 +88,12 @@ selection_apply_state :: proc(state: undo.Selection_State) {
 	if len(state.scene) == 0 && len(state.proj) > 0 {
 		for it in state.kept {
 			if tH, ok := simulate.world_select_restored(it.scene, it.local_id); ok do _sel_restore_kept(tH)
+		}
+	}
+	// What the Project Inspector kept, the same way.
+	if len(state.proj) == 0 {
+		for r in state.kept_proj {
+			if path, ok := assets.asset_db_get_path(uuid.Identifier(r.guid)); ok do _sel_restore_kept_proj(path, r.local_id)
 		}
 	}
 	restored_scene := false

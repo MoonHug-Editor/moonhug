@@ -493,7 +493,7 @@ _animation_frame :: proc() {
 	_pv_advance(clip, length)
 }
 
-@(editor_window={id="Animation", title="Animation", icon="ANIMATION", closed=animation_view_closed})
+@(editor_window={id="Animation", title="Animation", icon="ANIMATION", closed=animation_view_closed, lock="shared"})
 animation_view_draw :: proc(w: ^wnd.Window) {
 	_av = _anim_view(w)
 	defer {
@@ -501,6 +501,9 @@ animation_view_draw :: proc(w: ^wnd.Window) {
 		_av = _anim_view(last) if last != nil else &_av_none
 	}
 
+	// Locked to an object that is not here now: say so (the editor's
+	// view_lock.odin).
+	if session.view_lock_missing_note(w.key) do return
 	_, a := _pv_target()
 	if a == nil {
 		im.TextDisabled("Select an object with an Animation component.")
@@ -742,10 +745,6 @@ Anim_View_Prefs :: struct {
 	playback: Anim_Playback,
 	// The ruler over the time canvas (the view menu's three Ruler items).
 	ruler: Anim_Ruler,
-	// The locked object (view_lock.odin): its scene's asset guid and its
-	// local id. Empty when the window follows the selection.
-	locked_scene:  string,
-	locked_object: engine.Local_ID,
 }
 
 // How the transport plays a clip. Saved as an integer: Clip stays zero, so a

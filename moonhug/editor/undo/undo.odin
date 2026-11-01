@@ -139,10 +139,12 @@ Selection_State :: struct {
 	scene: []Selection_Scene_Item,
 	proj:  []core.PPtr,
 	// While the project holds the selection, the objects the Inspector keeps
-	// showing (the editor's two-inspector layout). Restored with the rest, so
-	// an undo brings back what both panels showed. Not part of equality: it
-	// only changes when the selection itself moves.
-	kept:  []Selection_Scene_Item,
+	// showing, and while the scene holds it, the assets the Project Inspector
+	// keeps showing (the editor's two-inspector layout). Restored with the
+	// rest, so an undo brings back what both panels showed. Not part of
+	// equality: they only change when the selection itself moves.
+	kept:      []Selection_Scene_Item,
+	kept_proj: []core.PPtr,
 }
 
 // A selection change as its own undo step (Unity model): undo applies
@@ -749,6 +751,7 @@ selection_state_destroy :: proc(st: ^Selection_State) {
 	if st.scene != nil do delete(st.scene)
 	if st.proj != nil do delete(st.proj)
 	if st.kept != nil do delete(st.kept)
+	if st.kept_proj != nil do delete(st.kept_proj)
 	st^ = {}
 }
 

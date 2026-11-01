@@ -28,6 +28,7 @@ WindowEntry :: struct {
 	name:        string, // draw proc
 	closed:      string, // the proc that frees an instance's state, "" for none
 	canvas:      bool,   // drawn edge to edge, without padding or scrollbars
+	lock:        string, // "instance" or "shared": the view has a padlock (editor/view_lock.odin), "" for none
 	width:       int,
 	height:      int,
 	source_pkg:  string,
@@ -79,6 +80,7 @@ provide :: proc(w: ^db.World) -> bool {
 				name        = decl.name,
 				closed      = args.fields["closed"],
 				canvas      = args.fields["canvas"] == "true",
+				lock        = args.fields["lock"],
 				width       = gen_facts.attr_int(args, "width"),
 				height      = gen_facts.attr_int(args, "height"),
 				source_pkg  = decl.pkg.name,
@@ -183,6 +185,14 @@ generate :: proc(w: ^db.World) -> bool {
 			fmt.sbprintf(&b, ", closed = %s", closed)
 		}
 		if e.canvas do strings.write_string(&b, ", canvas = true")
+		switch e.lock {
+		case "instance": strings.write_string(&b, ", lock = .Instance")
+		case "shared":   strings.write_string(&b, ", lock = .Shared")
+		case "":
+		case:
+			fmt.eprintf("editor_window_gen: window %q has lock=%q, expected \"instance\" or \"shared\"\n", e.id, e.lock)
+			return false
+		}
 		strings.write_string(&b, ")\n")
 	}
 	strings.write_string(&b, "}\n")

@@ -1,9 +1,11 @@
 package inspector
 
 // The Project Inspector window (@(editor_window)). Each instance shows an
-// asset, its import settings or a package, and has its own lock: a locked
-// instance keeps what it shows, unsaved edits included, while the project
-// selection moves on (route_targets).
+// asset, its import settings or a package, and has its own lock: what it
+// shows is session.view_asset for its key, the project selection or its
+// lock's asset (editor/view_project.odin, project_inspectors_follow). A
+// locked instance keeps what it shows, unsaved edits included, while the
+// project selection moves on.
 //
 // The first instance ("Project Inspector") keeps its state in `_primary`,
 // which `inspectorData` points to outside any draw: the project view's
@@ -19,20 +21,32 @@ import core "moonhug:libs/core"
 PROJECT_INSPECTOR :: "Project Inspector"
 
 @(private) _primary: InspectorData
-@(private) _primary_locked: bool
 
 // Another instance's state, in its wnd.Window.
 @(private = "file")
 _Instance :: struct {
-	data:   InspectorData,
-	locked: bool,
+	data: InspectorData,
 }
 
-@(editor_window={id="Project Inspector", title="Project Inspector", icon="DESCRIPTION", width=360, height=480, closed=project_inspector_window_closed})
+@(editor_window={id="Project Inspector", title="Project Inspector", icon="DESCRIPTION", width=360, height=480, closed=project_inspector_window_closed, lock="instance"})
 project_inspector_window_draw :: proc(w: ^wnd.Window) {
+	// Locked to an asset that is not here now: say so (editor/view_lock.odin).
+	if session.view_lock_missing_note(w.key) do return
 	inspectorData = _data_of(w)
 	defer inspectorData = &_primary
+	_drawing_key = w.key
+	defer _drawing_key = ""
 	_draw_project_inspector()
+}
+
+@(private = "file")
+_drawing_key: string
+
+// The key of the Project Inspector instance being drawn, "" outside its
+// draw: what selected_sub answers for, as a locked instance shows the
+// sub-asset its lock holds.
+project_inspector_drawing :: proc() -> string {
+	return _drawing_key
 }
 
 project_inspector_window_closed :: proc(w: ^wnd.Window) {
@@ -52,47 +66,6 @@ project_inspector_data :: proc(key: string) -> ^InspectorData {
 	return _data_of(w)
 }
 
-// A locked instance and the file it holds, both borrowed.
-Project_Inspector_Lock :: struct {
-	key:  string,
-	path: string,
-}
-
-// Every locked instance holding a file, the first one included, for saving
-// the locks across a restart (editor/selection_persist.odin).
-project_inspector_locked :: proc(allocator := context.temp_allocator) -> []Project_Inspector_Lock {
-	out := make([dynamic]Project_Inspector_Lock, allocator)
-	if _primary_locked && _primary.filePath != "" do append(&out, Project_Inspector_Lock{PROJECT_INSPECTOR, _primary.filePath})
-	for w in wnd.instances(PROJECT_INSPECTOR) {
-		if w.key == PROJECT_INSPECTOR || w.data == nil do continue
-		inst := (^_Instance)(w.data)
-		if inst.locked && inst.data.filePath != "" do append(&out, Project_Inspector_Lock{w.key, inst.data.filePath})
-	}
-	return out[:]
-}
-
-// The lock of the instance whose key is `key`, for its padlock.
-project_inspector_lock :: proc(key: string) -> ^bool {
-	if key == PROJECT_INSPECTOR do return &_primary_locked
-	w := wnd.find(key)
-	if w == nil do return nil
-	_data_of(w)
-	return &(^_Instance)(w.data).locked
-}
-
-// The state of every instance the project selection retargets: the unlocked
-// ones, the first one even while its window is closed. The project view
-// points `inspectorData` at each in turn and loads the target into it.
-route_targets :: proc(allocator := context.temp_allocator) -> []^InspectorData {
-	out := make([dynamic]^InspectorData, allocator)
-	if !_primary_locked do append(&out, &_primary)
-	for w in wnd.instances(PROJECT_INSPECTOR) {
-		if w.key == PROJECT_INSPECTOR do continue
-		_data_of(w)
-		if inst := (^_Instance)(w.data); !inst.locked do append(&out, &inst.data)
-	}
-	return out[:]
-}
 
 // Points `inspectorData` back at the first instance, after routing.
 inspector_data_reset :: proc() {

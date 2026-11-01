@@ -45,12 +45,25 @@ open_physics_debug :: proc() {
 Every dock node's tab bar ends with a ⋮ button, whose menu acts on the visible view. It ends with Add Tab, which lists every view by name and opens a new one in that node: the window's plain instance, or a numbered one when the plain one is open. The Game view opens there when it is closed, and is focused where it is when open. Both attributes below land in `editor/view_chrome_generated.odin` (view_chrome_gen).
 
 - **`@(view_menu={view, label, order, enabled, checked})`** adds an item to that menu. On a `proc(view: session.View)` it is an action, on a bool variable a toggle. `label` is a path in the view's menu, so `"Display/Grid"` makes a submenu. `order`, `enabled` and `checked` work as on `@(menu_item)`, and the predicates take the view too. A toggle's bool is shared by every instance of the view. Two declarations of one label in one view stop the build. The bridge invokes them as `View/<view>/<label>` ([MCP Bridge](McpBridge.md)).
-- **`@(view_tab_bar={view, order})`** adds a widget left of the ⋮ button: a `proc(view: session.View)` that draws it with imgui for that view, at a width that does not change with its state. The padlock is one: each inspector instance has its own lock (`editor/inspector_lock.odin`), and the Animation window has one (`plugins/animation/editor/view_lock.odin`). All use `widgets.toggle_button`. A lock survives a restart: the Inspector's objects and the Project Inspector's asset are saved in the user settings and locked again once the reopened scenes load (`editor/selection_persist.odin`).
+- **`@(view_tab_bar={view, order})`** adds a widget left of the ⋮ button: a `proc(view: session.View)` that draws it with imgui for that view, at a width that does not change with its state. The view locks are not one of these: a window declares one with `lock` on `@(editor_window)` (below).
 
 ```odin
 @(view_menu={view="Game", label="Gizmos"})
 game_gizmos: bool
 ```
+
+### View locks
+
+A window declares a padlock with `lock` on its `@(editor_window)`: `lock="instance"` gives each instance its own lock, `lock="shared"` one lock all its instances share, for a view whose instances show one state, as the Animation window's copies share one preview. The shell draws the padlock first in the view's tab bar, the same for every such view (`editor/view_lock.odin`). The Inspector, the Project Inspector and the Animation window have one.
+
+- Locking takes the selection as it is now, both sets: the selected objects, or the ones kept while assets are selected, and the selected assets with their sub-asset ids, or the ones kept while objects are selected. With nothing selected the view stays unlocked.
+- A view reads what to show through the session package, locked or not: `session.view_objects` and `session.view_object` for scene objects, `session.view_assets` and `session.view_asset` for assets. Unlocked these are the selection. Locked they are what the lock holds.
+- A lock holds references, not handles: an object as its scene's asset guid and its local id, an asset as its guid and sub-asset id. A locked target that does not resolve now is missing, not gone: its scene is closed or it was deleted. The lock stays, the view shows `session.view_lock_missing_note` where its target would be, and shows the target again when it is back, after an undo or when the scene reopens.
+- The same local id never names another object: the engine mints ids at random among 2^63 and checks the live ones, and undo restores an object with its own id.
+- A lock goes when the view is unlocked, or when its view closes after it was open. A lock waiting for its view, restored after a restart or in a workspace not hosted yet, waits as long as it takes.
+- Locks survive a restart: saved in the user settings and taken up once the reopened scenes load (`editor/selection_persist.odin`).
+- A plugin view gets all of this from the attribute and the `session.view_*` reads. It draws no padlock and keeps no lock state of its own.
+- The Project Inspector reads its asset the same way: each instance shows `session.view_asset` for its key, the project selection or its lock's asset, and shows nothing when that names nothing it can show (`project_inspectors_follow` in `editor/view_project.odin`).
 
 ## Maximize
 

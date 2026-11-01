@@ -11,9 +11,11 @@ package editor
 // the history always names one thing. Clearing one set leaves the other.
 //
 // The two inspectors keep what they last showed when the selection moves to
-// the other set. The Project Inspector does that on its own (it loads a file
-// and holds it). The Inspector reads sel_scene_inspected, which falls back to
-// the objects the project selection took over (_sel_scene_last).
+// the other set, and the selection keeps it for them, both ways alike:
+// sel_scene_inspected falls back to the objects the project selection took
+// over (_sel_scene_last), sel_proj_inspected to the assets the scene
+// selection took over (_sel_proj_last). A view lock takes both
+// (view_lock.odin). An explicit clear of a set empties its kept items too.
 //
 // Project selection keeps projectViewData.selectedFile as the ACTIVE path
 // (all pre-multiselect code reads it); the set here follows it.
@@ -53,10 +55,13 @@ sel_scene_clear :: proc() {
 _sel_take_scene :: proc() {
 	context.allocator = runtime.default_allocator()
 	clear(&_sel_scene_last)
-	if len(_sel_proj) > 0 || projectViewData.selectedFile != "" {
-		sel_proj_clear()
-		_project_set_active("")
+	if len(_sel_proj) > 0 {
+		// The assets move to the kept set, paths and all.
+		_sel_proj_last_clear()
+		append(&_sel_proj_last, .._sel_proj[:])
+		clear(&_sel_proj)
 	}
+	if projectViewData.selectedFile != "" do _project_set_active("")
 }
 
 // Selecting a project item deselects every scene object, which the Inspector
@@ -64,6 +69,7 @@ _sel_take_scene :: proc() {
 @(private = "file")
 _sel_take_project :: proc() {
 	context.allocator = runtime.default_allocator()
+	_sel_proj_last_clear()
 	if len(_sel_scene) == 0 do return
 	clear(&_sel_scene_last)
 	append(&_sel_scene_last, .._sel_scene[:])
@@ -124,6 +130,13 @@ _sel_restore_scene :: proc(tH: core.Transform_Handle) {
 	context.allocator = runtime.default_allocator()
 	if tH == _HANDLE_NONE || sel_scene_is(tH) do return
 	append(&_sel_scene, tH)
+}
+
+@(private)
+_sel_restore_kept_proj :: proc(path: string, sub_id: core.Local_ID) {
+	context.allocator = runtime.default_allocator()
+	if path == "" do return
+	append(&_sel_proj_last, Proj_Sel{path = strings.clone(path), sub_id = sub_id})
 }
 
 @(private)
@@ -251,10 +264,31 @@ Proj_Sel :: struct {
 @(private)
 _sel_proj: [dynamic]Proj_Sel // click order; last = active
 
+// The project selection as it was when the scene selection took over: what
+// the Project Inspector keeps showing. Empty while the project set is live.
+@(private)
+_sel_proj_last: [dynamic]Proj_Sel
+
+// An explicit clear empties the kept assets too.
 sel_proj_clear :: proc() {
 	context.allocator = runtime.default_allocator()
 	for e in _sel_proj do delete(e.path)
 	clear(&_sel_proj)
+	_sel_proj_last_clear()
+}
+
+@(private = "file")
+_sel_proj_last_clear :: proc() {
+	context.allocator = runtime.default_allocator()
+	for e in _sel_proj_last do delete(e.path)
+	clear(&_sel_proj_last)
+}
+
+// The assets the project views show: the project selection, or, while the
+// scene holds the selection, the assets it took over.
+sel_proj_inspected :: proc() -> []Proj_Sel {
+	if len(_sel_proj) > 0 do return _sel_proj[:]
+	return _sel_proj_last[:]
 }
 
 // The asset row's selected state — a selected SUB-asset does not light the
@@ -328,8 +362,9 @@ sel_proj_entries :: proc() -> []Proj_Sel {
 // another asset, the asset itself, or a sub-asset its provider no longer
 // lists. Installed as inspector.selected_sub.
 sel_proj_active_sub :: proc(path: string) -> core.Local_ID {
-	if len(_sel_proj) == 0 do return 0
-	active := _sel_proj[len(_sel_proj) - 1]
+	entries := sel_proj_inspected()
+	if len(entries) == 0 do return 0
+	active := entries[len(entries) - 1]
 	if active.sub_id == 0 || active.path != path do return 0
 	ext := strings.to_lower(filepath.ext(path), context.temp_allocator)
 	provider, ok := subassets.find(ext)
@@ -357,6 +392,7 @@ selection_shutdown :: proc() {
 	delete(_sel_scene_last)
 	sel_proj_clear()
 	delete(_sel_proj)
+	delete(_sel_proj_last)
 }
 
 _HANDLE_NONE :: core.Transform_Handle{}

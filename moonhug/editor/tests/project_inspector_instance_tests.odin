@@ -1,25 +1,32 @@
 package editor_tests
 
 // Project Inspector instances (inspector/project_inspector_window.odin): each
-// instance has its own state and lock, the project selection retargets every
-// unlocked instance, and a closed instance's state goes with it.
+// instance has its own state and lock, and shows what session.view_asset
+// names for it, as every view with a lock reads its target: the project
+// selection, or its lock's asset while it is locked. A closed instance's
+// state goes with it.
 
 import "core:testing"
+import "moonhug:editor"
 import "moonhug:editor/inspector"
+import "moonhug:editor/session"
 import wnd "moonhug:editor/window"
 
 @(test)
-test_project_inspector_instances_route_unlocked :: proc(t: ^testing.T) {
+test_project_inspector_instances_show_the_selection_or_their_lock :: proc(t: ^testing.T) {
 	PI :: inspector.PROJECT_INSPECTOR
+	A :: "moonhug/tests"
+	B :: "moonhug/editor"
 	if !wnd.is_registered(PI) {
-		wnd.register(PI, PI, "X", inspector.project_inspector_window_draw, 0, 0, closed = inspector.project_inspector_window_closed)
+		wnd.register(PI, PI, "X", inspector.project_inspector_window_draw, 0, 0, closed = inspector.project_inspector_window_closed, lock = .Instance)
 	}
 	wnd.open(PI)
 	second := wnd.open_another(PI)
 	testing.expect(t, second != nil, "another instance opens")
 	if second == nil do return
 	defer {
-		inspector.project_inspector_lock(PI)^ = false
+		session.view_lock_set(PI, false)
+		editor.sel_proj_clear()
 		wnd.close(second.key)
 		wnd.close(PI)
 		wnd.draw_all()
@@ -29,20 +36,20 @@ test_project_inspector_instances_route_unlocked :: proc(t: ^testing.T) {
 	second_data := inspector.project_inspector_data(second.key)
 	testing.expect(t, first_data != nil && second_data != nil && first_data != second_data, "each instance has its own state")
 
-	targets := inspector.route_targets()
-	testing.expect(t, len(targets) == 2 && targets[0] == first_data && targets[1] == second_data, "the selection reaches both")
+	editor.sel_proj_only(A)
+	testing.expect_value(t, session.view_asset(PI).path, A)
+	testing.expect_value(t, session.view_asset(second.key).path, A)
 
-	inspector.project_inspector_lock(second.key)^ = true
-	targets = inspector.route_targets()
-	testing.expect(t, len(targets) == 1 && targets[0] == first_data, "a locked instance keeps what it shows")
+	session.view_lock_set(second.key, true)
+	editor.sel_proj_only(B)
+	testing.expect_value(t, session.view_asset(PI).path, B)
+	testing.expect_value(t, session.view_asset(second.key).path, A)
 
-	inspector.project_inspector_lock(PI)^ = true
-	testing.expect_value(t, len(inspector.route_targets()), 0)
+	// Unlocked, it shows the selection again.
+	session.view_lock_set(second.key, false)
+	testing.expect_value(t, session.view_asset(second.key).path, B)
 
 	key := second.key
 	wnd.close(key)
-	inspector.project_inspector_lock(PI)^ = false
 	testing.expect(t, inspector.project_inspector_data(key) == nil, "a closed instance has no state")
-	targets = inspector.route_targets()
-	testing.expect(t, len(targets) == 1 && targets[0] == first_data, "the first instance stays routed")
 }

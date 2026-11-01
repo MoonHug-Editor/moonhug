@@ -528,7 +528,7 @@ ProcParams :: proc(v_decl: ^ast.Value_Decl, src: string, allocator := context.te
 
 // AttrOrigin renders where one registration came from, in the form
 //
-//   @(view_tab_bar view="Inspector" order=0)  moonhug/editor/inspector_lock.odin:31  _inspector_lock_button
+//   @(editor_window id="Inspector" lock="instance")  moonhug/packages/engine/editor/scene_views/view_hierarchy_inspector.odin:52  scene_inspector_window_draw
 //
 // A generator emits this into the registration call as `origin = "..."`, the
 // registry stores it, and debug tooltips append it to the element's tooltip — so

@@ -19,6 +19,7 @@ import "core:testing"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/inspector"
 import undo "moonhug:editor/undo"
+import "moonhug:editor/session"
 import "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
 import "moonhug:packages/engine/editor/importers"
@@ -1611,51 +1612,49 @@ test_driven_row_edits_the_objects_own_lanes :: proc(t: ^testing.T) {
 
 // --- The window's lock ---------------------------------------------------------------
 
-// Locked, the window keeps its animated object whatever is selected, and
-// unlocked it follows the selection again. The lock is saved as the object's
-// scene asset and local id and taken up again after a restart once the scene
-// is loaded. A locked object that is deleted releases the lock.
+// The Animation window uses the shared view lock (the editor's view_lock.odin),
+// as the inspectors do. Locking takes the selection, even an object with no
+// Animation component while the window last showed another object: the
+// window shows nothing for it, then its editor once it gets a component,
+// whatever is selected. Unlocked, the window follows the selection again.
+// Deleting the locked object leaves the lock waiting for it.
 @(test)
-test_animation_view_lock_keeps_its_object_and_survives_a_restart :: proc(t: ^testing.T) {
+test_animation_view_lock_takes_the_selection_before_its_component :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	s := common.setup_undo(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown_undo(tc, s)
-	defer animation_editor.animation_view_lock_set(false)
+	VIEW :: "Animation"
+	defer session.view_lock_set(VIEW, false)
 	defer animation_editor.animation_record_reset()
-	defer engine.inspector_set_inspected_selection({})
+	defer session.select_clear()
 
-	scene := engine.sm_scene_get_active()
-	if !testing.expect(t, scene != nil, "a scene is active") do return
-	scene.asset_guid = engine.Asset_GUID{0 = 0xA7, 15 = 0x02}
-	a := engine.transform_new("A")
-	engine.transform_add_comp(a, .Animation)
-	b := engine.transform_new("B")
-	engine.transform_add_comp(b, .Animation)
+	box := engine.transform_new("BoxAnimated")
+	engine.transform_add_comp(box, .Animation)
+	helmet := engine.transform_new("DamagedHelmet")
 
-	engine.inspector_set_inspected_selection(a)
-	testing.expect_value(t, animation_editor.animation_view_target(), a)
-	animation_editor.animation_record_arm(a, {}, 0, armed = false)
-	animation_editor.animation_view_lock_set(true)
-	testing.expect(t, animation_editor.animation_view_locked(), "locked")
+	// The window showed the box, then the helmet was selected and locked.
+	animation_editor.animation_record_arm(box, {}, 0, armed = false)
+	session.select_only(helmet)
+	session.view_lock_set(VIEW, true)
+	testing.expect(t, session.view_locked(VIEW), "locked")
+	session.select_only(box)
+	testing.expect_value(t, animation_editor.animation_view_target(), engine.Transform_Handle{})
 
-	engine.inspector_set_inspected_selection(b)
-	testing.expect_value(t, animation_editor.animation_view_target(), a)
+	engine.transform_add_comp(helmet, .Animation)
+	testing.expect_value(t, animation_editor.animation_view_target(), helmet)
 
-	// A restart: the live lock goes, the saved one comes back once found.
-	animation_editor.animation_view_lock_forget_for_test()
-	testing.expect_value(t, animation_editor.animation_view_target(), a)
-	testing.expect(t, animation_editor.animation_view_locked(), "locked again after the restart")
+	session.view_lock_set(VIEW, false)
+	testing.expect_value(t, animation_editor.animation_view_target(), box)
 
-	animation_editor.animation_view_lock_set(false)
-	testing.expect_value(t, animation_editor.animation_view_target(), b)
-
-	// Deleting the locked object releases the lock.
-	animation_editor.animation_record_arm(a, {}, 0, armed = false)
-	animation_editor.animation_view_lock_set(true)
-	engine.transform_destroy(a)
-	testing.expect_value(t, animation_editor.animation_view_target(), b)
-	testing.expect(t, !animation_editor.animation_view_locked(), "the lock went with its object")
+	// Deleting the locked object leaves the lock waiting for it: the window
+	// shows nothing and says the object is missing, the lock stays.
+	session.select_only(helmet)
+	session.view_lock_set(VIEW, true)
+	session.select_only(box)
+	engine.transform_destroy(helmet)
+	testing.expect_value(t, animation_editor.animation_view_target(), engine.Transform_Handle{})
+	testing.expect(t, session.view_locked(VIEW), "the lock waits for its object")
+	testing.expect(t, session.view_lock_missing(VIEW), "and says it is missing")
 }
-

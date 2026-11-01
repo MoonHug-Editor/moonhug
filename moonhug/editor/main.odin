@@ -277,7 +277,8 @@ main :: proc() {
         // windows (wnd.draw_all). Their per-frame bookkeeping runs here,
         // whether or not one is visible.
         session.scene_views_frame_begin()
-        inspector_locks_prune()
+        view_locks_prune()
+        project_inspectors_follow()
 
         project_frame_begin()
 
@@ -373,7 +374,7 @@ editor_init :: proc() {
     phase_editor_run(.SerializationInit)
     phase_editor_run(.ImportersInit)
     clip.init()
-    inspector.selected_sub = sel_proj_active_sub
+    inspector.selected_sub = _inspected_sub
     init_project_view()
     progress.report("Scanning assets")
     asset_pipeline.asset_pipeline_init()
@@ -478,7 +479,7 @@ editor_shutdown :: proc() {
     _save_user_settings()
     menu.shutdown_menu()
     view_chrome_shutdown()
-    inspector_lock_shutdown()
+    view_locks_shutdown()
     maximize_shutdown()
     workspace_view_shutdown()
     log.info("Editor Shutdown")

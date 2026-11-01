@@ -267,8 +267,8 @@ and curve view over one clip's channels, with recording, add-property and
 per-key editing.
 
 - The window shows the Animation component of the selected object or its nearest ancestor, or of the object kept while an asset is selected. A locked Inspector does not change it.
-- The padlock in its tab bar locks the window to the animated object it shows, as the inspectors' padlocks do (`editor/view_lock.odin`). Locked, selecting another object leaves the window where it is. Every copy of the window shares one preview, so they share the lock.
-- The lock is saved in the window's user settings, `UserSettings/animation.json`, as the object's scene asset and local id, and taken up again after a restart once that scene is loaded. Deleting the locked object releases the lock.
+- The padlock in its tab bar is the shared view lock (docs/core/Views.md "View locks"): the window declares `lock="shared"`, so every copy of it shares one lock, as the copies share one preview. It locks the window to the selected object whether or not it has an Animation component yet. Locked, selecting another object leaves the window where it is, and an object locked before its component is added shows the editor once it has one.
+- A locked object that is deleted, or whose scene closes, leaves the window saying it is missing. The lock stays and the window shows the object again when it is back. The lock survives a restart.
 
 It is component-bound, not asset-bound. `_pv_target` walks up from the selection
 to the nearest `Animation`, so selecting a child bone keeps the window on the

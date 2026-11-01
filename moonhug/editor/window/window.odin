@@ -70,6 +70,7 @@ _Registered :: struct {
 	closed:       Close_Proc, // frees an instance's `data`, nil when the window keeps none
 	default_size: im.Vec2, // {} = imgui's default
 	canvas:       bool,    // edge to edge: no window padding, no scrollbars, the wheel stays with the content
+	lock:         Lock_Mode, // the view's padlock (@(editor_window) lock, editor/view_lock.odin)
 	// The @(editor_window) that declared it, with its file and line, as
 	// rendered by the generator. Shown on the tab's menu button with debug tooltips on.
 	origin:       string,
@@ -110,13 +111,28 @@ _hovered_frame: i32
 // `id` identifies it, and its instances, in imgui.ini. `title` and `icon` (a
 // Material Symbols name without ICON_MD_) label its plain instance's tab,
 // `width` and `height` size an instance's first appearance. `closed` frees
-// an instance's state. Open it with window.open, usually from a @(menu_item).
+// an instance's state. `lock` gives the view a padlock in its tab bar, which
+// the shell draws (editor/view_lock.odin): "instance" for a lock per
+// instance, "shared" for one lock all its instances share. A locked view
+// reads what to show from session.view_objects / view_assets. Open it with
+// window.open, usually from a @(menu_item).
 //
 // Called by the generated _register_editor_windows (editor_window_gen). The
 // imgui window name is "<icon> <label>###<key>": the icon and label show, the
 // key stays the imgui id whatever they are.
-@(extension_point={attribute="editor_window", target="proc", fields="id title icon width height closed canvas"})
-register :: proc(id: string, title: string, icon: string, draw: Draw_Proc, width, height: f32, origin := "", closed: Close_Proc = nil, canvas := false) {
+@(extension_point={attribute="editor_window", target="proc", fields="id title icon width height closed canvas lock"})
+// Whether a view has a padlock, and whose lock it is:
+//   - None: no padlock
+//   - Instance: each instance locks on its own, by its key
+//   - Shared: every instance shares one lock, by the window's id: for a view
+//     whose instances show one state (the Animation window's preview)
+Lock_Mode :: enum u8 {
+	None,
+	Instance,
+	Shared,
+}
+
+register :: proc(id: string, title: string, icon: string, draw: Draw_Proc, width, height: f32, origin := "", closed: Close_Proc = nil, canvas := false, lock := Lock_Mode.None) {
 	// Process-global: never borrows the caller's allocator.
 	context.allocator = runtime.default_allocator()
 	for &r in _registry {
@@ -134,7 +150,14 @@ register :: proc(id: string, title: string, icon: string, draw: Draw_Proc, width
 		default_size = {width, height},
 		origin       = origin,
 		canvas       = canvas,
+		lock         = lock,
 	})
+}
+
+// The lock mode of the window `id` (its registration), None for an unknown id.
+lock_mode :: proc(id: string) -> Lock_Mode {
+	for r in _registry do if r.id == id do return r.lock
+	return .None
 }
 
 // Every registered window's plain title and id, for imgui.ini migration

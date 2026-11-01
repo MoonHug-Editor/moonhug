@@ -1,9 +1,9 @@
 package editor
 
-// The selection and the locked inspectors across an editor restart, in the
-// user's editor settings (UserSettings/editor_settings.json). Both are one
-// person's working state, like the open scenes and windows beside them, so
-// they stay out of the committed project settings.
+// The selection and the view locks across an editor restart, in the user's
+// editor settings (UserSettings/editor_settings.json). Both are one person's
+// working state, like the open scenes and windows beside them, so they stay
+// out of the committed project settings.
 //
 // - Saved at quit with the rest of the settings (save_editor_settings).
 // - A scene object is named by its scene's asset and its local id: session
@@ -12,11 +12,13 @@ package editor
 // - Restored once, when the scenes the editor reopens have loaded
 //   (selection_persist_restore). The selection goes through
 //   selection_apply_state, the proc undo uses, so the hierarchy reveals the
-//   objects and the project view the assets. Then the inspector locks. An
-//   object or asset gone since the last run drops out, and a lock left with
-//   nothing is not restored. The restore is not an undo step.
+//   objects and the project view the assets. Then the view locks
+//   (view_lock.odin), every view's the same way. An object or asset gone since
+//   the last run drops out, and a lock left with nothing is not restored. The
+//   restore is not an undo step.
 
 import "core:encoding/uuid"
+import "core:strings"
 import assets "moonhug:libs/assets"
 import "moonhug:editor/inspector"
 import "moonhug:editor/simulate"
@@ -30,9 +32,10 @@ Persisted_Object :: struct {
 }
 
 // An asset across a restart: its guid and the selected sub-asset, 0 for the
-// asset itself.
+// asset itself. An asset without a guid (a package folder) keeps its path.
 Persisted_Asset :: struct {
 	guid:   string,
+	path:   string `json:"path,omitempty"`,
 	sub_id: core.Local_ID,
 }
 
@@ -43,21 +46,17 @@ Persisted_Selection :: struct {
 	objects: [dynamic]Persisted_Object,
 	kept:    [dynamic]Persisted_Object,
 	assets:  [dynamic]Persisted_Asset,
+	// The assets the Project Inspector keeps while objects are selected.
+	kept_assets: [dynamic]Persisted_Asset,
 }
 
-// A locked Inspector instance by its key ("Inspector", "Inspector/2") and
-// the objects it holds.
-Persisted_Inspector_Lock :: struct {
+// A view lock by its key ("Inspector", "Project Inspector/2", "Animation")
+// and what it holds, as references (view_lock.odin). An object of a scene
+// never saved has nothing that names it next run and is left out.
+Persisted_View_Lock :: struct {
 	view:    string,
 	objects: [dynamic]Persisted_Object,
-}
-
-// A locked Project Inspector instance by its key and the asset it holds. A
-// package root has no guid and keeps its path.
-Persisted_Project_Lock :: struct {
-	view: string,
-	guid: string,
-	path: string,
+	assets:  [dynamic]Persisted_Asset,
 }
 
 // Fills the editor settings' selection and lock fields from the editor as it
@@ -70,29 +69,28 @@ selection_persist_capture :: proc() {
 	state := selection_capture_state()
 	defer undo.selection_state_destroy(&state)
 	sel := Persisted_Selection{
-		objects = _persist_objects_of_items(state.scene),
-		kept    = _persist_objects_of_items(state.kept),
-		assets  = make([dynamic]Persisted_Asset),
-	}
-	for r in state.proj {
-		append(&sel.assets, Persisted_Asset{guid = uuid.to_string(uuid.Identifier(r.guid)), sub_id = r.local_id})
+		objects     = _persist_objects_of_items(state.scene),
+		kept        = _persist_objects_of_items(state.kept),
+		assets      = _persist_assets_of_refs(state.proj),
+		kept_assets = _persist_assets_of_refs(state.kept_proj),
 	}
 	editor_settings.selection = sel
 
-	locks := make([dynamic]Persisted_Inspector_Lock)
-	for l in inspector_locked_views() {
-		objects := _persist_objects_of_handles(l.targets)
-		if len(objects) > 0 do append(&locks, Persisted_Inspector_Lock{view = l.view, objects = objects})
+	locks := make([dynamic]Persisted_View_Lock)
+	for l in view_locks_held() {
+		// Copies: the lock owns its key and paths, and an unlock frees them.
+		p := Persisted_View_Lock{view = strings.clone(l.key), objects = make([dynamic]Persisted_Object), assets = make([dynamic]Persisted_Asset)}
+		for o in l.objects do if o.scene_guid != {} {
+			append(&p.objects, Persisted_Object{scene = uuid.to_string(uuid.Identifier(o.scene_guid)), local_id = o.local_id})
+		}
+		for a in l.assets {
+			pa := Persisted_Asset{path = strings.clone(a.path), sub_id = a.sub_id}
+			if a.guid != {} do pa.guid = uuid.to_string(uuid.Identifier(a.guid))
+			append(&p.assets, pa)
+		}
+		if len(p.objects) > 0 || len(p.assets) > 0 do append(&locks, p)
 	}
-	editor_settings.inspector_locks = locks
-
-	plocks := make([dynamic]Persisted_Project_Lock)
-	for l in inspector.project_inspector_locked() {
-		p := Persisted_Project_Lock{view = l.key, path = l.path}
-		if guid, ok := assets.asset_db_get_guid(l.path); ok do p.guid = uuid.to_string(guid)
-		append(&plocks, p)
-	}
-	editor_settings.project_inspector_locks = plocks
+	editor_settings.view_locks = locks
 }
 
 @(private = "file")
@@ -137,6 +135,9 @@ _persist_restored: bool
 selection_persist_restore :: proc() {
 	if _persist_restored do return
 	_persist_restored = true
+	// The undo baseline was allocated under the caller's allocator, so the
+	// rebaseline at the end frees it under that one, not the temp one.
+	caller_allocator := context.allocator
 	context.allocator = context.temp_allocator
 
 	saved := editor_settings.selection
@@ -144,33 +145,28 @@ selection_persist_restore :: proc() {
 		scene = _persist_items(saved.objects[:]),
 		kept  = _persist_items(saved.kept[:]),
 	}
-	proj := make([dynamic]core.PPtr)
-	for a in saved.assets {
-		id, err := uuid.read(a.guid)
-		if err != nil do continue
-		if _, known := assets.asset_db_get_path(id); !known do continue
-		append(&proj, core.PPtr{guid = core.Asset_GUID(id), local_id = a.sub_id})
-	}
-	state.proj = proj[:]
-	if len(state.scene) > 0 || len(state.proj) > 0 do selection_apply_state(state)
+	state.proj = _persist_refs_of_assets(saved.assets[:])
+	state.kept_proj = _persist_refs_of_assets(saved.kept_assets[:])
+	if len(state.scene) > 0 || len(state.proj) > 0 || len(state.kept) > 0 || len(state.kept_proj) > 0 do selection_apply_state(state)
 
-	for l in editor_settings.inspector_locks {
-		targets := make([dynamic]core.Transform_Handle)
-		for it in _persist_items(l.objects[:]) {
-			if tH, ok := simulate.world_select_restored(it.scene, it.local_id); ok do append(&targets, tH)
+	// As references: what is not loaded yet waits (view_lock.odin).
+	for l in editor_settings.view_locks {
+		objects := make([dynamic]View_Lock_Object)
+		for o in l.objects {
+			id, err := uuid.read(o.scene)
+			if err == nil do append(&objects, View_Lock_Object{scene_guid = core.Asset_GUID(id), local_id = o.local_id})
 		}
-		if len(targets) > 0 do inspector_lock_restore(l.view, targets[:])
-	}
-
-	for l in editor_settings.project_inspector_locks {
-		path := l.path
-		if id, err := uuid.read(l.guid); err == nil {
-			if p, known := assets.asset_db_get_path(id); known do path = p
+		held := make([dynamic]View_Lock_Asset)
+		for a in l.assets {
+			va := View_Lock_Asset{path = a.path, sub_id = a.sub_id}
+			if id, err := uuid.read(a.guid); err == nil do va.guid = core.Asset_GUID(id)
+			if va.guid != {} || va.path != "" do append(&held, va)
 		}
-		if path != "" do project_inspector_lock_restore(l.view, path)
+		view_lock_restore(l.view, objects[:], held[:])
 	}
 
 	// What was just restored is the starting point, not a change to undo.
+	context.allocator = caller_allocator
 	selection_undo_rebaseline()
 }
 
@@ -185,5 +181,25 @@ _persist_items :: proc(objects: []Persisted_Object) -> []undo.Selection_Scene_It
 // (which waits for a restore) and restore again within one run.
 selection_persist_set_restored_for_test :: proc(restored: bool) {
 	_persist_restored = restored
+}
+
+@(private = "file")
+_persist_assets_of_refs :: proc(refs: []core.PPtr) -> [dynamic]Persisted_Asset {
+	out := make([dynamic]Persisted_Asset)
+	for r in refs do append(&out, Persisted_Asset{guid = uuid.to_string(uuid.Identifier(r.guid)), sub_id = r.local_id})
+	return out
+}
+
+// The saved assets that still exist, as references.
+@(private = "file")
+_persist_refs_of_assets :: proc(saved: []Persisted_Asset) -> []core.PPtr {
+	out := make([dynamic]core.PPtr)
+	for a in saved {
+		id, err := uuid.read(a.guid)
+		if err != nil do continue
+		if _, known := assets.asset_db_get_path(id); !known do continue
+		append(&out, core.PPtr{guid = core.Asset_GUID(id), local_id = a.sub_id})
+	}
+	return out[:]
 }
 

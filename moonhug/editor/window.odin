@@ -61,8 +61,7 @@ EditorSettings :: struct {
     gizmo_hidden_icons:       [dynamic]string,          // component types whose icon the gizmo settings hide
     gizmo_hidden_gizmos:      [dynamic]string,          // component types whose gizmo the gizmo settings hide
     selection:                Persisted_Selection,      // the selection at quit (selection_persist.odin)
-    inspector_locks:          [dynamic]Persisted_Inspector_Lock, // locked Inspector instances (selection_persist.odin)
-    project_inspector_locks:  [dynamic]Persisted_Project_Lock,   // locked Project Inspector instances (selection_persist.odin)
+    view_locks:               [dynamic]Persisted_View_Lock, // every locked view (view_lock.odin, selection_persist.odin)
 }
 
 editor_settings: EditorSettings
