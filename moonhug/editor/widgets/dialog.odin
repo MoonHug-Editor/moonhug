@@ -7,8 +7,17 @@ package widgets
 //   it once per frame from the main loop, so OpenPopup and BeginPopupModal
 //   always run in the same ID scope, whoever opened it.
 // - One dialog at a time. Opening another replaces the open one.
-// - Enter presses the default button, Escape and the title bar close button
+// - Keyboard: one button has focus, the default one when the dialog opens.
+//   Tab and the Right and Down arrows move focus to the next button, Shift+Tab
+//   and the Left and Up arrows to the previous one. Focus stops at the first
+//   and the last button, it does not wrap. Enter and Space press the focused
+//   button. Escape and the title bar close button
 //   press the cancel button.
+// - While a dialog is open it owns the keyboard: every keyboard and gamepad
+//   key is locked to the dialog at the start of each frame
+//   (dialog_frame_begin), so imgui answers no for them to every other caller.
+//   No shortcut, view or tool needs to check for an open dialog. The mouse
+//   stays free, so the buttons and the title bar still take clicks.
 // - Actions take no arguments. Odin procs carry no closure, so a dialog's
 //   state lives in the caller's file-level variables. One dialog is open at a
 //   time, so one set of variables per dialog kind is enough.
@@ -50,6 +59,19 @@ _dialog: Dialog // owned clones of the open dialog's strings and buttons
 _dialog_is_open: bool
 @(private = "file")
 _dialog_wants_popup: bool // opened since the last draw
+@(private = "file")
+_dialog_focus: int // the button the keyboard acts on
+@(private = "file")
+_dialog_keys_owned: bool // the keys were locked to the dialog this frame
+
+// The owner id the dialog locks the keys with. Any id no imgui item uses.
+@(private = "file")
+_DIALOG_KEY_OWNER :: im.ID(0x6D68_6467)
+
+// ImGuiInputFlags_LockThisFrame, a private imgui flag the binding does not
+// name: reading a locked key needs the owner's id until the frame ends.
+@(private = "file")
+_INPUT_LOCK_THIS_FRAME :: transmute(im.InputFlags)i32(1 << 20)
 
 // Clones the config, so the caller may pass temp strings.
 dialog_open :: proc(d: Dialog) {
@@ -68,6 +90,47 @@ dialog_open :: proc(d: Dialog) {
 	}
 	_dialog_is_open = true
 	_dialog_wants_popup = true
+	_dialog_focus = 0
+	for b, i in buttons do if b.is_default {
+		_dialog_focus = i
+		break
+	}
+}
+
+// The index of the button the keyboard acts on, -1 with no dialog open.
+dialog_focused :: proc() -> int {
+	return _dialog_is_open ? _dialog_focus : -1
+}
+
+// Moves keyboard focus `delta` buttons on, stopping at the first and the
+// last button. The draw loop calls it for Tab and the arrows. Tests and tools
+// call it directly.
+dialog_focus_step :: proc(delta: int) {
+	n := len(_dialog.buttons)
+	if !_dialog_is_open || n == 0 do return
+	_dialog_focus = clamp(_dialog_focus + delta, 0, n - 1)
+}
+
+// Locks every keyboard and gamepad key to the open dialog for this frame.
+// Called once per frame from the main loop right after the imgui frame
+// starts, before any window reads a key.
+dialog_frame_begin :: proc() {
+	_dialog_keys_owned = _dialog_is_open
+	if !_dialog_is_open do return
+	for k in i32(im.Key.NamedKey_BEGIN) ..< i32(im.Key.NamedKey_END) {
+		if k >= i32(im.Key.MouseLeft) && k <= i32(im.Key.MouseWheelY) do continue
+		im.SetKeyOwner(im.Key(k), _DIALOG_KEY_OWNER, _INPUT_LOCK_THIS_FRAME)
+	}
+}
+
+// A press of `key` read as the dialog, the keys' owner. False on a frame the
+// dialog did not lock the keys at its start, so the key that opened a dialog
+// cannot also press one of its buttons.
+@(private = "file")
+_dialog_key :: proc(key: im.Key, repeat := false) -> bool {
+	if !_dialog_keys_owned do return false
+	flags: im.InputFlags = repeat ? {.Repeat} : {}
+	return im.IsKeyPressedImGuiInputFlags(key, flags, _DIALOG_KEY_OWNER)
 }
 
 dialog_is_open :: proc() -> bool {
@@ -129,10 +192,18 @@ dialog_draw :: proc() {
 	_dialog_draw_body()
 	chosen := _dialog_draw_buttons()
 
-	if chosen < 0 && im.IsWindowFocused() {
-		if im.IsKeyPressed(.Enter) || im.IsKeyPressed(.KeypadEnter) {
-			for b, i in _dialog.buttons do if b.is_default { chosen = i; break }
-		} else if im.IsKeyPressed(.Escape) {
+	if chosen < 0 {
+		shift := im.GetIO().KeyShift
+		switch {
+		case _dialog_key(.Tab, true):
+			dialog_focus_step(shift ? -1 : 1)
+		case _dialog_key(.RightArrow, true), _dialog_key(.DownArrow, true):
+			dialog_focus_step(1)
+		case _dialog_key(.LeftArrow, true), _dialog_key(.UpArrow, true):
+			dialog_focus_step(-1)
+		case _dialog_key(.Enter), _dialog_key(.KeypadEnter), _dialog_key(.Space):
+			chosen = _dialog_focus
+		case _dialog_key(.Escape):
 			chosen = cancel
 		}
 	}
@@ -174,18 +245,22 @@ _dialog_draw_buttons :: proc() -> int {
 	row := w * n + style.ItemSpacing.x * max(n - 1, 0)
 	im.SetCursorPosX(im.GetCursorPosX() + max(im.GetContentRegionAvail().x - row, 0) * 0.5)
 
+	// The focused button is drawn as the default one used to be, with the
+	// navigation cursor's frame around it.
 	chosen := -1
 	for b, i in _dialog.buttons {
 		if i > 0 do im.SameLine()
 		label := strings.clone_to_cstring(b.label, context.temp_allocator)
-		if b.is_default {
+		focused := i == _dialog_focus
+		if focused {
 			im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonHovered)^)
 			im.PushStyleColorImVec4(.ButtonHovered, im.GetStyleColorVec4(.ButtonActive)^)
 		}
 		if im.Button(label, im.Vec2{w, 0}) do chosen = i
-		if b.is_default {
+		if focused {
 			im.PopStyleColor(2)
-			im.SetItemDefaultFocus()
+			pad := im.Vec2{2, 2}
+			im.DrawList_AddRect(im.GetWindowDrawList(), im.GetItemRectMin() - pad, im.GetItemRectMax() + pad, im.GetColorU32(.NavCursor), style.FrameRounding + 2, 2)
 		}
 	}
 	return chosen

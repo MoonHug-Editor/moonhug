@@ -229,6 +229,9 @@ main :: proc() {
         im_sdlgpu.NewFrame()
         im_sdl.NewFrame()
         im.NewFrame()
+        // An open dialog owns the keyboard, before anything reads a key
+        // (widgets/dialog.odin).
+        widgets.dialog_frame_begin()
         widgets.text_input_escape_frame() // Escape commits text fields (widgets/text_input.odin)
         // Agent layout changes, before the dockspace and the views draw
         // (mcp_views.odin).

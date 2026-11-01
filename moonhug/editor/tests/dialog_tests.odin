@@ -134,3 +134,32 @@ test_asset_delete_of_a_package_root_opens_no_dialog :: proc(t: ^testing.T) {
 	editor.project_ops_delete()
 	testing.expect(t, !widgets.dialog_is_open(), "no dialog for a delete that would do nothing")
 }
+
+// Keyboard focus starts on the default button, moves both ways and stops at
+// the first and the last button, and starts again on the next dialog's
+// default. No dialog, no focus.
+@(test)
+test_dialog_focus_starts_on_default_and_stops_at_the_ends :: proc(t: ^testing.T) {
+	defer widgets.dialog_close()
+
+	widgets.dialog_open({
+		title   = "Save?",
+		buttons = {{label = "Save"}, {label = "Discard", is_default = true}, {label = "Cancel", is_cancel = true}},
+	})
+	testing.expect_value(t, widgets.dialog_focused(), 1)
+	widgets.dialog_focus_step(1)
+	testing.expect_value(t, widgets.dialog_focused(), 2)
+	widgets.dialog_focus_step(1)
+	testing.expect_value(t, widgets.dialog_focused(), 2)
+	widgets.dialog_focus_step(-1)
+	widgets.dialog_focus_step(-1)
+	widgets.dialog_focus_step(-1)
+	testing.expect_value(t, widgets.dialog_focused(), 0)
+
+	widgets.dialog_open({title = "Delete?", buttons = {{label = "Delete"}, {label = "Cancel", is_cancel = true}}})
+	testing.expect_value(t, widgets.dialog_focused(), 0)
+
+	widgets.dialog_close()
+	testing.expect_value(t, widgets.dialog_focused(), -1)
+}
+
