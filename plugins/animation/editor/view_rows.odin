@@ -8,6 +8,7 @@ import "base:runtime"
 import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/widgets"
 import engine "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
 import "moonhug:editor/inspector"
@@ -405,6 +406,8 @@ _pv_draw_row_values :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 					changed = true
 				}
 			case:
+				// A vector's fields carry their axis stripe (widgets/axis_markers.odin).
+				if n >= 2 do widgets.axis_marker_next(c)
 				if rot {
 					if im.DragFloat("##v", &euler[c], speed, 0, 0, format) do changed = true
 					_pv_euler_hold(i, -1, euler)

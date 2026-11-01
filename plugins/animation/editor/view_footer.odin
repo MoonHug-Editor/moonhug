@@ -6,6 +6,7 @@ package animation_editor
 
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/widgets"
 import anim "moonhug:packages/animation"
 import "moonhug:editor/inspector"
 
@@ -57,6 +58,7 @@ _pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 			im.TextUnformatted(axis_names[c])
 			im.SameLine()
 			im.SetNextItemWidth(70)
+			widgets.axis_marker_next(c)
 			changed := im.DragFloat(fmt.ctprintf("##anim_key_e%d", c), &euler[c], speed, 0, 0, format)
 			// Opened before the write, so the session holds the key from
 			// before this frame's change.
@@ -80,6 +82,7 @@ _pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 			continue
 		}
 		im.SetNextItemWidth(70)
+		widgets.axis_marker_next(c)
 		_pv_field_undo(doc, clip, im.DragFloat(fmt.ctprintf("##anim_key_v%d", c), &anim.animation_channel_floats(ch)[k][c], speed, 0, 0, format))
 	}
 

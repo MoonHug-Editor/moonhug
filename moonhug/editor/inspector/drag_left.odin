@@ -42,6 +42,7 @@ package inspector
 
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/widgets"
 
 // Value alignment inside the frame. {0, 0.5} is left, vertically centered.
 // The text rect is inset on both sides, so {0.5, 0.5} still centers and this
@@ -222,6 +223,8 @@ _drag_scalar_n :: proc(
 		_drag_component_index = int(i)
 		// A lane a driven row leaves to the object draws plain (driven.odin).
 		plain := driven_lane_style_begin(int(i))
+		// The component's axis stripe, x red to w grey (widgets/axis_markers.odin).
+		widgets.axis_marker_next(int(i))
 		if _drag_scalar("", data_type, p, v_speed, p_min, p_max, format, flags) do changed = true
 		driven_lane_style_end(plain)
 		// Each component is its OWN imgui item. A caller that wants the row's

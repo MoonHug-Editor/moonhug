@@ -27,6 +27,11 @@ InspectorMode :: enum {
 // `type` is the field type. The proc takes the field's pointer, its typeid and
 // its label, and draws the whole row. `priority` decides which of two drawers
 // for one type is used.
+//
+// A drawer for a vector of 2 to 4 floats draws it with drag_float2/3/4, which
+// give each component its axis stripe, x red to w grey, as every vector row
+// has. A drawer with one field per component calls widgets.axis_marker_next
+// before each field instead.
 @(extension_point={attribute="property_drawer", target="proc", fields="type priority"})
 mapPropertyDrawer: MapPropertyDrawer
 // The Project Inspector instance being drawn or routed to, the first one

@@ -368,9 +368,11 @@ _sg_blackboard :: proc() {
 		changed := false
 		switch p.kind {
 		case .Float:   changed = im.DragFloat("##default", &p.default[0], 0.01)
-		case .Vec2:    changed = im.DragFloat2("##default", cast(^[2]f32)&p.default, 0.01)
-		case .Vec3:    changed = im.DragFloat3("##default", cast(^[3]f32)&p.default, 0.01)
-		case .Vec4:    changed = im.DragFloat4("##default", &p.default, 0.01)
+		// Vectors through the inspector's widget: one field per component, each
+		// with its axis stripe (widgets/axis_markers.odin).
+		case .Vec2:    changed = inspector.drag_float2("##default", cast(^[2]f32)&p.default, 0.01)
+		case .Vec3:    changed = inspector.drag_float3("##default", cast(^[3]f32)&p.default, 0.01)
+		case .Vec4:    changed = inspector.drag_float4("##default", &p.default, 0.01)
 		case .Color:   changed = im.ColorEdit4("##default", &p.default)
 		case .Texture: im.TextDisabled("set on the material")
 		}
@@ -442,11 +444,11 @@ _sg_node_panel :: proc() {
 		case in_port.type == .Float:
 			changed = im.DragFloat(label, &v[0], 0.01)
 		case in_port.type == .Vec2:
-			changed = im.DragFloat2(label, cast(^[2]f32)v, 0.01)
+			changed = inspector.drag_float2(label, cast(^[2]f32)v, 0.01)
 		case in_port.type == .Vec3:
-			changed = im.DragFloat3(label, cast(^[3]f32)v, 0.01)
+			changed = inspector.drag_float3(label, cast(^[3]f32)v, 0.01)
 		case:
-			changed = im.DragFloat4(label, v, 0.01)
+			changed = inspector.drag_float4(label, v, 0.01)
 		}
 		if changed do _sg_touch("Edit Input")
 	}
