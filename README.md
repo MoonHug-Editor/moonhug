@@ -140,20 +140,17 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
   - consumers decide what a path means: move a transform along it, aim a camera, place objects at intervals
   - first consumer: a sequencer track that drives a transform along a spline
 
-- transform:
-  - consider making transform regular component (required or optional), node will hold all components
-
-- improve default types inspector UX
-
 - project file ops: Windows trash/reveal (darwin-only today, see project_os_stub.odin)
 
 - physics2d follow-ups:
-  - effectors/polygon colliders
+  - joints
+  - effectors
 
 - physics3d follow-ups:
+  - joints
+  - effectors
   - MeshCollider
     - convex decompositions:
-      - CoACD reports stages, not a fraction, so the status bar can't show percent done
       - open meshes are slow (the helmet: about 2 minutes for 8 hulls, 5 for 44). Come up with settings to try for speed
       - a decimation setting for the original mesh, and a list of decimations in the hull set struct, for an extra set of models with fewer polygons
 
@@ -179,20 +176,12 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 
 - Task tracking with backlog, todo, etc.
 
-
-- multiple views(windows) of same type support, with lock toggle
 - popup manager
   - show serialized or in-memory asset inspector as popup with custom title
     - override property drawer for custom popup look
 
-- generalized serialization of Owned and Ref
-- generic Handle resolve and reset Handle when resolve fails
-
 - ability to switch Value/Ref field in inspector where valid
 
-
-- Convert resource into usable format at buildStage or runtimeStage
-
-- consider SceneFile to hold serialize blobs instead of real types
+- consider making transform regular component (required or optional), node will hold all components
 
 - bug:[WON'T FIX] terminal-launched editor doesn't gain keyboard focus on some startups (macOS cooperative activation denies non-Launch-Services processes; refocus app to repair). Real fix: .app bundle + `open` in run scripts, icon via Info.plist (drops set_dock_icon)
