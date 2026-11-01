@@ -5,6 +5,7 @@ package animation_tests
 // times an Object row shows.
 
 import "core:encoding/uuid"
+import "core:fmt"
 import "core:os"
 import "core:testing"
 import asset_pipeline "moonhug:editor/assets"
@@ -411,4 +412,74 @@ test_retarget_object_row_is_one_undo_step :: proc(t: ^testing.T) {
 	// The animated object's own row retargets too, to a child path.
 	testing.expect(t, animation_editor.animation_view_retarget("", "Body"), "the root row retargets")
 	testing.expect_value(t, _sr_targets(doc), [4]string{"Armature/node_2", "Body", "Armature/node_2", "Leg"})
+}
+
+// A Position row on A, then one on B, with the lanes `a_lanes` and `b_lanes`.
+@(private = "file")
+_sr_ab_clip :: proc(a_lanes, b_lanes: string) -> string {
+	return fmt.tprintf(`{{
+  "__type_guid": "0a4f3b1c-8e57-4c2d-9b6a-5d1e7f2c8a90",
+  "length": 1.0,
+  "channels": [
+    {{"target": "A", "path": 0, "times": [0], "values": [[1, 0, 0, 0]]%s}},
+    {{"target": "B", "path": 0, "times": [0], "values": [[0, 0, 3, 0]]%s}}
+  ]
+}}`, a_lanes, b_lanes)
+}
+
+// A retarget that would give a lane of the new path two rows is refused and
+// changes nothing: A to B with both rows on every lane. With A masked to x and
+// B to z the lanes are disjoint, and both rows end on B.
+@(test)
+test_retarget_refuses_a_lane_with_two_rows :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+
+	dir :: "moonhug/tests/fixtures/_retarget_lanes_tmp"
+	full :: dir + "/Full.anim"
+	masked :: dir + "/Masked.anim"
+	os.make_directory(dir)
+	testing.expect(t, os.write_entire_file(full, transmute([]u8)_sr_ab_clip("", "")) == nil, "the full clip is written")
+	testing.expect(t, os.write_entire_file(masked, transmute([]u8)_sr_ab_clip(`, "lanes": [true, false, false]`, `, "lanes": [false, false, true]`)) == nil, "the masked clip is written")
+	asset_pipeline.asset_pipeline_init()
+	engine.asset_db_init(dir)
+	undo.set_asset_apply(inspector.asset_doc_apply_json)
+	undo.set_asset_doc_lookup(inspector.asset_doc_payload_ptr)
+	defer {
+		animation_editor.animation_record_reset()
+		inspector.asset_docs_shutdown()
+		engine.asset_db_shutdown()
+		common.remove_tree(dir)
+		common.remove_tree(engine.library_dir())
+	}
+	root := engine.transform_new("Root")
+
+	targets :: proc(doc: ^inspector.Asset_Doc) -> [2]string {
+		clip := cast(^anim.AnimationClip)doc.data.data
+		out: [2]string
+		for &c, i in clip.channels[:min(len(clip.channels), 2)] do out[i] = c.target
+		return out
+	}
+
+	doc := inspector.asset_doc_get(full)
+	if !testing.expect(t, doc != nil && doc.data.id == typeid_of(anim.AnimationClip), "the full clip loads as a document") do return
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0, armed = false)
+	before := s.top
+	testing.expect(t, !animation_editor.animation_view_retarget("A", "B"), "two rows on every lane of B: refused")
+	testing.expect_value(t, len((cast(^anim.AnimationClip)doc.data.data).channels), 2)
+	testing.expect_value(t, targets(doc), [2]string{"A", "B"})
+	testing.expect_value(t, s.top, before)
+
+	doc = inspector.asset_doc_get(masked)
+	if !testing.expect(t, doc != nil && doc.data.id == typeid_of(anim.AnimationClip), "the masked clip loads as a document") do return
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0, armed = false)
+	testing.expect(t, animation_editor.animation_view_retarget("A", "B"), "x on A and z on B: applied")
+	testing.expect_value(t, len((cast(^anim.AnimationClip)doc.data.data).channels), 2)
+	testing.expect_value(t, targets(doc), [2]string{"B", "B"})
+	_, ok := anim.animation_clip_validate(cast(^anim.AnimationClip)doc.data.data)
+	testing.expect(t, ok, "the retargeted clip is valid")
+	testing.expect_value(t, s.top, before + 1)
 }

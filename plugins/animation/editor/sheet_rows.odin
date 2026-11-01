@@ -77,23 +77,10 @@ sheet_rows :: proc(clip: ^anim.AnimationClip, collapsed: map[string]bool, expand
 }
 
 // The channels of the property channel `ch` animates, in channel order,
-// `ch` among them: one for a joined row, one per lane for a split row.
+// `ch` among them: one for a joined row, one per lane for a split row
+// (anim.animation_clip_property_channels).
 sheet_group_channels :: proc(clip: ^anim.AnimationClip, ch: int, allocator := context.allocator) -> []int {
-	out := make([dynamic]int, allocator)
-	c := &clip.channels[ch]
-	for &o, i in clip.channels {
-		if _sheet_same_property(c, &o) do append(&out, i)
-	}
-	return out[:]
-}
-
-// Whether two channels animate the same property of the same target.
-@(private = "file")
-_sheet_same_property :: proc(a, b: ^anim.Animation_Channel) -> bool {
-	if a.target != b.target do return false
-	if anim.animation_channel_is_property(a) != anim.animation_channel_is_property(b) do return false
-	if anim.animation_channel_is_property(a) do return a.component == b.component && a.field == b.field
-	return a.path == b.path
+	return anim.animation_clip_property_channels(clip, ch, allocator)
 }
 
 // The channel of `group` (sheet_group_channels) that animates lane `lane`:
@@ -138,7 +125,7 @@ _sheet_target_seen :: proc(clip: ^anim.AnimationClip, target: string, before: in
 sheet_row_of_channel :: proc(clip: ^anim.AnimationClip, rows: []Sheet_Row, ch: int) -> int {
 	if ch < 0 || ch >= len(clip.channels) do return -1
 	for r, i in rows {
-		if r.kind == .Channel && _sheet_same_property(&clip.channels[r.ch], &clip.channels[ch]) do return i
+		if r.kind == .Channel && anim.animation_channel_same_property(&clip.channels[r.ch], &clip.channels[ch]) do return i
 	}
 	return -1
 }

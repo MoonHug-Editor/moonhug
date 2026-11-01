@@ -283,11 +283,17 @@ The sheet groups the rows by the transform they animate (`editor/sheet_rows.odin
 
 - Object rows sit at the column's edge whatever their depth, their property rows one step in. The row shows the transform's name only. The tooltip shows the full path. A target that does not resolve under the animated object shows its name in the warning colour the unresolved property rows use.
 - A click on an Object row's name pings the transform in the hierarchy, a double-click selects it. Neither changes the keys.
-- Retargeting: Edit Path in an Object row's context menu opens a field holding the full target path, at the row's indent. Enter, or Escape as in every text field, sets the target of every channel of that object to the typed path, spaces trimmed, as one undo step (`animation_view_retarget`). A click elsewhere cancels. A clip inside a model has no field. An unresolved path shows in the warning colour and can be edited again. The collapsed state follows the row to its new path.
+- Retargeting: Edit Path in an Object row's context menu opens a field holding the full target path, at the row's indent. Enter, or Escape as in every text field, sets the target of every channel of that object to the typed path, spaces trimmed, as one undo step (`animation_view_retarget`). A click elsewhere cancels. A clip inside a model has no field. A path that already animates a lane one of the moved rows animates is refused, so no lane gets two rows. An unresolved path shows in the warning colour and can be edited again. The collapsed state follows the row to its new path.
 - The arrow on an Object row collapses it, hiding its property rows. Collapse state belongs to the window copy and is not saved. Adding a property under a collapsed object expands it.
 - In the dope sheet an Object row shows an outlined summary key at every time where any of its property rows has a key, hidden rows included. Keys within half a frame after the first key of a run count as one.
 - Clicking a summary key selects every key it stands for, the first of them becoming the primary key. Dragging it moves them together. A modifier click adds them to the selection or removes them. A box selection over an Object row selects its channels' keys in the band.
 - A press on an Object row's name selects no key. Double-click on a key, Remove Property and Add Key act on property rows only, and the curve view plots only the selected property row.
+
+### The sheet model
+- The window derives its sheet from the clip once per change, not per frame (`editor/sheet_cache.odin`): the rows, each property's channels, and what each channel resolves to on its component. It rebuilds when the document's edit count changes (`inspector.Asset_Doc.edits`, bumped by every edit, undo and redo), when the clip changes, or when an Object row collapses or a vector row expands.
+- A model replaced during a frame stays readable until the next frame, so code that read the rows before a menu edited the clip is never left with freed memory. Every edit refreshes the sheet at once, so nothing later in the frame reads channel indices from before it.
+- The selection survives edits. It is kept as stable keys, the channel's `sheet_channel_key` and lane set plus the key index, and restored after a rebuild. Split Lane Keys, Join Lane Keys, Convert to Euler and the Lanes menu keep the row selected. A key whose channel or index is gone drops out.
+- The document's edits reach the engine's clip cache every frame, whether or not an Animation window is shown, so recording from the inspector poses from the current keys.
 
 ### Lane rows
 
@@ -414,9 +420,11 @@ A float row is the array of 4-lane arrays it has always been, so every `.anim`, 
 - An Euler row (`"path": 3`) is the same rotation as euler angles in degrees, `[x, y, z, 0]` in the inspector's order (`engine.quat_to_euler_xyz`, `animation_quat_from_euler`).
 - An Euler row is a 3-lane vector row: each lane interpolates on its own by the key modes, with no slerp, and the row can mask lanes and split like a Position row.
 - Recording and Add Property create Euler rows for a transform's rotation.
+- A property is what a channel animates on a target: Position, Rotation, Scale or Euler of a transform, or one field of one component (`animation_channel_same_property`, `animation_clip_property_channels` in `clip_trs.odin`). Its channels are its lanes.
+- Two channels of one property never animate the same lane. A file that breaks this does not load (`animation_clip_validate` at `animation_clip_load`), and the window refuses an edit that would break it.
 - A rotation is a quaternion. Euler rows are its authoring form: the keys hold the angles as typed, so a two-key row from 0 to 720 spins twice, which quaternion keys cannot say.
-- A clip's Euler rows become one quaternion per transform inside the clip (`_eval_euler` in `playable_graph.odin`): the rows' enabled lanes set their angles, the other angles come from the clip's own Rotation row when it has one, else from the transform's rotation at bind time. Above the clip the rotation blends as a quaternion, like a model clip's, so a mask on an Euler row does not hand the other axes to another clip.
-- The direct apply (`animation_clip_apply`) replaces the enabled angles of the transform's current rotation.
+- One rule combines a clip's transform rows per transform (`Clip_TRS` in `clip_trs.odin`), used by the direct apply, the graph leaf and the inspector's preview: split rows each set their own lanes, the rotation starts from the clip's Rotation row when it has one, else from a base, then the Euler rows' enabled lanes replace their angles. A lane no row sets keeps the base.
+- The base is the transform's own rotation for the direct apply and the inspector, and the rotation at bind time in the graph, where blending happens before anything is written. Above the clip the rotation blends as a quaternion, like a model clip's.
 - Convert to Euler in a quaternion row's context menu turns it into an Euler row with unwound angles (`sheet_rotation_to_euler` in `editor/lane_split.odin`), so an extracted or hand-made clip can be edited per axis. A clip inside a model is read-only and stays quaternion.
 
 ### Lanes

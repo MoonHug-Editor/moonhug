@@ -255,23 +255,28 @@ _record_row_value :: proc(ch: ^anim.Animation_Channel, k: _Record_Key, v: anim.C
 // Euler rows when the clip has any, else its Rotation rows. Temp-allocated.
 @(private = "file")
 _record_channels :: proc(clip: ^anim.AnimationClip, k: _Record_Key) -> []int {
-	out := make([dynamic]int, context.temp_allocator)
-	quat := make([dynamic]int, context.temp_allocator)
-	for &c, i in clip.channels {
-		if c.target != k.target do continue
-		if k.property {
-			if c.component == k.guid_str && c.field == k.field do append(&out, i)
-			continue
-		}
-		if anim.animation_channel_is_property(&c) do continue
-		switch {
-		case k.path == .Rotation && c.path == .Euler: append(&out, i)
-		case k.path == .Rotation && c.path == .Rotation: append(&quat, i)
-		case c.path == k.path: append(&out, i)
-		}
+	// The property as a channel, so the package's identity rule decides.
+	like := anim.Animation_Channel{target = k.target, path = k.path}
+	if k.property {
+		like.component = k.guid_str
+		like.field = k.field
 	}
-	if len(out) == 0 do return quat[:]
-	return out[:]
+	first := -1
+	quat := -1
+	for &c, i in clip.channels {
+		if anim.animation_channel_same_property(&like, &c) {
+			if !k.property && k.path == .Rotation {
+				if quat < 0 do quat = i
+				continue
+			}
+			first = i
+			break
+		}
+		if !k.property && k.path == .Rotation && !anim.animation_channel_is_property(&c) && c.target == k.target && c.path == .Euler && first < 0 do first = i
+	}
+	if first < 0 do first = quat
+	if first < 0 do return {}
+	return anim.animation_clip_property_channels(clip, first, context.temp_allocator)
 }
 
 // The rows' value at the playhead over `cur`, the field's own value: each
@@ -435,29 +440,19 @@ _record_driven :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: t
 	w := engine.ctx_world()
 	t := engine.pool_get(&w.transforms, engine.Handle(k.owner))
 	if t == nil do return false, false
+	// The field's rows over the object's own values, by the one combining
+	// rule (anim.Clip_TRS). The rotation reads as a quaternion or as euler
+	// angles, by the type asked for.
+	trs: anim.Clip_TRS
+	for idx in chans do anim.animation_trs_add(&trs, &clip.channels[idx], _pv.time)
 	switch k.path {
-	case .Position:
-		(cast(^[3]f32)out)^ = _record_sample_lanes(clip, chans, .Vec3, {t.position.x, t.position.y, t.position.z, 0}).xyz
-	case .Scale:
-		(cast(^[3]f32)out)^ = _record_sample_lanes(clip, chans, .Vec3, {t.scale.x, t.scale.y, t.scale.z, 0}).xyz
+	case .Position: (cast(^[3]f32)out)^ = anim.animation_trs_lanes_over(trs.pos, trs.pos_lanes, t.position)
+	case .Scale:    (cast(^[3]f32)out)^ = anim.animation_trs_lanes_over(trs.scl, trs.scl_lanes, t.scale)
 	case .Rotation:
-		// Rotation rows give the quaternion, Euler rows their angles over
-		// the object's own. The field reads as a quaternion or as euler
-		// angles, by the type asked for.
-		q := t.rotation
-		e: [3]f32
-		if clip.channels[chans[0]].path == .Rotation {
-			q = anim._animation_channel_sample(&clip.channels[chans[0]], _pv.time)
-			e = engine.quat_to_euler_xyz(q)
-		} else {
-			e = engine.quat_to_euler_xyz(q)
-			e = _record_sample_lanes(clip, chans, .Vec3, {e.x, e.y, e.z, 0}).xyz
-			q = anim.animation_quat_from_euler(e)
-		}
 		if k.leaf == typeid_of([3]f32) {
-			(cast(^[3]f32)out)^ = e
+			(cast(^[3]f32)out)^ = anim.animation_trs_euler(trs, t.rotation)
 		} else {
-			(cast(^[4]f32)out)^ = q
+			(cast(^[4]f32)out)^ = anim.animation_trs_rotation(trs, t.rotation)
 		}
 	case .Euler:
 		unreachable() // a field key names the rotation field, never a row form

@@ -17,6 +17,7 @@ import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
 import "core:io"
+import "core:log"
 import "core:mem"
 import "core:reflect"
 import "moonhug:packages/engine"
@@ -259,7 +260,13 @@ animation_clip_load :: proc(ref: engine.PPtr) -> (^AnimationClip, bool) {
 	}
 	clip: AnimationClip
 	parse :: proc(data: []byte, clip: ^AnimationClip) -> bool {
-		if json.unmarshal(data, clip, .JSON, context.allocator) == nil do return true
+		if json.unmarshal(data, clip, .JSON, context.allocator) == nil {
+			if msg, vok := animation_clip_validate(clip); !vok {
+				log.errorf("[Clip] %s: the file is not loaded", msg)
+			} else {
+				return true
+			}
+		}
 		cleanup_AnimationClip(clip)
 		return false
 	}
@@ -622,6 +629,10 @@ _channel_values_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Err
 // skipped.
 animation_clip_apply :: proc(clip: ^AnimationClip, owner: engine.Transform_Handle, time: f32) {
 	w := engine.ctx_world()
+	// Transform rows gather per transform first (Clip_TRS), so split lanes and
+	// the rotation forms combine by the one rule, then write over the
+	// transform's own values.
+	trs := make(map[engine.Transform_Handle]Clip_TRS, context.temp_allocator)
 	for &ch in clip.channels {
 		// A channel with no keys has nothing to say: sampling it yields zeros,
 		// which would collapse a scale or snap a position to the origin. Same
@@ -635,19 +646,16 @@ animation_clip_apply :: proc(clip: ^AnimationClip, owner: engine.Transform_Handl
 			_prop_write_value(ptr, kind, leaf_tid, _animation_channel_sample_value(&ch, time), animation_channel_lanes_off(&ch, kind))
 			continue
 		}
-		v := _animation_channel_sample(&ch, time)
+		entry := trs[tH]
+		animation_trs_add(&entry, &ch, time)
+		trs[tH] = entry
+	}
+	for tH, entry in trs {
 		t := engine.pool_get(&w.transforms, engine.Handle(tH))
 		if t == nil do continue
-		off := animation_channel_lanes_off(&ch, .Vec3)
-		switch ch.path {
-		case .Position: for l in 0 ..< 3 do if l not_in off do t.position[l] = v[l]
-		case .Rotation: t.rotation = v
-		case .Scale:    for l in 0 ..< 3 do if l not_in off do t.scale[l] = v[l]
-		case .Euler:
-			e := engine.quat_to_euler_xyz(t.rotation)
-			for l in 0 ..< 3 do if l not_in off do e[l] = v[l]
-			t.rotation = animation_quat_from_euler(e)
-		}
+		t.position = animation_trs_lanes_over(entry.pos, entry.pos_lanes, t.position)
+		t.scale = animation_trs_lanes_over(entry.scl, entry.scl_lanes, t.scale)
+		if animation_trs_has_rotation(entry) do t.rotation = animation_trs_rotation(entry, t.rotation)
 	}
 }
 

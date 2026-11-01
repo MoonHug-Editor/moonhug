@@ -311,6 +311,8 @@ Discard reads the document again from its file and drops its undo steps with `pu
 
 ## Import settings (project inspector, Sprite Editor)
 
+Every document counts its changes in `Asset_Doc.edits`: an editor's edit through `asset_doc_mark_edited`, and every undo and redo through the apply hook. A view that keeps state derived from a document, such as the Animation window's sheet, compares the count and rebuilds on a change instead of rebuilding every frame.
+
 An asset's import settings are a second kind of asset document (`undo.Doc_Kind.Import_Settings`, `inspector/import_settings_docs.odin`): one per asset, the typed settings from its `.meta`, shared by every editor that shows or edits them. The import settings inspector, the model clip rows and the Sprite Editor all edit the same document, so an edit in one shows in the others at once.
 
 - **Recording.** No editor of the settings writes undo code. `inspector.import_settings_track` compares every settings document shown or edited since the last compare with its baseline JSON (in memory, nothing touches the disk), and turns a change into one whole-document step ("Edit Import Settings"). The main loop asks for a compare only on frames where an edit may have just finished: a widget was let go, a mouse button went up, or a key was pressed. So a drag, a typed name or a Slice button press is one step, and idle frames cost nothing (a compare of a model with 40 clips takes about a quarter of a millisecond). Undo/redo rebuild the document from the step's JSON and move the baseline, so the restore is not recorded again.

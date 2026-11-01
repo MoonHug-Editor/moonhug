@@ -624,10 +624,10 @@ _eval_node :: proc(
 		clip, ok := animation_clip_load(v.clip)
 		if !ok do return
 		t := animation_clip_sample_time(clip, playable_node_time(n))
-		// The clip's euler angles per slot, and the lanes its Euler rows
-		// set, turned into the slot's quaternion after the rows (_eval_euler).
-		eul := make([][4]f32, len(out.trs), allocator)
-		eul_lanes := make([]Lane_Set, len(out.trs), allocator)
+		// Transform rows gather per slot first (Clip_TRS, the one combining
+		// rule), allocated on the first transform row, so a clip of property
+		// rows alone allocates nothing.
+		trs: []Clip_TRS
 		for &ch in clip.channels {
 			// No keys, nothing to contribute: sampling would write zeros over
 			// the pose (see animation_clip_apply).
@@ -648,23 +648,22 @@ _eval_node :: proc(
 				_lane_acc_leaf(&out.props[idx].acc, f, animation_channel_lanes_off(&ch, kind))
 				continue
 			}
-			val := _animation_channel_sample(&ch, t)
 			idx, found := b.by_path[ch.target]
 			if !found do continue
+			if trs == nil do trs = make([]Clip_TRS, len(out.trs), allocator)
+			animation_trs_add(&trs[idx], &ch, t)
+		}
+		for &entry, idx in trs {
 			pv := &out.trs[idx]
-			switch ch.path {
-			case .Position: _lane_acc_leaf(&pv.pos, val, animation_channel_lanes_off(&ch, .Vec3))
-			case .Rotation: pv.rot = val; pv.rot_w = 1
-			case .Scale:    _lane_acc_leaf(&pv.scl, val, animation_channel_lanes_off(&ch, .Vec3))
-			case .Euler:
-				off := animation_channel_lanes_off(&ch, .Vec3)
-				for l in 0 ..< 3 do if l not_in off {
-					eul[idx][l] = val[l]
-					eul_lanes[idx] += {l}
-				}
+			if entry.pos_lanes != {} do _lane_acc_leaf(&pv.pos, entry.pos, ~entry.pos_lanes)
+			if entry.scl_lanes != {} do _lane_acc_leaf(&pv.scl, entry.scl, ~entry.scl_lanes)
+			// Euler lanes over the rotation at bind time: the leaf has no
+			// current rotation, blending happens before anything is written.
+			if animation_trs_has_rotation(entry) {
+				pv.rot = animation_trs_rotation(entry, b.slots[idx].default_rot)
+				pv.rot_w = 1
 			}
 		}
-		for lanes, idx in eul_lanes do if lanes != {} do _eval_euler(&out.trs[idx], &b.slots[idx], eul[idx], lanes)
 	case Playable_Mixer:
 		for inp in n.inputs {
 			if inp.weight <= PLAYABLE_WEIGHT_EPS do continue
@@ -948,20 +947,6 @@ playable_scripts_fire :: proc(scripts: []Script_Invocation) {
 	for s in scripts {
 		if s.script.process != nil do s.script.process(s.script.user_data, s.time, s.weight)
 	}
-}
-
-// A clip's Euler rows as the slot's quaternion: the angles in `lanes` from
-// the rows (`e`), the others from the clip's own Rotation row when it has
-// one, else from the rotation at bind time (default_rot). Interpolation
-// between keys is euler, per lane, so a two-key 0 to 720 row spins twice.
-// Above the clip the rotation blends as a quaternion, so a mask on an Euler
-// row does not give other clips the unanimated axes.
-@(private = "file")
-_eval_euler :: proc(pv: ^Pose_Value, s: ^Binding_Slot, e: [4]f32, lanes: Lane_Set) {
-	base := engine.quat_to_euler_xyz(pv.rot_w > PLAYABLE_WEIGHT_EPS ? pv.rot : s.default_rot)
-	for l in lanes do base[l] = e[l]
-	pv.rot = animation_quat_from_euler(base)
-	pv.rot_w = 1
 }
 
 // A position or scale: _lane_acc_finalize over the first three lanes.

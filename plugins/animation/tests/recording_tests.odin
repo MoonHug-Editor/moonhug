@@ -1144,3 +1144,87 @@ test_delete_key_on_a_split_row_removes_every_lane_key :: proc(t: ^testing.T) {
 	clip = _rec_clip(doc)
 	for l in 0 ..< 3 do testing.expectf(t, _key_at(&clip.channels[l], 1) >= 0, "undo brings lane %d's key back", l)
 }
+
+// The clip document counts its changes: a recorded edit and its undo each
+// bump Asset_Doc.edits, so a view that derives state from the clip rebuilds.
+@(test)
+test_record_and_undo_bump_document_edits :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	child := engine.transform_new("Child", root)
+	w := engine.ctx_world()
+	tr := engine.pool_get(&w.transforms, engine.Handle(child))
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+
+	start := doc.edits
+	sess := undo.edit_session_begin({undo.edit_target_transform(child, &tr.position, typeid_of([3]f32))}, "Move")
+	tr.position = {1, 2, 3}
+	undo.edit_session_end(&sess)
+	if !testing.expect_value(t, len(_rec_clip(doc).channels), 1) do return
+	recorded := doc.edits
+	testing.expectf(t, recorded > start, "the recorded edit bumps edits: %d then %d", start, recorded)
+
+	testing.expect(t, undo.apply_undo(s), "undo")
+	testing.expect_value(t, len(_rec_clip(doc).channels), 0)
+	testing.expectf(t, doc.edits > recorded, "the undo bumps edits: %d then %d", recorded, doc.edits)
+	undone := doc.edits
+	testing.expect(t, undo.apply_redo(s), "redo")
+	testing.expectf(t, doc.edits > undone, "the redo bumps edits: %d then %d", undone, doc.edits)
+}
+
+// A Scale row on Arm before its split Position row (x and y channels): a
+// recorded position edit keys the x and y channels at the playhead and leaves
+// the Scale row and the channel count as they were.
+@(test)
+test_record_split_position_beside_scale_keys_only_position :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	arm := engine.transform_new("Arm", root)
+	w := engine.ctx_world()
+	tr := engine.pool_get(&w.transforms, engine.Handle(arm))
+	tr.position = {1, 2, 3}
+	tr.scale = {1, 1, 1}
+	clip := _rec_clip(doc)
+	_rec_add_row(clip, {target = "Arm", path = .Scale}, {0}, {{1, 1, 1, 0}})
+	_rec_add_row(clip, {target = "Arm", path = .Position, lanes_off = {1, 2}}, {0}, {{1, 0, 0, 0}})
+	_rec_add_row(clip, {target = "Arm", path = .Position, lanes_off = {0, 2}}, {0}, {{0, 2, 0, 0}})
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+
+	before := s.top
+	sess := undo.edit_session_begin({undo.edit_target_transform(arm, &tr.position, typeid_of([3]f32))}, "Move")
+	tr.position = {4, 5, 3}
+	undo.edit_session_end(&sess)
+
+	clip = _rec_clip(doc)
+	if !testing.expect_value(t, len(clip.channels), 3) do return
+	scl := &clip.channels[0]
+	testing.expect_value(t, scl.path, anim.Animation_Path.Scale)
+	testing.expect_value(t, len(scl.times), 1)
+	testing.expect_value(t, _key_at(scl, 1), -1)
+	want := [2]f32{4, 5}
+	for l in 0 ..< 2 {
+		ch := &clip.channels[1 + l]
+		testing.expect_value(t, ch.path, anim.Animation_Path.Position)
+		at := _key_at(ch, 1)
+		testing.expectf(t, at >= 0, "lane %d has a key at the playhead", l)
+		if at >= 0 do testing.expect_value(t, ch.values.([dynamic][4]f32)[at][l], want[l])
+	}
+	testing.expect_value(t, tr.position, [3]f32{1, 2, 3})
+	testing.expect_value(t, s.top, before + 1)
+}

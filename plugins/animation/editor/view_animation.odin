@@ -72,7 +72,7 @@ _ANIM_COMP_COLS :: [4]im.Vec4{
 }
 
 // One key in the sheet: which channel row, which key in it.
-@(private = "file")
+@(private)
 _Key_Ref :: struct {
 	ch:  int,
 	key: int,
@@ -112,7 +112,10 @@ _pv: struct {
 	playing:   bool, // transport running: time advances every frame
 	recording: bool, // armed: an edit of an animatable field keys it at the playhead (record.odin)
 
-	sync:      bool, // document edited this frame -> push to the clip cache
+	// The document edit count and guid the clip cache holds (_animation_frame
+	// pushes the document into the cache when they differ).
+	synced_edits: u64,
+	synced_guid:  engine.Asset_GUID,
 }
 
 ANIMATION_VIEW :: "Animation"
@@ -120,9 +123,22 @@ ANIMATION_VIEW :: "Animation"
 // One Animation copy's own state: how it shows the clip. The clip, the
 // playhead and the transport are the preview's (_pv), shared by every copy,
 // since the world holds one pose.
-@(private = "file")
+@(private)
 _Anim_View :: struct {
 	left_w:    f32, // property column width, dragged via the pane splitter
+	// The sheet model derived from the clip (sheet_cache.odin): rows, groups
+	// and resolved field metadata, rebuilt when the document's edit count
+	// or view_gen changes. Models replaced this frame wait in sheets_old
+	// until the next frame, so a slice taken before an edit stays readable.
+	sheet:      _Sheet,
+	sheets_old: [dynamic]_Sheet,
+	view_gen:   u64, // bumped by collapse and expand toggles
+	// The selection in a form that survives edits: the stable channel key
+	// and lane set, and the key index. Taken when the selection changed
+	// (sel_dirty) before an edit, restored after the sheet rebuilds.
+	sel_snap:    [dynamic]_Sel_Snap,
+	sel_primary: int, // index into sel_snap, -1 for none
+	sel_dirty:   bool,
 	// Set by the sheet each frame: the pointer is over the time canvas, where
 	// the wheel zooms. Read by the body child, which scrolls on the wheel only
 	// when it is false.
@@ -177,10 +193,10 @@ _ANIM_VIEW_INIT :: _Anim_View{left_w = 300, sel_ch = -1, sel_key = -1}
 
 // The copy being drawn, and outside a draw the copy clicked in last. With no
 // copy open it points at a spare state, so a write lands nowhere.
-@(private = "file")
+@(private)
 _av: ^_Anim_View = &_av_none
 
-@(private = "file")
+@(private)
 _av_none := _ANIM_VIEW_INIT
 
 @(private = "file")
@@ -191,6 +207,13 @@ _anim_view :: proc(w: ^wnd.Window) -> ^_Anim_View {
 @(private = "file")
 _anim_view_free :: proc(av: ^_Anim_View) {
 	context.allocator = runtime.default_allocator()
+	_sheet_free(&av.sheet)
+	for &old in av.sheets_old do _sheet_free(&old)
+	delete(av.sheets_old)
+	av.sheets_old = nil
+	_sel_snap_clear(av)
+	delete(av.sel_snap)
+	av.sel_snap = nil
 	delete(av.sel)
 	delete(av.drag_t0)
 	for k in av.collapsed do delete(k)
@@ -219,6 +242,7 @@ _pv_view_str_set :: proc(dst: ^string, s: string) {
 @(private = "file")
 _pv_collapse_toggle :: proc(target: string) {
 	context.allocator = runtime.default_allocator()
+	_av.view_gen += 1
 	if target in _av.collapsed {
 		k, _ := delete_key(&_av.collapsed, target)
 		delete(k)
@@ -233,6 +257,7 @@ _pv_collapse_toggle :: proc(target: string) {
 @(private = "file")
 _pv_expand_toggle :: proc(key: string) {
 	context.allocator = runtime.default_allocator()
+	_av.view_gen += 1
 	if key in _av.expanded {
 		k, _ := delete_key(&_av.expanded, key)
 		delete(k)
@@ -376,6 +401,7 @@ _pv_deselect :: proc() {
 	_av.sel_ch = -1
 	_av.sel_key = -1
 	clear(&_av.sel)
+	_av.sel_dirty = true
 	_av.drag_key = false
 	_av.drag_tan = false
 	_av.box = false
@@ -399,12 +425,14 @@ _pv_sel_set :: proc(ch, key: int) {
 	append(&_av.sel, _Key_Ref{ch, key})
 	_av.sel_ch = ch
 	_av.sel_key = key
+	_av.sel_dirty = true
 }
 
 // Add a key to the selection, or drop it when already there (additive click).
 // The clicked key becomes primary either way it stays selected.
 @(private = "file")
 _pv_sel_toggle :: proc(ch, key: int) {
+	_av.sel_dirty = true
 	for r, i in _av.sel {
 		if r.ch == ch && r.key == key {
 			ordered_remove(&_av.sel, i)
@@ -449,6 +477,7 @@ _pv_sel_has_all :: proc(keys: []Sheet_Key) -> bool {
 _pv_sel_set_keys :: proc(keys: []Sheet_Key) {
 	assert(len(keys) > 0, "an Object row summary key stands for at least one key")
 	_pv_sel_pin()
+	_av.sel_dirty = true
 	clear(&_av.sel)
 	for k in keys do append(&_av.sel, _Key_Ref{k.ch, k.key})
 	_av.sel_ch = keys[0].ch
@@ -461,6 +490,7 @@ _pv_sel_set_keys :: proc(keys: []Sheet_Key) {
 @(private = "file")
 _pv_sel_toggle_keys :: proc(keys: []Sheet_Key) {
 	assert(len(keys) > 0, "an Object row summary key stands for at least one key")
+	_av.sel_dirty = true
 	if _pv_sel_has_all(keys) {
 		for k in keys do _pv_sel_toggle(k.ch, k.key)
 		return
@@ -598,6 +628,8 @@ _pv_session: undo.Edit_Session
 // release, mutating in between.
 @(private)
 _pv_edit_begin :: proc(doc: ^inspector.Asset_Doc) {
+	// The selection in its stable form, while the indices still hold.
+	if doc != nil && doc.data.id == typeid_of(anim.AnimationClip) do _pv_sel_snapshot(cast(^anim.AnimationClip)doc.data.data)
 	// Idempotent: the drag calls this on activation, and a second call while the
 	// same gesture is open would otherwise capture the already-edited value.
 	if undo.edit_session_active(&_pv_session) do return
@@ -609,6 +641,9 @@ _pv_edit_begin :: proc(doc: ^inspector.Asset_Doc) {
 _pv_edit_commit :: proc(doc: ^inspector.Asset_Doc) {
 	if !_pv_edit_held do undo.edit_session_end(&_pv_session)
 	_pv_mark_edited(doc)
+	// The sheet and the selection follow the edit at once, so nothing later
+	// this frame reads channel indices from before it.
+	if _av != &_av_none && doc.data.id == typeid_of(anim.AnimationClip) do _pv_sheet(doc, cast(^anim.AnimationClip)doc.data.data)
 }
 
 // Set while one gesture runs several keyframe operations that each open and
@@ -619,8 +654,7 @@ _pv_edit_held: bool
 
 @(private = "file")
 _pv_mark_edited :: proc(doc: ^inspector.Asset_Doc) {
-	doc.dirty = true
-	_pv.sync = true
+	inspector.asset_doc_mark_edited(doc)
 }
 
 // The inspector's field convention: the session opens when the widget
@@ -677,21 +711,8 @@ _pv_ch_ncomp :: proc(ch: ^anim.Animation_Channel) -> int {
 // is the Object row's label above, so the label leaves it out.
 @(private = "file")
 _pv_ch_label :: proc(ch: ^anim.Animation_Channel) -> (label: cstring, resolved: bool) {
-	if !anim.animation_channel_is_property(ch) {
-		// An Euler row is the rotation too, in another form.
-		return ch.path == .Euler ? "Rotation" : fmt.ctprintf("%v", ch.path), true
-	}
-	comp_name := "?"
-	if guid, gerr := uuid.read(ch.component); gerr == nil {
-		if tid, ok := engine.get_typeid_by_guid_ok(guid); ok {
-			comp_name = fmt.tprintf("%v", tid)
-			if dot := strings.last_index_byte(comp_name, '.'); dot >= 0 {
-				comp_name = comp_name[dot + 1:]
-			}
-		}
-	}
-	_, mok := anim._prop_meta(ch.component, ch.field)
-	return fmt.ctprintf("%s.%s", comp_name, ch.field), mok
+	m := _pv_meta(ch)
+	return m.label, m.resolved
 }
 
 // --- Keyframe operations --------------------------------------------------------------
@@ -757,7 +778,6 @@ _pv_delete_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 		if len(clip.channels[i].times) > 0 do continue
 		_pv_channel_remove(clip, i)
 	}
-	_pv_deselect() // channel indices may have shifted
 	_pv_edit_commit(doc)
 }
 
@@ -805,7 +825,6 @@ _pv_lane_set :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_id
 			// The row's strings and arrays live in the document.
 			context.allocator = inspector.doc_alloc()
 			_pv_channel_remove(clip, ch_idx)
-			_pv_deselect() // channel indices shifted
 		}
 	}
 	_pv_edit_commit(doc)
@@ -839,7 +858,6 @@ _pv_split_lane_set :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip,
 			sheet_lane_add(clip, group, lane)
 		}
 	}
-	_pv_deselect() // channel indices shifted
 	_pv_edit_commit(doc)
 }
 
@@ -851,7 +869,6 @@ _pv_join_group :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, gro
 		context.allocator = inspector.doc_alloc()
 		sheet_join_lanes(clip, group)
 	}
-	_pv_deselect() // channel indices shifted
 	_pv_edit_commit(doc)
 }
 
@@ -883,7 +900,7 @@ _pv_join_confirmed :: proc() {
 	if doc == nil || clip == nil || _pv_join_key == "" do return
 	for &c, i in clip.channels {
 		if sheet_channel_key(&c, context.temp_allocator) != _pv_join_key do continue
-		group := sheet_group_channels(clip, i, context.temp_allocator)
+		group := _pv_group(clip, i)
 		if sheet_can_join(clip, group) do _pv_join_group(doc, clip, group)
 		break
 	}
@@ -1234,7 +1251,15 @@ _animation_frame :: proc() {
 		_pv.time = 0
 	}
 
-	_, clip := _pv_doc()
+	doc, clip := _pv_doc()
+	// The document's edits reach the engine cache the preview samples from,
+	// every frame, whether or not an Animation window is shown: recording
+	// from the inspector keeps posing from the current keys.
+	if doc != nil && clip != nil && (doc.edits != _pv.synced_edits || doc.guid != _pv.synced_guid) {
+		anim.animation_clip_preview(engine.PPtr{guid = doc.guid}, clip^)
+		_pv.synced_edits = doc.edits
+		_pv.synced_guid = doc.guid
+	}
 	length := clip != nil ? max(clip.length, 0.0001) : 0.0001
 	_pv_advance(clip, length)
 }
@@ -1273,9 +1298,10 @@ animation_view_draw :: proc(w: ^wnd.Window) {
 		im.TextDisabled("The clip is missing or unreadable.")
 		return
 	}
-	// Undo may have shrunk the clip since the selection was made.
-	if _av.sel_ch >= len(clip.channels) do _pv_deselect()
-	if _av.sel_ch >= 0 && _av.sel_key >= len(clip.channels[_av.sel_ch].times) do _av.sel_key = -1
+	// The sheet model for this clip and document state. An undo since the
+	// selection was made rebuilds it and maps the selection over.
+	_sheets_old_free(_av)
+	_pv_sheet(doc, clip)
 	_pv_sel_prune(clip)
 
 	// The sheet, then the view tabs under it: the tabs belong to the sheet,
@@ -1308,14 +1334,6 @@ animation_view_draw :: proc(w: ^wnd.Window) {
 
 	if footer && _pv_sel_valid(clip) {
 		_pv_draw_key_footer(doc, clip)
-	}
-
-	// Push this frame's edits into the engine cache the preview samples from.
-	if _pv.sync {
-		_pv.sync = false
-		if d2, c2 := _pv_doc(); d2 != nil && c2 != nil {
-			anim.animation_clip_preview(engine.PPtr{guid = d2.guid}, c2^)
-		}
 	}
 }
 
@@ -1677,9 +1695,8 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 
 	// The visible rows: an Object row per animated transform, its property
 	// rows under it unless collapsed (sheet_rows.odin).
-	rows := sheet_rows(clip, _av.collapsed, _av.expanded, context.temp_allocator)
+	rows := _pv_sheet(doc, clip).rows[:]
 	nrows := len(rows)
-	nrows_channels := len(clip.channels) // the channel count the rows were built from
 	rows_y := origin.y + ruler_h
 	body_h: f32
 	if _av.mode == .Dopesheet {
@@ -1830,7 +1847,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 		// A split row is selected when any of its lane channels is.
 		row_sel := r.ch == _av.sel_ch
 		if r.split && !row_sel {
-			row_sel = slice.contains(sheet_group_channels(clip, r.ch, context.temp_allocator), _av.sel_ch)
+			row_sel = slice.contains(_pv_group(clip, r.ch), _av.sel_ch)
 		}
 		if row_sel {
 			im.DrawList_AddRectFilled(dl, im.Vec2{origin.x, ry}, im.Vec2{left_x1, ry + _ANIM_ROW_H}, im.GetColorU32(.Header, 0.7))
@@ -1875,7 +1892,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 		// that channel, checking adds one.
 		if _av.sel_ch >= 0 && _av.sel_ch < len(clip.channels) {
 			ch := &clip.channels[_av.sel_ch]
-			group := sheet_group_channels(clip, _av.sel_ch, context.temp_allocator)
+			group := _pv_group(clip, _av.sel_ch)
 			if width := anim.animation_channel_mask_width(ch); width >= 2 {
 				im.SeparatorText("Lanes")
 				lane_names := [4]cstring{"x", "y", "z", "w"}
@@ -1910,7 +1927,6 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 						context.allocator = inspector.doc_alloc()
 						sheet_split_lanes(clip, _av.sel_ch)
 					}
-					_pv_deselect() // channel indices shifted
 					_pv_edit_commit(doc)
 				}
 				if can_join && im.MenuItem("Join Lane Keys") {
@@ -1932,33 +1948,27 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 					context.allocator = inspector.doc_alloc()
 					sheet_rotation_to_euler(clip, _av.sel_ch)
 				}
-				_pv_deselect()
 				_pv_edit_commit(doc)
 			}
 			im.Separator()
 		}
 		if im.MenuItem("Remove Property", nil, false, doc != nil) && _av.sel_ch >= 0 && _av.sel_ch < len(clip.channels) {
 			// Every channel of the property, last first so the indices hold.
-			group := sheet_group_channels(clip, _av.sel_ch, context.temp_allocator)
+			group := _pv_group(clip, _av.sel_ch)
 			_pv_edit_begin(doc)
 			{
 				context.allocator = inspector.doc_alloc()
 				for i := len(group) - 1; i >= 0; i -= 1 do _pv_channel_remove(clip, group[i])
 			}
-			_pv_deselect()
 			_pv_edit_commit(doc)
 		}
 		im.EndPopup()
 	}
 
-	// The menus above add, remove and reorder channels, so the rows built
-	// before them may name channels that are gone. The rest of the frame
-	// draws the rows as they are now.
-	if len(clip.channels) != nrows_channels {
-		rows = sheet_rows(clip, _av.collapsed, _av.expanded, context.temp_allocator)
-		nrows = len(rows)
-		if row_at >= nrows do row_at = -1
-	}
+	// The menus above may have edited the clip: the rows as they are now.
+	rows = _pv_sheet(doc, clip).rows[:]
+	nrows = len(rows)
+	if row_at >= nrows do row_at = -1
 
 	im.DrawList_PushClipRect(dl, canvas_clip_min, canvas_clip_max, true)
 	if _av.mode == .Dopesheet {
@@ -2036,6 +2046,9 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 		im.EndPopup()
 	}
 
+	// The sheet may have edited the clip (a key menu's Delete Key): the rows
+	// as they are now.
+	rows = _pv_sheet(doc, clip).rows[:]
 	_pv_draw_row_values(doc, clip, rows, rows_y, left_x1)
 	_pv_draw_path_field(doc, rows, origin.x, rows_y, left_x1)
 
@@ -2205,6 +2218,19 @@ animation_view_retarget :: proc(old_target, new_target: string) -> bool {
 	found := false
 	for &c in clip.channels do if c.target == old do found = true
 	if !found do return false
+	// A property the new path already animates on a lane a moved row animates
+	// would give that lane two rows (anim.animation_clip_validate): refused.
+	for &c in clip.channels {
+		if c.target != old do continue
+		probe := c
+		probe.target = new
+		for &o in clip.channels {
+			if o.target != new || !anim.animation_channel_same_property(&probe, &o) do continue
+			width := anim.animation_channel_mask_width(&c)
+			if width == 0 do return false
+			for l in 0 ..< width do if l not_in c.lanes_off && l not_in o.lanes_off do return false
+		}
+	}
 
 	_pv_edit_begin(doc)
 	// Channel strings live in the document.
@@ -2239,11 +2265,8 @@ animation_view_retarget :: proc(old_target, new_target: string) -> bool {
 // angles.
 @(private = "file")
 _pv_row_kind :: proc(ch: ^anim.Animation_Channel) -> (kind: anim.Prop_Kind, ok: bool) {
-	if anim.animation_channel_is_property(ch) {
-		loc, mok := anim._prop_meta(ch.component, ch.field)
-		return loc.kind, mok
-	}
-	return .Vec3, true
+	m := _pv_meta(ch)
+	return m.kind, m.kind_ok
 }
 
 // Whether a channel is a transform Rotation row, whose fields show euler
@@ -2475,7 +2498,7 @@ _pv_draw_row_values :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 		// none animates is off.
 		lane_ch := [4]int{i, i, i, i}
 		if r.split {
-			group := sheet_group_channels(clip, i, context.temp_allocator)
+			group := _pv_group(clip, i)
 			off = {}
 			for c in 0 ..< n {
 				lane_ch[c] = sheet_lane_channel(clip, group, c)
@@ -2650,7 +2673,7 @@ _pv_summary_chans :: proc(clip: ^anim.AnimationClip, r: Sheet_Row) -> (chans: []
 	case .Object:
 		return sheet_target_channels(clip, r.target, context.temp_allocator), true
 	case .Channel:
-		if r.split do return sheet_group_channels(clip, r.ch, context.temp_allocator), true
+		if r.split do return _pv_group(clip, r.ch), true
 	}
 	return nil, false
 }
@@ -3006,7 +3029,7 @@ _pv_sheet_curves :: proc(
 	off := _pv_lanes_off(ch)
 	// Every channel of the property plots: one for a joined row, one per
 	// lane for a split row. They share kind, lane count and handles.
-	group := sheet_group_channels(clip, _av.sel_ch, context.temp_allocator)
+	group := _pv_group(clip, _av.sel_ch)
 
 	// Freeze the value range while dragging — a range that follows the edited
 	// value makes the curve chase the cursor.

@@ -35,6 +35,10 @@ Asset_Doc :: struct {
     path:  string, // owned
     data:  any,
     dirty: bool,   // .File: edited since last save. .Import_Settings: differs from the .meta
+    // Counts every change to `data`: an editor's edit (asset_doc_mark_edited)
+    // and an undo or redo (asset_doc_apply_json). A view that keeps anything
+    // derived from the document compares it to rebuild.
+    edits: u64,
 
     // .Import_Settings only (import_settings_docs.odin), default allocator.
     baseline: []byte, // JSON as of the last undo step
@@ -196,7 +200,15 @@ asset_doc_apply_json :: proc(guid: core.Asset_GUID, kind: undo.Doc_Kind, json_by
     core.type_on_validate_by_typeid(tid, fresh.data)
 
     _doc_replace(doc, fresh, dirty = true)
+    doc.edits += 1
     return true
+}
+
+// An editor changed `doc.data`: dirty, and one more edit for the views that
+// derive state from it.
+asset_doc_mark_edited :: proc(doc: ^Asset_Doc) {
+    doc.dirty = true
+    doc.edits += 1
 }
 
 // Discard: the document back to its file for good. Its undo steps go too, so
