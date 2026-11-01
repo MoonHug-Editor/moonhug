@@ -203,7 +203,7 @@ _lanes_json :: proc(t: ^testing.T, data: []byte) -> (json.Array, bool) {
 	return v.(json.Array), true
 }
 
-// A row with no `lanes` (every file before the field) has every lane enabled
+// A row with no `lanes` (a file without the key) has every lane enabled
 // and writes back without the key.
 @(test)
 test_lane_missing_key_loads_all_enabled :: proc(t: ^testing.T) {
@@ -295,6 +295,10 @@ _lane_close :: proc() {
 	inspector.driven_commit = nil
 	inspector.driven_row_state = nil
 	inspector.driven_add_key = nil
+	inspector.driven_delete_key = nil
+	inspector.driven_tooltip_read_only = ""
+	inspector.driven_tooltip_editable = ""
+	inspector.driven_tooltip_add_key = ""
 	inspector.asset_docs_shutdown()
 	engine.asset_db_shutdown()
 	common.remove_tree(_DIR)

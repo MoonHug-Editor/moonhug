@@ -53,9 +53,12 @@ animation_clip_from_gltf :: proc(data: ^cgltf.data, an: ^cgltf.animation) -> (cl
 		}
 		values := make([dynamic][4]f32, count, context.temp_allocator)
 		for k in 0 ..< int(count) do values[k] = lanes(raw, k * stride + offset, int(comp))
+		// CUBICSPLINE position and scale keys become Free keys with the glTF
+		// tangents. A rotation row slerps and never reads tangents, so a
+		// CUBICSPLINE rotation keeps only its values and slerps between them.
 		modes: [dynamic]Key_Mode
 		tangents: [dynamic][2][4]f32
-		if ch.sampler.interpolation == .cubic_spline {
+		if ch.sampler.interpolation == .cubic_spline && path != .Rotation {
 			modes = make([dynamic]Key_Mode, count, context.temp_allocator)
 			tangents = make([dynamic][2][4]f32, count, context.temp_allocator)
 			for k in 0 ..< int(count) {

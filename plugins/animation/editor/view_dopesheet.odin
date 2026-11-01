@@ -4,6 +4,7 @@ package animation_editor
 // keys on Object rows and split rows, key presses and drags, and box
 // selection.
 
+import "base:runtime"
 import im "moonhug:external/odin-imgui"
 import anim "moonhug:packages/animation"
 import "moonhug:editor/inspector"
@@ -86,8 +87,7 @@ _pv_box_add_channel :: proc(clip: ^anim.AnimationClip, ci: int, rmin, rmax: im.V
 	for t, k in clip.channels[ci].times {
 		kx := tx0 + t * pps
 		if kx < rmin.x || kx > rmax.x || _pv_sel_has(ci, k) do continue
-		_pv_sel_pin()
-		append(&_av.sel, _Key_Ref{ci, k})
+		_pv_sel_add(ci, k)
 	}
 }
 
@@ -167,7 +167,7 @@ _pv_sheet_dopesheet :: proc(
 			if in_canvas {
 				// Empty canvas on an Object row: rubber-band, the channel stays.
 				_av.sel_key = -1
-				clear(&_av.sel)
+				_pv_sel_clear()
 				_av.box = true
 				_av.box_from = mp
 			}
@@ -181,7 +181,7 @@ _pv_sheet_dopesheet :: proc(
 				_pv_sel_toggle(row_ch, k)
 			case k >= 0:
 				// Dragging a key that is already selected moves the whole
-				// selection; grabbing an unselected one selects just it.
+				// selection. Grabbing an unselected one selects just it.
 				if !_pv_sel_has(row_ch, k) do _pv_sel_set(row_ch, k)
 				_av.sel_ch = row_ch
 				_av.sel_key = k
@@ -193,14 +193,14 @@ _pv_sheet_dopesheet :: proc(
 				// the current channel alone.
 				if row_ch >= 0 do _av.sel_ch = row_ch
 				_av.sel_key = -1
-				clear(&_av.sel)
+				_pv_sel_clear()
 				_av.box = true
 				_av.box_from = mp
 			case row_ch >= 0:
 				// Left panel: pick the channel.
 				_av.sel_ch = row_ch
 				_av.sel_key = -1
-				clear(&_av.sel)
+				_pv_sel_clear()
 			}
 		}
 	}
@@ -251,7 +251,7 @@ _pv_sheet_dopesheet :: proc(
 		im.DrawList_AddRectFilled(dl, rmin, rmax, im.GetColorU32(.Header, 0.35))
 		im.DrawList_AddRect(dl, rmin, rmax, im.GetColorU32(.CheckMark))
 
-		clear(&_av.sel)
+		_pv_sel_clear()
 		object_in_band := false // the Object row the rows below belong to
 		for r, i in rows {
 			ky := rows_y + f32(i) * _ANIM_ROW_H + _ANIM_ROW_H * 0.5
@@ -295,6 +295,9 @@ _pv_drag_begin :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, fro
 	_av.drag_live = false
 	_av.drag_comp = comp
 	_av.drag_from = _pv_snap_time(clip, from)
+	// Cross-frame state, so it allocates from the default allocator whatever
+	// the caller's context holds, as the selection does.
+	if _av.drag_t0.allocator.procedure == nil do _av.drag_t0.allocator = runtime.default_allocator()
 	clear(&_av.drag_t0)
 	for r in _av.sel do append(&_av.drag_t0, clip.channels[r.ch].times[r.key])
 }

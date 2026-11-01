@@ -80,6 +80,10 @@ animation_clip_apply_settings :: proc(clip: ^AnimationClip, s: Animation_Clip_Se
 // A float row with `modes` keeps its curve: every kept key that is not Step
 // becomes Free with the slopes it had, and the edge keys are Free with the
 // curve's slope at the cut, so the trimmed segments are the same cubics.
+// Outside the key range the curve holds: an edge before the first key or past
+// the last key is a flat key with that key's value, and the first key's in
+// tangent and the last key's out tangent are flat, so the segment between
+// the edge and that key stays a hold.
 @(private = "file")
 _animation_clip_trim :: proc(clip: ^AnimationClip, start, stop: f32) {
 	if stop <= start do return
@@ -110,7 +114,8 @@ _animation_clip_trim :: proc(clip: ^AnimationClip, start, stop: f32) {
 		}
 		// The start edge inside a Step segment holds like the key it cuts
 		// from. Any other edge is Free with the slope on its kept side (the
-		// end edge is the last key, so only its in slope matters).
+		// end edge is the last key, so only its in slope matters). The slope
+		// is 0 outside the key range, so an edge there is flat.
 		edge_tan :: proc(ch: ^Animation_Channel, curved: bool, t: f32, from_left: bool) -> (Key_Mode, [2][4]f32) {
 			if !curved do return .Linear, {}
 			if !from_left && _animation_key_mode(ch, _animation_key_hold(ch.times[:], t)) == .Step do return .Step, {}
@@ -127,6 +132,10 @@ _animation_clip_trim :: proc(clip: ^AnimationClip, start, stop: f32) {
 			if curved {
 				mode = _animation_key_mode(&ch, i)
 				tin, tout := _animation_key_tangents(&ch, animation_channel_floats(&ch)[:], i)
+				// The original curve never uses these tangents, and the
+				// kept key gets an edge key on that side when it is kept.
+				if i == 0 do tin = {}
+				if i == len(ch.times) - 1 do tout = {}
 				ktan = {tin, tout}
 				if mode != .Step do mode = .Free
 			}

@@ -20,7 +20,7 @@ package animation_editor
 // whole-document undo step re-found by guid. Edits sync into the engine's
 // clip cache (animation_clip_preview) the way material edits live-preview —
 // that cache is what the scrub preview and any playing Animation component
-// sample. Save writes the document to the .anim file; unsaved edits revert
+// sample. Save writes the document to the .anim file. Unsaved edits revert
 // next editor run, same as materials.
 
 import "base:runtime"
@@ -134,9 +134,16 @@ _Anim_View :: struct {
 	sel_ch:    int, // selected channel row, -1 = none
 	sel_key:   int, // PRIMARY selected key in sel_ch, -1 = none
 	// Every selected key, primary included. A drag moves all of them and
-	// Delete removes all of them; the primary is what the value footer edits,
-	// so a single-key selection behaves exactly as before.
+	// Delete removes all of them. The primary is the key the value footer
+	// edits.
 	sel:       [dynamic]_Key_Ref,
+	// The keys of sel as a set, so membership is one lookup
+	// (view_selection.odin). On the default allocator, rebuilt when stale:
+	// sel_rev counts the selection changes it does not follow, sel_stamp is
+	// the state it was built from.
+	sel_set:   map[_Key_Ref]bool,
+	sel_rev:   u64,
+	sel_stamp: _Sel_Set_Stamp,
 	drag_key:  bool, // canvas key drag in progress (undo snapshot open)
 	drag_comp: int,  // curves: value component the drag edits, -1 = time only
 	drag_from: f32,  // time under the cursor when the drag began
@@ -150,6 +157,14 @@ _Anim_View :: struct {
 	tan_key:   int,
 	tan_comp:  int,
 	tan_out:   bool,
+	// The euler angles of a quaternion Rotation row or key while one of its
+	// fields is active (view_footer.odin, view_rows.odin): channel euler_ch,
+	// key euler_key (-1 for the row fields at the playhead), last active on
+	// imgui frame euler_frame.
+	euler_buf:   [3]f32,
+	euler_ch:    int,
+	euler_key:   int,
+	euler_frame: i32,
 	// Box select in progress, and where it started (screen space).
 	box:       bool,
 	box_from:  im.Vec2,
@@ -176,7 +191,7 @@ _Anim_View :: struct {
 	ctx_target:  string,
 }
 
-_ANIM_VIEW_INIT :: _Anim_View{left_w = 300, sel_ch = -1, sel_key = -1}
+_ANIM_VIEW_INIT :: _Anim_View{left_w = 300, sel_ch = -1, sel_key = -1, euler_frame = -1}
 
 // The copy being drawn, and outside a draw the copy clicked in last. With no
 // copy open it points at a spare state, so a write lands nowhere.
@@ -202,6 +217,7 @@ _anim_view_free :: proc(av: ^_Anim_View) {
 	delete(av.sel_snap)
 	av.sel_snap = nil
 	delete(av.sel)
+	delete(av.sel_set)
 	delete(av.drag_t0)
 	for k in av.collapsed do delete(k)
 	delete(av.collapsed)
@@ -210,6 +226,7 @@ _anim_view_free :: proc(av: ^_Anim_View) {
 	delete(av.path_target)
 	delete(av.ctx_target)
 	av.sel = nil
+	av.sel_set = nil
 	av.drag_t0 = nil
 	av.collapsed = nil
 	av.expanded = nil
@@ -521,7 +538,7 @@ animation_view_draw :: proc(w: ^wnd.Window) {
 	im.EndChild()
 	_pv_draw_mode_tabs()
 
-	// Delete on the selected key; text input (a drag field being typed into)
+	// Delete on the selected key. Text input (a drag field being typed into)
 	// owns Backspace.
 	if _pv_sel_valid(clip) && !im.GetIO().WantTextInput &&
 	   im.IsWindowFocused({.ChildWindows}) &&

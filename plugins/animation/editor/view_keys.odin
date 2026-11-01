@@ -77,6 +77,10 @@ _pv_ch_label :: proc(ch: ^anim.Animation_Channel) -> (label: cstring, resolved: 
 _pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx: int, t: f32, value: Maybe(anim.Channel_Value) = nil) {
 	if doc == nil do return // read-only clip
 	if ch_idx < 0 || ch_idx >= len(clip.channels) do return
+	// A new key's string, and any array the key grows, live in the document.
+	// The undo session keeps the caller's allocator, so only the channel
+	// writes switch to the document's.
+	doc_a := inspector.doc_alloc()
 	ch := &clip.channels[ch_idx]
 	t := clamp(t, 0, clip.length)
 	given, has_value := value.?
@@ -84,7 +88,10 @@ _pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx
 		if abs(kt - t) >= 0.0005 do continue
 		if !has_value do return
 		_pv_edit_begin(doc)
-		anim.animation_channel_set_value(ch, i, given)
+		{
+			context.allocator = doc_a
+			anim.animation_channel_set_value(ch, i, given)
+		}
 		_pv_sel_set(ch_idx, i)
 		_pv_edit_commit(doc)
 		return
@@ -98,17 +105,19 @@ _pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx
 		}
 	}
 	_pv_edit_begin(doc)
-	anim.animation_channel_insert_key(ch, idx, t, v)
+	{
+		context.allocator = doc_a
+		anim.animation_channel_insert_key(ch, idx, t, v)
+	}
 	_pv_sel_set(ch_idx, idx)
 	_pv_edit_commit(doc)
 }
 
-// The last key of a channel stays — an empty channel samples to zero, which
-// is never what a delete meant.
-@(private)
 // Deletes every selected key in one undo step. A channel left with no keys
 // goes with them: a keyless channel animates nothing, so the property row
-// disappears rather than lingering empty.
+// disappears rather than lingering empty. The key menu, the Delete key and
+// the footer's button all delete through here.
+@(private)
 _pv_delete_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	if doc == nil || !_pv_sel_valid(clip) do return
 	_pv_sel_prune(clip)
@@ -122,13 +131,18 @@ _pv_delete_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	})
 
 	_pv_edit_begin(doc)
-	for r in refs {
-		anim.animation_channel_remove_key(&clip.channels[r.ch], r.key)
-	}
-	// Emptied channels, highest index first for the same reason.
-	for i := len(clip.channels) - 1; i >= 0; i -= 1 {
-		if len(clip.channels[i].times) > 0 do continue
-		_pv_channel_remove(clip, i)
+	{
+		// The key arrays and a removed row's strings live in the document.
+		// The undo session keeps the caller's allocator.
+		context.allocator = inspector.doc_alloc()
+		for r in refs {
+			anim.animation_channel_remove_key(&clip.channels[r.ch], r.key)
+		}
+		// Emptied channels, highest index first for the same reason.
+		for i := len(clip.channels) - 1; i >= 0; i -= 1 {
+			if len(clip.channels[i].times) > 0 do continue
+			_pv_channel_remove(clip, i)
+		}
 	}
 	_pv_edit_commit(doc)
 }
@@ -421,6 +435,36 @@ _pv_row_kind :: proc(ch: ^anim.Animation_Channel) -> (kind: anim.Prop_Kind, ok: 
 @(private)
 _pv_ch_is_rotation :: proc(ch: ^anim.Animation_Channel) -> bool {
 	return !anim.animation_channel_is_property(ch) && ch.path == .Rotation
+}
+
+// The drag speed and display format of a row's float fields: degrees for a
+// Rotation or Euler row, plain units for the rest.
+@(private)
+_pv_ch_drag_style :: proc(ch: ^anim.Animation_Channel) -> (speed: f32, format: cstring) {
+	if !anim.animation_channel_is_property(ch) && (ch.path == .Rotation || ch.path == .Euler) do return 0.5, "%.1f"
+	return 0.01, "%.2f"
+}
+
+// The euler angles a quaternion Rotation row or key shows: the held angles
+// while one of its fields is active, else the angles of `q`. Angles
+// recomputed from the quaternion mid-drag would flip past y = ±90, so the
+// fields edit the held angles from the frame they activate until the
+// gesture ends. `key` is -1 for the row fields at the playhead.
+@(private)
+_pv_euler_get :: proc(ch, key: int, q: [4]f32) -> [3]f32 {
+	if _av.euler_ch == ch && _av.euler_key == key && _av.euler_frame == im.GetFrameCount() - 1 do return _av.euler_buf
+	return _pv_rot_to_euler(q)
+}
+
+// Called right after each euler field of row `ch`, key `key`: while the field
+// is active, its angles `e` (this frame's edit included) are the held ones.
+@(private)
+_pv_euler_hold :: proc(ch, key: int, e: [3]f32) {
+	if !im.IsItemActive() do return
+	_av.euler_buf = e
+	_av.euler_ch = ch
+	_av.euler_key = key
+	_av.euler_frame = im.GetFrameCount()
 }
 
 // The euler angles (degrees) a Rotation row or key shows for quaternion `q`.

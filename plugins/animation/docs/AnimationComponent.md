@@ -307,7 +307,7 @@ A vector row (Position, Scale, Euler, or a field of 2 to 4 float lanes, never Ro
 
 ### Record
 
-While Record is armed, an edit of an animatable field keys the clip at the playhead instead of changing the object (`editor/record.odin`). Any edit that records undo counts: an inspector row, a gizmo drag, a multi-object edit.
+While Record is armed, an edit of an animatable field keys the clip at the playhead instead of changing the object (`editor/record.odin`). The key lands on the playhead's frame, the playhead snapped to the frame grid, and a key within half a frame of it takes the value instead of a second key being added. The inspector's keyed mark and Delete Key use the same half-frame rule. Any edit that records undo counts: an inspector row, a gizmo drag, a multi-object edit.
 
 - The field belongs to the animated object or an object under it: a component field whose type is animatable (the kinds Add Property lists) or a transform's position, rotation or scale.
 - A missing row is created the way Add Property creates one. Its key at the clip start holds the value from before the edit, and the key at the playhead holds the edited value. An existing row gets a key at the playhead, or its key there takes the edited value.
@@ -327,14 +327,14 @@ An inspector edit of a field the inspector shows as driven (a field the shown cl
 
 The preview poses the object only around the scene and game render, so the live fields hold the object's own values. The inspector shows the preview's values anyway: `editor/record.odin` installs `inspector.driven_provider` (docs/core/Undo.md "Driven values"), which answers for a field the shown clip has a row for, on the animated object or under it, with the row's value at the playhead.
 
-- Preview on, Record off: the field shows the clip's value in the theme's accent color, with a bar left of the label, and ignores edits. An edit there would change the object's own value, which the pose hides, so the field takes no edits.
+- Preview on, Record off: the field shows the clip's value in green, with a bar left of the label, and ignores edits. The green is fixed, with a darker shade on light themes (`DRIVEN_READ_ONLY_TEXT_COLOR_DARK_THEME` and `_LIGHT_THEME` in `editor/inspector/driven.odin`). An edit there would change the object's own value, which the pose hides, so the field takes no edits.
 - Record armed: the field shows the clip's value in red. When a drag is released or a typed value lands, the edited value is keyed at the playhead through `inspector.driven_commit`, one undo step on the clip. The object's own value, the scene undo stack, the prefab overrides and the other selected objects are not touched. A value equal to the object's own value is keyed like any other.
 - A field without a row, an object outside the animated object, a state preview from the States tree, or the preview off: the field shows the object's own value as usual.
 - Rotation shows euler angles in degrees: an Euler row's angles over the transform's own rotation, or the angles of a Rotation row's quaternion. An edit keys an Euler row's angles, or the quaternion built from the angles for a Rotation row.
 - A string field is never driven: the inspector's string drawer frees the string it edits, and a driven string would be the clip's own. The field shows the object's own value, and recording and Add Key still key it.
 - A row drawn by a decorator (a color swatch, a range slider) shows the clip's value the same way and keys an edit the same way.
-- While the window shows a clip, preview on or off and Record armed or not, a field the clip has a row for and the preview does not drive now has a dimmed green bar left of its label (`inspector.driven_row_state`). A driven field shows the driven tint and bar instead.
-- While recording, the field's context menu has "Add Key" (`inspector.driven_add_key`) for an animatable field on the animated object or under it, when the clip has a document. It keys the value the field shows at the playhead, creating the row when missing, in one undo step. On a driven field that is the clip's value, so the key pins the current pose. When the playhead's frame already has a key for the row, the item is "Delete Key" (`inspector.driven_delete_key`) instead, and a row left without keys goes with it. The transform rows have both too.
+- While the window shows a clip, preview on or off and Record armed or not, a field the clip has a row for that the preview does not drive shows a dimmed green bar left of its label (`inspector.driven_row_state`). A driven field shows the driven tint and bar instead.
+- While recording, the field's context menu has "Add Key" (`inspector.driven_add_key`) for an animatable field on the animated object or under it, when the clip has a document. It keys the value the field shows at the playhead, creating the row when missing, in one undo step. On a driven field that is the clip's value, so the key pins the current pose. When the playhead's frame already has a key for the row, the item is "Delete Key" (`inspector.driven_delete_key`) instead, and a row left without keys goes with it. The transform rows have both too. On a driven field the menu has the key item alone, since Reset, Paste, Copy, Revert and Apply act on the object's own value, which the field hides.
 - A driven field whose row has a key on the playhead's frame shows a filled diamond beside its bar. No key, no diamond.
 
 Each property row in the window shows its value at the playhead after its name: one small field per lane (a vec3 three, a bool a checkbox, an int or enum an int field). A string row shows a text field: Enter (or Escape, as in every text field) keys the typed text at the playhead, and a click elsewhere drops it. A reference row shows the asset picker the inspector's `PPtr` fields use, filtered by the field's `ext:` and `ref:` tags: a pick or a drop keys the new reference at the playhead. In the selected key's footer the same fields set that key's value instead, and a key of an int row shows its value as text. The dope sheet draws the keys of these rows as diamonds like any other. The curve view plots float rows only. A Rotation row shows three euler angles in degrees, converted from the sampled quaternion as the inspector's Rotation row converts, and an edit keys the normalized quaternion built from them. Editing a field keys the row at the playhead with the edited value: a key already at the playhead takes it, else a key is added. One drag or typed value is one undo step. A clip inside a model shows the values read-only. The selected key's footer shows a rotation key as three euler angles too.
@@ -412,7 +412,7 @@ The variant is told by the element type of `values`, so the key stays `values` f
 - an object (`{"local_id": 7, "guid": "..."}`): references
 - an empty array: floats
 
-A float row is the array of 4-lane arrays it has always been, so every `.anim`, artifact and model clip reads as it is. The rule lives in a JSON marshaler and unmarshaler for `Channel_Values`, registered on SerializationInit with the marshaler maps every load and save goes through (the artifact load, asset documents, undo).
+A float row is an array of 4-lane arrays, the shape every `.anim`, artifact and model clip stores. The rule lives in a JSON marshaler and unmarshaler for `Channel_Values`, registered on SerializationInit with the marshaler maps every load and save goes through (the artifact load, asset documents, undo).
 
 `path` is a number on disk (`Animation_Path` in `clip.odin`): `0` Position, `1` Rotation, `2` Scale, `3` Euler. A property row ignores it.
 
@@ -426,6 +426,7 @@ A float row is the array of 4-lane arrays it has always been, so every `.anim`, 
 - One rule combines a clip's transform rows per transform (`Clip_TRS` in `clip_trs.odin`), used by the direct apply, the graph leaf and the inspector's preview: split rows each set their own lanes, the rotation starts from the clip's Rotation row when it has one, else from a base, then the Euler rows' enabled lanes replace their angles. A lane no row sets keeps the base.
 - The base is the transform's own rotation for the direct apply and the inspector, and the rotation at bind time in the graph, where blending happens before anything is written. Above the clip the rotation blends as a quaternion, like a model clip's.
 - Convert to Euler in a quaternion row's context menu turns it into an Euler row with unwound angles (`sheet_rotation_to_euler` in `editor/lane_split.odin`), so an extracted or hand-made clip can be edited per axis. Keys that interpolated become Linear and Step keys stay Step, since a quaternion row slerps whatever its modes say. A clip inside a model is read-only and stays quaternion.
+- Convert to Euler changes the motion between keys from a slerp arc to per-lane euler interpolation. The two differ between keys that turn on more than one axis.
 
 ### Lanes
 
@@ -448,7 +449,7 @@ How a mask applies:
 - Each lane blends on its own (`Lane_Acc` in `playable_graph.odin`): a lane's value is the blend of only the clips whose row enables it, and the row's weight across every clip that animates the field decides how much of the default shows. Two clips at 0.5, one animating x and the other y, give x the first clip's full value and y the second's.
 - Several channels of one clip on one property merge per lane the same way (`_lane_acc_leaf` accumulates into the slot), so each lane of a split row takes its own channel's value.
 - The inspector's driven value fills the disabled lanes from the live field, so it shows the clip's lanes and the object's own lanes together.
-- Recording into a joined row keys the whole vector and enables every lane of the row. Recording into a split row is below.
+- Recording into a joined row keys the whole vector and enables every lane of the row. A lane that was disabled is filled on the row's other keys with the value the object showed, so it holds flat there instead of showing values from older keys. Recording into a split row is below.
 
 The live field's type decides how a row applies. A float row on an int or bool field writes its first lane rounded, an int row on a float field writes the int. A row of any other kind than the field's writes nothing, like a row whose field does not resolve.
 
@@ -458,7 +459,7 @@ A vector row (Position, Scale, Euler, a vector field) is joined or split (`edito
 
 - A joined row is one channel: every lane shares the key times. Joined is the default.
 - A split row is several channels with the same target and property, one per lane, each masked to its lane through `lanes` and each with its own key times. A lane can have keys on frames the other lanes have none.
-- On disk a split row is just those channels. There is no new field: the shared target and property group them, and each channel's `lanes` says which lane it animates.
+- On disk a split row is just those channels, and the format has no split flag: the shared target and property group them, and each channel's `lanes` says which lane it animates.
 - Joined is cheaper: one time and one value per key instead of one per lane, and one curve evaluation per sample instead of one per channel.
 - Split Lane Keys and Join Lane Keys are in the property row's context menu, each shown only when it applies. Split Lane Keys needs a vector row with two or more enabled lanes that is not split yet. Join Lane Keys needs a split float row. A clip inside a model shows neither.
 - Split copies the row once per enabled lane, times, values, modes and tangents included, and masks each copy to its lane.

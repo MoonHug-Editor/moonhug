@@ -145,6 +145,31 @@ test_curve_tools_set_free_keeps_the_curve :: proc(t: ^testing.T) {
 	testing.expect(t, _near(anim._animation_channel_sample(&ch, 2).x, mid), "the last segment stays a line")
 }
 
+// A Step key set to Free keeps its in tangent and gets a flat out tangent:
+// the segment before it does not move, and the segment after it leaves the
+// key flat instead of taking the linear slope to the next key.
+@(test)
+test_curve_tools_step_to_free_leaves_flat :: proc(t: ^testing.T) {
+	ch := _channel()
+	defer _free(&ch)
+	append(&ch.modes, anim.Key_Mode.Linear, anim.Key_Mode.Step, anim.Key_Mode.Linear)
+	before := anim._animation_channel_sample(&ch, 0.5).x
+
+	animation_editor.channel_set_key_mode(&ch, 1, .Free)
+	testing.expect_value(t, ch.modes[1], anim.Key_Mode.Free)
+	testing.expect(t, len(ch.tangents) >= 2, "the key has tangents")
+	if len(ch.tangents) >= 2 {
+		testing.expectf(t, _near(ch.tangents[1][0].x, 2), "the in tangent stays the linear slope 2, got %v", ch.tangents[1][0].x)
+		testing.expect_value(t, ch.tangents[1][1], [4]f32{})
+	}
+	after := anim._animation_channel_sample(&ch, 0.5).x
+	testing.expectf(t, _near(before, after), "the segment before the key stays: %v vs %v", before, after)
+	slope := anim._animation_channel_slope(&ch, 1).x
+	testing.expectf(t, _near(slope, 0), "the segment after the key leaves it flat, slope %v", slope)
+	near_key := anim._animation_channel_sample(&ch, 1.01).x
+	testing.expectf(t, _near(near_key, 2, 1e-3), "just after the key the curve is still at the held value, got %v", near_key)
+}
+
 // A channel stored with `step` and no modes holds on every key. Setting a mode
 // on one key fills `modes` with Step for the others and clears `step`.
 @(test)

@@ -98,6 +98,7 @@ _pv_prop_leaves :: proc(tid: typeid, prefix: string, out: ^[dynamic]string, dept
 
 @(private)
 _pv_add_channel_transform :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, target: string, path: anim.Animation_Path, tH: engine.Transform_Handle) {
+	if doc == nil do return // read-only clip
 	for &c in clip.channels {
 		if !anim.animation_channel_is_property(&c) && c.target == target && c.path == path do return
 	}
@@ -111,14 +112,16 @@ _pv_add_channel_transform :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.Animati
 		case .Euler:    v.xyz = engine.quat_to_euler_xyz(t.rotation)
 		}
 	}
+	// The row's strings live in the document.
 	_pv_append_channel(doc, clip, anim.Animation_Channel{
-		target = strings.clone(target),
+		target = strings.clone(target, inspector.doc_alloc()),
 		path   = path,
 	}, anim.Channel_Value(v))
 }
 
 @(private)
 _pv_add_channel_property :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, target: string, guid_str: string, field: string, tH: engine.Transform_Handle) {
+	if doc == nil do return // read-only clip
 	for &c in clip.channels {
 		if c.target == target && c.component == guid_str && c.field == field do return
 	}
@@ -129,10 +132,12 @@ _pv_add_channel_property :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.Animatio
 	if ptr, kind, leaf, ok := anim._prop_locate(tH, guid_str, field); ok {
 		v = anim._prop_read_value(ptr, kind, leaf)
 	}
+	// The row's strings live in the document.
+	a := inspector.doc_alloc()
 	_pv_append_channel(doc, clip, anim.Animation_Channel{
-		target    = strings.clone(target),
-		component = strings.clone(guid_str),
-		field     = strings.clone(field),
+		target    = strings.clone(target, a),
+		component = strings.clone(guid_str, a),
+		field     = strings.clone(field, a),
 	}, v)
 }
 
@@ -141,10 +146,15 @@ _pv_append_channel :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip,
 	if doc == nil do return // read-only clip
 	ch := ch
 	_pv_edit_begin(doc)
-	ch.times = make([dynamic]f32)
-	ch.values = anim.animation_channel_values_make(v)
-	anim.animation_channel_insert_key(&ch, 0, 0, v)
-	append(&clip.channels, ch)
+	{
+		// The row's key arrays live in the document. The undo session keeps
+		// the caller's allocator.
+		context.allocator = inspector.doc_alloc()
+		ch.times = make([dynamic]f32)
+		ch.values = anim.animation_channel_values_make(v)
+		anim.animation_channel_insert_key(&ch, 0, 0, v)
+		append(&clip.channels, ch)
+	}
 	_pv_sel_set(len(clip.channels) - 1, 0)
 	_pv_collapse_clear(ch.target) // the new row shows, selected
 	_pv_edit_commit(doc)

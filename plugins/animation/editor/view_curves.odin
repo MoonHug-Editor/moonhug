@@ -86,7 +86,7 @@ _pv_sheet_curves :: proc(
 	if im.IsItemActivated() && mp.x < x0 && row_at >= 0 && rows[row_at].kind != .Object {
 		_av.sel_ch = rows[row_at].ch
 		_av.sel_key = -1
-		clear(&_av.sel)
+		_pv_sel_clear()
 	}
 
 	if _av.sel_ch < 0 || _av.sel_ch >= len(clip.channels) {
@@ -330,7 +330,7 @@ _pv_sheet_curves :: proc(
 			}
 		} else {
 			_av.sel_key = -1
-			clear(&_av.sel)
+			_pv_sel_clear()
 		}
 	}
 	if im.IsItemClicked(.Right) && mp.x >= x0 {

@@ -357,8 +357,11 @@ _prop_read_value :: proc(ptr: rawptr, kind: Prop_Kind, leaf: typeid) -> Channel_
 // lane mask arrives here (animation_channel_lanes_off). Other kinds ignore
 // `keep`.
 //
-// A Text field owns its string on context.allocator, as every component
-// string does (scene load, undo and the inspector allocate it there): a new
+// A Text field owns its string on the process allocator, as every component
+// string does (scene load, undo, the inspector and component cleanup use
+// context.allocator outside temp scopes). The string lives in the component
+// across frames, so a write under the temp allocator (a preview that
+// evaluates in a temp scope) uses runtime.default_allocator() instead. A new
 // value frees the old string and stores a clone. An equal value writes
 // nothing, so a held key does not allocate every frame.
 _prop_write_value :: proc(ptr: rawptr, kind: Prop_Kind, leaf: typeid, v: Channel_Value, keep: Lane_Set = {}) {
@@ -400,8 +403,10 @@ _prop_write_value :: proc(ptr: rawptr, kind: Prop_Kind, leaf: typeid, v: Channel
 		if !ok do return
 		field := cast(^string)ptr
 		if field^ == x do return
-		delete(field^)
-		field^ = strings.clone(x)
+		owner := context.allocator
+		if owner.data == context.temp_allocator.data do owner = runtime.default_allocator()
+		delete(field^, owner)
+		field^ = strings.clone(x, owner)
 	}
 }
 

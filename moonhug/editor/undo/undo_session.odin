@@ -179,7 +179,12 @@ edit_session_end :: proc(sess: ^Edit_Session) {
 	}
 
 	// One group for the whole session: an N-target edit is one Ctrl+Z.
+	// begin_group_command opens nothing while the stack is not recording or
+	// is applying, so the session notes the depth and closes only a group it
+	// opened itself. A caller's group below it stays open.
+	depth := len(s.txn_stack)
 	begin_group_command(s)
+	opened := len(s.txn_stack) == depth + 1
 
 	// Every changed entry's after-state first, so the listener sees them all.
 	commits := make([dynamic]Edit_Commit, 0, len(sess.entries), context.temp_allocator)
@@ -232,18 +237,15 @@ edit_session_end :: proc(sess: ^Edit_Session) {
 	}
 
 	// The listener's own records sit in the group too, so it closes when it
-	// holds anything at all. An empty group is dropped.
-	if wrote || _top_group_has_subs(s) {
+	// holds anything at all. An empty group is dropped. No group opened, none
+	// closes.
+	if !opened do return
+	assert(len(s.txn_stack) == depth + 1, "undo: a commit listener closes every group it opens")
+	if wrote || len(s.txn_stack[depth].subs) > 0 {
 		end_group_command(s, sess.label)
 	} else {
 		abort_group_command(s)
 	}
-}
-
-@(private = "file")
-_top_group_has_subs :: proc(s: ^Undo_Stack) -> bool {
-	if len(s.txn_stack) == 0 do return false
-	return len(s.txn_stack[len(s.txn_stack) - 1].subs) > 0
 }
 
 // Abandons the transaction without recording. Values the caller already wrote

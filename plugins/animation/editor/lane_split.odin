@@ -4,8 +4,8 @@ package animation_editor
 // one channel per lane, each with its own key times, so x can have keys on
 // frames y has none. The channels share the row's target and property and
 // each masks itself to its lane (Animation_Channel.lanes_off), which is how
-// the clip file already says what a channel animates: a split row needs no
-// new field. The runtime merges them per lane (playable_graph.odin).
+// the clip file already says what a channel animates: a split row has no
+// field of its own. The runtime merges them per lane (playable_graph.odin).
 //
 // Joined (one channel, lanes sharing key times) is the default, the cheaper
 // form: one time and one value per key instead of one per lane, and one

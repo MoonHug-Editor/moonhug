@@ -30,3 +30,6 @@ moonhug/ProjectSettings/editor_settings.json
 # file:line in every row changes on most edits, so they are built, not tracked.
 docs/reference/
 .hugo_build.lock
+
+# Test fixture temp directories; a crashed test leaves them behind.
+moonhug/tests/fixtures/_*_tmp/

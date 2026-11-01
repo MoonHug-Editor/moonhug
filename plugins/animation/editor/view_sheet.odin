@@ -115,7 +115,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	{
 		mp := im.GetMousePos()
 		// Resolved every frame so a gesture times out even while the pointer
-		// is elsewhere; only acted on while the canvas is under it.
+		// is elsewhere. Only acted on while the canvas is under it.
 		wheel_v, wheel_h := widgets.wheel_dominant(&_av.wheel)
 		over_canvas := im.IsWindowHovered(im.HoveredFlags_ChildWindows) && mp.x >= x0 && mp.x <= x1
 		_av.over_canvas = over_canvas
@@ -176,7 +176,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	}
 	im.DrawList_PopClipRect(dl)
 
-	// --- Rows surface (left panel + canvas share it; hit-tested by x). It
+	// --- Rows surface (left panel + canvas share it, hit-tested by x). It
 	// spans the splitter gap too: AllowOverlap lets the splitter, submitted
 	// last, take the pointer there.
 	im.SetCursorScreenPos(im.Vec2{origin.x, rows_y})

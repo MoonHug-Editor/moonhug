@@ -341,19 +341,16 @@ _pv_draw_row_values :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 			im.SetCursorScreenPos(im.Vec2{x, ry})
 			edited, ok := _pv_discrete_field(ch, kind, sampled, _pv_row_values_w(ch))
 			im.PopID()
-			if ok {
-				// A new key's string, and any array the key grows, live in
-				// the document, as recording keys them.
-				context.allocator = inspector.doc_alloc()
-				_pv_row_key(doc, clip, i, edited)
-			}
+			if ok do _pv_row_key(doc, clip, i, edited)
 			continue
 		}
 		v := _pv_value_floats(sampled)
 		iv := _pv_value_int(sampled)
 		rot := _pv_ch_is_rotation(ch)
+		speed, format := _pv_ch_drag_style(ch)
+		// A rotation row's angles hold across a gesture (_pv_euler_get).
 		euler: [3]f32
-		if rot do euler = _pv_rot_to_euler(v)
+		if rot do euler = _pv_euler_get(i, -1, v)
 		off := _pv_lanes_off(ch)
 		// A split row: each lane reads the channel that animates it, a lane
 		// none animates is off.
@@ -398,8 +395,9 @@ _pv_draw_row_values :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 				}
 			case:
 				if rot {
-					if im.DragFloat("##v", &euler[c], 0.5, 0, 0, "%.1f") do changed = true
-				} else if im.DragFloat("##v", &v[c], 0.01, 0, 0, "%.2f") {
+					if im.DragFloat("##v", &euler[c], speed, 0, 0, format) do changed = true
+					_pv_euler_hold(i, -1, euler)
+				} else if im.DragFloat("##v", &v[c], speed, 0, 0, format) {
 					changed = true
 					changed_lane = c
 				}

@@ -90,15 +90,20 @@ channel_set_key_tangents :: proc(ch: ^anim.Animation_Channel, k: int, tin, tout:
 	ch.tangents[k] = {tin, tout}
 }
 
-// Sets key `k`'s mode. A key turning Free keeps the tangents it has, the ones
+// Sets key `k`'s mode. A Linear or Smooth key turning Free keeps the tangents
 // the sampler computes for its current mode, so the curve does not move.
+// A Step key turning Free keeps its in tangent and gets a flat out tangent. A
+// Free key cannot hold, so the segment after it becomes a cubic curve that
+// leaves the key flat and reaches the next key's value.
 // Setting a mode the row does not allow is a caller bug.
 channel_set_key_mode :: proc(ch: ^anim.Animation_Channel, k: int, mode: anim.Key_Mode) {
 	assert(k >= 0 && k < len(ch.times), "animation: mode edit of a key the row does not have")
 	assert(mode in channel_modes_allowed(ch), "animation: the row does not allow that mode")
 	if mode == .Free {
-		if anim._animation_key_mode(ch, k) == .Free do return
+		was := anim._animation_key_mode(ch, k)
+		if was == .Free do return
 		tin, tout := anim._animation_key_tangents(ch, anim.animation_channel_floats(ch)[:], k)
+		if was == .Step do tout = {}
 		channel_set_key_tangents(ch, k, tin, tout)
 		return
 	}

@@ -24,6 +24,7 @@ import anim "moonhug:packages/animation"
 import "moonhug:packages/engine/editor/importers"
 import animation_editor "moonhug:packages/animation/editor"
 import common "moonhug:tests/common"
+import gfx "moonhug:libs/gfx"
 
 @(private = "file")
 _DIR :: "moonhug/tests/fixtures/_record_tmp"
@@ -61,6 +62,7 @@ _rec_close :: proc() {
 	inspector.driven_commit = nil
 	inspector.driven_row_state = nil
 	inspector.driven_add_key = nil
+	inspector.driven_delete_key = nil
 	inspector.asset_docs_shutdown()
 	engine.asset_db_shutdown()
 	common.remove_tree(_DIR)
@@ -1227,4 +1229,250 @@ test_record_split_position_beside_scale_keys_only_position :: proc(t: ^testing.T
 	}
 	testing.expect_value(t, tr.position, [3]f32{1, 2, 3})
 	testing.expect_value(t, s.top, before + 1)
+}
+
+// --- Review fixes ------------------------------------------------------------------------
+
+// A gizmo turn of y from 170 to 190 degrees recorded into an Euler row keys
+// y near 190, the angles nearest the row's angles at the playhead, not the
+// plain decomposition (-170 or 180/-10/180), which would spin the curve back.
+@(test)
+test_record_rotation_unwinds_toward_the_row :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	arm := engine.transform_new("Arm", root)
+	w := engine.ctx_world()
+	tr := engine.pool_get(&w.transforms, engine.Handle(arm))
+	tr.rotation = {0, 0, 0, 1}
+	_rec_add_row(_rec_clip(doc), {target = "Arm", path = .Euler}, {0, 1}, {{0, 0, 0, 0}, {0, 170, 0, 0}})
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 2)
+
+	sess := undo.edit_session_begin({undo.edit_target_transform(arm, &tr.rotation, typeid_of([4]f32))}, "Rotate")
+	tr.rotation = anim.animation_quat_from_euler({0, 190, 0})
+	undo.edit_session_end(&sess)
+
+	clip := _rec_clip(doc)
+	if !testing.expect_value(t, len(clip.channels), 1) do return
+	ch := &clip.channels[0]
+	at := _key_at(ch, 2)
+	if !testing.expect(t, at >= 0, "a key at the playhead") do return
+	e := ch.values.([dynamic][4]f32)[at].xyz
+	testing.expectf(t, abs(e.x) < 0.05 && abs(e.y - 190) < 0.05 && abs(e.z) < 0.05, "the key holds y near 190, got %v", e)
+}
+
+// While a state of the States tree is previewed, Record keys nothing: the
+// edit stays a scene edit, and the row state offers no Add Key.
+@(test)
+test_record_skips_a_state_preview :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	child := engine.transform_new("Child", root)
+	w := engine.ctx_world()
+	tr := engine.pool_get(&w.transforms, engine.Handle(child))
+	tr.position = {0, 0, 0}
+	_rec_add_row(_rec_clip(doc), {target = "Child", path = .Position}, {0}, {{0, 0, 0, 0}})
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, entry = 1)
+
+	off := offset_of(engine.Transform, position)
+	has_row, keyable, _ := inspector.driven_row_state(engine.Handle(child), off, typeid_of([3]f32))
+	testing.expect(t, has_row, "the row is still shown")
+	testing.expect(t, !keyable, "no Add Key during a state preview")
+
+	before := s.top
+	sess := undo.edit_session_begin({undo.edit_target_transform(child, &tr.position, typeid_of([3]f32))}, "Move")
+	tr.position = {1, 2, 3}
+	undo.edit_session_end(&sess)
+
+	clip := _rec_clip(doc)
+	if !testing.expect_value(t, len(clip.channels), 1) do return
+	testing.expect_value(t, len(clip.channels[0].times), 1)
+	testing.expect_value(t, tr.position, [3]f32{1, 2, 3})
+	testing.expect_value(t, s.top, before + 1)
+	testing.expect(t, _has_scene_value(s.items[s.top - 1].cmd), "a scene value step")
+}
+
+// At 30 fps a playhead paused at 0.51 s keys on frame 15 (0.5 s), and a key
+// within half a frame of the playhead's frame takes the edit in place.
+@(test)
+test_record_keys_on_the_playheads_frame :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	child := engine.transform_new("Child", root)
+	arm := engine.transform_new("Arm", root)
+	w := engine.ctx_world()
+	ctr := engine.pool_get(&w.transforms, engine.Handle(child))
+	atr := engine.pool_get(&w.transforms, engine.Handle(arm))
+	clip := _rec_clip(doc)
+	clip.frame_rate = 30
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.51)
+
+	sess := undo.edit_session_begin({undo.edit_target_transform(child, &ctr.position, typeid_of([3]f32))}, "Move")
+	ctr.position = {1, 2, 3}
+	undo.edit_session_end(&sess)
+
+	clip = _rec_clip(doc)
+	if !testing.expect_value(t, len(clip.channels), 1) do return
+	ch := &clip.channels[0]
+	testing.expect_value(t, len(ch.times), 2)
+	testing.expect(t, _key_at(ch, 0.5) >= 0, "the key is on frame 15")
+	testing.expect_value(t, _key_at(ch, 0.51), -1)
+
+	// A key at 0.51 s is the key on the playhead's frame (0.5 s).
+	_rec_add_row(clip, {target = "Arm", path = .Position}, {0, 0.51, 1}, {{0, 0, 0, 0}, {1, 1, 1, 0}, {2, 2, 2, 0}})
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.495)
+	sess = undo.edit_session_begin({undo.edit_target_transform(arm, &atr.position, typeid_of([3]f32))}, "Move")
+	atr.position = {4, 5, 6}
+	undo.edit_session_end(&sess)
+
+	clip = _rec_clip(doc)
+	if !testing.expect_value(t, len(clip.channels), 2) do return
+	ach := &clip.channels[1]
+	testing.expect_value(t, len(ach.times), 3)
+	at := _key_at(ach, 0.51)
+	testing.expect(t, at >= 0 && ach.values.([dynamic][4]f32)[at].xyz == [3]f32{4, 5, 6}, "the key at 0.51 takes the edit")
+	_, _, keyed := inspector.driven_row_state(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32))
+	testing.expect(t, keyed, "the key at 0.51 counts as the playhead's key")
+}
+
+// A split Euler row: a recorded turn that moves y by 10 degrees and x by
+// float noise keys only the y channel.
+@(test)
+test_record_split_euler_ignores_float_noise :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	arm := engine.transform_new("Arm", root)
+	w := engine.ctx_world()
+	tr := engine.pool_get(&w.transforms, engine.Handle(arm))
+	tr.rotation = anim.animation_quat_from_euler({10, 20, 30})
+	clip := _rec_clip(doc)
+	masks := [3]anim.Channel_Lanes_Off{{1, 2}, {0, 2}, {0, 1}}
+	start := [3]f32{10, 20, 30}
+	for l in 0 ..< 3 {
+		v: [4]f32
+		v[l] = start[l]
+		_rec_add_row(clip, {target = "Arm", path = .Euler, lanes_off = masks[l]}, {0}, {v})
+	}
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+
+	sess := undo.edit_session_begin({undo.edit_target_transform(arm, &tr.rotation, typeid_of([4]f32))}, "Rotate")
+	tr.rotation = anim.animation_quat_from_euler({10.00001, 30, 30})
+	undo.edit_session_end(&sess)
+
+	clip = _rec_clip(doc)
+	if !testing.expect_value(t, len(clip.channels), 3) do return
+	testing.expect_value(t, _key_at(&clip.channels[0], 1), -1)
+	testing.expect_value(t, _key_at(&clip.channels[2], 1), -1)
+	at := _key_at(&clip.channels[1], 1)
+	testing.expect(t, at >= 0, "the y channel has a key at the playhead")
+	if at >= 0 do testing.expectf(t, abs(clip.channels[1].values.([dynamic][4]f32)[at].y - 30) < 0.01, "y keys 30, got %v", clip.channels[1].values.([dynamic][4]f32)[at])
+}
+
+// The inspector's questions resolve a field once per frame: two asks in one
+// frame return the same rows, a row changed in place shows up on the next
+// frame, and so does a row added between frames.
+@(test)
+test_record_field_memo_follows_frames :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	arm := engine.transform_new("Arm", root)
+	clip := _rec_clip(doc)
+	_rec_add_row(clip, {target = "Arm", path = .Scale}, {0}, {{1, 1, 1, 0}})
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
+
+	pos := offset_of(engine.Transform, position)
+	scl := offset_of(engine.Transform, scale)
+	v3 := typeid_of([3]f32)
+	a := animation_editor.animation_record_field_channels(engine.Handle(arm), scl, v3)
+	b := animation_editor.animation_record_field_channels(engine.Handle(arm), scl, v3)
+	testing.expect_value(t, len(a), 1)
+	testing.expect(t, raw_data(a) == raw_data(b), "the second ask in a frame is the memo's answer")
+	testing.expect_value(t, len(animation_editor.animation_record_field_channels(engine.Handle(arm), pos, v3)), 0)
+
+	// The Scale row becomes a Position row in place: the next frame sees it.
+	clip.channels[0].path = .Position
+	gfx.frame_index += 1
+	testing.expect_value(t, len(animation_editor.animation_record_field_channels(engine.Handle(arm), pos, v3)), 1)
+	testing.expect_value(t, len(animation_editor.animation_record_field_channels(engine.Handle(arm), scl, v3)), 0)
+
+	_rec_add_row(clip, {target = "Arm", path = .Scale}, {0}, {{1, 1, 1, 0}})
+	gfx.frame_index += 1
+	testing.expect_value(t, len(animation_editor.animation_record_field_channels(engine.Handle(arm), scl, v3)), 1)
+}
+
+// Recording into a joined row with y disabled enables y, and every other key
+// of the row takes the live y the object showed, so y holds flat instead of
+// replaying the stale values the disabled lane kept.
+@(test)
+test_record_into_a_joined_row_fills_the_disabled_lanes :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+	doc := _rec_open_clip(t)
+	defer _rec_close()
+	if doc == nil do return
+
+	root := engine.transform_new("Root")
+	arm := engine.transform_new("Arm", root)
+	w := engine.ctx_world()
+	tr := engine.pool_get(&w.transforms, engine.Handle(arm))
+	tr.position = {1, 2, 3}
+	_rec_add_row(_rec_clip(doc), {target = "Arm", path = .Position, lanes_off = {1}}, {0, 1}, {{7, 99, 9, 0}, {8, 98, 9, 0}})
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+
+	sess := undo.edit_session_begin({undo.edit_target_transform(arm, &tr.position, typeid_of([3]f32))}, "Move")
+	tr.position = {5, 2, 3}
+	undo.edit_session_end(&sess)
+
+	clip := _rec_clip(doc)
+	if !testing.expect_value(t, len(clip.channels), 1) do return
+	ch := &clip.channels[0]
+	testing.expect_value(t, ch.lanes_off, anim.Channel_Lanes_Off{})
+	vals := ch.values.([dynamic][4]f32)
+	k0 := _key_at(ch, 0)
+	k1 := _key_at(ch, 1)
+	if !testing.expect(t, k0 >= 0 && k1 >= 0, "keys at 0 and 1") do return
+	testing.expect_value(t, vals[k1].xyz, [3]f32{5, 2, 3})
+	testing.expect_value(t, vals[k0].xyz, [3]f32{7, 2, 9})
 }

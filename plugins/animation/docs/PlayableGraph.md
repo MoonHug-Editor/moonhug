@@ -247,33 +247,14 @@ than silently skipping them.
 
 ### Property channels
 
-A channel with a non-empty `component` animates a COMPONENT FIELD instead of
-the transform — Unity's EditorCurveBinding model `(path, type, propertyName)`:
-`target` resolves the transform, `component` is the component's type guid,
-`field` a dotted path to a POD leaf on it (`"emission.rate.value_min"`).
+A channel with a non-empty `component` animates a COMPONENT FIELD instead of the transform. A binding names a field by three parts, the object's path, the component type and the field name: `target` resolves the transform, `component` is the component's type guid, `field` a dotted path to a POD leaf on it (`"emission.rate.value_min"`).
 
 - Each row holds typed keys: floats, ints, references or strings (AnimationComponent.md "Clip format"). The LIVE field's typeid at bind time is the authority: how many lanes apply, discrete vs continuous, the write conversion (clip_property.odin). Animatable kinds: f32, [2..4]f32, bool, ints, enums, `PPtr` and `Asset_GUID`, strings. Other reference types and whole structs are not animatable.
-- Binding caches the location meta (type key, byte offset, kind) in a prop
-  slot and re-fetches only the component base pointer per apply — pools
-  relocate on growth, so pointers are never cached. Dead handles re-resolve,
-  unresolvable channels are skipped (the rule transform channels already
-  follow).
-- Continuous kinds blend exactly like transform channels, defaults included.
-  Discrete kinds (bool, int, enum, reference, string) cannot lerp: the DOMINANT contributor wins
-  at every blend site — highest weight in a mixer, majority against the
-  default at apply, majority owner in a layer stack.
-- Defaults capture and restore ride the same slots, so the scrub preview and
-  `animation_binding_write_defaults` cover property channels with no extra
-  machinery.
-- Fields a component reads only at init do not visibly respond. Defold routes
-  such properties through a per-component setter callback — that is the shape
-  to copy when a component needs it.
-- Authoring lives in the Animation window: Add Property walks the owner's
-  subtree as nested menus (transform channels plus each component's
-  animatable leaves via reflection), the first key holds the field's current
-  value in a row of the field's kind, rows show `target : Component.field` with
-  unresolved channels in yellow, and Remove Property is on the row's context
-  menu. Lane count in curves and the key footer follows the live field kind.
+- Binding caches the location meta (type key, byte offset, kind) in a prop slot and re-fetches only the component base pointer per apply — pools relocate on growth, so pointers are never cached. Dead handles re-resolve, unresolvable channels are skipped (the rule transform channels already follow).
+- Continuous kinds blend exactly like transform channels, defaults included. Discrete kinds (bool, int, enum, reference, string) cannot lerp: the DOMINANT contributor wins at every blend site — highest weight in a mixer, majority against the default at apply, majority owner in a layer stack.
+- Defaults capture and restore ride the same slots, so the scrub preview and `animation_binding_write_defaults` cover property channels with no extra machinery.
+- Fields a component reads only at init do not visibly respond. Defold routes such properties through a per-component setter callback — that is the shape to copy when a component needs it.
+- Authoring lives in the Animation window: Add Property walks the owner's subtree as nested menus (transform channels plus each component's animatable leaves via reflection), the first key holds the field's current value in a row of the field's kind, rows show `target : Component.field` with unresolved channels in yellow, and Remove Property is on the row's context menu. Lane count in curves and the key footer follows the live field kind.
 
 ## Script nodes
 

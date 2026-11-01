@@ -215,15 +215,25 @@ test_clip_format_modes_and_tangents_round_trip :: proc(t: ^testing.T) {
 	testing.expect(t, len(l.tangents) == 1 && l.tangents[0][1].x == 3, "tangents read back")
 }
 
-// The .anim files in the repository load with their keys as the file states
+// Every tracked .anim file in the repository loads with its keys as the file states
 // them, through the artifact path and the document path. Nothing is written.
 @(test)
 test_clip_format_existing_files_load_unchanged :: proc(t: ^testing.T) {
 	paths := [?]string{
-		"plugins/app/assets/meshes/Animations/InterpolationTest_CubicSpline Scale.anim",
-		"plugins/app/assets/meshes/Animations/InterpolationTest_Step Rotation.anim",
-		"plugins/app/assets/meshes/BoxAnimated/BoxAnimated_0.anim",
 		"plugins/animation/samples/timeline_sample/assets/rig_idle.anim",
+		"plugins/animation/samples/timeline_sample/assets/rig_swing_body.anim",
+		"plugins/animation/samples/timeline_sample/assets/rig_swing_prop.anim",
+		"plugins/app/assets/meshes/Animations/InterpolationTest_CubicSpline Rotation.anim",
+		"plugins/app/assets/meshes/Animations/InterpolationTest_CubicSpline Scale.anim",
+		"plugins/app/assets/meshes/Animations/InterpolationTest_CubicSpline Translation.anim",
+		"plugins/app/assets/meshes/Animations/InterpolationTest_Linear Rotation.anim",
+		"plugins/app/assets/meshes/Animations/InterpolationTest_Linear Scale.anim",
+		"plugins/app/assets/meshes/Animations/InterpolationTest_Linear Translation.anim",
+		"plugins/app/assets/meshes/Animations/InterpolationTest_Step Rotation.anim",
+		"plugins/app/assets/meshes/Animations/InterpolationTest_Step Scale.anim",
+		"plugins/app/assets/meshes/Animations/InterpolationTest_Step Translation.anim",
+		"plugins/app/assets/meshes/BoxAnimated/BoxAnimated_0.anim",
+		"plugins/app/assets/meshes/ChronographWatch/ChronographWatch_Anim_0.anim",
 	}
 	for path in paths {
 		data, rerr := os.read_entire_file(path, context.temp_allocator)

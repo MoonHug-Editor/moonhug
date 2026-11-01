@@ -287,6 +287,8 @@ test_lane_quaternion_row_converts_modes_to_linear_or_step :: proc(t: ^testing.T)
 @(test)
 test_lane_join_keeps_shared_modes_and_reports_mixed_step :: proc(t: ^testing.T) {
 	defer free_all(context.temp_allocator)
+	// The joined rows' new arrays go to the temp allocator with the rest.
+	context.allocator = context.temp_allocator
 	clip := anim.AnimationClip{length = 2, frame_rate = 30}
 	clip.channels = make([dynamic]anim.Animation_Channel, context.temp_allocator)
 	_ls_row(&clip, .Position, {0, 1}, {{0, 0, 0, 0}, {2, 0, 0, 0}}, off = {1, 2})

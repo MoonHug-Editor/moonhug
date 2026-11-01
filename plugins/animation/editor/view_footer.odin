@@ -1,7 +1,8 @@
 package animation_editor
 
 // The selected-key footer of the Animation window: the primary key's time,
-// mode and values as fields, and a Delete button for the selection.
+// mode and values as fields, and a Delete button for the selection. Delete
+// removes a row its last key leaves empty, as the key menu does.
 
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
@@ -43,21 +44,25 @@ _pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 		}
 	}
 
+	speed, format := _pv_ch_drag_style(ch)
+
 	// A rotation key shows three euler angles, written back as a quaternion.
+	// The angles hold across a gesture (_pv_euler_get).
 	if _pv_ch_is_rotation(ch) {
 		vals := anim.animation_channel_floats(ch)
-		euler := _pv_rot_to_euler(vals[k])
+		euler := _pv_euler_get(_av.sel_ch, k, vals[k])
 		axis_names := [3]cstring{"x", "y", "z"}
 		for c in 0 ..< 3 {
 			im.SameLine()
 			im.TextUnformatted(axis_names[c])
 			im.SameLine()
 			im.SetNextItemWidth(70)
-			changed := im.DragFloat(fmt.ctprintf("##anim_key_e%d", c), &euler[c], 0.5, 0, 0, "%.1f")
+			changed := im.DragFloat(fmt.ctprintf("##anim_key_e%d", c), &euler[c], speed, 0, 0, format)
 			// Opened before the write, so the session holds the key from
 			// before this frame's change.
 			if im.IsItemActivated() do _pv_edit_begin(doc)
 			if changed do vals[k] = _pv_rot_from_euler(euler)
+			_pv_euler_hold(_av.sel_ch, k, euler)
 			_pv_field_undo(doc, clip, changed)
 		}
 	}
@@ -75,15 +80,13 @@ _pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 			continue
 		}
 		im.SetNextItemWidth(70)
-		_pv_field_undo(doc, clip, im.DragFloat(fmt.ctprintf("##anim_key_v%d", c), &anim.animation_channel_floats(ch)[k][c], 0.01))
+		_pv_field_undo(doc, clip, im.DragFloat(fmt.ctprintf("##anim_key_v%d", c), &anim.animation_channel_floats(ch)[k][c], speed, 0, 0, format))
 	}
 
 	im.SameLine()
-	im.BeginDisabled(len(ch.times) <= 1)
 	if im.Button(len(_av.sel) > 1 ? fmt.ctprintf("Delete %d Keys", len(_av.sel)) : "Delete Key") {
 		_pv_delete_key(doc, clip)
 	}
-	im.EndDisabled()
 }
 
 // The inspector's field convention: the session opens when the widget

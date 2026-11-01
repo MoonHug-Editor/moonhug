@@ -31,9 +31,12 @@ package animation_editor
 import "base:runtime"
 import "core:encoding/uuid"
 import "core:fmt"
+import "core:math"
 import "core:math/linalg"
+import "core:slice"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
+import gfx "moonhug:libs/gfx"
 import wnd "moonhug:editor/window"
 import engine "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
@@ -52,6 +55,7 @@ animation_record_install :: proc() {
 	inspector.driven_row_state = _record_row_state
 	assert(inspector.driven_add_key == nil || inspector.driven_add_key == _record_add_key, "inspector.driven_add_key is installed by another package")
 	inspector.driven_add_key = _record_add_key
+	assert(inspector.driven_delete_key == nil || inspector.driven_delete_key == _record_delete_key, "inspector.driven_delete_key is installed by another package")
 	inspector.driven_delete_key = _record_delete_key
 	inspector.driven_tooltip_read_only = "Driven by the Animation preview. Arm Record to key this field"
 	inspector.driven_tooltip_editable = "Recording: an edit keys this field at the playhead"
@@ -78,7 +82,9 @@ _record_busy: bool
 
 @(private = "file")
 _record_commit :: proc(edits: []undo.Edit_Commit, consumed: []bool) {
-	if _record_busy || !_pv.recording do return
+	// A state preview from the States tree poses from an authored state, not
+	// from the shown clip, so nothing is keyed while it runs.
+	if _record_busy || !_pv.recording || _pv.entry != 0 do return
 	doc, clip := _pv_doc()
 	if doc == nil || clip == nil do return
 	_record_busy = true
@@ -86,7 +92,9 @@ _record_commit :: proc(edits: []undo.Edit_Commit, consumed: []bool) {
 
 	// Every keyed entry goes into one session on the clip document. The
 	// session's payloads use the caller's allocator, as every undo record does.
+	// A hold another gesture has open stays open.
 	keyed := false
+	held := _pv_edit_held
 	for e, i in edits {
 		k, ok := _record_key_of(e)
 		if !ok do continue
@@ -103,7 +111,7 @@ _record_commit :: proc(edits: []undo.Edit_Commit, consumed: []bool) {
 		consumed[i] = true
 	}
 	if keyed {
-		_pv_edit_held = false
+		_pv_edit_held = held
 		_pv_edit_commit(doc)
 	}
 }
@@ -176,7 +184,7 @@ _record_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, k: _Re
 		chans = _record_channels(clip, k)
 		assert(len(chans) == 1, "record: the new row is in the clip")
 		ch := &clip.channels[chans[0]]
-		anim.animation_channel_set_value(ch, 0, _record_row_value(ch, k, old))
+		anim.animation_channel_set_value(ch, 0, _record_row_value(ch, k, old, _record_euler_near(clip, chans, k)))
 	}
 	_record_key_rows(doc, clip, chans, k, edited, old)
 }
@@ -192,33 +200,50 @@ _record_add_row :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, k:
 	}
 }
 
-// Keys `edited` (the field's own type, k.leaf) at the playhead in the rows
-// of `k`, which exist:
+// Keys `edited` (the field's own type, k.leaf) on the playhead's frame in the
+// rows of `k`, which exist (_record_key_on_frame places the key):
 //   - a joined row (one channel) takes the whole value, and every lane
-//     animates
+//     animates. A lane the row had disabled holds values that were never
+//     shown, so every other key of the row takes the live value in it: `ref`
+//     when given, else `edited`. The row holds that lane flat at what the
+//     object showed
 //   - a split row (one channel per lane) keys lane by lane: with `ref`, the
 //     value the edit started from in the field's type, only the lanes that
-//     differ from it, without it every lane
+//     differ from it (_record_lane_differs), without it every lane
+// A quaternion keyed into an Euler row unwinds toward the angles the rows
+// give at the playhead (_record_euler_near).
 @(private = "file")
 _record_key_rows :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, chans: []int, k: _Record_Key, edited: anim.Channel_Value, ref: Maybe(anim.Channel_Value)) {
+	near := _record_euler_near(clip, chans, k)
 	if len(chans) == 1 {
 		idx := chans[0]
-		_pv_add_key(doc, clip, idx, _pv.time, _record_row_value(&clip.channels[idx], k, edited))
-		clip.channels[idx].lanes_off = {}
+		off := anim.animation_channel_lanes_off(&clip.channels[idx], k.kind)
+		at := _record_key_on_frame(doc, clip, idx, _record_row_value(&clip.channels[idx], k, edited, near))
+		ch := &clip.channels[idx]
+		if off != {} {
+			src, has_ref := ref.?
+			if !has_ref do src = edited
+			fill, fok := _record_row_value(ch, k, src, near).([4]f32)
+			vals, vok := ch.values.([dynamic][4]f32)
+			if fok && vok {
+				for &v, i in vals do if i != at do for l in off do v[l] = fill[l]
+			}
+		}
+		ch.lanes_off = {}
 		return
 	}
 	for idx in chans {
 		ch := &clip.channels[idx]
-		v := _record_row_value(ch, k, edited)
+		v := _record_row_value(ch, k, edited, near)
 		if r, has_ref := ref.?; has_ref {
 			f, fok := v.([4]f32)
-			rf, rok := _record_row_value(ch, k, r).([4]f32)
+			rf, rok := _record_row_value(ch, k, r, near).([4]f32)
 			if fok && rok {
 				changed := false
 				off := anim.animation_channel_lanes_off(ch, k.kind)
 				for l in 0 ..< anim.animation_channel_lane_count(ch, k.kind) {
 					if l in off do continue
-					if f[l] != rf[l] {
+					if _record_lane_differs(f[l], rf[l]) {
 						changed = true
 						break
 					}
@@ -226,21 +251,90 @@ _record_key_rows :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, c
 				if !changed do continue
 			}
 		}
-		_pv_add_key(doc, clip, idx, _pv.time, v)
+		_record_key_on_frame(doc, clip, idx, v)
 	}
 }
 
-// `v`, a value of the field (its type is k.leaf), in the form row `ch`
-// holds: euler angles for an Euler row given a quaternion, a normalized
-// quaternion for a Rotation row, else `v` itself.
+// Whether two lane values differ by more than float noise: 1e-5 relative to
+// the larger magnitude, or absolute below a magnitude of 1. A quaternion
+// decomposed to euler angles twice gives lanes that differ in the last bits.
 @(private = "file")
-_record_row_value :: proc(ch: ^anim.Animation_Channel, k: _Record_Key, v: anim.Channel_Value) -> anim.Channel_Value {
+_record_lane_differs :: proc(a, b: f32) -> bool {
+	return abs(a - b) > 1e-5 * max(f32(1), abs(a), abs(b))
+}
+
+// Keys `v` in row `idx` on the playhead's frame, the one rule for where a
+// recorded key goes:
+//   - the key goes at the playhead snapped to the clip's frame grid, so a
+//     playhead paused between frames still keys on a frame
+//   - a key within half a frame of that time is the key on the playhead: it
+//     takes `v` and keeps its own time
+// Runs inside the caller's open session. Returns the key's index.
+@(private = "file")
+_record_key_on_frame :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, idx: int, v: anim.Channel_Value) -> int {
+	if at := _record_key_at_playhead(clip, idx); at >= 0 {
+		anim.animation_channel_set_value(&clip.channels[idx], at, v)
+		_pv_sel_set(idx, at)
+		return at
+	}
+	_pv_add_key(doc, clip, idx, _record_playhead_frame(clip), v)
+	at := _record_key_at_playhead(clip, idx)
+	assert(at >= 0, "record: the added key is on the playhead's frame")
+	return at
+}
+
+// The angles the rows `chans` of `k` give at the playhead over the object's
+// own rotation, by the one combining rule (anim.Clip_TRS): the angles a
+// recorded quaternion unwinds toward. Zero for a key that is not a rotation.
+@(private = "file")
+_record_euler_near :: proc(clip: ^anim.AnimationClip, chans: []int, k: _Record_Key) -> [3]f32 {
+	if k.property || k.path != .Rotation do return {}
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(k.owner))
+	if t == nil do return {}
+	trs: anim.Clip_TRS
+	for idx in chans do anim.animation_trs_add(&trs, &clip.channels[idx], _pv.time)
+	return anim.animation_trs_euler(trs, t.rotation)
+}
+
+// The euler angles of `q` nearest to `near`: of the two euler solutions of
+// `q`, each lane moved by whole turns toward `near`, the one with the smaller
+// largest lane step. The second solution counts only when it rebuilds `q`.
+// A turn from 170 to 190 degrees so keys 190, not -170.
+@(private = "file")
+_record_euler_nearest :: proc(q: [4]f32, near: [3]f32) -> [3]f32 {
+	e := engine.quat_to_euler_xyz(q)
+	best := _record_euler_unwind(e, near)
+	alt := _record_euler_unwind({e.x + 180, 180 - e.y, e.z + 180}, near)
+	if abs(linalg.dot(anim.animation_quat_from_euler(alt), q)) < 0.9999 do return best
+	if _record_euler_step(alt, near) < _record_euler_step(best, near) do return alt
+	return best
+}
+
+@(private = "file")
+_record_euler_unwind :: proc(e, near: [3]f32) -> [3]f32 {
+	out := e
+	for l in 0 ..< 3 do out[l] = e[l] + 360 * math.round((near[l] - e[l]) / 360)
+	return out
+}
+
+@(private = "file")
+_record_euler_step :: proc(e, near: [3]f32) -> f32 {
+	return max(abs(e.x - near.x), abs(e.y - near.y), abs(e.z - near.z))
+}
+
+// `v`, a value of the field (its type is k.leaf), in the form row `ch`
+// holds: euler angles for an Euler row given a quaternion, unwound toward
+// `near` (_record_euler_nearest), a normalized quaternion for a Rotation
+// row, else `v` itself.
+@(private = "file")
+_record_row_value :: proc(ch: ^anim.Animation_Channel, k: _Record_Key, v: anim.Channel_Value, near: [3]f32) -> anim.Channel_Value {
 	if k.property do return v
 	f, is_f := v.([4]f32)
 	if !is_f do return v
 	switch {
 	case ch.path == .Euler && k.leaf == typeid_of([4]f32):
-		e := engine.quat_to_euler_xyz(f)
+		e := _record_euler_nearest(_record_normalized(f), near)
 		return [4]f32{e.x, e.y, e.z, 0}
 	case ch.path == .Rotation && k.leaf == typeid_of([3]f32):
 		return anim.animation_quat_from_euler(f.xyz)
@@ -404,6 +498,93 @@ _record_field_key :: proc(owner: engine.Handle, field_offset: uintptr, field_tid
 	return k, true
 }
 
+// The fields the inspector asks about, resolved once per frame: the inspector
+// asks _record_driven and _record_row_state for every field it draws, and
+// resolving walks the parents, formats the component guid and scans the
+// channels. Keyed by (owner, field offset, field type), holding the field's
+// _Record_Key and its rows, or that it does not resolve. Cleared when the
+// frame, the world, the shown clip, the animated object or the clip's
+// document changes. Owned by runtime.default_allocator.
+@(private = "file")
+_Record_Memo_Key :: struct {
+	owner:  engine.Handle,
+	offset: uintptr,
+	tid:    typeid,
+}
+
+@(private = "file")
+_Record_Memo :: struct {
+	k:     _Record_Key,
+	chans: []int,
+	ok:    bool,
+}
+
+@(private = "file")
+_Record_Memo_Stamp :: struct {
+	frame:    u64,
+	world:    rawptr,
+	doc:      rawptr,
+	edits:    u64,
+	clip:     rawptr,
+	channels: int,
+	owner:    engine.Transform_Handle,
+	pptr:     engine.PPtr,
+}
+
+@(private = "file")
+_record_memo: map[_Record_Memo_Key]_Record_Memo
+
+@(private = "file")
+_record_memo_stamp: _Record_Memo_Stamp
+
+@(private = "file")
+_record_memo_clear :: proc() {
+	alloc := runtime.default_allocator()
+	for _, m in _record_memo {
+		delete(m.k.target, alloc)
+		delete(m.k.guid_str, alloc)
+		delete(m.k.field, alloc)
+		delete(m.chans, alloc)
+	}
+	clear(&_record_memo)
+	_record_memo_stamp = {}
+}
+
+// The field's key and rows in `clip`, `ok` false when the field does not
+// resolve (_record_field_key). The results stay valid until the memo clears.
+@(private = "file")
+_record_memo_lookup :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid, doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) -> (k: _Record_Key, chans: []int, ok: bool) {
+	stamp := _Record_Memo_Stamp{
+		frame    = gfx.frame_index,
+		world    = engine.ctx_world(),
+		doc      = doc,
+		edits    = doc != nil ? doc.edits : 0,
+		clip     = clip,
+		channels = len(clip.channels),
+		owner    = _pv.owner,
+		pptr     = _pv.clip,
+	}
+	if stamp != _record_memo_stamp {
+		_record_memo_clear()
+		_record_memo_stamp = stamp
+	}
+	key := _Record_Memo_Key{owner, field_offset, field_tid}
+	if m, found := _record_memo[key]; found do return m.k, m.chans, m.ok
+
+	alloc := runtime.default_allocator()
+	m: _Record_Memo
+	m.k, m.ok = _record_field_key(owner, field_offset, field_tid)
+	if m.ok {
+		m.k.target = strings.clone(m.k.target, alloc)
+		m.k.guid_str = strings.clone(m.k.guid_str, alloc)
+		m.k.field = strings.clone(m.k.field, alloc)
+		m.chans = slice.clone(_record_channels(clip, m.k), alloc)
+	}
+	if _record_memo == nil do _record_memo = make(map[_Record_Memo_Key]_Record_Memo, alloc)
+	_record_memo[key] = m
+	return m.k, m.chans, m.ok
+}
+
 // Samples the field's row at the playhead. A vector row with disabled lanes
 // fills them from the live field, so the inspector shows the clip's lanes and
 // the object's own lanes together.
@@ -421,10 +602,8 @@ _record_driven :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: t
 	doc, clip := _pv_doc()
 	if clip == nil || len(clip.channels) == 0 do return false, false
 
-	k, ok := _record_field_key(owner, field_offset, field_tid)
-	if !ok do return false, false
-	chans := _record_channels(clip, k)
-	if len(chans) == 0 do return false, false
+	k, chans, ok := _record_memo_lookup(owner, field_offset, field_tid, doc, clip)
+	if !ok || len(chans) == 0 do return false, false
 	editable = _pv.recording && doc != nil
 	if k.property {
 		ch0 := &clip.channels[chans[0]]
@@ -489,20 +668,21 @@ _record_clip_shown :: proc() -> bool {
 }
 
 // `has_row`: the shown clip has a row for the field. `keyable`: the clip has
-// a document (a clip inside a model has none), and the field is animatable on
-// the animated object or under it. Per field per frame: no allocations beyond
-// temp.
+// a document (a clip inside a model has none), the field is animatable on
+// the animated object or under it, and only while recording and no state of
+// the States tree is previewed. Per field per frame: the field resolves once
+// per frame (_record_memo_lookup).
 @(private = "file")
 _record_row_state :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid) -> (has_row, keyable, keyed: bool) {
 	if !_record_clip_shown() do return false, false, false
 	if _, kok := anim._prop_kind_of(field_tid); !kok do return false, false, false
 	doc, clip := _pv_doc()
 	if clip == nil do return false, false, false
-	k, ok := _record_field_key(owner, field_offset, field_tid)
+	_, chans, ok := _record_memo_lookup(owner, field_offset, field_tid, doc, clip)
 	if !ok do return false, false, false
-	// Keyable only while recording: "Add Key" is a recording tool.
-	keyable = doc != nil && _pv.recording
-	chans := _record_channels(clip, k)
+	// Keyable only while recording: "Add Key" is a recording tool. A state
+	// preview poses from an authored state, not from the shown clip.
+	keyable = doc != nil && _pv.recording && _pv.entry == 0
 	if len(chans) == 0 do return false, keyable, false
 	// Keyed when any of the rows has a key on the playhead's frame.
 	for idx in chans do if _record_key_at_playhead(clip, idx) >= 0 {
@@ -512,24 +692,36 @@ _record_row_state :: proc(owner: engine.Handle, field_offset: uintptr, field_tid
 	return true, keyable, keyed
 }
 
-// The key of row `idx` on the playhead's frame, -1 for none.
+// The playhead in the clip, snapped to the clip's frame grid: where a
+// recorded key goes.
 @(private = "file")
-_record_key_at_playhead :: proc(clip: ^anim.AnimationClip, idx: int) -> int {
-	half := 0.5 / anim.animation_clip_frame_rate(clip)
-	for t, i in clip.channels[idx].times do if abs(t - _pv.time) <= half do return i
-	return -1
+_record_playhead_frame :: proc(clip: ^anim.AnimationClip) -> f32 {
+	return clamp(anim.animation_snap_to_frame(clip, clamp(_pv.time, 0, clip.length)), 0, clip.length)
 }
 
-// Keys `value` (the field's own type) at the playhead. A missing row is
-// created first (its key at the clip start holds the object's own value, as
-// Add Property does). One undo step on the clip document. Record need not be
-// armed. False when the field cannot be keyed.
+// The key of row `idx` on the playhead's frame, -1 for none: the key nearest
+// the snapped playhead (_record_playhead_frame) within half a frame of it.
+// Recording, the keyed mark and Delete Key all use this rule.
+@(private = "file")
+_record_key_at_playhead :: proc(clip: ^anim.AnimationClip, idx: int) -> int {
+	t := _record_playhead_frame(clip)
+	best := -1
+	best_d := 0.5 / anim.animation_clip_frame_rate(clip)
+	for kt, i in clip.channels[idx].times {
+		if d := abs(kt - t); d <= best_d {
+			best = i
+			best_d = d
+		}
+	}
+	return best
+}
+
 // Deletes the row's key on the playhead's frame. A row left with no keys goes
 // too, as the window's Delete does. One undo step. False when there is no
 // such key.
 @(private = "file")
 _record_delete_key :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid) -> bool {
-	if !_record_clip_shown() do return false
+	if !_record_clip_shown() || _pv.entry != 0 do return false
 	doc, clip := _pv_doc()
 	if doc == nil || clip == nil do return false
 	k, ok := _record_field_key(owner, field_offset, field_tid)
@@ -561,6 +753,10 @@ _record_delete_key :: proc(owner: engine.Handle, field_offset: uintptr, field_ti
 	return true
 }
 
+// Keys `value` (the field's own type) at the playhead. A missing row is
+// created first (its key at the clip start holds the object's own value, as
+// Add Property does). One undo step on the clip document. False when the
+// field cannot be keyed.
 @(private = "file")
 _record_add_key :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid, value: rawptr) -> bool {
 	return _record_key_value(owner, field_offset, field_tid, value, whole = true)
@@ -572,7 +768,7 @@ _record_add_key :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: 
 // rows show at the playhead, as a recorded edit does (_record_key_rows).
 @(private = "file")
 _record_key_value :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid, value: rawptr, whole: bool) -> bool {
-	if !_record_clip_shown() do return false
+	if !_record_clip_shown() || _pv.entry != 0 do return false
 	doc, clip := _pv_doc()
 	if doc == nil || clip == nil do return false
 	k, ok := _record_field_key(owner, field_offset, field_tid)
@@ -592,6 +788,8 @@ _record_key_value :: proc(owner: engine.Handle, field_offset: uintptr, field_tid
 
 	_record_busy = true
 	defer _record_busy = false
+	// A hold another gesture has open stays open.
+	held := _pv_edit_held
 	_pv_edit_begin(doc)
 	_pv_edit_held = true
 	{
@@ -605,7 +803,7 @@ _record_key_value :: proc(owner: engine.Handle, field_offset: uintptr, field_tid
 		}
 		_record_key_rows(doc, clip, chans, k, edited, ref)
 	}
-	_pv_edit_held = false
+	_pv_edit_held = held
 	_pv_edit_commit(doc)
 	return true
 }
@@ -651,13 +849,16 @@ _record_draw_note :: proc() {
 // `time`, and arms Record when `armed`, as picking the clip and pressing
 // Record in the window does, and stands in for an open Animation window.
 // Nothing in the editor calls this.
-animation_record_arm :: proc(owner: engine.Transform_Handle, clip: engine.PPtr, time: f32, armed := true) {
+// `entry` nonzero stands in for a state of the States tree being previewed.
+animation_record_arm :: proc(owner: engine.Transform_Handle, clip: engine.PPtr, time: f32, armed := true, entry: i32 = 0) {
 	_pv.owner = owner
 	_pv.clip = clip
 	_pv.time = time
 	_pv.active = true
 	_pv.recording = armed
+	_pv.entry = entry
 	_record_test_shown = true
+	_record_memo_clear()
 }
 
 // Test-only: keys row `row` of the shown clip at the playhead with `value`,
@@ -688,6 +889,18 @@ animation_record_reset :: proc() {
 	_pv.clip = {}
 	_pv.time = 0
 	_record_test_shown = false
+	_record_note_clear()
+	_record_memo_clear()
+}
+
+// Test-only: the rows of the shown clip for a field, as the inspector's
+// questions see them (through the per-frame memo). Valid until the memo
+// clears.
+animation_record_field_channels :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid) -> []int {
+	doc, clip := _pv_doc()
+	if clip == nil do return nil
+	_, chans, _ := _record_memo_lookup(owner, field_offset, field_tid, doc, clip)
+	return chans
 }
 
 // The note the window shows under the toolbar, "" for none.

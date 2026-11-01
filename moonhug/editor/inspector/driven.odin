@@ -143,8 +143,13 @@ _driven_field_owner :: proc(field_ptr: rawptr) -> (owner: core.Handle, offset: u
 	if field_ptr == nil do return
 	o, has := undo.current_owner()
 	if !has || o.kind != .Pooled || o.base_ptr == nil do return
-	if uintptr(field_ptr) < uintptr(o.base_ptr) do return
-	return o.handle, uintptr(field_ptr) - uintptr(o.base_ptr), true
+	// The owner's memory is [base, base + size of the owner's type). A field
+	// pointer outside it (a heap array element) has no offset in the owner.
+	owner_tid := core.get_typeid_by_type_key(o.handle.type_key)
+	if owner_tid == nil do return
+	base := uintptr(o.base_ptr)
+	if uintptr(field_ptr) < base || uintptr(field_ptr) >= base + uintptr(type_info_of(owner_tid).size) do return
+	return o.handle, uintptr(field_ptr) - base, true
 }
 
 // Asks driven_row_state about the field at `field_offset` of `owner`.
@@ -205,11 +210,13 @@ driven_draw_begin :: proc(state: Driven_State) {
 // Closes the group, pops the tint, marks the row and sets its tooltip. The
 // group stays the last item, so imgui's item state describes the whole row.
 // A filled diamond left of the bar marks a row whose playhead frame has a
-// key. No key, no mark.
-driven_draw_end :: proc(state: Driven_State, keyed := false) {
+// key. No key, no mark. With `marks` false it only closes the group and pops
+// the tint: the group drew no field (a decorator that draws a header alone).
+driven_draw_end :: proc(state: Driven_State, keyed := false, marks := true) {
 	if state == .None do return
 	im.EndGroup()
 	im.PopStyleColor(4)
+	if !marks do return
 	rmin, rmax := im.GetItemRectMin(), im.GetItemRectMax()
 	tint := driven_tint(state)
 	_driven_bar(rmin, rmax, tint)

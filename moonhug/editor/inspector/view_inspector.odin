@@ -908,6 +908,15 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid, property_p
     popup_id := strings.clone_to_cstring(fmt.tprintf("##vcp_%x", uintptr(field_ptr)), context.temp_allocator)
     im.OpenPopupOnItemClick(popup_id, im.PopupFlags_MouseButtonRight)
     if im.BeginPopup(popup_id) {
+        // A driven row (driven.odin) shows a value that is not the object's
+        // own. Reset, Paste, Revert and Apply would write the object's own
+        // value, which the row hides, and Copy would copy it. The menu offers
+        // the key items alone, as the transform rows do.
+        if dv := driven_query_field(field_ptr, field_tid); dv.state != .None {
+            if !driven_add_key_item(dv.owner, dv.offset, dv.tid, &dv.start) do im.TextDisabled("No actions")
+            im.EndPopup()
+            return
+        }
         // A field the shown clip can key (driven.odin): keys the value the
         // row shows.
         if driven_add_key_item_field(field_ptr, field_tid) {
@@ -1070,7 +1079,10 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
         if decorator_dv.state != .None {
             driven_draw_begin(decorator_dv.state)
             run_field_decorators(tid, i, &ctx)
-            driven_draw_end(decorator_dv.state, decorator_dv.keyed)
+            // A decorator that only adds to the row (a header) leaves the
+            // field to the row's own drawer below, which marks it. The marks
+            // go here only when the decorator drew the field.
+            driven_draw_end(decorator_dv.state, decorator_dv.keyed, marks = ctx.handled_draw)
             // The row draws no other menu: "Add Key" keys the driven value.
             if ctx.handled_draw do driven_context_menu(field_ptr, &decorator_dv)
             // The object did not change: an edit of the buffer is dropped
