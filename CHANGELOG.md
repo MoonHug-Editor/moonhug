@@ -1,3 +1,24 @@
+## [0.153.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.152.0...v0.153.0) (2026-11-01)
+
+### Features
+
+* allow disable vector lanes ([d6d39ac](https://github.com/MoonHug-Editor/moonhug/commit/d6d39ace0941bab0feee148b4c05bc045639f0db))
+* animation tangents ([f519ee6](https://github.com/MoonHug-Editor/moonhug/commit/f519ee6a0ae99dca41ff1d4da7d07d98899638d3))
+* animation view grouping properties per transform ([540356f](https://github.com/MoonHug-Editor/moonhug/commit/540356f74e22e473432fde32c7ab1552fd398068))
+* **animation:** record keys any animatable field through undo ([ebba171](https://github.com/MoonHug-Editor/moonhug/commit/ebba17184dff002cc43c0c93445c6ac2974a25e0))
+* **animation:** split lanes with own key times, Euler rotation rows, object row ping and select ([5fac4be](https://github.com/MoonHug-Editor/moonhug/commit/5fac4be4d2de1e8c937759fc2cd0ccaf5818f6d0))
+* euler rows play as quaternions, Convert to Euler, lanes menu crash fix ([1d58942](https://github.com/MoonHug-Editor/moonhug/commit/1d58942896dc41de7631fc3d67dfb88726d04329))
+* exact Join Lane Keys with shared modes, dialog when a hold would become a ramp ([65a311c](https://github.com/MoonHug-Editor/moonhug/commit/65a311c233c4201d80dd9b6e7451cd15b2f40b8d))
+* lanes a clip does not animate show as the object's own value and edit it in preview ([b3ceee2](https://github.com/MoonHug-Editor/moonhug/commit/b3ceee250410d3e636aeeb871c0f524cbfe2be8c))
+* ruler with frame marks ([5e90be8](https://github.com/MoonHug-Editor/moonhug/commit/5e90be8c001f6f41d914f3d7fac0e0fb3fbd8232))
+
+### Bug Fixes
+
+* **animation:** rebuild sheet rows after a lanes menu edit, Split/Join Lane Keys shown only when they apply ([fd4cc8c](https://github.com/MoonHug-Editor/moonhug/commit/fd4cc8c885aa6ce7b8dbab22fbdb3d3fb8dffa24))
+* bool field width, click threshold draw, per-window driven slot, Convert to Euler modes, clip cache frees its own entries ([6f82bc7](https://github.com/MoonHug-Editor/moonhug/commit/6f82bc71eb419cc35ec15129a4f238a493cdc00a))
+* clip load checks malformed rows and unknown components, every document edit counts, one euler unwind ([48ff86a](https://github.com/MoonHug-Editor/moonhug/commit/48ff86a1ebc404f2873b96683018fa9fcb1ba0c6))
+* review fixes across runtime, record, window, inspector and undo, docs and tests ([ba9cfd7](https://github.com/MoonHug-Editor/moonhug/commit/ba9cfd713b1e5a3f89b9afaaa1674086964ca6b5))
+
 ## [0.152.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.151.0...v0.152.0) (2026-10-28)
 
 ### Features
