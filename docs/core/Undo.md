@@ -378,6 +378,8 @@ Seams in `editor/inspector/driven.odin`, all nil by default, let a plugin drive 
 - The driven lanes never run an edit session, record an override or write a peer. The session is not used for editable fields because its "before" is the object's own value: an edit back to that value would compare equal and record nothing.
 - A driven row never multi-edits: it shows and edits the active object's driven value alone.
 - The field's context menu on a driven row offers "Add Key" or "Delete Key" alone, or "No actions". Reset, Paste, Copy, Revert and Apply act on the object's own value, which the row hides.
+- The bar and the diamond go in the gutter (`editor/inspector/gutter.odin`). Bars stack from its left edge in a fixed order, the prefab override bar first and the driven bar after it, whatever order the row draws them in. The diamond has a fixed spot at the gutter's right side.
+- An overridden field stays marked while it is driven: its override bar stays in the gutter, and the lanes the driver leaves to the object show the override color.
 - A decorator that draws the field gets the tint, bar, diamond and tooltip. A decorator that only adds to the row (a header) leaves them to the row's own drawer.
 
 The Animation window's Record installs five seams (`driven_provider`, `driven_commit`, `driven_row_state`, `driven_add_key`, `driven_delete_key`) and the three tooltip texts (`driven_tooltip_read_only`, `driven_tooltip_editable`, `driven_tooltip_add_key`). Edits outside the inspector rows (gizmo drags) reach Record through the commit listener.

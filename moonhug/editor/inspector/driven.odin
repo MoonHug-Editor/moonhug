@@ -38,7 +38,7 @@ package inspector
 // any lane goes to driven_commit, as every edit does while recording.
 //
 // A field that is not driven but has a row (driven_row_state) gets a mark: the
-// driven bar left of the label, in a quieter color. A driven row also shows a
+// driven bar in the gutter (gutter.odin), in a quieter color. A driven row also shows a
 // filled diamond when the playhead's frame has a key for it. The field's
 // context menu shows "Add Key" or "Delete Key" while the field can be keyed,
 // which is while recording. Add Key keys the value the row shows: the driven
@@ -181,15 +181,17 @@ driven_row_query :: proc(owner: core.Handle, field_offset: uintptr, field_tid: t
 // The tint is drawn at full alpha: green for a read-only driven field, red for
 // a recording one, the same in every theme.
 // The text (label and value) takes the tint, the frame background is blended
-// toward it, and a bar left of the label marks the row at a glance. No
+// toward it, and a bar in the gutter marks the row at a glance. No
 // BeginDisabled: it multiplies alpha, which some themes fade to nothing.
 
 // The tint color of a driven row.
 driven_tint :: proc(state: Driven_State) -> im.Vec4 {
 	if state == .Editable do return DRIVEN_EDITABLE_TEXT_COLOR
-	// A light theme has dark text: its luminance tells the two apart.
-	t := im.GetStyleColorVec4(.Text)^
-	if 0.299 * t.x + 0.587 * t.y + 0.114 * t.z < 0.5 do return DRIVEN_READ_ONLY_TEXT_COLOR_LIGHT_THEME
+	// A light theme has a bright window background: its luminance tells the
+	// two apart. Not the text color, which a row may have pushed (the override
+	// blue), so one theme gets one green on every row and in the gutter.
+	b := im.GetStyleColorVec4(.WindowBg)^
+	if 0.299 * b.x + 0.587 * b.y + 0.114 * b.z > 0.5 do return DRIVEN_READ_ONLY_TEXT_COLOR_LIGHT_THEME
 	return DRIVEN_READ_ONLY_TEXT_COLOR_DARK_THEME
 }
 
@@ -205,12 +207,11 @@ _driven_blend :: proc(base, tint: im.Vec4, t := DRIVEN_FRAME_BLEND) -> im.Vec4 {
 	return c
 }
 
-// The bar left of a row's label, from the row's top-left corner `rmin` down
-// to `rmax`.
+// The row's bar in the gutter (gutter.odin), from the row's top-left corner
+// `rmin` down to `rmax`.
 @(private = "file")
 _driven_bar :: proc(rmin, rmax: im.Vec2, color: im.Vec4) {
-	if rmax.y <= rmin.y do return
-	im.DrawList_AddRectFilled(im.GetWindowDrawList(), {rmin.x - 4, rmin.y}, {rmin.x - 2, rmax.y}, im.GetColorU32ImVec4(color))
+	gutter_bar(.Animation, rmin, rmax, color)
 }
 
 // The lanes of the row being drawn that the driver leaves to the object, and
@@ -244,9 +245,10 @@ driven_draw_begin :: proc(state: Driven_State, own := Driven_Lanes{}) {
 
 // Closes the group, pops the tint, marks the row and sets its tooltip. The
 // group stays the last item, so imgui's item state describes the whole row.
-// A filled diamond left of the bar marks a row whose playhead frame has a
-// key. No key, no mark. With `marks` false it only closes the group and pops
-// the tint: the group drew no field (a decorator that draws a header alone).
+// A filled diamond in the gutter marks a row whose playhead frame has a
+// key. No key, no mark. With `marks` false it only closes the
+// group and pops the tint: the group drew no field (a decorator that draws a
+// header alone).
 driven_draw_end :: proc(state: Driven_State, keyed := false, marks := true) {
 	if state == .None do return
 	_driven_row_own = {}
@@ -308,14 +310,12 @@ driven_own_lanes_edit :: proc(field_ptr, buf: rawptr, dv: ^Driven_Value, offset:
 	return false
 }
 
-// The key diamond of a driven row whose playhead frame has a key, centred on
-// the row's height, left of the bar.
+// The key diamond of a driven row whose playhead frame has a key, at its spot
+// in the gutter, centred on the row's height.
 @(private = "file")
 _driven_diamond :: proc(rmin, rmax: im.Vec2, color: im.Vec4, keyed: bool) {
-	if !keyed || rmax.y <= rmin.y do return
-	r := f32(4)
-	c := im.Vec2{rmin.x - 11, (rmin.y + rmax.y) * 0.5}
-	im.DrawList_AddQuadFilled(im.GetWindowDrawList(), {c.x, c.y - r}, {c.x + r, c.y}, {c.x, c.y + r}, {c.x - r, c.y}, im.GetColorU32ImVec4(color))
+	if !keyed do return
+	gutter_diamond(rmin, rmax, color)
 }
 
 // Marks a row that is not driven when its field has a row in the shown clip:

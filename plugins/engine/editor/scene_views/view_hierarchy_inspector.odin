@@ -597,6 +597,9 @@ _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handl
 	im.SetNextItemOpen(_inspector_transform_open, .Once)
 	if im.CollapsingHeader("Transform", {.DefaultOpen}) {
 		_inspector_transform_open = true
+		// The rows' marks (override, driven, key) go in the gutter.
+		gutter := inspector.gutter_begin()
+		defer inspector.gutter_end(gutter)
 		drawer := inspector.resolve_property_drawer(typeid_of(^[3]f32))
 
 		// The peers are other TRANSFORMS, so field offsets are measured from the
@@ -627,17 +630,17 @@ _nested_scene_for_host :: proc(host_tH: engine.Transform_Handle) -> ^engine.Nest
 @(private)
 _override_color := inspector.OVERRIDE_TEXT_COLOR
 
+// An overridden row's tint, and its bar in the inspector gutter
+// (inspector.override_style_push).
 @(private)
 _push_override_style :: proc(is_overridden: bool) -> bool {
-	if is_overridden {
-		im.PushStyleColorImVec4(im.Col.Text, _override_color)
-	}
+	if is_overridden do inspector.override_style_push()
 	return is_overridden
 }
 
 @(private)
 _pop_override_style :: proc(pushed: bool) {
-	if pushed do im.PopStyleColor(1)
+	inspector.override_style_pop(pushed)
 }
 
 @(private)
@@ -710,9 +713,13 @@ _wrap_transform_field_override :: proc(tH: engine.Transform_Handle, t: ^engine.T
 		defer if prev_changed do inspector.mark_inspector_changed()
 		buf := rawptr(&dv.value)
 		if dv.state == .Editable do buf = inspector.driven_edit_buffer(field_ptr, &dv.value)
+		// An overridden field stays marked while it is driven: the gutter bar,
+		// and the override color in the lanes the clip leaves to the object.
+		pushed := _push_override_style(is_overridden)
 		inspector.driven_draw_begin(dv.state, dv.own)
 		drawer(buf, drawer_tid, label)
 		inspector.driven_draw_end(dv.state, dv.keyed)
+		_pop_override_style(pushed)
 		inspector.driven_context_menu(field_ptr, &dv)
 		inspector.consume_inspector_changed()
 		if dv.state == .Editable {
@@ -833,7 +840,11 @@ _wrap_transform_rotation_override :: proc(tH: engine.Transform_Handle, t: ^engin
 	// Euler row's angles reach the row as typed, without a quaternion between.
 	dv := inspector.driven_query(engine.Handle(tH), multi_offset, typeid_of([3]f32))
 	if dv.state != .None {
+		// An overridden rotation stays marked while it is driven, as the other
+		// transform rows do.
+		pushed := _push_override_style(is_overridden)
 		ended := _wrap_transform_rotation_driven(&t.rotation, drawer, &dv, multi_offset)
+		_pop_override_style(pushed)
 		if is_in_nested_ctx && ended {
 			prev_nested_lid := engine.inspector_get_nested_local_id()
 			engine.inspector_set_nested_local_id(target_id)
@@ -1487,6 +1498,9 @@ _draw_components_section :: proc(
 		_draw_component_overflow_menu(t, tH, &comp, comp_ptr, comp_tid, comp_idx, comp_count)
 
 		if header_open {
+			// The rows' marks (override, driven, key) go in the gutter.
+			gutter := inspector.gutter_begin()
+			defer inspector.gutter_end(gutter)
 			inspector.consume_inspector_changed()
 			defer if inspector.consume_inspector_changed() {
 				engine.type_on_validate(comp.handle.type_key, comp_ptr)
@@ -1691,6 +1705,9 @@ _draw_components_section_nested_rows :: proc(
 		_draw_component_overflow_menu(t, tH, &comp, comp_ptr, comp_tid, comp_idx, comp_count, nested = true)
 
 		if header_open {
+			// The rows' marks (override, driven, key) go in the gutter.
+			gutter := inspector.gutter_begin()
+			defer inspector.gutter_end(gutter)
 			inspector.consume_inspector_changed()
 			defer if inspector.consume_inspector_changed() {
 				engine.type_on_validate(comp.handle.type_key, comp_ptr)

@@ -144,6 +144,8 @@ Resolution at load loads the target if needed, wires the real object handle into
 - Overrides targeting items deeper in the chain (e.g. root → A → B → leaf inside B) are still owned by the root scene's `NestedScene`. `target.guid` names the deepest prefab the field lives in, and `target.local_id` is the leaf-prefab lid XOR-projected through every inner NS's `local_id_in_parent` on the way up. Inner `NestedScene` records never store the root's overrides.
 - Inner `NestedScene` records loaded into memory at runtime carry their own prefab file's overrides (e.g. A.scene's overrides on B). Those exist as runtime state to drive each level's own-overrides bake during resolve, and are never persisted by the open scene's save.
 
+In the inspector an overridden field shows its label in blue and a blue bar in the gutter, the column on the left of the object inspector's field area (`editor/inspector/gutter.odin`). Bars stack from the gutter's left edge with the override bar always first, so it sits left of the bar an animated field gets instead of covering it, and it stays while the Animation window's preview drives the field.
+
 Overrides have **two producers**, both writing onto the root scene's `NestedScene` record:
 
 1. **Live recording** (`nested_scene_record_override`) — editing a field in the inspector records the override as the edit commits, so the override marker, Revert and Apply are available immediately, with no save in between. Undo of that edit takes the record away with the value, and redo restores both; editing a field that is already overridden leaves the existing override in place.

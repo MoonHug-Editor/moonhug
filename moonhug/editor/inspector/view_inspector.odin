@@ -643,9 +643,17 @@ _is_picker_type :: proc(tid: typeid) -> bool {
            is_enum_type(tid)
 }
 
-// Text color of a field that a prefab instance overrides. One value for the
-// generic loop, custom rows and the hierarchy's own markers.
+// Text color of a field that a prefab instance overrides, and of its bar in
+// the gutter (gutter.odin). One value for the generic loop,
+// custom rows and the hierarchy's own markers.
 OVERRIDE_TEXT_COLOR :: im.Vec4{0.4, 0.8, 1.0, 1.0}
+
+// The override bar of a row that started at `row_min` and whose last drawn
+// item is the row's bottom: a nested struct's bar spans its child rows.
+// Nothing when the row drew nothing below its start.
+override_gutter_bar :: proc(row_min: im.Vec2) {
+    gutter_bar(.Override, row_min, {row_min.x, im.GetItemRectMax().y}, OVERRIDE_TEXT_COLOR)
+}
 
 // The field a prefab override NAMES for a row. For most rows it is the row's
 // own value. For a row inside a dynamic-array element (a state in `layers`) no
@@ -657,19 +665,46 @@ Override_Field :: struct {
     path: string,
 }
 
-// Tints the label when the ambient prefab context overrides `path`. Pair with
-// override_marker_pop.
+// Tints the label when the ambient prefab context overrides `path`, and
+// remembers where the row starts for its override bar. Pair with
+// override_marker_pop, which draws the bar.
 override_marker_push :: proc(path: string) -> bool {
     host_tH := core.inspector_get_nested_host()
     nested_lid := core.inspector_get_nested_local_id()
     if host_tH == {} || nested_lid == 0 || path == "" do return false
     if !override_is_overridden(host_tH, nested_lid, path) do return false
-    im.PushStyleColorImVec4(im.Col.Text, OVERRIDE_TEXT_COLOR)
+    override_style_push()
     return true
 }
 
 override_marker_pop :: proc(pushed: bool) {
-    if pushed do im.PopStyleColor(1)
+    override_style_pop(pushed)
+}
+
+// Where the rows wrapped in override_style_push start, innermost last.
+@(private = "file")
+_override_row_starts: [8]im.Vec2
+
+@(private = "file")
+_override_row_depth: int
+
+// The override styling of a row about to draw: the text tint, and the row's
+// start for the bar override_style_pop draws in the gutter. For rows that
+// know they are overridden (the hierarchy's transform rows).
+override_style_push :: proc() {
+    assert(_override_row_depth < len(_override_row_starts), "inspector: override rows nest at most 8 deep")
+    _override_row_starts[_override_row_depth] = im.GetCursorScreenPos()
+    _override_row_depth += 1
+    im.PushStyleColorImVec4(im.Col.Text, OVERRIDE_TEXT_COLOR)
+}
+
+// Ends a row started with override_style_push (when `pushed`): pops the tint
+// and draws the row's override bar.
+override_style_pop :: proc(pushed: bool) {
+    if !pushed do return
+    im.PopStyleColor(1)
+    _override_row_depth -= 1
+    override_gutter_bar(_override_row_starts[_override_row_depth])
 }
 
 // A value row the generic field loop does not draw — a custom tree's row, or a
@@ -1054,9 +1089,7 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
         prev_changed_outside := inspector_changed
         inspector_changed = false
 
-        if is_field_overridden {
-            im.PushStyleColorImVec4(im.Col.Text, OVERRIDE_TEXT_COLOR)
-        }
+        if is_field_overridden do override_style_push()
 
         // A decorator that draws the row itself writes the value before the
         // row's transaction can look at it, so the "before" is taken here.
@@ -1228,9 +1261,7 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             draw_field_context_menu(field_ptr, field_type.id, full_path)
         }
 
-        if is_field_overridden {
-            im.PopStyleColor(1)
-        }
+        override_style_pop(is_field_overridden)
 
         if prev_changed_outside || inspector_changed do inspector_changed = true
         im.PopID()
