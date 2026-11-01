@@ -252,6 +252,35 @@ test_lane_quaternion_row_converts_to_unwound_euler :: proc(t: ^testing.T) {
 	testing.expect(t, !animation_editor.sheet_rotation_to_euler(&clip, 0), "an Euler row does not convert again")
 }
 
+// Convert to Euler turns the keys that interpolated into Linear keys and
+// keeps Step keys, with no tangents left: a glTF cubic import marks a
+// quaternion row's keys Free, which the row never used.
+@(test)
+test_lane_quaternion_row_converts_modes_to_linear_or_step :: proc(t: ^testing.T) {
+	defer free_all(context.temp_allocator)
+	clip := anim.AnimationClip{length = 2, frame_rate = 30}
+	clip.channels = make([dynamic]anim.Animation_Channel, context.temp_allocator)
+	ch := anim.Animation_Channel{target = "Arm", path = .Rotation}
+	ch.times = make([dynamic]f32, context.temp_allocator)
+	append(&ch.times, 0, 1, 2)
+	vals := make([dynamic][4]f32, context.temp_allocator)
+	for y in ([3]f32{0, 30, 60}) do append(&vals, anim.animation_quat_from_euler({0, y, 0}))
+	ch.values = vals
+	ch.modes = make([dynamic]anim.Key_Mode, context.temp_allocator)
+	append(&ch.modes, anim.Key_Mode.Free, anim.Key_Mode.Smooth, anim.Key_Mode.Step)
+	ch.tangents = make([dynamic][2][4]f32, context.temp_allocator)
+	append(&ch.tangents, [2][4]f32{}, [2][4]f32{}, [2][4]f32{})
+	append(&clip.channels, ch)
+
+	testing.expect(t, animation_editor.sheet_rotation_to_euler(&clip, 0), "converts")
+	c := &clip.channels[0]
+	testing.expect_value(t, len(c.modes), 3)
+	testing.expect_value(t, c.modes[0], anim.Key_Mode.Linear)
+	testing.expect_value(t, c.modes[1], anim.Key_Mode.Linear)
+	testing.expect_value(t, c.modes[2], anim.Key_Mode.Step)
+	testing.expect_value(t, len(c.tangents), 0)
+}
+
 // Lanes that are all Linear join to a Linear row with no modes and no
 // tangents. A Step lane next to a Linear lane is the one lossy join, and
 // the join reports it. Lanes that all step join to a Step row.

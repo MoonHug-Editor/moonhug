@@ -1994,13 +1994,12 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 			// A key vanished mid-drag, so there is no edit to record.
 			_av.drag_key = false
 			undo.edit_session_abort(&_pv_session)
-		} else if im.IsMouseDown(.Left) {
+		} else if im.IsMouseDown(.Left) && !_av.drag_live && linalg.length(mp - _av.drag_press) < _ANIM_DRAG_PX {
 			// A press is a click until the mouse has moved a few pixels: a
-			// click selects and must not nudge the key's time or value.
-			if !_av.drag_live {
-				if linalg.length(mp - _av.drag_press) < _ANIM_DRAG_PX do return
-				_av.drag_live = true
-			}
+			// click selects and must not nudge the key's time or value. The
+			// rest of the sheet draws as usual meanwhile.
+		} else if im.IsMouseDown(.Left) {
+			_av.drag_live = true
 			// One delta for the whole selection, snapped, then clamped by the
 			// tightest neighbour bound among the dragged keys so none of them
 			// can cross another and reorder the channel.

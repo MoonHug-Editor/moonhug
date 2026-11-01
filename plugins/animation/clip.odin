@@ -204,6 +204,13 @@ reset_AnimationClip :: proc(c: ^AnimationClip) {
 
 animation_clip_cache: map[engine.PPtr]AnimationClip
 _animation_clip_cache_ready: bool
+// The entries the cache made itself (animation_clip_load,
+// animation_clip_preview): default-allocator memory, freed under the default
+// allocator. An entry put in directly (tests) is the caller's memory and is
+// freed under the context allocator of the unload or shutdown.
+// cleanup_AnimationClip frees a clip's strings with the context allocator,
+// its arrays with their own.
+_animation_clip_owned: map[engine.PPtr]bool
 
 // ImportersInit is the asset-layer init phase both binaries run (the editor
 // via phase_editor_run, the app via app_init) — same slot the audio package
@@ -216,15 +223,28 @@ animation_package_init :: proc() {
 
 animation_clip_cache_init :: proc() {
 	animation_clip_cache = make(map[engine.PPtr]AnimationClip)
+	_animation_clip_owned = make(map[engine.PPtr]bool, runtime.default_allocator())
 	_animation_clip_cache_ready = true
 }
 
+// Frees cache entry `clip` under the allocator that owns its strings.
+@(private = "file")
+_animation_clip_entry_free :: proc(ref: engine.PPtr, clip: ^AnimationClip) {
+	// Set at proc scope: a context change inside a block ends with the block.
+	owned := ref in _animation_clip_owned
+	context.allocator = owned ? runtime.default_allocator() : context.allocator
+	if owned do delete_key(&_animation_clip_owned, ref)
+	cleanup_AnimationClip(clip)
+}
+
 animation_clip_cache_shutdown :: proc() {
-	for _, &clip in animation_clip_cache {
-		cleanup_AnimationClip(&clip)
+	for ref, &clip in animation_clip_cache {
+		_animation_clip_entry_free(ref, &clip)
 	}
 	delete(animation_clip_cache)
 	animation_clip_cache = nil
+	delete(_animation_clip_owned)
+	_animation_clip_owned = nil
 	_animation_clip_cache_ready = false
 }
 
@@ -272,12 +292,13 @@ animation_clip_load :: proc(ref: engine.PPtr) -> (^AnimationClip, bool) {
 	}
 	if !engine.artifact_load(ref.guid, ref.local_id, "clip", &clip, parse) do return nil, false
 	animation_clip_cache[ref] = clip
+	_animation_clip_owned[ref] = true
 	return &animation_clip_cache[ref], true
 }
 
 animation_clip_unload :: proc(ref: engine.PPtr) {
 	if clip, ok := &animation_clip_cache[ref]; ok {
-		cleanup_AnimationClip(clip)
+		_animation_clip_entry_free(ref, clip)
 		delete_key(&animation_clip_cache, ref)
 	}
 }
@@ -299,7 +320,7 @@ animation_clip_preview :: proc(ref: engine.PPtr, clip: AnimationClip) {
 	wrap, rate, offset := clip.wrap, clip.frame_rate, clip.cycle_offset
 	if old, ok := &animation_clip_cache[ref]; ok {
 		wrap, rate, offset = old.wrap, old.frame_rate, old.cycle_offset
-		cleanup_AnimationClip(old)
+		_animation_clip_entry_free(ref, old)
 	}
 	cp := AnimationClip{length = clip.length, wrap = wrap, frame_rate = rate, cycle_offset = offset}
 	cp.channels = make([dynamic]Animation_Channel, 0, len(clip.channels))
@@ -326,6 +347,7 @@ animation_clip_preview :: proc(ref: engine.PPtr, clip: AnimationClip) {
 		append(&cp.channels, c)
 	}
 	animation_clip_cache[ref] = cp
+	_animation_clip_owned[ref] = true
 }
 
 // Cache invalidation for external file changes, called from asset_db_refresh.
@@ -347,7 +369,10 @@ animation_clip_reimported :: proc(guid: engine.Asset_GUID) {
 }
 
 // Frees what a clip owns and leaves it zeroed (plugins/engine/docs/Components.md,
-// "Lifecycle procs").
+// "Lifecycle procs"). The strings are freed with the context allocator, the
+// arrays with their own: the caller runs this under the allocator that owns
+// the clip (a cache entry's is the default allocator, a document's the
+// document's).
 cleanup_AnimationClip :: proc(clip: ^AnimationClip) {
 	for &ch in clip.channels {
 		delete(ch.target)

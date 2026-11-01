@@ -310,9 +310,14 @@ driven_context_menu :: proc(field_ptr: rawptr, dv: ^Driven_Value) {
 // may draw a buffer of another type than the field (the Rotation row draws
 // euler angles).
 
+// One slot: a field's gesture runs in one row at a time. The slot is keyed
+// by the field AND the imgui ID scope the row draws in, so a second
+// inspector showing the same object draws its own seed and never commits
+// the first inspector's gesture.
 @(private = "file")
 _Driven_Edit :: struct {
 	key:   rawptr,
+	scope: im.ID,
 	value: [DRIVEN_VALUE_MAX / 8]u64,
 	start: [DRIVEN_VALUE_MAX / 8]u64,
 }
@@ -320,10 +325,25 @@ _Driven_Edit :: struct {
 @(private = "file")
 _driven_edit: _Driven_Edit
 
+// The ID scope the calling row draws in: the window and the ids pushed
+// around the row, the same before and after its widgets draw. A test that
+// substitutes the widget state draws no window, so every row there shares
+// one scope.
+@(private = "file")
+_driven_scope :: proc() -> im.ID {
+	if _widget_state_override != nil || im.GetCurrentContext() == nil do return 0
+	return im.GetID("##driven_slot")
+}
+
+@(private = "file")
+_driven_owned :: proc(key: rawptr) -> bool {
+	return key != nil && _driven_edit.key == key && _driven_edit.scope == _driven_scope()
+}
+
 // The buffer the row `key` draws on this frame: the slot while that row's
 // gesture is in flight, else `seed`, which the caller filled this frame.
 driven_edit_buffer :: proc(key: rawptr, seed: rawptr) -> rawptr {
-	if key != nil && _driven_edit.key == key do return &_driven_edit.value
+	if _driven_owned(key) do return &_driven_edit.value
 	return seed
 }
 
@@ -350,7 +370,7 @@ driven_gesture_state :: proc() -> (active, finished: bool) {
 // from a popup with no gesture of its own.
 driven_edit_end :: proc(key, buf, seed, start: rawptr, n: int, active, finished: bool) -> (commit: bool) {
 	assert(n <= DRIVEN_VALUE_MAX, "driven: a row's buffer fits the slot")
-	owned := key != nil && _driven_edit.key == key
+	owned := _driven_owned(key)
 	from := owned ? rawptr(&_driven_edit.start) : start
 	changed := mem.compare_ptrs(buf, from, n) != 0
 	if changed && (finished || !active) {
@@ -360,7 +380,7 @@ driven_edit_end :: proc(key, buf, seed, start: rawptr, n: int, active, finished:
 	}
 	switch {
 	case active && !owned:
-		_driven_edit = {key = key}
+		_driven_edit = {key = key, scope = _driven_scope()}
 		mem.copy(&_driven_edit.value, buf, n)
 		mem.copy(&_driven_edit.start, start, n)
 	case !active && owned:

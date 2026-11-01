@@ -663,3 +663,43 @@ test_clip_format_trim_keeps_curves :: proc(t: ^testing.T) {
 		testing.expectf(t, _near(got, want[i], 1e-3), "at %v: %v vs %v", p, got, want[i])
 	}
 }
+
+// A bool field is one byte: writing it leaves the bytes after it alone, and
+// reading it reads only its own byte.
+@(test)
+test_clip_property_bool_write_keeps_its_neighbours :: proc(t: ^testing.T) {
+	Packed :: struct {
+		before: u8,
+		flag:   bool,
+		after:  u8,
+		tail:   u32,
+	}
+	s := Packed{before = 7, flag = false, after = 9, tail = 0xDEADBEEF}
+	anim._prop_write_value(&s.flag, .Bool, typeid_of(bool), anim.Channel_Value([4]f32{1, 0, 0, 0}))
+	testing.expect(t, s.flag, "the bool is set")
+	testing.expect_value(t, s.before, 7)
+	testing.expect_value(t, s.after, 9)
+	testing.expect_value(t, s.tail, u32(0xDEADBEEF))
+	s.after = 1
+	s.flag = false
+	v := anim._prop_read(&s.flag, .Bool, typeid_of(bool))
+	testing.expect_value(t, v.x, f32(0))
+}
+
+// A cache entry's strings are default-allocator memory: shutting the cache
+// down under another allocator (a test's tracking allocator) frees them
+// with their own, so the tracker reports no bad free.
+@(test)
+test_clip_cache_shutdown_frees_entries_with_their_allocator :: proc(t: ^testing.T) {
+	anim.animation_clip_cache_init()
+	clip := anim.AnimationClip{length = 1}
+	clip.channels = make([dynamic]anim.Animation_Channel)
+	strs := make([dynamic]string)
+	append(&strs, strings.clone("x", strs.allocator))
+	append(&clip.channels, _prop_channel("slot", strs, {0}))
+	defer anim.cleanup_AnimationClip(&clip)
+	anim.animation_clip_preview(engine.PPtr{guid = _clip_guid(0x93)}, clip)
+	anim.animation_clip_cache_shutdown()
+	// The runner's tracking allocator fails the test on a bad free.
+}
+

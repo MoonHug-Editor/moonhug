@@ -269,9 +269,10 @@ sheet_channel_free :: proc(clip: ^anim.AnimationClip, i: int) {
 // key's quaternion becomes euler angles in degrees, and from the second key
 // on the angles are unwound, so a turn through 180 degrees does not flip
 // sign between keys: of the two euler solutions of a quaternion, each lane
-// moved by whole turns, the one nearest the previous key wins. Key modes
-// stay (a quaternion row's are Linear or Step), tangents are none. False
-// when `ch` is not a quaternion Rotation row.
+// moved by whole turns, the one nearest the previous key wins. A key that
+// interpolated (Linear, or Free and Smooth from a glTF cubic import, which a
+// quaternion row slerps anyway) becomes Linear, a Step key stays Step, and
+// the tangents go. False when `ch` is not a quaternion Rotation row.
 sheet_rotation_to_euler :: proc(clip: ^anim.AnimationClip, ch: int) -> bool {
 	if ch < 0 || ch >= len(clip.channels) do return false
 	c := &clip.channels[ch]
@@ -288,6 +289,7 @@ sheet_rotation_to_euler :: proc(clip: ^anim.AnimationClip, ch: int) -> bool {
 	}
 	c.path = .Euler
 	c.lanes_off = {}
+	for &m in c.modes do if m != .Step do m = .Linear
 	clear(&c.tangents)
 	return true
 }

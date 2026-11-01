@@ -266,11 +266,15 @@ _prop_locate :: proc(tH: engine.Transform_Handle, component: string, field: stri
 	return rawptr(uintptr(base) + loc.offset), loc.kind, loc.leaf, true
 }
 
-// Size and signedness of an int or enum leaf, for width-correct load/store.
+// Size and signedness of an int, enum or bool leaf, for width-correct
+// load/store. A bool is one byte (b8, b16 and b32 their own size): a wider
+// store would write over the fields after it.
 @(private = "file")
 _int_spec :: proc(leaf: typeid) -> (size: int, signed: bool) {
 	ti := runtime.type_info_base(type_info_of(leaf))
 	#partial switch v in ti.variant {
+	case runtime.Type_Info_Boolean:
+		return ti.size, false
 	case runtime.Type_Info_Integer:
 		return ti.size, v.signed
 	case runtime.Type_Info_Enum:

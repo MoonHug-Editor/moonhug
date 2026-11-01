@@ -425,7 +425,7 @@ A float row is the array of 4-lane arrays it has always been, so every `.anim`, 
 - A rotation is a quaternion. Euler rows are its authoring form: the keys hold the angles as typed, so a two-key row from 0 to 720 spins twice, which quaternion keys cannot say.
 - One rule combines a clip's transform rows per transform (`Clip_TRS` in `clip_trs.odin`), used by the direct apply, the graph leaf and the inspector's preview: split rows each set their own lanes, the rotation starts from the clip's Rotation row when it has one, else from a base, then the Euler rows' enabled lanes replace their angles. A lane no row sets keeps the base.
 - The base is the transform's own rotation for the direct apply and the inspector, and the rotation at bind time in the graph, where blending happens before anything is written. Above the clip the rotation blends as a quaternion, like a model clip's.
-- Convert to Euler in a quaternion row's context menu turns it into an Euler row with unwound angles (`sheet_rotation_to_euler` in `editor/lane_split.odin`), so an extracted or hand-made clip can be edited per axis. A clip inside a model is read-only and stays quaternion.
+- Convert to Euler in a quaternion row's context menu turns it into an Euler row with unwound angles (`sheet_rotation_to_euler` in `editor/lane_split.odin`), so an extracted or hand-made clip can be edited per axis. Keys that interpolated become Linear and Step keys stay Step, since a quaternion row slerps whatever its modes say. A clip inside a model is read-only and stays quaternion.
 
 ### Lanes
 
