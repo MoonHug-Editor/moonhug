@@ -277,3 +277,85 @@ test_hierarchy_requests_reach_every_copy :: proc(t: ^testing.T) {
 	session.hierarchy_reveal(child)
 	testing.expect(t, a.alt_open_pending[parent] && b.alt_open_pending[parent], "both copies unfold the object's parent")
 }
+
+// The selection and an Inspector lock survive a restart: saved as scene
+// asset and local id, they resolve back to the same objects, in click order
+// with the active one last, and the restore records no undo step. An object
+// gone since the save drops out.
+@(test)
+test_selection_and_inspector_lock_survive_a_restart :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+	_selection_reset()
+	defer _selection_reset()
+	defer editor.inspector_lock_set("Inspector", false)
+	defer editor.selection_persist_set_restored_for_test(false)
+
+	scene := engine.sm_scene_get_active()
+	if !testing.expect(t, scene != nil, "a scene is active") do return
+	scene.asset_guid = engine.Asset_GUID{0 = 0x5E, 15 = 0x01}
+
+	a := engine.transform_new("A")
+	b := engine.transform_new("B")
+	c := engine.transform_new("C")
+	editor.sel_scene_only(b)
+	editor.sel_scene_add(a)
+	editor.inspector_lock_set("Inspector", true)
+	editor.sel_scene_only(c)
+	editor.sel_scene_add(a)
+
+	editor.selection_persist_set_restored_for_test(true)
+	editor.selection_persist_capture()
+	testing.expect_value(t, len(editor.editor_settings.selection.objects), 2)
+	testing.expect_value(t, len(editor.editor_settings.inspector_locks), 1)
+
+	// Next run: nothing selected, nothing locked, C deleted meanwhile.
+	editor.inspector_lock_set("Inspector", false)
+	editor.sel_scene_clear()
+	engine.transform_destroy(c)
+	editor.selection_undo_track()
+	before := s.top
+
+	editor.selection_persist_set_restored_for_test(false)
+	editor.selection_persist_restore()
+	items := editor.sel_scene_items()
+	testing.expect(t, len(items) == 1 && items[0] == a, "the selection is back, without the deleted object")
+	locked := editor.inspector_targets("Inspector")
+	testing.expect(t, len(locked) == 2 && locked[0] == b && locked[1] == a, "the Inspector lock holds its objects again")
+
+	editor.selection_undo_track()
+	editor.selection_undo_track()
+	testing.expect_value(t, s.top, before)
+}
+
+// The tool windows (Animation, Playable Graph, Sequencer) follow the
+// selection, not a locked Inspector: with the Inspector locked to A, selecting
+// B publishes B. Selecting an asset keeps B, the object the Inspector kept.
+@(test)
+test_tool_windows_follow_the_selection_not_a_locked_inspector :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	_selection_reset()
+	defer _selection_reset()
+	defer editor.inspector_lock_set("Inspector", false)
+
+	a := engine.transform_new("A")
+	b := engine.transform_new("B")
+	editor.sel_scene_only(a)
+	editor.inspector_lock_set("Inspector", true)
+	editor.sel_scene_only(b)
+	editor.selection_publish()
+	testing.expect_value(t, engine.inspector_inspected_selection(), b)
+	testing.expect_value(t, editor.inspector_active_target("Inspector"), a)
+
+	editor.sel_proj_only("assets/Some.mat")
+	editor.selection_publish()
+	testing.expect_value(t, engine.inspector_inspected_selection(), b)
+}
+

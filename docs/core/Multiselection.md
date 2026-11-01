@@ -12,7 +12,7 @@ header says "N selected".
 
 State lives in `editor/selection.odin`: ONE selection for the whole editor, held as an ordered set per domain (scene Transform_Handles, project paths) where the LAST item is the active one. Selecting in one domain deselects the other, so an object and a file are never selected together, the Edit menu acts on whichever holds the selection, and each history step names one thing. Clearing one domain leaves the other. Dead handles are pruned each frame. `projectViewData.selectedFile` remains the active project path, so single-target code paths are unchanged.
 
-The two inspectors keep what they last showed when the selection moves to the other domain: the Project Inspector holds its loaded asset while an object is selected, and the Inspector keeps showing the objects that were selected while a file is (`sel_scene_inspected`). The Animation, Playable Graph and Sequencer windows follow the Inspector's object (`engine.inspector_inspected_selection`), creation menus parent under the live selection (`engine.inspector_active_selection`). Entering a folder is navigation and keeps the selection.
+The two inspectors keep what they last showed when the selection moves to the other domain: the Project Inspector holds its loaded asset while an object is selected, and the Inspector keeps showing the objects that were selected while a file is (`sel_scene_inspected`). The Animation, Playable Graph and Sequencer windows follow the selected object, or the kept one while a file is selected (`engine.inspector_inspected_selection`), whatever a locked Inspector holds, creation menus parent under the live selection (`engine.inspector_active_selection`). Entering a folder is navigation and keeps the selection.
 
 ## Interactions
 

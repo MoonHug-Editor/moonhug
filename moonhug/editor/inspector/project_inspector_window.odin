@@ -52,6 +52,25 @@ project_inspector_data :: proc(key: string) -> ^InspectorData {
 	return _data_of(w)
 }
 
+// A locked instance and the file it holds, both borrowed.
+Project_Inspector_Lock :: struct {
+	key:  string,
+	path: string,
+}
+
+// Every locked instance holding a file, the first one included, for saving
+// the locks across a restart (editor/selection_persist.odin).
+project_inspector_locked :: proc(allocator := context.temp_allocator) -> []Project_Inspector_Lock {
+	out := make([dynamic]Project_Inspector_Lock, allocator)
+	if _primary_locked && _primary.filePath != "" do append(&out, Project_Inspector_Lock{PROJECT_INSPECTOR, _primary.filePath})
+	for w in wnd.instances(PROJECT_INSPECTOR) {
+		if w.key == PROJECT_INSPECTOR || w.data == nil do continue
+		inst := (^_Instance)(w.data)
+		if inst.locked && inst.data.filePath != "" do append(&out, Project_Inspector_Lock{w.key, inst.data.filePath})
+	}
+	return out[:]
+}
+
 // The lock of the instance whose key is `key`, for its padlock.
 project_inspector_lock :: proc(key: string) -> ^bool {
 	if key == PROJECT_INSPECTOR do return &_primary_locked

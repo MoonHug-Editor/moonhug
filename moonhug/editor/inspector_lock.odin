@@ -52,7 +52,7 @@ _scene_lock :: proc(view: string, create: bool) -> ^_Scene_Lock {
 _inspector_lock_button :: proc(view: session.View) {
 	lock := _scene_lock(view.key, create = true)
 	locked := lock.locked
-	filter_toggle_button(locked ? icons.ICON_MD_LOCK : icons.ICON_MD_LOCK_OPEN, &locked)
+	widgets.toggle_button(locked ? icons.ICON_MD_LOCK : icons.ICON_MD_LOCK_OPEN, &locked)
 	widgets.tooltip(locked ? "Unlock: follow the selection again" : "Lock to the current selection")
 	inspector_lock_set(view.key, locked)
 }
@@ -71,6 +71,32 @@ inspector_lock_set :: proc(view: string, locked: bool) {
 		// what an edit applies to.
 		for h in sel_scene_inspected() do append(&lock.sel, h)
 	}
+}
+
+// Locks the Inspector instance `view` to `targets`, the objects it held when
+// the editor last quit (selection_persist.odin), not to the selection. The
+// objects that no longer exist drop out, and with none left there is no lock.
+inspector_lock_restore :: proc(view: string, targets: []core.Transform_Handle) {
+	context.allocator = runtime.default_allocator()
+	lock := _scene_lock(view, create = true)
+	clear(&lock.sel)
+	for h in targets do if _object_alive(h) do append(&lock.sel, h)
+	lock.locked = len(lock.sel) > 0
+}
+
+// A locked Inspector instance and the objects it holds, both borrowed.
+Inspector_Lock_View :: struct {
+	view:    string,
+	targets: []core.Transform_Handle,
+}
+
+// Every locked Inspector instance, for saving (selection_persist.odin).
+inspector_locked_views :: proc(allocator := context.temp_allocator) -> []Inspector_Lock_View {
+	out := make([dynamic]Inspector_Lock_View, allocator)
+	for key, lock in _scene_locks do if lock.locked && len(lock.sel) > 0 {
+		append(&out, Inspector_Lock_View{view = key, targets = lock.sel[:]})
+	}
+	return out[:]
 }
 
 // What the Inspector instance `view` draws: its locked set, or the selected
@@ -137,7 +163,7 @@ _project_inspector_lock_button :: proc(view: session.View) {
 	locked := inspector.project_inspector_lock(view.key)
 	if locked == nil do return
 	was := locked^
-	filter_toggle_button(locked^ ? icons.ICON_MD_LOCK : icons.ICON_MD_LOCK_OPEN, locked)
+	widgets.toggle_button(locked^ ? icons.ICON_MD_LOCK : icons.ICON_MD_LOCK_OPEN, locked)
 	widgets.tooltip(locked^ ? "Unlock: follow the project selection again" : "Lock to the current asset")
 	// Unlocking CATCHES UP: it retargets to whatever is selected now, rather
 	// than holding the stale asset until the next click. The scene inspector

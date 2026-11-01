@@ -313,14 +313,15 @@ _pv_teardown :: proc() {
 	_pv.entry_layer = {}
 }
 
-// The Animation component the window targets: on the active selection or its
-// nearest ancestor, so
-// selecting a child bone keeps the window on the animated root. Shared with
-// the Playable Graph visualizer, which targets identically.
+// The Animation component the window targets: on the locked object or the
+// selection (view_lock.odin), or its nearest ancestor, so selecting a child
+// bone keeps the window on the animated root. The Playable Graph visualizer
+// follows the selection by the same ancestor rule, without the lock.
 @(private)
 _pv_target :: proc() -> (owner: engine.Transform_Handle, a: ^anim.Animation) {
 	w := engine.ctx_world()
-	tH := engine.inspector_inspected_selection()
+	// The locked object, or the selection (view_lock.odin).
+	tH := _anim_lock_target()
 	for engine.pool_valid(&w.transforms, engine.Handle(tH)) {
 		if _, comp := engine.transform_get_comp(tH, anim.Animation); comp != nil {
 			return tH, comp
@@ -741,6 +742,10 @@ Anim_View_Prefs :: struct {
 	playback: Anim_Playback,
 	// The ruler over the time canvas (the view menu's three Ruler items).
 	ruler: Anim_Ruler,
+	// The locked object (view_lock.odin): its scene's asset guid and its
+	// local id. Empty when the window follows the selection.
+	locked_scene:  string,
+	locked_object: engine.Local_ID,
 }
 
 // How the transport plays a clip. Saved as an integer: Clip stays zero, so a
@@ -903,3 +908,11 @@ animation_view_set_lane :: proc(ch, lane: int, on: bool) -> bool {
 	if doc == nil || clip == nil do return false
 	return _pv_lane_set(doc, clip, ch, lane, on)
 }
+
+// Test-only: the animated object the window targets this frame, as
+// _animation_frame asks.
+animation_view_target :: proc() -> engine.Transform_Handle {
+	owner, _ := _pv_target()
+	return owner
+}
+

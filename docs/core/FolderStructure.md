@@ -20,7 +20,7 @@ moonhug/                    ← the editor's project
   external/                 ← third-party code. MoonHug's own packages are in libs/
   library/                  ← derived-data cache (see Library below). Safe to delete, rebuilt on the next run
   ProjectSettings/          ← settings about the PROJECT, committed: mcp.json and one <slug>.json per @(project_settings) tab
-  UserSettings/             ← per-developer editor state, never committed. Safe to delete, the editor writes defaults on the next run
+  UserSettings/             ← per-developer editor state, never committed: window layout, open scenes, the selection and the locked inspectors at quit. Safe to delete, the editor writes defaults on the next run
 
 plugins/                    ← next to moonhug/, at the repo root: every plugin, enabled by its link in moonhug/packages/ (see Plugins)
   engine/                   ← the engine plugin: scenes, transforms, components, rendering:  package engine

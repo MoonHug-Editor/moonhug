@@ -90,6 +90,17 @@ sel_scene_inspected_active :: proc() -> core.Transform_Handle {
 	return _HANDLE_NONE
 }
 
+// Publishes the selection to the packages' windows (core inspector_state):
+// the active object, and the object the tool windows follow (Animation,
+// Playable Graph, Sequencer): the active object, or the one kept while an
+// asset is selected. An Inspector lock changes neither: a locked Inspector
+// keeps its objects, the tool windows follow the selection. Once per frame
+// from the main loop.
+selection_publish :: proc() {
+	core.inspector_set_active_selection(sel_scene_active())
+	core.inspector_set_inspected_selection(sel_scene_inspected_active())
+}
+
 // Undo restore sets both sets and the Inspector's kept objects exactly as
 // recorded (undo.Selection_State), with no cross-set deselect.
 @(private)

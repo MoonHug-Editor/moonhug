@@ -127,7 +127,7 @@ console_view_draw :: proc(w: ^wnd.Window) {
 		_cv.last_count = 0
 	}
 	im.SameLine()
-	filter_toggle_button("Clear on Play", &_console_clear_on_play)
+	widgets.toggle_button("Clear on Play", &_console_clear_on_play)
 
 	// Each level toggle carries how many entries it filters, so a hidden
 	// level still says it has something. Counted per frame: the entry list is
@@ -159,11 +159,11 @@ console_view_draw :: proc(w: ^wnd.Window) {
 	im.SameLine()
 	im.SetCursorPosX(cursor_x + avail_x - btn_width)
 
-	filter_toggle_button(btn_labels[0], &_cv.show_info)
+	widgets.toggle_button(btn_labels[0], &_cv.show_info)
 	im.SameLine()
-	filter_toggle_button(btn_labels[1], &_cv.show_warning, im.Vec4{0.957, 0.737, 0.008, 1})
+	widgets.toggle_button(btn_labels[1], &_cv.show_warning, im.Vec4{0.957, 0.737, 0.008, 1})
 	im.SameLine()
-	filter_toggle_button(btn_labels[2], &_cv.show_error, im.Vec4{0.827, 0.133, 0.133, 1})
+	widgets.toggle_button(btn_labels[2], &_cv.show_error, im.Vec4{0.827, 0.133, 0.133, 1})
 
 	// Zero horizontal inner padding so rows sit flush against the left border
 	// (keep the default vertical padding for top/bottom breathing room).
@@ -407,20 +407,3 @@ _console_count_label :: proc(icon: cstring, n: int) -> cstring {
 	return fmt.ctprintf("%s %d###%s", icon, n, icon)
 }
 
-// A filter toggle. On: highlighted with on_color (or the theme's active-button
-// color when none given). Off: the theme's NORMAL button with a dimmed label —
-// a near-black button reads as disabled/broken rather than toggled off.
-filter_toggle_button :: proc(label: cstring, on: ^bool, on_color := im.Vec4{}) {
-	if on^ {
-		col := on_color
-		if col == {} {
-			col = im.GetStyleColorVec4(im.Col.ButtonActive)^
-		}
-		im.PushStyleColorImVec4(.Button, col)
-	} else {
-		txt := im.GetStyleColorVec4(im.Col.Text)^
-		im.PushStyleColorImVec4(.Text, im.Vec4{txt.x * 0.5, txt.y * 0.5, txt.z * 0.5, txt.w})
-	}
-	if im.Button(label) do on^ = !on^
-	im.PopStyleColor()
-}

@@ -3,6 +3,7 @@ package editor
 import "core:strings"
 import "core:sync"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
 
 MAX_OUTPUT_LINES :: 2000
@@ -83,7 +84,7 @@ output_view_draw :: proc(w: ^wnd.Window) {
 		output_view_clear()
 	}
 	im.SameLine()
-	filter_toggle_button("Follow", &ov.follow_tail)
+	widgets.toggle_button("Follow", &ov.follow_tail)
 	im.SameLine()
 	im.Text("Last run stdout/stderr (max %d lines)", MAX_OUTPUT_LINES)
 	im.Separator()

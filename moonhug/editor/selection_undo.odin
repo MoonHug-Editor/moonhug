@@ -108,6 +108,13 @@ selection_apply_state :: proc(state: undo.Selection_State) {
 	if active != "" do _project_reveal_keep_selection(active)
 }
 
+// Takes the selection as it is now as the starting point: the next frame's
+// track records no step for the change that led here (a restore at start).
+selection_undo_rebaseline :: proc() {
+	if _sel_undo_baseline_valid do undo.selection_state_destroy(&_sel_undo_baseline)
+	_sel_undo_baseline_valid = false
+}
+
 // Called once per frame from the main loop, after every view has processed
 // its input.
 selection_undo_track :: proc() {

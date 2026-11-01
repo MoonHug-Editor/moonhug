@@ -183,6 +183,9 @@ main :: proc() {
         // blank window behind a blocking load.
         SCENE_LOAD_WARMUP_FRAMES :: 3
         if frames_presented >= SCENE_LOAD_WARMUP_FRAMES do load_next_pending_scene()
+        // The selection and inspector locks of the last run, once every
+        // reopened scene is in (selection_persist.odin).
+        if frames_presented >= SCENE_LOAD_WARMUP_FRAMES && len(_pending_scene_loads) == 0 do selection_persist_restore()
 
         // Events feed both the editor input snapshot and imgui (the SDL3
         // backend owns keyboard/mouse/text/clipboard/DisplaySize/DeltaTime).
@@ -209,8 +212,7 @@ main :: proc() {
         // the UserContext inspector channel — plugins/engine/user_context.odin).
         // Once per frame rather than at every mutation site: selection moves
         // from clicks, picking, pending-select and undo restore alike.
-        core.inspector_set_active_selection(sel_scene_active())
-        core.inspector_set_inspected_selection(inspector_active_target("Inspector"))
+        selection_publish()
 
         // Reimports an Apply asked for last frame, before any view draws: a
         // reimport frees the asset's GPU textures (editor/assets/import.odin).

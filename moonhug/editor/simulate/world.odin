@@ -25,6 +25,11 @@ Simulate_World :: struct {
 	reset_time:      proc(),
 	// The object a selection can hold for `id` in the restored `scene`.
 	select_restored: proc(scene: core.Scene_Ref, id: core.Local_ID) -> (core.Transform_Handle, bool),
+	// A loaded scene's asset, empty for a scene never saved, and the loaded
+	// scene of an asset, zero when it is not loaded. What names a scene across
+	// an editor restart, where session ids start over (selection_persist.odin).
+	scene_asset:     proc(scene: core.Scene_Ref) -> core.Asset_GUID,
+	scene_of_asset:  proc(guid: core.Asset_GUID) -> core.Scene_Ref,
 }
 
 @(private) _world: Simulate_World
@@ -64,4 +69,14 @@ world_reset_time :: proc() {
 world_select_restored :: proc(scene: core.Scene_Ref, id: core.Local_ID) -> (core.Transform_Handle, bool) {
 	if _world.select_restored == nil do return {}, false
 	return _world.select_restored(scene, id)
+}
+
+world_scene_asset :: proc(scene: core.Scene_Ref) -> core.Asset_GUID {
+	if _world.scene_asset == nil do return {}
+	return _world.scene_asset(scene)
+}
+
+world_scene_of_asset :: proc(guid: core.Asset_GUID) -> core.Scene_Ref {
+	if _world.scene_of_asset == nil do return {}
+	return _world.scene_of_asset(guid)
 }

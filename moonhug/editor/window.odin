@@ -60,6 +60,9 @@ EditorSettings :: struct {
     gizmo_icon_px:            f32,                      // gizmo settings' Icon Size, 0 = the default
     gizmo_hidden_icons:       [dynamic]string,          // component types whose icon the gizmo settings hide
     gizmo_hidden_gizmos:      [dynamic]string,          // component types whose gizmo the gizmo settings hide
+    selection:                Persisted_Selection,      // the selection at quit (selection_persist.odin)
+    inspector_locks:          [dynamic]Persisted_Inspector_Lock, // locked Inspector instances (selection_persist.odin)
+    project_inspector_locks:  [dynamic]Persisted_Project_Lock,   // locked Project Inspector instances (selection_persist.odin)
 }
 
 editor_settings: EditorSettings
@@ -156,6 +159,9 @@ save_editor_settings :: proc() {
     delete(editor_settings.gizmo_hidden_gizmos)
     editor_settings.gizmo_hidden_icons = gizmos.gizmo_types_hiding(.Icon)
     editor_settings.gizmo_hidden_gizmos = gizmos.gizmo_types_hiding(.Gizmo)
+
+    // The selection and the inspector locks, named so they resolve next run.
+    selection_persist_capture()
 
     delete(editor_settings.open_scene_guids)
     editor_settings.open_scene_guids = make([dynamic]string, context.temp_allocator)

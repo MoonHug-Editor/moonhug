@@ -21,6 +21,8 @@ install_simulate_world :: proc() {
 		set_playing     = _set_playing,
 		reset_time      = engine.fixed_reset,
 		select_restored = _select_restored,
+		scene_asset     = _scene_asset,
+		scene_of_asset  = _scene_of_asset,
 	})
 	// The runnable packages, from the generated registration/sim_hosts_generated.odin.
 	simulate.set_hosts(_hosts_table())
@@ -150,6 +152,19 @@ _release :: proc(snapshot: []byte) {
 @(private = "file")
 _set_playing :: proc(playing: bool) {
 	engine.application_set_playing(playing)
+}
+
+@(private = "file")
+_scene_asset :: proc(scene: engine.Scene_Ref) -> engine.Asset_GUID {
+	s := engine.sm_scene_find_by_session_id(scene.id)
+	return s != nil ? s.asset_guid : {}
+}
+
+@(private = "file")
+_scene_of_asset :: proc(guid: engine.Asset_GUID) -> engine.Scene_Ref {
+	if engine.asset_guid_is_empty(guid) do return {}
+	s := engine.sm_scene_find_by_guid(guid)
+	return s != nil ? engine.Scene_Ref{id = s.session_id} : {}
 }
 
 @(private = "file")

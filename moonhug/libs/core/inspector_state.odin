@@ -17,11 +17,12 @@ InspectorState :: struct {
     // without importing the editor root. {} means nothing selected; readers
     // pool-validate, so a handle that died mid-frame is harmless.
     active_scene_tH:       Transform_Handle,
-    // The object the Inspector shows: the active selection, or, while the
-    // project holds the selection, the object the Inspector kept. What tool
-    // windows (animation, sequencer) follow, so clicking an asset does not
-    // take their target away. active_scene_tH stays the live selection, which
-    // creation menus parent under.
+    // The selected object the tool windows (animation, sequencer) follow: the
+    // active selection, or, while the project holds the selection, the object
+    // the Inspector kept, so clicking an asset does not take their target
+    // away. An Inspector lock does not change it: the tool windows follow the
+    // selection, not a locked Inspector. active_scene_tH stays the live
+    // selection, which creation menus parent under.
     inspected_scene_tH:    Transform_Handle,
     // Cross-package selection request: subpackages (e.g. inspector) post a
     // transform here; the editor's hierarchy view picks it up next frame and

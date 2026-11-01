@@ -374,6 +374,19 @@ _project_inspect_path :: proc(full_path: string) {
     inspector.inspector_data_reset()
 }
 
+// Shows `full_path` in the Project Inspector instance `key` and locks it
+// there: a lock it held when the editor last quit (selection_persist.odin).
+// Nothing when the instance is not open.
+project_inspector_lock_restore :: proc(key, full_path: string) {
+    data := inspector.project_inspector_data(key)
+    locked := inspector.project_inspector_lock(key)
+    if data == nil || locked == nil do return
+    inspector.inspectorData = data
+    _project_inspect_one(full_path)
+    inspector.inspector_data_reset()
+    locked^ = true
+}
+
 // Shows `full_path` in the Project Inspector instance inspector.inspectorData
 // points at.
 @(private = "file")

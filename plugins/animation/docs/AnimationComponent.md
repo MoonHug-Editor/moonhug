@@ -266,6 +266,10 @@ unreachable, unplayable, and invisible in the tree.
 and curve view over one clip's channels, with recording, add-property and
 per-key editing.
 
+- The window shows the Animation component of the selected object or its nearest ancestor, or of the object kept while an asset is selected. A locked Inspector does not change it.
+- The padlock in its tab bar locks the window to the animated object it shows, as the inspectors' padlocks do (`editor/view_lock.odin`). Locked, selecting another object leaves the window where it is. Every copy of the window shares one preview, so they share the lock.
+- The lock is saved in the window's user settings, `UserSettings/animation.json`, as the object's scene asset and local id, and taken up again after a restart once that scene is loaded. Deleting the locked object releases the lock.
+
 It is component-bound, not asset-bound. `_pv_target` walks up from the selection
 to the nearest `Animation`, so selecting a child bone keeps the window on the
 animated root, and the clip dropdown lists every clip reachable from that
