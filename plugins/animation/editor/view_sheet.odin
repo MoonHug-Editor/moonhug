@@ -17,6 +17,19 @@ import "moonhug:editor/undo"
 import "moonhug:editor/widgets"
 import "moonhug:editor/icons"
 
+// The sheet's layout and pointer for one frame, what the dope sheet and the
+// curve view both draw and hit-test against: the visible rows and where they
+// start, the body height, the canvas edges, the time origin and scale
+// (pixels per second), and the pointer with the row under it.
+@(private)
+_Sheet_Frame :: struct {
+	rows:                                 []Sheet_Row,
+	rows_y, body_h, x0, x1, tx0, pps:     f32,
+	hovered:                              bool,
+	mp:                                   im.Vec2,
+	row_at:                               int, // -1 off the rows
+}
+
 @(private = "file") _ANIM_MIN_LEFT_W :: f32(210) // a vec4 row's value fields plus the start of its name
 @(private = "file") _ANIM_MIN_CANVAS_W :: f32(80)
 @(private = "file") _ANIM_DRAG_PX :: f32(4) // a press that moves less is a click
@@ -373,13 +386,18 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 	nrows = len(rows)
 	if row_at >= nrows do row_at = -1
 
+	frame := _Sheet_Frame{
+		rows = rows, rows_y = rows_y, body_h = body_h,
+		x0 = x0, x1 = x1, tx0 = tx0, pps = pps,
+		hovered = hovered, mp = mp, row_at = row_at,
+	}
 	im.DrawList_PushClipRect(dl, canvas_clip_min, canvas_clip_max, true)
 	if _av.mode == .Dopesheet {
 		// A tangent drag belongs to the curve view: leaving it ends the drag.
 		if _av.drag_tan do _pv_tan_drag_end(doc, true)
-		_pv_sheet_dopesheet(doc, clip, dl, rows, rows_y, body_h, x0, x1, tx0, pps, hovered, mp, row_at)
+		_pv_sheet_dopesheet(doc, clip, dl, frame)
 	} else {
-		_pv_sheet_curves(doc, clip, dl, rows, rows_y, body_h, x0, x1, tx0, pps, mp, row_at)
+		_pv_sheet_curves(doc, clip, dl, frame)
 	}
 	im.DrawList_PopClipRect(dl)
 

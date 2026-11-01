@@ -106,3 +106,45 @@ test_session_begun_while_applying_keeps_outer_group :: proc(t: ^testing.T) {
 	undo.end_group_command(s)
 	testing.expect_value(t, len(s.items), 1)
 }
+
+// The commit listener runs one call at a time: a session it ends itself
+// records its edit as usual, inside the outer session's group, without a
+// second listener call. One undo step holds both edits.
+@(private = "file")
+_inner_calls: int
+
+@(private = "file")
+_inner_field: int
+
+@(test)
+test_session_listener_is_not_called_again_by_its_own_session :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+	prev_listener := undo.commit_listener
+	defer undo.commit_listener = prev_listener
+	_inner_calls = 0
+	_inner_field = 0
+	undo.commit_listener = proc(edits: []undo.Edit_Commit, consumed: []bool) {
+		_inner_calls += 1
+		targets := []undo.Edit_Target{{kind = .Raw, raw_ptr = &_inner_field, raw_tid = int, field_ptr = &_inner_field, field_tid = int}}
+		inner := undo.edit_session_begin(targets, "Inner")
+		_inner_field = 5
+		undo.edit_session_end(&inner)
+	}
+
+	field: int
+	targets := []undo.Edit_Target{{kind = .Raw, raw_ptr = &field, raw_tid = int, field_ptr = &field, field_tid = int}}
+	sess := undo.edit_session_begin(targets, "Outer")
+	field = 3
+	undo.edit_session_end(&sess)
+
+	testing.expect_value(t, _inner_calls, 1)
+	testing.expect_value(t, _inner_field, 5)
+	testing.expect_value(t, field, 3)
+	testing.expect_value(t, len(s.txn_stack), 0)
+	testing.expect_value(t, len(s.items), 1)
+}
+

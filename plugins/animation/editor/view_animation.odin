@@ -408,18 +408,32 @@ _pv_edit_begin :: proc(doc: ^inspector.Asset_Doc) {
 
 @(private)
 _pv_edit_commit :: proc(doc: ^inspector.Asset_Doc) {
-	if !_pv_edit_held do undo.edit_session_end(&_pv_session)
+	if _pv_edit_held == 0 do undo.edit_session_end(&_pv_session)
 	_pv_mark_edited(doc)
 	// The sheet and the selection follow the edit at once, so nothing later
 	// this frame reads channel indices from before it.
 	if _av != &_av_none && doc.data.id == typeid_of(anim.AnimationClip) do _pv_sheet(doc, cast(^anim.AnimationClip)doc.data.data)
 }
 
-// Set while one gesture runs several keyframe operations that each open and
-// commit (recording a new row is a channel plus a key): _pv_edit_commit then
-// leaves the session open, and the caller commits once at the end.
+// How many callers hold the session open: a gesture that runs several
+// keyframe operations that each open and commit (recording a new row is a
+// channel plus a key, a row value drag spans frames). While it is above
+// zero _pv_edit_commit leaves the session open, and the caller whose release
+// brings it to zero commits once at the end. Holds nest, so a record inside
+// a row value drag does not end the drag's session.
 @(private)
-_pv_edit_held: bool
+_pv_edit_held: int
+
+@(private)
+_pv_edit_hold :: proc() {
+	_pv_edit_held += 1
+}
+
+@(private)
+_pv_edit_release :: proc() {
+	assert(_pv_edit_held > 0, "animation: a session release matches a hold")
+	_pv_edit_held -= 1
+}
 
 @(private)
 _pv_mark_edited :: proc(doc: ^inspector.Asset_Doc) {
@@ -864,6 +878,22 @@ animation_view_apply_preset :: proc(preset: Key_Preset) {
 // Test-only: clears the key selection.
 animation_view_deselect :: proc() {
 	_pv_deselect()
+}
+
+// Test-only: the row state of the window copy (with no window open, the
+// spare copy): collapse an Object row, expand a vector row by its
+// sheet_channel_key, ask either, and clear both.
+animation_view_toggle_collapsed :: proc(target: string) { _pv_collapse_toggle(target) }
+animation_view_is_collapsed :: proc(target: string) -> bool { return _av.collapsed[target] }
+animation_view_toggle_expanded :: proc(key: string) { _pv_expand_toggle(key) }
+animation_view_is_expanded :: proc(key: string) -> bool { return _av.expanded[key] }
+animation_view_rows_clear :: proc() {
+	context.allocator = runtime.default_allocator()
+	for k in _av.collapsed do delete(k)
+	clear(&_av.collapsed)
+	for k in _av.expanded do delete(k)
+	clear(&_av.expanded)
+	_av.view_gen += 1
 }
 
 // Test-only: enables or disables lane `lane` of row `ch` in the shown clip, as

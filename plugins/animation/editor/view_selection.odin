@@ -209,3 +209,25 @@ _pv_sel_mask :: proc(ch_idx, count: int) -> []bool {
 	}
 	return mask
 }
+
+// A press on key `key` of channel `ch`, the plain (not additive) kind: a key
+// already in the selection keeps the selection, so a drag moves all of it,
+// an unselected key becomes the whole selection. Either way it becomes the
+// primary key.
+@(private)
+_pv_pick_key :: proc(ch, key: int) {
+	if !_pv_sel_has(ch, key) do _pv_sel_set(ch, key)
+	_av.sel_ch = ch
+	_av.sel_key = key
+}
+
+// _pv_pick_key for the keys a summary key stands for: all of them stay
+// selected when they already are, else they become the selection. The
+// first becomes the primary key.
+@(private)
+_pv_pick_keys :: proc(keys: []Sheet_Key) {
+	if !_pv_sel_has_all(keys) do _pv_sel_set_keys(keys)
+	_av.sel_ch = keys[0].ch
+	_av.sel_key = keys[0].key
+}
+

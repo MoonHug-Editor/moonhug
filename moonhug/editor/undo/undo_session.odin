@@ -163,7 +163,14 @@ Edit_Commit :: struct {
 // in the session's group, so the whole gesture stays one undo step.
 //
 // One global, nil by default. The Animation window's Record installs it.
+//
+// One call at a time: a session the listener ends itself (its own document
+// edit) records as usual but does not call the listener again, so a
+// listener needs no re-entry guard of its own.
 commit_listener: proc(edits: []Edit_Commit, consumed: []bool)
+
+@(private = "file")
+_listener_running: bool
 
 // Captures after-state and records ONE grouped action for every target that
 // actually changed. Targets whose value is unchanged contribute nothing, so a
@@ -216,8 +223,10 @@ edit_session_end :: proc(sess: ^Edit_Session) {
 	}
 
 	consumed := make([]bool, len(commits), context.temp_allocator)
-	if commit_listener != nil && len(commits) > 0 {
+	if commit_listener != nil && len(commits) > 0 && !_listener_running {
+		_listener_running = true
 		commit_listener(commits[:], consumed)
+		_listener_running = false
 	}
 
 	wrote := false

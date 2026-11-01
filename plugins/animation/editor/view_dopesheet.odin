@@ -92,16 +92,9 @@ _pv_box_add_channel :: proc(clip: ^anim.AnimationClip, ci: int, rmin, rmax: im.V
 }
 
 @(private)
-_pv_sheet_dopesheet :: proc(
-	doc: ^inspector.Asset_Doc,
-	clip: ^anim.AnimationClip,
-	dl: ^im.DrawList,
-	rows: []Sheet_Row,
-	rows_y, body_h, x0, x1, tx0, pps: f32,
-	hovered: bool,
-	mp: im.Vec2,
-	row_at: int,
-) {
+_pv_sheet_dopesheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, dl: ^im.DrawList, f: _Sheet_Frame) {
+	rows, rows_y, x0, x1, tx0, pps := f.rows, f.rows_y, f.x0, f.x1, f.tx0, f.pps
+	hovered, mp, row_at := f.hovered, f.mp, f.row_at
 	// Row stripes + keys. An Object row shows a summary key at every time any
 	// of its channels has one, the hidden ones included. A split Channel row
 	// does the same over its lane channels.
@@ -156,9 +149,7 @@ _pv_sheet_dopesheet :: proc(
 			if _pv_additive() {
 				_pv_sel_toggle_keys(sum_keys)
 			} else {
-				if !_pv_sel_has_all(sum_keys) do _pv_sel_set_keys(sum_keys)
-				_av.sel_ch = sum_keys[0].ch
-				_av.sel_key = sum_keys[0].key
+				_pv_pick_keys(sum_keys)
 				_pv_drag_begin(doc, clip, (mp.x - tx0) / pps, comp = -1)
 			}
 		} else if obj_row {
@@ -182,9 +173,7 @@ _pv_sheet_dopesheet :: proc(
 			case k >= 0:
 				// Dragging a key that is already selected moves the whole
 				// selection. Grabbing an unselected one selects just it.
-				if !_pv_sel_has(row_ch, k) do _pv_sel_set(row_ch, k)
-				_av.sel_ch = row_ch
-				_av.sel_key = k
+				_pv_pick_key(row_ch, k)
 				_pv_drag_begin(doc, clip, (mp.x - tx0) / pps, comp = -1)
 			case in_canvas:
 				// Empty canvas, on a track row or below the last one: rubber-band
@@ -209,16 +198,12 @@ _pv_sheet_dopesheet :: proc(
 		// always acts on what is under the cursor.
 		if sum_row {
 			if keys := _pv_summary_hit(clip, sum_chans, mp.x, tx0, pps); len(keys) > 0 {
-				if !_pv_sel_has_all(keys) do _pv_sel_set_keys(keys)
-				_av.sel_ch = keys[0].ch
-				_av.sel_key = keys[0].key
+				_pv_pick_keys(keys)
 				im.OpenPopup("##anim_key_ctx")
 			}
 		} else if row_ch >= 0 {
 			if k := _pv_key_hit_x(clip.channels[row_ch].times[:], mp.x, tx0, pps); k >= 0 {
-				if !_pv_sel_has(row_ch, k) do _pv_sel_set(row_ch, k)
-				_av.sel_ch = row_ch
-				_av.sel_key = k
+				_pv_pick_key(row_ch, k)
 				im.OpenPopup("##anim_key_ctx")
 			}
 		}
@@ -230,9 +215,9 @@ _pv_sheet_dopesheet :: proc(
 		if len(_pv_summary_hit(clip, sum_chans, mp.x, tx0, pps)) == 0 {
 			_av.box = false
 			t := _pv_snap_time(clip, (mp.x - tx0) / pps)
-			_pv_edit_held = true
+			_pv_edit_hold()
 			for ci in sum_chans do _pv_add_key(doc, clip, ci, t)
-			_pv_edit_held = false
+			_pv_edit_release()
 			if undo.edit_session_active(&_pv_session) do _pv_edit_commit(doc)
 		}
 	} else if hovered && row_ch >= 0 && mp.x >= x0 && im.IsMouseDoubleClicked(.Left) {

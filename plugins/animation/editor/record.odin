@@ -75,32 +75,25 @@ _Record_Key :: struct {
 	leaf:     typeid,
 }
 
-// Set while the listener runs: the clip document's own session ends inside it
-// and calls the listener again.
-@(private = "file")
-_record_busy: bool
-
 @(private = "file")
 _record_commit :: proc(edits: []undo.Edit_Commit, consumed: []bool) {
 	// A state preview from the States tree poses from an authored state, not
 	// from the shown clip, so nothing is keyed while it runs.
-	if _record_busy || !_pv.recording || _pv.entry != 0 do return
+	if !_pv.recording || _pv.entry != 0 do return
 	doc, clip := _pv_doc()
 	if doc == nil || clip == nil do return
-	_record_busy = true
-	defer _record_busy = false
 
 	// Every keyed entry goes into one session on the clip document. The
 	// session's payloads use the caller's allocator, as every undo record does.
-	// A hold another gesture has open stays open.
+	// The clip session's own end does not call this listener again
+	// (undo.edit_session_end runs one listener call at a time).
 	keyed := false
-	held := _pv_edit_held
 	for e, i in edits {
 		k, ok := _record_key_of(e)
 		if !ok do continue
 		if !keyed {
 			_pv_edit_begin(doc)
-			_pv_edit_held = true
+			_pv_edit_hold()
 			keyed = true
 		}
 		{
@@ -111,7 +104,7 @@ _record_commit :: proc(edits: []undo.Edit_Commit, consumed: []bool) {
 		consumed[i] = true
 	}
 	if keyed {
-		_pv_edit_held = held
+		_pv_edit_release()
 		_pv_edit_commit(doc)
 	}
 }
@@ -731,8 +724,6 @@ _record_delete_key :: proc(owner: engine.Handle, field_offset: uintptr, field_ti
 	for idx in chans do if _record_key_at_playhead(clip, idx) >= 0 do any_key = true
 	if !any_key do return false
 
-	_record_busy = true
-	defer _record_busy = false
 	_pv_edit_begin(doc)
 	{
 		context.allocator = inspector.doc_alloc()
@@ -786,12 +777,8 @@ _record_key_value :: proc(owner: engine.Handle, field_offset: uintptr, field_tid
 		}
 	}
 
-	_record_busy = true
-	defer _record_busy = false
-	// A hold another gesture has open stays open.
-	held := _pv_edit_held
 	_pv_edit_begin(doc)
-	_pv_edit_held = true
+	_pv_edit_hold()
 	{
 		// Channel strings and key arrays live in the document.
 		context.allocator = inspector.doc_alloc()
@@ -803,7 +790,7 @@ _record_key_value :: proc(owner: engine.Handle, field_offset: uintptr, field_tid
 		}
 		_record_key_rows(doc, clip, chans, k, edited, ref)
 	}
-	_pv_edit_held = held
+	_pv_edit_release()
 	_pv_edit_commit(doc)
 	return true
 }

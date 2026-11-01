@@ -72,15 +72,9 @@ _pv_tan_drag_end :: proc(doc: ^inspector.Asset_Doc, commit: bool) {
 }
 
 @(private)
-_pv_sheet_curves :: proc(
-	doc: ^inspector.Asset_Doc,
-	clip: ^anim.AnimationClip,
-	dl: ^im.DrawList,
-	rows: []Sheet_Row,
-	rows_y, body_h, x0, x1, tx0, pps: f32,
-	mp: im.Vec2,
-	row_at: int,
-) {
+_pv_sheet_curves :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, dl: ^im.DrawList, f: _Sheet_Frame) {
+	rows, rows_y, body_h, x0, x1, tx0, pps := f.rows, f.rows_y, f.body_h, f.x0, f.x1, f.tx0, f.pps
+	mp, row_at := f.mp, f.row_at
 	// Left-panel click on a property row selects the channel whose curves
 	// show. An Object row plots nothing.
 	if im.IsItemActivated() && mp.x < x0 && row_at >= 0 && rows[row_at].kind != .Object {
@@ -287,9 +281,7 @@ _pv_sheet_curves :: proc(
 	// Press on a tangent handle: drag edits that tangent. It selects the key,
 	// and a read-only clip only selects.
 	if im.IsItemActivated() && mp.x >= x0 && hov_k >= 0 && !_av.drag_tan {
-		if !_pv_sel_has(hov_ch, hov_k) do _pv_sel_set(hov_ch, hov_k)
-		_av.sel_ch = hov_ch
-		_av.sel_key = hov_k
+		_pv_pick_key(hov_ch, hov_k)
 		if doc != nil {
 			_pv_edit_begin(doc)
 			_av.drag_tan = true
@@ -323,9 +315,7 @@ _pv_sheet_curves :: proc(
 			} else {
 				// As in the dopesheet: dragging a selected key moves the
 				// group, an unselected one becomes the selection.
-				if !_pv_sel_has(best_ch, best_k) do _pv_sel_set(best_ch, best_k)
-				_av.sel_ch = best_ch
-				_av.sel_key = best_k
+				_pv_pick_key(best_ch, best_k)
 				_pv_drag_begin(doc, clip, (mp.x - tx0) / pps, comp = best_c)
 			}
 		} else {
@@ -342,9 +332,7 @@ _pv_sheet_curves :: proc(
 			hit_ch, hit_k = gi, _pv_key_hit_x(clip.channels[gi].times[:], mp.x, tx0, pps)
 		}
 		if hit_k >= 0 {
-			if !_pv_sel_has(hit_ch, hit_k) do _pv_sel_set(hit_ch, hit_k)
-			_av.sel_ch = hit_ch
-			_av.sel_key = hit_k
+			_pv_pick_key(hit_ch, hit_k)
 			im.OpenPopup("##anim_key_ctx")
 		}
 	}

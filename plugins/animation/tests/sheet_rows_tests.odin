@@ -483,3 +483,51 @@ test_retarget_refuses_a_lane_with_two_rows :: proc(t: ^testing.T) {
 	testing.expect(t, ok, "the retargeted clip is valid")
 	testing.expect_value(t, s.top, before + 1)
 }
+
+// Retargeting carries the row state with the rows: a collapsed Object row
+// stays collapsed under its new path, and an expanded vector row of it stays
+// expanded. Rows of other targets keep their state.
+@(test)
+test_retarget_keeps_collapsed_and_expanded_rows :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	s := common.setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown_undo(tc, s)
+
+	os.make_directory(_SR_DIR)
+	path :: _SR_DIR + "/RetargetRows.anim"
+	testing.expect(t, os.write_entire_file(path, transmute([]u8)string(_SR_CLIP)) == nil, "the clip file is written")
+	asset_pipeline.asset_pipeline_init()
+	engine.asset_db_init(_SR_DIR)
+	undo.set_asset_apply(inspector.asset_doc_apply_json)
+	undo.set_asset_doc_lookup(inspector.asset_doc_payload_ptr)
+	defer {
+		animation_editor.animation_view_rows_clear()
+		animation_editor.animation_record_reset()
+		inspector.asset_docs_shutdown()
+		engine.asset_db_shutdown()
+		common.remove_tree(_SR_DIR)
+		common.remove_tree(engine.library_dir())
+	}
+	doc := inspector.asset_doc_get(path)
+	if !testing.expect(t, doc != nil, "the clip loads as a document") do return
+	clip := cast(^anim.AnimationClip)doc.data.data
+	root := engine.transform_new("Root")
+	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0, armed = false)
+
+	arm_pos := animation_editor.sheet_channel_key(&clip.channels[0], context.temp_allocator)
+	leg := animation_editor.sheet_channel_key(&clip.channels[3], context.temp_allocator)
+	animation_editor.animation_view_toggle_collapsed("Body/Arm")
+	animation_editor.animation_view_toggle_expanded(arm_pos)
+	animation_editor.animation_view_toggle_expanded(leg)
+
+	testing.expect(t, animation_editor.animation_view_retarget("Body/Arm", "Armature/node_2"), "the retarget applies")
+	moved := animation_editor.sheet_channel_key(&clip.channels[0], context.temp_allocator)
+	testing.expect(t, animation_editor.animation_view_is_collapsed("Armature/node_2"), "the collapse follows the row")
+	testing.expect(t, !animation_editor.animation_view_is_collapsed("Body/Arm"), "the old path keeps no collapse")
+	testing.expect(t, animation_editor.animation_view_is_expanded(moved), "the expanded vector row follows the row")
+	testing.expect(t, !animation_editor.animation_view_is_expanded(arm_pos), "the old key is gone")
+	testing.expect(t, animation_editor.animation_view_is_expanded(leg), "another target keeps its state")
+}
+

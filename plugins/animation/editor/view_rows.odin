@@ -214,9 +214,20 @@ animation_view_retarget :: proc(old_target, new_target: string) -> bool {
 	}
 	_pv_edit_commit(doc)
 
+	// The row state follows the rows: the Object row's collapse, and the
+	// expanded vector rows, whose keys start with the target
+	// (sheet_channel_key).
 	if old in _av.collapsed {
 		_pv_collapse_toggle(old)
 		if new not_in _av.collapsed do _pv_collapse_toggle(new)
+	}
+	prefix := strings.concatenate({old, "\x1f"}, context.temp_allocator)
+	moved := make([dynamic]string, context.temp_allocator)
+	for k in _av.expanded do if strings.has_prefix(k, prefix) do append(&moved, strings.clone(k, context.temp_allocator))
+	for k in moved {
+		_pv_expand_toggle(k)
+		renamed := strings.concatenate({new, k[len(old):]}, context.temp_allocator)
+		if renamed not_in _av.expanded do _pv_expand_toggle(renamed)
 	}
 	return true
 }
@@ -299,7 +310,7 @@ _pv_row_gesture: bool
 @(private)
 _pv_row_gesture_end :: proc() {
 	_pv_row_gesture = false
-	_pv_edit_held = false
+	_pv_edit_release()
 	doc, clip := _pv_doc()
 	if doc == nil || clip == nil {
 		undo.edit_session_end(&_pv_session)
@@ -419,7 +430,7 @@ _pv_draw_row_values :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 		if changed {
 			if !_pv_row_gesture {
 				_pv_row_gesture = true
-				_pv_edit_held = true
+				_pv_edit_hold()
 			}
 			_pv_row_key(doc, clip, key_ch, edited)
 		}

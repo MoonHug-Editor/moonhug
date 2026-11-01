@@ -63,6 +63,9 @@ _rec_close :: proc() {
 	inspector.driven_row_state = nil
 	inspector.driven_add_key = nil
 	inspector.driven_delete_key = nil
+	inspector.driven_tooltip_read_only = ""
+	inspector.driven_tooltip_editable = ""
+	inspector.driven_tooltip_add_key = ""
 	inspector.asset_docs_shutdown()
 	engine.asset_db_shutdown()
 	common.remove_tree(_DIR)
@@ -691,8 +694,8 @@ test_rotation_row_euler_round_trip :: proc(t: ^testing.T) {
 
 // The mark and "Add Key" ask inspector.driven_row_state: a field with a row
 // in the shown clip has one, a field without has none, and both are keyable
-// on the animated object or under it, Record armed or not. An object outside
-// the animated object is neither.
+// on the animated object or under it while Record is armed. An object
+// outside the animated object is neither.
 @(test)
 test_row_state_answers_rows_and_keyable :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
