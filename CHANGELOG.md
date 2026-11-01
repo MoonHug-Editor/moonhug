@@ -1,3 +1,12 @@
+## [0.154.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.153.0...v0.154.0) (2026-11-01)
+
+### Features
+
+* axis colour stripe on every vector component field, one shared helper ([4acd68c](https://github.com/MoonHug-Editor/moonhug/commit/4acd68c07264baf2af674be01a34c49cce26565c))
+* **dialog:** keyboard focus with Tab and arrows, the open dialog owns the keyboard ([8d14ece](https://github.com/MoonHug-Editor/moonhug/commit/8d14ece8a05099dffb613e81f6d248313f8ff202))
+* selection and view locks survive a restart, Animation window lock ([d298522](https://github.com/MoonHug-Editor/moonhug/commit/d298522e510de3f26853981b4119cd7eb6242d54))
+* stack gutter bars, show override and animation driven markers at once ([a9b413e](https://github.com/MoonHug-Editor/moonhug/commit/a9b413e6c92c52ffb0a5e8e32a84023d8fcab331))
+
 ## [0.153.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.152.0...v0.153.0) (2026-11-01)
 
 ### Features
