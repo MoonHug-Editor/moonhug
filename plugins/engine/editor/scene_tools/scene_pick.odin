@@ -29,7 +29,9 @@ Drawn_Quads :: struct {
 
 drawn_quads :: proc(view: engine.Render_View) -> Drawn_Quads {
 	cmds := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
-	engine.render_collect_commands(view, &cmds, meshes = false)
+	quads := view
+	quads.quads_only = true
+	engine.render_collect_commands(quads, &cmds)
 	out := Drawn_Quads{by_owner = make(map[engine.Transform_Handle][dynamic]int, context.temp_allocator)}
 	n := 0
 	for c in cmds {

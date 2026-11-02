@@ -237,7 +237,9 @@ _skin_pose :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh) {
 // stamp below. Skinning is a pure function of the bind pose and the current
 // joint transforms, so a second view in the same frame would upload the same
 // palette and dispatch the same pass again.
-skinned_mesh_collect :: proc(out: ^[dynamic]Render_Command, view: Render_View) {
+@(render_collector)
+collect_skinned_meshes :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
+    if view.quads_only do return
     w := ctx_world()
     it := pool_iterator(skinned_mesh_renderers(w))
     for smr, _ in pool_next(&it) {

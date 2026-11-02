@@ -49,6 +49,10 @@ Render_View :: struct {
 	// every caster) is not a camera, and nothing it would drop is invisible.
 	frustum:       Frustum,
 	cull:          bool,
+	// Collect quads only: the mesh collectors return at once. The editor's
+	// picking and framing read what package renderers draw, and need no
+	// meshes posed or culled for it.
+	quads_only:    bool,
 }
 
 // Six clip planes, each (normal, d) with dot(normal, p) + d >= 0 inside:

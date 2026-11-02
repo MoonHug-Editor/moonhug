@@ -301,21 +301,26 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 - The editor scene view builds a `Render_View` from its own plain-data camera
   and goes through the SAME collect/execute — game view and scene view render
   identically by construction.
-- Collection is a registry (`render_register_collector`): a collector is
-  `proc(view: Render_View, out: ^[dynamic]Render_Command)`, registered once at
-  an init phase. `render_collect_commands` runs the engine's built-in mesh
-  collector, then every registered one. Collection order does not
-  matter — `render_execute` sorts the combined list. The registry is the seam
-  that lets renderer components live in packages: a package owns its component
-  pool and emits commands from the engine's vocabulary (`Draw_Quad`,
-  `Draw_Mesh`, plus a lexicographic `Sort_Key` for alpha-blended ordering).
+- Collection is a list of collectors: a collector is a
+  `proc(view: Render_View, out: ^[dynamic]Render_Command)` declared with
+  `@(render_collector)`, and the generated registration (render_collector_gen)
+  registers every one, in the editor from `@(init)` and in a game from
+  `__standalone_run`. The engine's mesh, skinned mesh and canvas collectors
+  declare it like a package's. `render_collect_commands` runs the list.
+  Collection order does not matter — `render_execute` sorts the combined
+  list. A view with `quads_only` set gets no meshes: the mesh collectors
+  return at once, which is what the editor's picking and framing ask for.
+  The list is the seam that lets renderer components live in packages: a
+  package owns its component pool and emits commands from the engine's
+  vocabulary (`Draw_Quad`, `Draw_Mesh`, plus a lexicographic `Sort_Key` for
+  alpha-blended ordering).
   Every command names its `owner`, the transform whose renderer emits it. The
   editor picks, box-selects, outlines and frames package renderers by the
   quads they draw (`editor.drawn_quads`), so a renderer package adds no editor
   code for them.
 - Sprites are the first package consumer: `packages/sprites` owns
   SpriteRenderer, SpriteSortingGroup, the sort-key pass (sprite_sort.odin) and
-  the collector, registered at ImportersInit. `sprite_quad` (corners + uvs +
+  the collector (`collect_sprites`). `sprite_quad` (corners + uvs +
   pivot, one resolve) feeds the collector, and the editor's picking,
   selection outlines, framing and thumbnails read the commands it emits.
 - `packages/particles` is the second collector: ParticleSystem simulates on

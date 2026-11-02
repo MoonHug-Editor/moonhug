@@ -641,6 +641,7 @@ CANVAS_SORTING_LAYER :: i32(127)
 // scale and onto the near plane; the scene view draws it as the world rect
 // at the origin. Previews show neither. One Draw_Quad per graphic quad, in
 // the graphic's color and material.
+@(render_collector)
 canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
 	if view.kind == .Preview || len(_canvas_graphics) == 0 do return
 	w := ctx_world()

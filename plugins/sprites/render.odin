@@ -48,7 +48,8 @@ sprite_quad :: proc(sr: ^SpriteRenderer, tw: engine.Transform_World, tex: ^engin
 	return corners, uvs, true
 }
 
-_collect_sprites :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render_Command) {
+@(render_collector)
+collect_sprites :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render_Command) {
 	w := engine.ctx_world()
 
 	// One tree pass resolves every sprite's sort key (groups folded in).
@@ -86,13 +87,3 @@ _collect_sprites :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render_
 	}
 }
 
-// ImportersInit is the asset-layer init phase both binaries run (the editor
-// via phase_editor_run, the app via app_init) — same slot the animation
-// package uses.
-@(phase={key=ImportersInit, order=2})
-sprites_package_init :: proc() {
-	@(static) done := false
-	if done do return
-	done = true
-	engine.render_register_collector(_collect_sprites)
-}

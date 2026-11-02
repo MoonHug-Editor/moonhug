@@ -11,15 +11,6 @@ import "core:math/linalg"
 import "core:math/rand"
 import "moonhug:packages/engine"
 
-// ImportersInit is the asset-layer init phase both binaries run — the same
-// slot the sprites and animation packages use for their registrations.
-@(phase={key=ImportersInit, order=3})
-particles_package_init :: proc() {
-	@(static) done := false
-	if done do return
-	done = true
-	engine.render_register_collector(_collect_particles)
-}
 
 // --- Simulation ---------------------------------------------------------------
 
@@ -571,7 +562,8 @@ speed_t :: proc(spd, lo, hi: f32) -> f32 {
 
 // --- Rendering ------------------------------------------------------------------
 
-_collect_particles :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render_Command) {
+@(render_collector)
+collect_particles :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render_Command) {
 	w := engine.ctx_world()
 
 	// Camera basis for billboarding: view matrix rows are right and up.

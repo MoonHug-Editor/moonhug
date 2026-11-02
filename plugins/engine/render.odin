@@ -140,11 +140,12 @@ camera_screen_ray :: proc(cam: ^Camera, screen_pos: [2]f32, viewport: [2]f32) ->
 
 // A collector appends commands for the renderers it owns that are visible to
 // `view` (enabled, active in hierarchy, layer mask intersecting, and inside
-// view.frustum when view.cull is on). `out` lives
-// on the temp allocator. Packages register theirs once at an init phase —
-// the registry is the seam that lets renderer components live outside the
-// engine. Collection order does not matter: render_execute sorts the
-// combined list.
+// view.frustum when view.cull is on), and nothing when view.quads_only is set
+// and it draws meshes. `out` lives on the temp allocator. A collector is a
+// proc declared with @(render_collector), in the engine or in any package:
+// the generated registration (render_collector_gen) registers every one, so
+// renderer components live outside the engine. Collection order does not
+// matter: render_execute sorts the combined list.
 Render_Collector :: proc(view: Render_View, out: ^[dynamic]Render_Command)
 
 // Process-lifetime registry on the default allocator — registration must not
@@ -158,24 +159,21 @@ _render_collectors_init :: proc "contextless" () {
 	_render_collectors = make([dynamic]Render_Collector, runtime.default_allocator())
 }
 
+@(extension_point={attribute="render_collector", target="proc", fields=""})
 render_register_collector :: proc(c: Render_Collector) {
 	append(&_render_collectors, c)
 }
 
-// Appends commands for every renderer visible to `view`: the engine's
-// built-in collectors, then every registered one. meshes=false leaves out the
-// engine's mesh and skinned mesh renderers: the editor's quad queries need
-// neither, and collecting skinned meshes poses them for the frame.
-render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command, meshes := true) {
-	if meshes {
-		_collect_mesh_renderers(view, out)
-		skinned_mesh_collect(out, view) // component_SkinnedMeshRenderer.odin
-	}
-	canvas_collect_graphics(view, out) // the canvas tree (ui_canvas.odin)
+// Appends commands for every renderer visible to `view`, from every
+// registered collector.
+render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
 	for c in _render_collectors do c(view, out)
 }
 
-_collect_mesh_renderers :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
+// The mesh renderers: one Draw_Mesh per visible part.
+@(render_collector)
+collect_mesh_renderers :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
+	if view.quads_only do return
 	world := ctx_world()
 	mr_it := pool_iterator(mesh_renderers(world))
 	for mr, _ in pool_next(&mr_it) {
