@@ -62,7 +62,7 @@ from one axis to two keeps every child's x.
 `entries` is one array per layer and `parent` is an id, rather than each blend
 holding its own children. A recursive union serializes and undoes badly here:
 the JSON nests without bound, and an undo edit lands inside a union inside an
-array inside a union, where a missing `register_pointer_type` makes it silently
+array inside a union, where a type the pointer registry misses makes it silently
 no-op. One array is one undo edit and one JSON array, and it still draws as a
 tree.
 

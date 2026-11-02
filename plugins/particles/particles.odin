@@ -19,9 +19,6 @@ particles_package_init :: proc() {
 	if done do return
 	done = true
 	engine.render_register_collector(_collect_particles)
-	// Prefab overrides on list fields patch through ^[dynamic]T.
-	engine.register_pointer_type(Burst)
-	engine.register_pointer_type(Sub_Emitter)
 }
 
 // --- Simulation ---------------------------------------------------------------

@@ -391,15 +391,6 @@ actions_reset :: proc() {
 @(init)
 _register :: proc "contextless" () {
 	context = runtime.default_context()
-	// Undo, multi-edit and the inspector's picker rows write a field back from
-	// JSON through its pointer type: every field type of the asset.
-	core.register_pointer_type(Key_Name)
-	core.register_pointer_type(Modifier)
-	core.register_pointer_type(Value_Type)
-	core.register_pointer_type(Consume_Input)
-	core.register_pointer_type(Key_Mapping)
-	core.register_pointer_type(Action)
-	core.register_pointer_type(Mapping_Context)
 	// The active asset's file changed: rebuild from it, keeping the stack.
 	assets.asset_db_add_evict_hook(proc(path: string) {
 		if !strings.has_suffix(path, ".asset") do return

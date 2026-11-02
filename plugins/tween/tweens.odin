@@ -69,7 +69,6 @@ tween_serialization_init :: proc() {
 	done = true
 	json.register_user_marshaler(Authored, _authored_marshal)
 	json.register_user_unmarshaler(Authored, _authored_unmarshal)
-	engine.register_pointer_type(Authored)
 	// Copy/paste and prefab instantiation remap Local_IDs through typed
 	// walks — Authored blobs are opaque to them, so the engine calls back.
 	engine.register_ref_remap_hook(typeid_of(Authored), _authored_remap)

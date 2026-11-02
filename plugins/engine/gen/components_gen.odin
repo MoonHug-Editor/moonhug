@@ -34,7 +34,6 @@ ComponentEntry :: struct {
 	has_on_collision_exit:  bool,
 	has_on_trigger_enter:   bool,
 	has_on_trigger_exit:    bool,
-	field_types:     []string, // rendered type of every field, for pointer-type registration
 	ref_tags:        []string, // `ref_tags="A,B"` on the attribute: capability tags for `ref:"@A"` fields
 	// Where the @(component) was declared, rendered by gen_facts.attr_origin.
 	// Emitted into the Component menu registration and shown in the item's
@@ -189,7 +188,6 @@ components_provide :: proc(w: ^db.World) -> bool {
 			if menu_path == "" do menu_path = type_name
 			// reset_T, cleanup_T and on_validate_T are type_guid_gen's: one
 			// source for every @(typ_guid) type, component or not.
-			field_types := _collect_field_types(entity, decl.pkg_path, fields, struct_by_name)
 			// The guid is written into the Component_Desc as a literal, so the
 			// registration needs no guid global from another package.
 			guid_args, has_guid := gen_facts.attr_find(attr_set, "typ_guid")
@@ -216,7 +214,6 @@ components_provide :: proc(w: ^db.World) -> bool {
 				has_on_collision_exit  = key in collision_exit,
 				has_on_trigger_enter   = key in trigger_enter,
 				has_on_trigger_exit    = key in trigger_exit,
-				field_types     = field_types[:],
 				ref_tags        = _split_tags(args.fields["ref_tags"]),
 				origin          = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, type_name),
 				guid            = guid,
@@ -274,29 +271,6 @@ _scan_comp_procs :: proc(w: ^db.World, attribute: string) -> (found: map[string]
 	return found, true
 }
 
-// Every field type of the struct, then of every same-package struct those
-// fields name, and so on: the types undo may have to write back (see
-// _write_pointer_types). Visited structs are followed once.
-_collect_field_types :: proc(root: db.Entity, pkg_path: string, fields: ^db.Comps(gen_facts.Fields_GenComp), struct_by_name: map[string]db.Entity) -> []string {
-	out: [dynamic]string
-	visited := make(map[db.Entity]bool, context.temp_allocator)
-	work := make([dynamic]db.Entity, context.temp_allocator)
-	append(&work, root)
-	for len(work) > 0 {
-		e := pop(&work)
-		if e in visited || !db.has(fields, e) do continue
-		visited[e] = true
-		for f in db.get(fields, e).fields {
-			append(&out, f.type)
-			if named, ok := _named_type(f.type); ok && strings.index_byte(named, '.') < 0 {
-				key := fmt.tprintf("%s/%s", pkg_path, named)
-				if nested, found := struct_by_name[key]; found do append(&work, nested)
-			}
-		}
-	}
-	return out[:]
-}
-
 // _ComponentData rebuilds the two sorted entry lists the old collect/generate
 // produced, from the tagged entities. Callers must call _collect_data /
 // _free_data around it.
@@ -332,7 +306,6 @@ _collect_data :: proc(w: ^db.World) -> _ComponentData {
 				has_on_collision_exit  = component.has_on_collision_exit,
 				has_on_trigger_enter   = component.has_on_trigger_enter,
 				has_on_trigger_exit    = component.has_on_trigger_exit,
-				field_types     = component.field_types,
 				ref_tags        = component.ref_tags,
 				origin          = component.origin,
 				guid            = component.guid,
@@ -461,7 +434,6 @@ _write_desc_registrations :: proc(b: ^strings.Builder, entries: []ComponentEntry
 		}
 		strings.write_string(b, "\t\t})\n")
 	}
-	_write_pointer_types(b, entries, pkg_path, qual)
 }
 
 // "A, B" -> {"A", "B"}. The same comma list a `ref:` field tag takes, so a
@@ -475,76 +447,6 @@ _split_tags :: proc(spec: string) -> []string {
 		if t != "" do append(&out, t)
 	}
 	return out[:]
-}
-
-// Undo, clipboard and nested-scene overrides write a field back from JSON
-// through json.unmarshal_any, which needs the field type's pointer typeid
-// (engine.get_pointer_typeid_by_typeid). Every component field type is
-// registered here so that works for any package's components without a
-// hand-written list. Skipped: primitives (the serializer setup registers
-// them), unnamed types (bit_set[...], map[...], proc, struct literals,
-// parametric types) and types from packages the generated file does not
-// import.
-_write_pointer_types :: proc(b: ^strings.Builder, entries: []ComponentEntry, pkg_path: string, qual: string) {
-	seen: map[string]bool
-	defer delete(seen)
-	for e in entries {
-		if e.pkg_path != pkg_path do continue
-		for ft in e.field_types {
-			t, ok := _pointer_type_arg(ft, qual)
-			if !ok || t in seen do continue
-			seen[t] = true
-			fmt.sbprintf(b, "\t\t%sregister_pointer_type(%s)\n", qual, t)
-		}
-	}
-}
-
-@(private = "file")
-_PRIMITIVE_TYPES := []string{
-	"bool", "b8", "b16", "b32", "b64",
-	"int", "i8", "i16", "i32", "i64", "i128", "uint", "u8", "u16", "u32", "u64", "u128", "uintptr",
-	"f16", "f32", "f64", "string", "cstring", "rune", "byte", "rawptr", "any", "typeid",
-}
-
-// The type a field's rendered type expression names, with array and pointer
-// layers stripped ("[dynamic][4]Foo" -> "Foo"). false when it is not a plain
-// named type the generated file can refer to.
-@(private = "file")
-_pointer_type_arg :: proc(rendered: string, qual: string) -> (string, bool) {
-	t, ok := _named_type(rendered)
-	if !ok do return "", false
-	if slice.contains(_PRIMITIVE_TYPES, t) do return "", false
-	if dot := strings.index_byte(t, '.'); dot >= 0 {
-		// Only the engine is imported by every generated file. In the engine's
-		// own file the qualifier is empty and its types are unqualified.
-		if qual == "" || t[:dot] != "engine" do return "", false
-	}
-	return t, true
-}
-
-// The plain (possibly qualified) type name a rendered type expression ends
-// in, with array and pointer layers stripped. false for unnamed types.
-@(private = "file")
-_named_type :: proc(rendered: string) -> (string, bool) {
-	t := strings.trim_space(rendered)
-	for {
-		if strings.has_prefix(t, "^") {
-			t = t[1:]
-			continue
-		}
-		if strings.has_prefix(t, "[") {
-			close := strings.index_byte(t, ']')
-			if close < 0 do return "", false
-			t = t[close + 1:]
-			continue
-		}
-		break
-	}
-	if t == "" do return "", false
-	for c in t {
-		if !(c == '_' || c == '.' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) do return "", false
-	}
-	return t, true
 }
 
 _write_pool_accessors :: proc(b: ^strings.Builder, entries: []ComponentEntry, pkg_path: string, qual: string) {

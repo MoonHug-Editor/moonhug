@@ -220,7 +220,6 @@ Component_GenComp :: struct {
 	has_on_collision_exit:  bool,
 	has_on_trigger_enter:   bool,
 	has_on_trigger_exit:    bool,
-	field_types:     []string,
 	ref_tags:        []string,
 	origin:          string,
 	guid:            string, // the type's @(typ_guid) guid, written into its Component_Desc

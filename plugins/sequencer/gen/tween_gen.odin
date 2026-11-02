@@ -111,7 +111,6 @@ tween_generate :: proc(w: ^db.World) -> bool {
 	defer strings.builder_destroy(&b)
 	strings.write_string(&b, "package sequencer\n\n")
 	strings.write_string(&b, "import \"base:runtime\"\n")
-	strings.write_string(&b, "import \"moonhug:packages/engine\"\n")
 	strings.write_string(&b, "import serialization \"moonhug:libs/serialization\"\n")
 	strings.write_string(&b, "import core \"moonhug:packages/sequencer/core\"\n")
 	{
@@ -194,7 +193,6 @@ tween_generate :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "_register_tween_union :: proc \"contextless\" () {\n")
 	strings.write_string(&b, "\tcontext = runtime.default_context()\n")
 	strings.write_string(&b, "\tserialization.register_union_type(TweenUnion)\n")
-	strings.write_string(&b, "\tengine.register_pointer_type(TweenUnion)\n")
 	strings.write_string(&b, "}\n")
 
 	db.emit(w, "moonhug/packages/sequencer/tween_union_generated.odin", strings.to_string(b))
