@@ -245,6 +245,8 @@ asset_db_boot_scene               :: assets.asset_db_boot_scene
 asset_db_package_roots            :: assets.asset_db_package_roots
 asset_db_get_path                 :: assets.asset_db_get_path
 asset_db_get_guid                 :: assets.asset_db_get_guid
+asset_parse_as                    :: assets.asset_parse_as
+asset_load_as                     :: assets.asset_load_as
 asset_db_get_root_info            :: assets.asset_db_get_root_info
 asset_db_get_stamp                :: assets.asset_db_get_stamp
 asset_db_new_guid                 :: assets.asset_db_new_guid

@@ -20,7 +20,8 @@ import "core:reflect"
 import "core:strings"
 import "moonhug:libs/input"
 import "moonhug:libs/log"
-import "moonhug:packages/engine"
+import "moonhug:libs/assets"
+import "moonhug:libs/core"
 
 // The asset: action maps with their actions and bindings.
 @(typ_guid={guid = "c2f1a9e4-5b7d-4e83-9a06-1f4d8c2b7e65", menu_assets_create = {menu_name = "Input Actions", file_name = "InputActions.asset"}})
@@ -107,7 +108,7 @@ cleanup_Input_Actions :: proc(a: ^Input_Actions) {
 
 // The Input project setting: which Input Actions asset the game uses.
 Input_Settings :: struct {
-	actions: engine.Asset_GUID `ref:"Input_Actions" expand`,
+	actions: core.Asset_GUID `ref:"Input_Actions" expand`,
 }
 
 @(project_settings={name="Input"})
@@ -243,7 +244,7 @@ _Map :: struct {
 _rt: struct {
 	contexts:   []_Map,
 	built:  bool,
-	guid:   engine.Asset_GUID,
+	guid:   core.Asset_GUID,
 	// The pushed maps in resolution order: priority descending, a later push
 	// first among equals.
 	stack:  [dynamic]int,
@@ -264,12 +265,12 @@ Action_Id :: struct {
 _ensure_built :: proc() {
 	if !_settings_loaded {
 		_settings_loaded = true
-		engine.project_settings_load("Input", &input_settings)
+		core.project_settings_load("Input", &input_settings)
 	}
 	if _rt.built && _rt.guid == input_settings.actions do return
 	src: Input_Actions
 	ok: bool
-	if input_settings.actions != {} do src, ok = engine.asset_load_as(input_settings.actions, Input_Actions)
+	if input_settings.actions != {} do src, ok = assets.asset_load_as(input_settings.actions, Input_Actions)
 	if !ok && input_settings.actions != {} do log.warningf("[Input] the Input setting names no readable Input_Actions asset")
 	defer cleanup_Input_Actions(&src)
 	actions_install(src)
@@ -349,7 +350,7 @@ _rt_destroy :: proc() {
 // Editor hook: an open Input Actions document's current values replace the
 // runtime when it is the asset the Input setting names, so an edit in the
 // inspector reaches the game before it is saved. The pushed contexts stay.
-actions_preview :: proc(guid: engine.Asset_GUID, a: Input_Actions) {
+actions_preview :: proc(guid: core.Asset_GUID, a: Input_Actions) {
 	_ensure_built()
 	if guid != _rt.guid do return
 	// The hook runs every frame the document is open: only a change rebuilds,
@@ -392,19 +393,19 @@ _register :: proc "contextless" () {
 	context = runtime.default_context()
 	// Undo, multi-edit and the inspector's picker rows write a field back from
 	// JSON through its pointer type: every field type of the asset.
-	engine.register_pointer_type(Key_Name)
-	engine.register_pointer_type(Modifier)
-	engine.register_pointer_type(Value_Type)
-	engine.register_pointer_type(Consume_Input)
-	engine.register_pointer_type(Key_Mapping)
-	engine.register_pointer_type(Action)
-	engine.register_pointer_type(Mapping_Context)
+	core.register_pointer_type(Key_Name)
+	core.register_pointer_type(Modifier)
+	core.register_pointer_type(Value_Type)
+	core.register_pointer_type(Consume_Input)
+	core.register_pointer_type(Key_Mapping)
+	core.register_pointer_type(Action)
+	core.register_pointer_type(Mapping_Context)
 	// The active asset's file changed: rebuild from it, keeping the stack.
-	engine.asset_db_add_evict_hook(proc(path: string) {
+	assets.asset_db_add_evict_hook(proc(path: string) {
 		if !strings.has_suffix(path, ".asset") do return
-		guid, ok := engine.asset_db_get_guid(path)
-		if !ok || !_rt.built || engine.Asset_GUID(guid) != _rt.guid do return
-		src, lok := engine.asset_load_as(_rt.guid, Input_Actions)
+		guid, ok := assets.asset_db_get_guid(path)
+		if !ok || !_rt.built || core.Asset_GUID(guid) != _rt.guid do return
+		src, lok := assets.asset_load_as(_rt.guid, Input_Actions)
 		if !lok do return
 		defer cleanup_Input_Actions(&src)
 		actions_install(src)
@@ -412,7 +413,7 @@ _register :: proc "contextless" () {
 }
 
 // The game stops: no map stays pushed into the next run.
-@(phase={key=engine.Phase.ExitingPlayMode, mode=Editor})
+@(phase={key=core.Phase.ExitingPlayMode, mode=Editor})
 _stop :: proc() {
 	actions_reset()
 }

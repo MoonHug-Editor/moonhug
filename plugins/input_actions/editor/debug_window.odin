@@ -12,7 +12,9 @@ import im "moonhug:external/odin-imgui"
 import "moonhug:editor/widgets"
 import "moonhug:editor/window"
 import "moonhug:libs/input"
-import engine "moonhug:packages/engine"
+import "moonhug:editor/simulate"
+import "moonhug:libs/assets"
+import core "moonhug:libs/core"
 import actions "moonhug:packages/input_actions"
 
 @(menu_item={path="Window/Input/Input Actions", order=0})
@@ -22,7 +24,7 @@ input_actions_window_open :: proc() {
 
 @(editor_window={id="input_actions_debug", title="Input Actions", icon="SPORTS_ESPORTS", width=620, height=400})
 input_actions_window_draw :: proc(w: ^window.Window) {
-	im.TextDisabled(engine.application_is_playing() ? "Live values of the running game" : "The values update while the game runs")
+	im.TextDisabled(simulate.is_active() ? "Live values of the running game" : "The values update while the game runs")
 	im.SameLine()
 	im.TextDisabled(input.gamepad_connected() ? "  gamepad connected" : "  no gamepad")
 
@@ -31,10 +33,10 @@ input_actions_window_draw :: proc(w: ^window.Window) {
 	if guid == {} {
 		im.TextDisabled("No Input Actions asset: pick one in Project Settings > Input")
 	} else {
-		path, has_path := engine.asset_db_get_path(uuid.Identifier(guid))
+		path, has_path := assets.asset_db_get_path(uuid.Identifier(guid))
 		im.TextUnformatted(fmt.ctprintf("Asset: %s", has_path ? path : "(missing)"))
 		im.SameLine()
-		if im.SmallButton("Select") do engine.inspector_request_select_asset(guid)
+		if im.SmallButton("Select") do core.inspector_request_select_asset(guid)
 		widgets.tooltip("Select the asset in the Project view and the Project Inspector, to edit it. Edits reach the game at once")
 	}
 

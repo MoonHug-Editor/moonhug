@@ -10,7 +10,7 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/inspector"
 import "moonhug:editor/widgets"
-import engine "moonhug:packages/engine"
+import core "moonhug:libs/core"
 import actions "moonhug:packages/input_actions"
 
 @(provider_install)
@@ -23,7 +23,7 @@ _register_key_drawer :: proc() {
 			actions.actions_preview(doc.guid, (cast(^actions.Input_Actions)doc.data.data)^)
 		},
 	})
-	inspector.doc_preview_register(typeid_of(actions.Input_Actions), proc(guid: engine.Asset_GUID, doc: any) {
+	inspector.doc_preview_register(typeid_of(actions.Input_Actions), proc(guid: core.Asset_GUID, doc: any) {
 		actions.actions_preview(guid, (cast(^actions.Input_Actions)doc.data)^)
 	})
 }

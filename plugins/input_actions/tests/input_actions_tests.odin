@@ -13,7 +13,8 @@ import sdl "vendor:sdl3"
 import "moonhug:editor/undo"
 import "moonhug:libs/input"
 import "moonhug:libs/serialization"
-import "moonhug:packages/engine"
+import "moonhug:libs/assets"
+import "moonhug:libs/core"
 import actions ".."
 
 @(private = "file")
@@ -60,10 +61,10 @@ test_asset_round_trip :: proc(t: ^testing.T) {
 	defer actions.cleanup_Input_Actions(&a)
 	path := "moonhug/tests/fixtures/_input_actions_round_trip.asset"
 	defer os.remove(path)
-	testing.expect(t, serialization.write_asset_to_path(path, engine.get_guid_by_typeid(actions.Input_Actions), a), "the asset writes")
+	testing.expect(t, serialization.write_asset_to_path(path, core.get_guid_by_typeid(actions.Input_Actions), a), "the asset writes")
 	data, rerr := os.read_entire_file(path, context.temp_allocator)
 	testing.expect(t, rerr == nil, "the file reads")
-	back, bok := engine.asset_parse_as(data, actions.Input_Actions)
+	back, bok := assets.asset_parse_as(data, actions.Input_Actions)
 	testing.expect(t, bok, "and parses back")
 	defer actions.cleanup_Input_Actions(&back)
 	testing.expect_value(t, len(back.contexts), 3)
