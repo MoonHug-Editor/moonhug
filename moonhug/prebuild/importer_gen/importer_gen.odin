@@ -71,7 +71,8 @@ generate :: proc(w: ^db.World) -> bool {
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 	strings.write_string(&b, "package registration\n\n")
-	strings.write_string(&b, "import __assets \"moonhug:editor/assets\"\n")
+	// With no importer installed the proc is empty and imports nothing.
+	if len(entries) > 0 do strings.write_string(&b, "import __assets \"moonhug:editor/assets\"\n")
 	last_pkg := ""
 	for e in entries {
 		if e.pkg_name == last_pkg do continue

@@ -267,17 +267,21 @@ gizmo_buffer_destroy :: proc(buf: ^Gizmo_Buffer) {
 }
 
 // The buffer gizmos record into. The engine points this at its user context's
-// buffer at init, so a preview world keeps its own. nil before that, and the
-// gizmos package draws nothing.
+// buffer at init, so a preview world keeps its own. Without an engine, or
+// without a user context, the shared default buffer below takes the shapes:
+// the editor shell's handles and views draw gizmos with no plugin installed.
 @(private) _gizmo_buffer_slot: proc() -> ^Gizmo_Buffer
+@(private) _default_gizmo_buffer: Gizmo_Buffer
 
 set_gizmo_buffer_slot :: proc(slot: proc() -> ^Gizmo_Buffer) {
 	_gizmo_buffer_slot = slot
 }
 
 gizmo_buffer :: proc() -> ^Gizmo_Buffer {
-	if _gizmo_buffer_slot == nil do return nil
-	return _gizmo_buffer_slot()
+	if _gizmo_buffer_slot != nil {
+		if buf := _gizmo_buffer_slot(); buf != nil do return buf
+	}
+	return &_default_gizmo_buffer
 }
 
 // Seconds of game time for the .Game clock: fixed ticks times the fixed step.

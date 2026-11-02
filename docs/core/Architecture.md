@@ -78,6 +78,6 @@ The pattern is the same in every row: the editor owns a mechanism, the plugin ow
 
 ## How to check the separation
 
-- `make check-noplugins` builds the Editor with every plugin set aside, tracked or not, and prints one row per stage and PASS or FAIL, with the failed stage's output. It has to pass. `make build NOPLUGINS=1` is the same build with the tools' full output.
+- `make check-noplugins` builds the Editor with every plugin set aside, tracked or not, runs it for a few seconds and closes it, and prints one row per stage and PASS or FAIL, with the failed stage's output. The run is skipped while an editor is already open, since two editors must not share a project's library. It has to pass. `make build NOPLUGINS=1` is the same build with the tools' full output.
 - Tests live with what they test: the libs's in `moonhug/tests`, the editor's in `moonhug/editor/tests`, each plugin's in its `tests/` folder. `mh test` runs them all.
 - A hand-written file in `moonhug/editor`, `moonhug/libs` or `moonhug/registration` that imports the engine fails the boundary test.

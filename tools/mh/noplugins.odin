@@ -18,6 +18,7 @@ package mh
 // changed under the build, and the installed state is regenerated anyway.
 
 import "core:fmt"
+import "core:net"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
@@ -37,6 +38,7 @@ No_Plugins_Stage :: enum {
 	Aside,      // the plugin links moved aside
 	Prebuild,   // the generators run on the bare shell
 	Build,      // the editor compiled with no plugin
+	Run,        // the editor launched for a few seconds and closed
 	Restore,    // the links back, no directory a generator made in their place
 	Regenerate, // the generators run again on the installed state
 }
@@ -107,7 +109,50 @@ _aside_and_build :: proc(r: ^No_Plugins_Result, report: proc(stage: No_Plugins_S
 	built := step("editor build (no plugins)", "odin", "build", "moonhug/editor", IGNORE_ATTRS, COLLECTION, VET, fmt.tprintf("-out:%s", NOPLUGINS_BIN))
 	if !done(r, report, .Build, built, NOPLUGINS_BIN if built else "") do return false
 	if report == nil do fmt.printfln("mh: the shell builds with no plugins, %s", NOPLUGINS_BIN)
+	ran, detail := _smoke_run()
+	if !done(r, report, .Run, ran, detail) do return false
+	if report == nil do fmt.printfln("mh: the shell runs with no plugins (%s)", detail)
 	return true
+}
+
+// How long the no-plugins editor runs in the smoke stage. Its first frames
+// are what fail when the shell leans on something only a plugin installs,
+// and a build alone cannot tell.
+SMOKE_SECONDS :: 5
+
+// The MCP bridge's port (editor/mcp): an editor already running holds it,
+// and two editors must not share one project library, so the smoke is
+// skipped while it is in use.
+EDITOR_MCP_PORT :: 6600
+
+// Launches the no-plugins editor, lets it run SMOKE_SECONDS, then terminates
+// it. Its window opens and closes on its own. Fails when it exits by itself
+// before the time is up, with the exit code (a crash reports its signal).
+@(private = "file")
+_smoke_run :: proc() -> (ok: bool, detail: string) {
+	if sock, derr := net.dial_tcp(net.Endpoint{address = net.IP4_Address{127, 0, 0, 1}, port = EDITOR_MCP_PORT}); derr == nil {
+		net.close(sock)
+		return true, "skipped, an editor is already running (its MCP port answers)"
+	}
+	out := run_log if run_log != nil else os.stdout
+	errs := run_log if run_log != nil else os.stderr
+	p, err := os.process_start({command = {NOPLUGINS_BIN}, stdout = out, stderr = errs})
+	if err != nil do return false, fmt.tprintf("cannot start %s: %v", NOPLUGINS_BIN, err)
+	state, werr := os.process_wait(p, SMOKE_SECONDS * time.Second)
+	if werr == nil && state.exited {
+		return false, fmt.tprintf("exited on its own within %d s, code %d", SMOKE_SECONDS, state.exit_code)
+	}
+	if werr != nil && werr != .Timeout {
+		_ = os.process_kill(p)
+		return false, fmt.tprintf("wait failed: %v", werr)
+	}
+	_ = os.process_terminate(p)
+	state, werr = os.process_wait(p, 10 * time.Second)
+	if werr != nil || !state.exited {
+		_ = os.process_kill(p)
+		return false, "did not stop within 10 s of terminate"
+	}
+	return true, fmt.tprintf("ran %d s, closed on terminate", SMOKE_SECONDS)
 }
 
 // Every plugin link in moonhug/packages: the ones git tracks, and links that
@@ -168,7 +213,7 @@ _restore_links :: proc(moved: []Link_Entry, strays: ^[dynamic]string, relinked: 
 	return
 }
 
-// `mh check-noplugins`: the no-plugins build as a pass or fail check. The
+// `mh check-noplugins`: the no-plugins build and run as a pass or fail check. The
 // tools' output goes to a log, the terminal gets one row per stage, and on a
 // failure the first errors from the log and its path. The plugins are back
 // and the installed state regenerated either way.
@@ -204,7 +249,7 @@ cmd_check_noplugins :: proc(args: []string) -> int {
 	os.close(log)
 	secs := time.duration_seconds(time.since(start))
 	if r.ok {
-		fmt.printfln("PASS: the editor builds with no plugins (%.0f s, log %s)", secs, NOPLUGINS_LOG)
+		fmt.printfln("PASS: the editor builds and runs with no plugins (%.0f s, log %s)", secs, NOPLUGINS_LOG)
 		return 0
 	}
 	failed := r.failed.? or_else .Aside
@@ -218,6 +263,7 @@ _STAGE_NAMES := [No_Plugins_Stage]string{
 	.Aside      = "move the plugin links aside",
 	.Prebuild   = "prebuild on the bare shell",
 	.Build      = "build the editor",
+	.Run        = "run the editor",
 	.Restore    = "restore the plugin links",
 	.Regenerate = "regenerate the installed state",
 }

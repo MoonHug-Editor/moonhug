@@ -5,9 +5,11 @@ package assets
 // matrix. A field the file lacks keeps its reset default (Components.md
 // "Missing fields and reset defaults"). A file of another type does not load.
 
-import "core:encoding/json"
-import "core:encoding/uuid"
-import "core:os"
+// Used inside the polymorphic procs only: a build that instantiates neither
+// (the editor with no plugins) would otherwise see them as unused.
+@(require) import "core:encoding/json"
+@(require) import "core:encoding/uuid"
+@(require) import "core:os"
 import core "moonhug:libs/core"
 
 // Parses `data` as a T asset. ok=false when the file names another type or
