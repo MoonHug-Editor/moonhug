@@ -444,7 +444,7 @@ test_missing_sub_files_do_not_reimport :: proc(t: ^testing.T) {
 	@(static) hooked := false
 	if !hooked {
 		hooked = true
-		engine.asset_hook_add("", _reimport_counter)
+		engine.asset_on_changed_add("", _reimport_counter)
 	}
 	_reimport_watch, _reimport_count = model, 0
 	defer _reimport_watch = {}

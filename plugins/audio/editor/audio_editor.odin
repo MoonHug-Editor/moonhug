@@ -47,7 +47,7 @@ _wave_cache: map[engine.Asset_GUID]_Waveform
 
 // Any change of an asset drops its cached envelope, so the next draw reads
 // the new artifact.
-@(asset_hook)
+@(asset_on_changed)
 asset_on_changed_waveform :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	if wf, ok := _wave_cache[guid]; ok {
 		// The envelope slices live on the default heap (_waveform_get) — the

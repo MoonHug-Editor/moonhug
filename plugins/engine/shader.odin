@@ -192,7 +192,7 @@ _shader_artifact_load :: proc(guid: Asset_GUID) -> (blob: []u8, header: Shader_A
 // fails, the index keeps pointing at the last GOOD artifact (it only
 // re-points on success), so the next shader_load re-registers the previous
 // working pipelines instead of dropping the draw.
-@(asset_hook={ext="glsl"})
+@(asset_on_changed={ext="glsl"})
 asset_on_changed_shader :: proc(guid: Asset_GUID, path: string, change: Asset_Change) {
 	delete_key(&_shader_failed, guid)
 	// The REIMPORT is editor-side (asset_on_changed_shader_reimport in the

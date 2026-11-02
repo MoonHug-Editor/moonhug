@@ -206,7 +206,7 @@ _copy_apply_json :: proc(copy: u64, json_bytes: []byte) -> bool {
 
 // After a reimport of an asset, its import settings copies with no unapplied
 // edits reload, so they match what the importer wrote.
-@(asset_hook)
+@(asset_on_changed)
 asset_on_changed_doc_copies :: proc(guid: core.Asset_GUID, path: string, change: assets.Asset_Change) {
 	if change != .Reimported do return
 	for _, c in _copies {

@@ -383,7 +383,7 @@ _pipeline_register :: proc "contextless" () {
 }
 
 // The asset file changed on disk or went away: rebuild from it next frame.
-@(asset_hook={ext="renderpipeline"})
+@(asset_on_changed={ext="renderpipeline"})
 asset_on_changed_render_pipeline :: proc(guid: Asset_GUID, path: string, change: Asset_Change) {
 	if _active_built && _active.guid == guid {
 		_active_built = false // rebuilt from the file on next use

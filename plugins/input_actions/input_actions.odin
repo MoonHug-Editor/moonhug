@@ -389,7 +389,7 @@ actions_reset :: proc() {
 }
 
 // The active asset's file changed: rebuild from it, keeping the stack.
-@(asset_hook={ext="asset"})
+@(asset_on_changed={ext="asset"})
 asset_on_changed_input_actions :: proc(guid: core.Asset_GUID, path: string, change: assets.Asset_Change) {
 	if change != .Modified do return
 	if !_rt.built || guid != _rt.guid do return

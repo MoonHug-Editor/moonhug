@@ -7,7 +7,7 @@ package drawers
 
 import "moonhug:packages/engine"
 
-@(asset_doc={type=engine.Render_Layers})
+@(doc_on_changed={type=engine.Render_Layers})
 doc_on_changed_Render_Layers :: proc(guid: engine.Asset_GUID, doc: any) {
 	engine.render_layers_preview(guid, (cast(^engine.Render_Layers)doc.data)^)
 }

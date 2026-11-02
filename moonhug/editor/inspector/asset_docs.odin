@@ -59,8 +59,8 @@ _docs: map[Doc_Key]^Asset_Doc
 // document's values into the runtime its asset is sampled from (the engine's
 // material cache for materials), so the change shows before it is saved.
 // `doc` is the document's typed value, the registered typeid. Declared as
-// `doc_on_changed_<Type>` with @(asset_doc={type=T}) on the proc, registered
-// by the generated register_asset_docs (asset_doc_gen); `doc_on_saved_<Type>` is
+// `doc_on_changed_<Type>` with @(doc_on_changed={type=T}) on the proc, registered
+// by the generated register_doc_hooks (doc_hooks_gen); `doc_on_saved_<Type>` is
 // Doc_Saved below. Rows around the document's fields are an inspector
 // wrapper (inspector_funnel.odin), not a hook.
 Doc_Changed :: proc(guid: core.Asset_GUID, doc: any)
@@ -68,8 +68,11 @@ Doc_Changed :: proc(guid: core.Asset_GUID, doc: any)
 @(private)
 _doc_changed_hooks: map[typeid]Doc_Changed
 
-// Process-global registry: never borrows the caller's allocator.
-@(extension_point={attribute="asset_doc", target="proc", fields="type"})
+// Declares `doc_on_changed_<Type>`, run once each time an open document of
+// the type changed by any route: an inspector edit, an undo, a revert. It
+// pushes the document's values wherever they are used live. `type` names the
+// asset type. Process-global registry: never borrows the caller's allocator.
+@(extension_point={attribute="doc_on_changed", target="proc", fields="type"})
 doc_changed_register :: proc(tid: typeid, p: Doc_Changed) {
     context.allocator = runtime.default_allocator()
     if _doc_changed_hooks == nil do _doc_changed_hooks = make(map[typeid]Doc_Changed)
@@ -97,7 +100,11 @@ Doc_Saved :: proc(guid: core.Asset_GUID, path: string)
 @(private)
 _doc_saved: map[typeid]Doc_Saved
 
-// Process-global registry: never borrows the caller's allocator.
+// Declares `doc_on_saved_<Type>`, run once after an open document of the type
+// is written to disk: a reimport, a dropped cache, whatever the file feeds.
+// `type` names the asset type. Process-global registry: never borrows the
+// caller's allocator.
+@(extension_point={attribute="doc_on_saved", target="proc", fields="type"})
 doc_saved_register :: proc(tid: typeid, p: Doc_Saved) {
     context.allocator = runtime.default_allocator()
     if _doc_saved == nil do _doc_saved = make(map[typeid]Doc_Saved)
@@ -269,7 +276,7 @@ _doc_replace :: proc(doc: ^Asset_Doc, fresh: any, dirty: bool) {
 // The asset left the project (.Removed, fired by a refresh after a delete,
 // never for a rename). Its undo steps go first, then the document. The
 // inspector lets go of the file if it shows it.
-@(asset_hook)
+@(asset_on_changed)
 asset_on_changed_asset_doc_gone :: proc(guid: core.Asset_GUID, path: string, change: assets.Asset_Change) {
     if change != .Removed do return
     // Before the pin: undo entries free with the allocator that made them, the

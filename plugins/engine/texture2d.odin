@@ -49,7 +49,7 @@ texture_cache_init :: proc() {
 
 // Cached textures bake pixels_per_unit at load — a changed or reimported
 // texture leaves the cache so new settings apply without a restart.
-@(asset_hook)
+@(asset_on_changed)
 asset_on_changed_texture :: proc(guid: Asset_GUID, path: string, change: Asset_Change) {
     texture_unload(guid)
 }

@@ -125,7 +125,7 @@ _install_hull_jobs :: proc() {
 }
 
 // A reimported model brings its hull files in line with its sets.
-@(asset_hook)
+@(asset_on_changed)
 asset_on_changed_hull_jobs :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	if change != .Reimported do return
 	hull_sets_reconcile(guid)

@@ -2,8 +2,8 @@ package assets
 
 // One event for every change of an asset on disk, for the caches and editor
 // state that hold something derived from it. A package declares a hook with
-// @(asset_hook={ext="mat"}) on a proc named `asset_on_changed_<name>`, and
-// the generated registration (asset_hook_gen) adds it here. The scan and the
+// @(asset_on_changed={ext="mat"}) on a proc named `asset_on_changed_<name>`, and
+// the generated registration (asset_on_changed_gen) adds it here. The scan and the
 // pipeline fire it, in the editor only: a game binary never changes its
 // assets.
 //
@@ -46,12 +46,14 @@ _Asset_Hook_Entry :: struct {
 @(private = "file")
 _asset_hooks: [dynamic]_Asset_Hook_Entry
 
-// Registers `hook` for assets with extension `ext`, written with or without
-// the dot, "" for every asset, at `order` among the hooks of one change.
+// Declares `asset_on_changed_<name>`, run when an asset on disk changed:
+// modified, removed or reimported, with the guid and the path. `ext` filters
+// by extension, written with or without the dot, absent for every asset.
+// `order` places the hook among the hooks of one change, lower first.
 // Registry state never borrows the caller's allocator: tests hand out scoped
 // tracking allocators.
-@(extension_point={attribute="asset_hook", target="proc", fields="ext order"})
-asset_hook_add :: proc(ext: string, hook: Asset_Hook, order := 0) {
+@(extension_point={attribute="asset_on_changed", target="proc", fields="ext order"})
+asset_on_changed_add :: proc(ext: string, hook: Asset_Hook, order := 0) {
 	context.allocator = runtime.default_allocator()
 	e := ext
 	if e != "" && e[0] != '.' do e = strings.concatenate({".", e})

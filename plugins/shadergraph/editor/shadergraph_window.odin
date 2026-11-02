@@ -290,7 +290,7 @@ _sg_pane_toggle :: proc(label: cstring, hidden: ^bool, tip: cstring) {
 
 // A save reimports the graph and drops its cached shader, so a material on
 // it draws with the new one.
-@(asset_doc={type=sg.Shader_Graph})
+@(doc_on_saved={type=sg.Shader_Graph})
 doc_on_saved_Shader_Graph :: proc(guid: engine.Asset_GUID, path: string) {
 	_ = asset_pipeline.asset_pipeline_import_asset(path)
 	engine.shader_unload(guid)

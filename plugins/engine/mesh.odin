@@ -90,7 +90,7 @@ mesh_cache_init :: proc() {
 
 // A reimport rewrites the model's artifact and the parts and clips lists in
 // its meta, so both cached lists and every loaded part go with it.
-@(asset_hook)
+@(asset_on_changed)
 asset_on_changed_mesh :: proc(guid: Asset_GUID, path: string, change: Asset_Change) {
     mesh_unload(guid)
 }

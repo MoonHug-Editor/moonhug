@@ -45,7 +45,7 @@ _import_shadergraph :: proc(source_path: string, artifact_path: string, settings
 
 // A changed or deleted graph: drop its shader and reimport, so the next
 // draw with a material on it picks up the new artifact.
-@(asset_hook={ext="shadergraph"})
+@(asset_on_changed={ext="shadergraph"})
 asset_on_changed_shadergraph :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	if change == .Reimported do return
 	engine.shader_unload(guid)

@@ -33,7 +33,7 @@ model_clips_install :: proc() {
 	subassets.clip_sampler = _sample_clip
 }
 
-@(asset_doc={type=anim.AnimationClip})
+@(doc_on_changed={type=anim.AnimationClip})
 doc_on_changed_AnimationClip :: proc(guid: engine.Asset_GUID, doc: any) {
 	anim.animation_clip_preview(engine.PPtr{guid = guid}, doc.(anim.AnimationClip))
 }

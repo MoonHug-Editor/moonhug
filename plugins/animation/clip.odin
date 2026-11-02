@@ -353,7 +353,7 @@ animation_clip_preview :: proc(ref: engine.PPtr, clip: AnimationClip) {
 // load picks up the new file or artifact — settings changed in the inspector
 // apply without a restart. A reimported MODEL rebakes every clip it holds,
 // each cached under {model guid, clip id}, so every entry with the guid goes.
-@(asset_hook)
+@(asset_on_changed)
 asset_on_changed_animation_clip :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	owned := make([dynamic]engine.PPtr, context.temp_allocator)
 	for k in animation_clip_cache do if k.guid == guid do append(&owned, k)

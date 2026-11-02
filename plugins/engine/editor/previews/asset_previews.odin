@@ -158,7 +158,7 @@ _pv_needs_draw :: proc(key: _Pv_Key) -> bool {
 // Asset content changes: the live previews redraw (_pv_needs_draw). A file
 // changed or went away, or an artifact changed (a model, a texture, a
 // shader). The previewed scene's own asset respawns its instance.
-@(asset_hook)
+@(asset_on_changed)
 asset_on_changed_previews :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	_pv_content += 1
 	if guid == _scene_pv_guid do _scene_pv_stale = true

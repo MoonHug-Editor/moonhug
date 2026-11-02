@@ -357,7 +357,10 @@ Canvas_Layout_Provider :: proc(tH: Transform_Handle, rect: Rect, children: []Tra
 
 _canvas_layout_providers: [dynamic]Canvas_Layout_Provider
 
-// Process-global registry: never borrows the caller's allocator.
+// Declares a layout provider, asked for every canvas node with its rect and
+// its RectTransform children. It lays the node's children out and returns
+// true, or returns false to leave them to their anchors. Process-global
+// registry: never borrows the caller's allocator.
 @(extension_point={attribute="canvas_layout", target="proc", fields=""})
 canvas_layout_register :: proc(p: Canvas_Layout_Provider) {
 	context.allocator = runtime.default_allocator()
@@ -609,7 +612,10 @@ Graphic_Desc :: struct {
 
 _canvas_graphics: [dynamic]Graphic_Desc
 
-// Process-global registry: never borrows the caller's allocator.
+// Declares `canvas_populate_<T>`, the proc that appends the quads a canvas
+// component of type T draws inside its resolved rect. T is a struct of the
+// same package with a `graphic` field, and the proc takes a ^T. Process-global
+// registry: never borrows the caller's allocator.
 @(extension_point={attribute="canvas_graphic", target="proc", fields=""})
 canvas_graphic_register :: proc(desc: Graphic_Desc) {
 	context.allocator = runtime.default_allocator()

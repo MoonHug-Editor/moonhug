@@ -113,7 +113,7 @@ mesh_hulls_free :: proc(hulls: [][][3]f32, allocator := context.allocator) {
 // Every cached set goes on any reimport: the reimported model has a new key,
 // so its old file names no longer resolve, and the other models' sets reload
 // cheaply.
-@(asset_hook)
+@(asset_on_changed)
 asset_on_changed_hull_sets :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	if change != .Reimported do return
 	context.allocator = runtime.default_allocator()

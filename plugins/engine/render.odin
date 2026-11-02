@@ -159,6 +159,10 @@ _render_collectors_init :: proc "contextless" () {
 	_render_collectors = make([dynamic]Render_Collector, runtime.default_allocator())
 }
 
+// Declares a render collector: a proc that appends the draw commands of the
+// renderers it owns that are visible to a view (Render_Collector above). The
+// engine's mesh, skinned mesh and canvas collectors declare it like a
+// package's.
 @(extension_point={attribute="render_collector", target="proc", fields=""})
 render_register_collector :: proc(c: Render_Collector) {
 	append(&_render_collectors, c)

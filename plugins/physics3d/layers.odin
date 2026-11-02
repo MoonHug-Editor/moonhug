@@ -123,7 +123,7 @@ layers_preview :: proc(guid: engine.Asset_GUID, l: Physics3D_Layers) {
 
 // An asset file changed on disk or went away: the copy reloads on the next
 // sync when it is the active asset.
-@(asset_hook={ext="asset"})
+@(asset_on_changed={ext="asset"})
 asset_on_changed_layers :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	if _layers.loaded && _layers.guid == guid do _layers.loaded = false
 }

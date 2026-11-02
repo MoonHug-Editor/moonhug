@@ -50,7 +50,7 @@ test_preview_apply_reimport :: proc(t: ^testing.T) {
 	guid := engine.Asset_GUID(raw_guid)
 
 	// The editor-only hook the pane registers (EditorInit in the editor).
-	engine.asset_hook_add("", audio_editor.asset_on_changed_waveform)
+	engine.asset_on_changed_add("", audio_editor.asset_on_changed_waveform)
 
 	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(wav))
 

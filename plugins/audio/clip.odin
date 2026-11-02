@@ -56,7 +56,7 @@ clip_load :: proc(guid: engine.Asset_GUID) -> (^Audio_Clip, bool) {
 
 // A reimported artifact evicts its clip so the next play loads the new
 // master. Tracks may hold the dying mix.Audio — detach them first.
-@(asset_hook)
+@(asset_on_changed)
 asset_on_changed_audio_clip :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	if change != .Reimported do return
 	if guid not_in clip_cache do return

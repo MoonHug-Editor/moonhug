@@ -413,7 +413,7 @@ font_load :: proc(guid: engine.Asset_GUID) -> (^Font, bool) {
 }
 
 // A changed or rebaked font leaves the cache so the next draw reloads it.
-@(asset_hook)
+@(asset_on_changed)
 asset_on_changed_font :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	font_unload(guid)
 }

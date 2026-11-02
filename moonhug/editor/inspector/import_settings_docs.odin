@@ -111,7 +111,7 @@ import_settings_revert :: proc(doc: ^Asset_Doc) {
 
 // After any reimport of the asset. The replaced instance is retired, for the
 // same reason as in Revert.
-@(asset_hook)
+@(asset_on_changed)
 asset_on_changed_import_settings :: proc(guid: core.Asset_GUID, path: string, change: assets.Asset_Change) {
 	if change != .Reimported do return
 	context.allocator = doc_alloc()

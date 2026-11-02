@@ -115,7 +115,7 @@ _append_hull_edges :: proc(list: ^[dynamic][2][3]f32, points: [][3]f32) {
 
 // A changed or reimported model takes its hull wires with it, like the mesh
 // cache.
-@(asset_hook)
+@(asset_on_changed)
 asset_on_changed_hull_wires :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	context.allocator = runtime.default_allocator()
 	keys := make([dynamic]engine.PPtr, context.temp_allocator)

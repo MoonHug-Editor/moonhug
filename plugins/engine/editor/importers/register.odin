@@ -72,7 +72,7 @@ shader_importer :: proc() -> asset_pipeline.Importer_Desc {
 
 // Shader hot reload: the shader cache's hook drops an edited .glsl, this one
 // reimports it.
-@(asset_hook={ext="glsl", order=1})
+@(asset_on_changed={ext="glsl", order=1})
 asset_on_changed_shader_reimport :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	if change != .Modified do return
 	_ = asset_pipeline.asset_pipeline_import_asset(path)

@@ -88,7 +88,7 @@ _materials: struct {
 
 // A changed or removed material leaves the cache, and the next step pushes
 // materials into the live shapes again.
-@(asset_hook={ext="asset"})
+@(asset_on_changed={ext="asset"})
 asset_on_changed_physics_material :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	if guid in _materials.cache {
 		delete_key(&_materials.cache, guid)

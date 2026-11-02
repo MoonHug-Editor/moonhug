@@ -452,7 +452,7 @@ material_preview :: proc(guid: Asset_GUID, mat: Material) {
 }
 
 // An edited or deleted .mat leaves the cache, so the next draw reads the file.
-@(asset_hook={ext="mat"})
+@(asset_on_changed={ext="mat"})
 asset_on_changed_material :: proc(guid: Asset_GUID, path: string, change: Asset_Change) {
 	material_unload(guid)
 }

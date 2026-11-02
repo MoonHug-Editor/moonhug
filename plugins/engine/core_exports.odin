@@ -251,7 +251,7 @@ asset_db_add_indexer              :: assets.asset_db_add_indexer
 asset_db_index_set                :: assets.asset_db_index_set
 asset_db_index_typed_asset        :: assets.asset_db_index_typed_asset
 asset_db_reindex                  :: assets.asset_db_reindex
-asset_hook_add                    :: assets.asset_hook_add
+asset_on_changed_add              :: assets.asset_on_changed_add
 Asset_Change                      :: assets.Asset_Change
 Asset_Hook                        :: assets.Asset_Hook
 asset_db_set_refresh_proc         :: assets.asset_db_set_refresh_proc

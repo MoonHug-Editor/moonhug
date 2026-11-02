@@ -396,7 +396,7 @@ _rp_select_slot :: proc(name: string) {
 }
 
 // A save reimports the pipeline.
-@(asset_doc={type=engine.Render_Pipeline})
+@(doc_on_saved={type=engine.Render_Pipeline})
 doc_on_saved_Render_Pipeline :: proc(guid: engine.Asset_GUID, path: string) {
 	_ = asset_pipeline.asset_pipeline_import_asset(path)
 }

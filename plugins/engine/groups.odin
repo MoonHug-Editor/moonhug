@@ -114,7 +114,7 @@ group_names_preview :: proc(guid: Asset_GUID, g: Group_Names) {
 
 // An asset file changed on disk or went away: the names reload on the next
 // sync when it is the active asset.
-@(asset_hook={ext="asset"})
+@(asset_on_changed={ext="asset"})
 asset_on_changed_group_names :: proc(guid: Asset_GUID, path: string, change: Asset_Change) {
 	if _group_names.loaded && _group_names.guid == guid do _group_names.loaded = false
 }

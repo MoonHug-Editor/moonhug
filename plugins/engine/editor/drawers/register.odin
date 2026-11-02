@@ -28,7 +28,7 @@ _material_wrapper :: proc(ctx: ^inspector.Component_Ctx) {
 // A changed material renders live: its values go into the engine's material
 // cache, saved or not, after an edit, an undo or a revert. Save persists
 // them, unsaved edits revert on the next editor run.
-@(asset_doc={type=engine.Material})
+@(doc_on_changed={type=engine.Material})
 doc_on_changed_Material :: proc(guid: engine.Asset_GUID, doc: any) {
 	mat := cast(^engine.Material)doc.data
 	_ = engine.material_sync_properties(mat)

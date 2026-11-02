@@ -137,7 +137,7 @@ render_layers_preview :: proc(guid: Asset_GUID, l: Render_Layers) {
 
 // An asset file changed on disk or went away: the names reload on the next
 // sync when it is the active asset.
-@(asset_hook={ext="asset"})
+@(asset_on_changed={ext="asset"})
 asset_on_changed_render_layers :: proc(guid: Asset_GUID, path: string, change: Asset_Change) {
 	if _render.loaded && _render.guid == guid do _render.loaded = false
 }
