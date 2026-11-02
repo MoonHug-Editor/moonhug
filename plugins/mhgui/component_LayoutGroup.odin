@@ -32,7 +32,7 @@ Rect_Offset :: struct {
 // are ignored: in a row or column its size is its size_delta, in a grid it is
 // cell_size, and its rect comes from the flow. Children without a
 // RectTransform stay out of the layout. Plugged into the engine's rect walk
-// as a layout provider (engine.canvas_layout_register).
+// as a layout provider (canvas_layout_groups below).
 @(component={menu="UI/LayoutGroup"})
 @(typ_guid={guid = "de2516a6-7a94-4f67-9c0b-fc2d4c78dbdd"})
 LayoutGroup :: struct {
@@ -131,7 +131,8 @@ layout_arrange :: proc(g: ^LayoutGroup, rect: engine.Rect, sizes: [][2]f32, out:
 // The engine's layout provider: a node with an enabled LayoutGroup arranges
 // its RectTransform children. Sizes come from the children (size_delta), or
 // from cell_size for a grid.
-layout_provider :: proc(tH: engine.Transform_Handle, rect: engine.Rect, children: []engine.Transform_Handle, out: []engine.Rect) -> bool {
+@(canvas_layout)
+canvas_layout_groups :: proc(tH: engine.Transform_Handle, rect: engine.Rect, children: []engine.Transform_Handle, out: []engine.Rect) -> bool {
 	_, g := get_comp(tH, LayoutGroup)
 	if g == nil || !g.enabled do return false
 	sizes := make([][2]f32, len(children), context.temp_allocator)

@@ -13,7 +13,7 @@ collector that turns a canvas into `Draw_Quad` commands, and the editor
 tooling (menus, rect tool, picking). The split follows Unity's: the layout
 vocabulary is core so any package can build on it, the graphics are content.
 Packages reach the tree through `canvas_resolve_rects` and plug containers in
-with `canvas_layout_register`.
+with `@(canvas_layout)` on the layout proc.
 
 ## Components
 
@@ -60,10 +60,11 @@ with `canvas_layout_register`.
 - **Graphic** — not a component but the struct every drawable UI component
   embeds, as `using graphic: engine.Graphic` with the `inline:""` tag:
   `color`, `material` and `raycast_target`, serialized under "graphic" and
-  drawn flat in the inspector. A package registers its graphic type with
-  `canvas_graphic_register`: the component's TypeKey, the offset of the
-  embedded Graphic, and a `populate` proc that returns the quads the
-  component draws inside its rect. The engine's canvas collector walks each
+  drawn flat in the inspector. A package declares its graphic type with
+  `@(canvas_graphic)` on `canvas_populate_<T>`, a proc taking the `^T` and
+  returning the quads the component draws inside its rect; the generated
+  registration writes the descriptor, the component's TypeKey and the offset
+  of the embedded Graphic, around it. The engine's canvas collector walks each
   canvas once, finds the graphic on every CanvasRenderer node through that
   registry, and emits the quads in hierarchy order — so Image and Text draw
   through one path without the engine knowing either type.

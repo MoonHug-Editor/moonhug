@@ -304,6 +304,7 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, l
 	strings.write_string(&b, "__standalone_run :: proc() {\n")
 	strings.write_string(&b, "\t__register_render_steps() // render_steps_generated.odin\n")
 	strings.write_string(&b, "\t__register_render_collectors() // render_collectors_generated.odin\n")
+	strings.write_string(&b, "\t__register_canvas() // canvas_generated.odin\n")
 	strings.write_string(&b, "\tengine.standalone_prepare()\n")
 	strings.write_string(&b, "\tif !engine.standalone_window_open() do return\n")
 	strings.write_string(&b, "\tdefer engine.standalone_window_close()\n")

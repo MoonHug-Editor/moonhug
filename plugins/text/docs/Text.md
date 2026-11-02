@@ -91,7 +91,7 @@ rect stays on its own line. A tab advances four spaces. The block is placed
 by the vertical alignment, each line by the horizontal one. Output is one
 quad per visible glyph in canvas units, plus the style extras (bold copies,
 underline and strikethrough slabs). A quad carries a `skew` for italics,
-which `engine.Graphic_Quad` passes to the collector. `populate_text` applies
+which `engine.Graphic_Quad` passes to the collector. `canvas_populate_Text` applies
 the margins, the escape parsing and auto size, then hands the quads to the
 engine's canvas collector, which applies the node's transform like any rect.
 

@@ -125,8 +125,6 @@ test_collect_emits_one_quad_per_renderer_in_game_views :: proc(t: ^testing.T) {
 	_add(image, .CanvasRenderer)
 	img := cast(^mhgui.Image)_add(image, .Image)
 	img.color = {1, 0, 0, 1}
-
-	mhgui.mhgui_package_init() // registers Image as a graphic
 	view := engine.render_view_make(linalg.MATRIX4F32_IDENTITY, linalg.MATRIX4F32_IDENTITY, 200, 100, 0xFFFFFFFF)
 	out := make([dynamic]engine.Render_Command)
 	defer delete(out)
@@ -322,8 +320,6 @@ test_canvas_resolve_rects_applies_layout_and_scaler :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
-
-	mhgui.mhgui_package_init() // the LayoutGroup provider joins the engine's rect walk
 	canvas := engine.transform_new("Canvas")
 	_add(canvas, .Canvas)
 	cs := cast(^engine.CanvasScaler)_add(canvas, .CanvasScaler)
@@ -492,7 +488,6 @@ test_canvas_raycast_hits_topmost_raycast_target :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
-	mhgui.mhgui_package_init()
 
 	canvas := engine.transform_new("Canvas")
 	_add(canvas, .Canvas)
@@ -644,7 +639,6 @@ test_keep_rect_and_driven_flag :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
-	mhgui.mhgui_package_init()
 
 	parent := engine.Rect{{0, 0}, {800, 600}}
 	rt: engine.RectTransform
@@ -693,7 +687,6 @@ test_scene_view_picks_ui :: proc(t: ^testing.T) {
 	_add(image, .RectTransform)
 	_add(image, .CanvasRenderer)
 	_add(image, .Image)
-	mhgui.mhgui_package_init() // registers Image as a graphic
 	// The scene view places the centered 100x100 image at (50, 0)..(150, 100).
 	engine.canvas_set_game_viewport({200, 100})
 
@@ -727,7 +720,6 @@ _ui_case :: proc() -> _UI_Case {
 	rt := cast(^engine.RectTransform)_add(image, .RectTransform)
 	_add(image, .CanvasRenderer)
 	_add(image, .Image)
-	mhgui.mhgui_package_init()
 	engine.canvas_set_game_viewport({200, 100})
 	rt.anchor_min, rt.anchor_max = {0.25, 0.5}, {0.25, 0.5}
 	rt.anchored_position = {30, 0, 0}

@@ -126,9 +126,9 @@ text_fitted_size :: proc(t: ^Text, b: ^Backend, str: string, rect: engine.Rect) 
 }
 
 // The Text's geometry: one quad per glyph from the layout over the current
-// backend (engine.Graphic_Desc.populate).
-populate_text :: proc(comp: rawptr, rect: engine.Rect, out: ^[dynamic]engine.Graphic_Quad) {
-	tx := cast(^Text)comp
+// backend.
+@(canvas_graphic)
+canvas_populate_Text :: proc(tx: ^Text, rect: engine.Rect, out: ^[dynamic]engine.Graphic_Quad) {
 	if engine.asset_guid_is_empty(tx.font) do return
 	content := text_content_rect(tx, rect)
 	str := text_display_string(tx)
@@ -150,9 +150,4 @@ text_package_init :: proc() {
 	context.allocator = runtime.default_allocator()
 	_fonts = make(map[engine.Asset_GUID]Font)
 	backend_set(sdf_backend())
-	engine.canvas_graphic_register(engine.Graphic_Desc{
-		key            = .Text,
-		graphic_offset = offset_of(Text, graphic),
-		populate       = populate_text,
-	})
 }

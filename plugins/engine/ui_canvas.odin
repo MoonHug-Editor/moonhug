@@ -352,11 +352,13 @@ rect_corners :: proc(r: Rect, m: matrix[4, 4]f32) -> [4][3]f32 {
 // the walk with the node's rect and its active RectTransform children in
 // order. A provider that lays the node out fills `out` (one rect per child)
 // and returns true; otherwise the children resolve from their own anchors.
+// A package declares one with @(canvas_layout) on the proc.
 Canvas_Layout_Provider :: proc(tH: Transform_Handle, rect: Rect, children: []Transform_Handle, out: []Rect) -> bool
 
 _canvas_layout_providers: [dynamic]Canvas_Layout_Provider
 
 // Process-global registry: never borrows the caller's allocator.
+@(extension_point={attribute="canvas_layout", target="proc", fields=""})
 canvas_layout_register :: proc(p: Canvas_Layout_Provider) {
 	context.allocator = runtime.default_allocator()
 	if _canvas_layout_providers == nil do _canvas_layout_providers = make([dynamic]Canvas_Layout_Provider)
@@ -596,7 +598,9 @@ graphic_quad_corners :: proc(q: Graphic_Quad, m: matrix[4, 4]f32) -> [4][3]f32 {
 
 // A registered graphic type. `populate` appends the quads a component draws
 // inside `rect` (its resolved rect); the collector applies the node's
-// transform, the canvas scale and the view.
+// transform, the canvas scale and the view. A package declares one with
+// @(canvas_graphic) on `canvas_populate_<T>`, which takes a ^T: the
+// generated registration (canvas_gen) writes this descriptor around it.
 Graphic_Desc :: struct {
 	key:            TypeKey,
 	graphic_offset: uintptr, // offset_of(T, graphic)
@@ -606,6 +610,7 @@ Graphic_Desc :: struct {
 _canvas_graphics: [dynamic]Graphic_Desc
 
 // Process-global registry: never borrows the caller's allocator.
+@(extension_point={attribute="canvas_graphic", target="proc", fields=""})
 canvas_graphic_register :: proc(desc: Graphic_Desc) {
 	context.allocator = runtime.default_allocator()
 	if _canvas_graphics == nil do _canvas_graphics = make([dynamic]Graphic_Desc)

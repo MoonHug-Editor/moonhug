@@ -46,10 +46,10 @@ type_reset_Image :: proc(img: ^Image) {
 	img.pixels_per_unit_multiplier = 1
 }
 
-// The Image's geometry (engine.Graphic_Desc.populate): one quad for Simple,
-// the 9-slice cells for Sliced, the tiles for Tiled.
-populate_image :: proc(comp: rawptr, rect: engine.Rect, out: ^[dynamic]engine.Graphic_Quad) {
-	img := cast(^Image)comp
+// The Image's geometry: one quad for Simple, the 9-slice cells for Sliced,
+// the tiles for Tiled.
+@(canvas_graphic)
+canvas_populate_Image :: proc(img: ^Image, rect: engine.Rect, out: ^[dynamic]engine.Graphic_Quad) {
 	tex, px, tex_size, border, ok := image_source(img)
 	if !ok do return
 	switch img.image_type {

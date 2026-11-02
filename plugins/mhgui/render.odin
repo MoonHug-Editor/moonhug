@@ -21,16 +21,3 @@ white_texture_guid :: proc() -> engine.Asset_GUID {
 	return guid
 }
 
-// ImportersInit is the asset-layer init phase both binaries run.
-@(phase={key=ImportersInit, order=2})
-mhgui_package_init :: proc() {
-	@(static) done := false
-	if done do return
-	done = true
-	engine.canvas_graphic_register(engine.Graphic_Desc{
-		key            = .Image,
-		graphic_offset = offset_of(Image, graphic),
-		populate       = populate_image,
-	})
-	engine.canvas_layout_register(layout_provider)
-}
