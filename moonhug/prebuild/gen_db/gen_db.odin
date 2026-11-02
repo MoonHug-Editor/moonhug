@@ -491,11 +491,17 @@ _scan :: proc(w: ^World) -> bool {
 	return true
 }
 
+// Generated files under this path are not written. The prebuild sets it to
+// the packages folder for `--no-packages`, where the installed plugins are
+// not scanned and must not be touched either.
+write_skip_prefix: string
+
 @(private)
 _write_generated_files :: proc(w: ^World) -> bool {
 	files := get_comps(w, GeneratedFile)
 	if files == nil do return true
 	for &f in files.rows[:comps_len(files)] {
+		if write_skip_prefix != "" && strings.has_prefix(f.path, write_skip_prefix) do continue
 		if !gen_core.WriteGeneratedFile(f.path, f.contents) do return false
 	}
 	return true

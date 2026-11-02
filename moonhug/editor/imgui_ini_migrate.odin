@@ -13,12 +13,10 @@ import "core:os"
 import "core:strings"
 import wnd "window"
 
-// Where imgui keeps the layout: beside the project by default, in the user
-// folder when `--user-dir` names one (main.odin).
-imgui_ini_path := "imgui.ini"
+@(private = "file") _IMGUI_INI :: "imgui.ini"
 
 migrate_imgui_ini :: proc() {
-	data, err := os.read_entire_file(imgui_ini_path, context.temp_allocator)
+	data, err := os.read_entire_file(_IMGUI_INI, context.temp_allocator)
 	if err != nil do return
 	text := string(data)
 
@@ -77,7 +75,7 @@ migrate_imgui_ini :: proc() {
 		strings.write_string(&out, b.body)
 		strings.write_byte(&out, '\n')
 	}
-	_ = os.write_entire_file(imgui_ini_path, transmute([]u8)strings.to_string(out))
+	_ = os.write_entire_file(_IMGUI_INI, transmute([]u8)strings.to_string(out))
 }
 
 @(private = "file")

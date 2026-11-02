@@ -69,11 +69,28 @@ project_root_find :: proc(start: string, allocator := context.temp_allocator) ->
 // project_chdir_root anchors the process at the moonhug/ source directory.
 // Call once at startup, before any relative path is read.
 //
-// Panics when the directory is not found. Nothing downstream works without it,
+// `--project=<dir>` on the command line names the project directory outright:
+// the process enters it and the search below does not run, so a run meant
+// for another directory (the no-plugins check's scratch project) can never
+// climb into the user's project. A directory without the marker folders is
+// taken as given, with a warning, and the asset db scans an empty `assets`.
+//
+// Panics when no directory is found. Nothing downstream works without it,
 // and every failure it causes is silent — an empty asset db, no restored
 // scenes, dead menu items — so a crash naming the cause is the only outcome
 // that can be acted on.
 project_chdir_root :: proc() -> string {
+    for arg in os.args[1:] {
+        if !strings.has_prefix(arg, "--project=") do continue
+        dir := strings.clone(arg[len("--project="):])
+        if serr := os.set_working_directory(dir); serr != nil {
+            log.errorf("cannot enter the project directory %q: %v", dir, serr)
+            panic("cannot enter the project directory named by --project")
+        }
+        if !_is_project_root(dir) do log.warningf("[startup] --project=%q has no %q or %q folder, the asset db will be empty", dir, _ROOT_MARKERS[0], _ROOT_MARKERS[1])
+        log.infof("[startup] project directory from --project: %q", dir)
+        return dir
+    }
     cwd, err := os.get_working_directory(context.temp_allocator)
     if err != nil {
         panic("cannot read the working directory")

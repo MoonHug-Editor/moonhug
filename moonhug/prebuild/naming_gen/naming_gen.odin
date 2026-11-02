@@ -90,7 +90,11 @@ generate :: proc(w: ^db.World) -> bool {
 			for p in c.procs {
 				if !strings.has_prefix(d.name, p.prefix) || len(d.name) == len(p.prefix) do continue
 				rest := d.name[len(p.prefix):]
-				s, is_subject := subjects[c.key][rest]
+				// A convention with no subject yet has no entry: indexing the
+				// missing inner map directly faults (core/odin map gotcha).
+				conv_subjects, has_subjects := subjects[c.key]
+				if !has_subjects do continue
+				s, is_subject := conv_subjects[rest]
 				if !is_subject do continue
 				claimed = true
 				if _in_scope(&c, d, s) {
@@ -117,7 +121,7 @@ generate :: proc(w: ^db.World) -> bool {
 				case .Near_Miss:
 					if declared[rest] do continue
 					names := make([dynamic]string, context.temp_allocator)
-					for name in subjects[c.key] do append(&names, name)
+					if conv_subjects, has_subjects := subjects[c.key]; has_subjects do for name in conv_subjects do append(&names, name)
 					if near := gen_facts.nearest_name(rest, names[:]); near != "" {
 						append(&errors, fmt.tprintf("%s: `%s` names no %s, did you mean `%s%s`?", where_, d.name, strings.trim_prefix(c.subject, "a "), p.prefix, near))
 					}

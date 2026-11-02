@@ -243,12 +243,21 @@ _check_plugin_deps :: proc() -> bool {
 	return false
 }
 
+// `--no-packages`: the generators run on the bare shell and libs, as if
+// moonhug/packages were empty, whatever it holds (links, folders,
+// submodules). Nothing under it is scanned, checked or written. `mh
+// check-noplugins` builds the shell from that state, then runs the prebuild
+// again to regenerate the installed state.
+no_packages: bool
+
 main :: proc() {
 	total := time.tick_now()
 	for a in os.args[1:] {
 		if a == "--docs" do gen_facts.write_reference_pages = true
+		if a == "--no-packages" do no_packages = true
 		if strings.has_prefix(a, "--source-url=") do gen_core.source_url_template = strings.trim_prefix(a, "--source-url=")
 	}
+	if no_packages do db.write_skip_prefix = PACKAGES_DIR
 	lap := total
 	step :: proc(lap: ^time.Tick, name: string) {
 		db.timing_report(name, lap^)
@@ -256,18 +265,20 @@ main :: proc() {
 	}
 	// The manifests' `dependencies` follow the source (docs/core/Plugins.md), so
 	// the check below reads current lists and a stale entry never lingers.
-	if !gen_facts.plugin_manifests_sync_all("prebuild: ") do os.exit(1)
-	step(&lap, "prebuild/manifest sync")
-	if !_check_plugin_deps() do os.exit(1)
-	step(&lap, "prebuild/dependency check")
-	if _package_gens_refresh() {
-		fmt.eprintln("prebuild: package generator set changed, build prebuild again and rerun it (mh does both)")
-		os.exit(2)
+	if !no_packages {
+		if !gen_facts.plugin_manifests_sync_all("prebuild: ") do os.exit(1)
+		step(&lap, "prebuild/manifest sync")
+		if !_check_plugin_deps() do os.exit(1)
+		step(&lap, "prebuild/dependency check")
+		if _package_gens_refresh() {
+			fmt.eprintln("prebuild: package generator set changed, build prebuild again and rerun it (mh does both)")
+			os.exit(2)
+		}
+		step(&lap, "prebuild/package gens")
 	}
-	step(&lap, "prebuild/package gens")
 	all: [dynamic]string
 	for root in SCAN_ROOTS do _discover(&all, root)
-	_installed_packages(&all)
+	if !no_packages do _installed_packages(&all)
 	step(&lap, "prebuild/discover")
 	if !db.run_all(all[:]) do os.exit(1)
 	fmt.printf("prebuild: %.0f ms\n", time.duration_milliseconds(time.tick_since(total)))

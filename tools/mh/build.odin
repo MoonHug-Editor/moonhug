@@ -24,7 +24,7 @@ MCP_BIN :: "builds/mcp_shim" + EXE
 // `docs` makes the reference generators write their pages under
 // docs/reference, with source locations linked through docs_source_url.
 // Their checks run either way.
-prebuild :: proc(docs := false) -> bool {
+prebuild :: proc(docs := false, no_packages := false) -> bool {
 	prune, pok := tool_bin("prune_package_gens", "moonhug/prebuild/prune_package_gens", {})
 	if !pok || !step("prune", prune) do return false
 	// Exit 2: the set of package generators changed and the prebuild rewrote
@@ -32,7 +32,12 @@ prebuild :: proc(docs := false) -> bool {
 	for attempt in 0 ..< 2 {
 		gen, gok := tool_bin("prebuild", "moonhug/prebuild", package_gen_dirs(), COLLECTION)
 		if !gok do return false
-		code := run(gen, "--docs", fmt.tprintf("--source-url=%s", docs_source_url())) if docs else run(gen)
+		code: int
+		switch {
+		case docs:        code = run(gen, "--docs", fmt.tprintf("--source-url=%s", docs_source_url()))
+		case no_packages: code = run(gen, "--no-packages")
+		case:             code = run(gen)
+		}
 		if code == 0 do return true
 		if code == 2 && attempt == 0 do continue
 		fmt.fprintfln(run_log if run_log != nil else os.stderr, "mh: prebuild failed (exit %d)", code)

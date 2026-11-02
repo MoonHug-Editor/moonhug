@@ -1,21 +1,15 @@
 package mh
 
-// `mh build --no-plugins`: the proof that the editor shell depends on no
-// plugin. Every link in moonhug/packages is moved aside, the prebuild and the
-// editor build run against the bare shell and libs, and the links come back
-// whatever happened. The editor binary goes to a separate file, so the
-// installed build is untouched. The last generator pass then regenerates the
-// installed state, which is why the prebuild runs again at the end.
+// `mh build --no-plugins` and `mh check-noplugins`: the proof that the editor
+// shell depends on no plugin. The prebuild runs with `--no-packages`, so the
+// generators see moonhug/packages as empty whatever it holds (links, folders,
+// submodules) and write nothing under it; the editor then compiles from that
+// generated state into a separate binary, the installed build untouched. The
+// check also runs that binary for a few seconds in a scratch project. The
+// last stage runs the prebuild again, which regenerates the installed state.
 //
-// A generator that writes into a plugin by path with that plugin absent would
-// leave a real directory where the link was. Restore removes such a directory
-// before putting the link back, and reports it, since it is a generator bug.
-//
-// Another program can also put a link back while it is aside: a git pull,
-// checkout or stash restores the tracked links. Restore removes such a link
-// as a link, never with os.remove_all, which given a link to a directory
-// empties the directory it points to. The check then fails, since the tree
-// changed under the build, and the installed state is regenerated anyway.
+// Nothing on disk moves: the generated files of the shell and the libs are
+// the only files that change, and the last stage puts them back.
 
 import "core:fmt"
 import "core:net"
@@ -24,7 +18,6 @@ import "core:path/filepath"
 import "core:strings"
 import "core:time"
 
-ASIDE_DIR :: "builds/.packages_aside"
 NOPLUGINS_BIN :: "builds/MoonHug-noplugins" + EXE
 
 build_without_plugins :: proc() -> bool {
@@ -35,21 +28,16 @@ build_without_plugins :: proc() -> bool {
 // The stages of a no-plugins build, in order, and where it stopped.
 @(private = "file")
 No_Plugins_Stage :: enum {
-	Aside,      // the plugin links moved aside
 	Prebuild,   // the generators run on the bare shell
 	Build,      // the editor compiled with no plugin
 	Run,        // the editor launched for a few seconds and closed
-	Restore,    // the links back, no directory a generator made in their place
 	Regenerate, // the generators run again on the installed state
 }
 
 @(private = "file")
 No_Plugins_Result :: struct {
-	ok:       bool,
-	failed:   Maybe(No_Plugins_Stage), // the first stage that failed
-	moved:    int,                     // links moved aside
-	strays:   [dynamic]string,         // plugin paths a generator recreated as real directories
-	relinked: [dynamic]string,         // links another program put back while they were aside
+	ok:     bool,
+	failed: Maybe(No_Plugins_Stage), // the first stage that failed
 }
 
 // The no-plugins build. `report`, when set, is called as each stage ends
@@ -57,54 +45,27 @@ No_Plugins_Result :: struct {
 // progress lines.
 @(private = "file")
 _no_plugins :: proc(report: proc(stage: No_Plugins_Stage, ok: bool, detail: string)) -> (r: No_Plugins_Result) {
-	r.strays = make([dynamic]string, context.temp_allocator)
-	r.relinked = make([dynamic]string, context.temp_allocator)
 	done := proc(r: ^No_Plugins_Result, report: proc(stage: No_Plugins_Stage, ok: bool, detail: string), stage: No_Plugins_Stage, ok: bool, detail := "") -> bool {
 		if !ok && r.failed == nil do r.failed = stage
 		if report != nil do report(stage, ok, detail)
 		return ok
 	}
-	links := _all_package_links()
-	if len(links) == 0 {
-		done(&r, report, .Aside, false, "no plugin links in moonhug/packages: is this the repository root?")
-		return
-	}
-	os.make_directory_all(ASIDE_DIR)
-	moved := make([dynamic]Link_Entry, context.temp_allocator)
-	// The links come back whatever the build part did.
-	built := _aside_and_build(&r, report, links, &moved, done)
-	restored := _restore_links(moved[:], &r.strays, &r.relinked, quiet = report != nil)
-	restore_detail := ""
-	if len(r.strays) > 0 do restore_detail = fmt.tprintf("a generator recreated %s as a real directory (removed)", strings.join(r.strays[:], ", ", context.temp_allocator))
-	if len(r.relinked) > 0 do restore_detail = fmt.tprintf("%s%sanother program, a git pull, checkout or stash for example, put %d link%s back during the check, so the build saw a changing tree: run the check again", restore_detail, "" if restore_detail == "" else ". ", len(r.relinked), "" if len(r.relinked) == 1 else "s")
-	done(&r, report, .Restore, restored && len(r.strays) == 0 && len(r.relinked) == 0, restore_detail)
-	// The installed state comes back whenever the links did.
-	if restored {
-		if report == nil do fmt.println("mh: links restored, regenerating the installed state")
-		regen := prebuild()
-		if !regen && report == nil do fmt.eprintln("mh: regenerating the installed state failed, run mh prebuild")
-		done(&r, report, .Regenerate, regen, "")
-	}
+	built := _build_bare(&r, report, done)
+	// The installed state comes back whatever the build part did.
+	if report == nil do fmt.println("mh: regenerating the installed state")
+	regen := prebuild()
+	if !regen && report == nil do fmt.eprintln("mh: regenerating the installed state failed, run mh prebuild")
+	done(&r, report, .Regenerate, regen, "")
 	r.ok = built && r.failed == nil
 	return
 }
 
-// The links aside, the bare prebuild and the editor build, stopping at the
-// first failure. `moved` lists what went aside, for the restore.
+// The bare prebuild, the editor build and the run, stopping at the first
+// failure.
 @(private = "file")
-_aside_and_build :: proc(r: ^No_Plugins_Result, report: proc(stage: No_Plugins_Stage, ok: bool, detail: string), links: []Link_Entry, moved: ^[dynamic]Link_Entry, done: proc(r: ^No_Plugins_Result, report: proc(stage: No_Plugins_Stage, ok: bool, detail: string), stage: No_Plugins_Stage, ok: bool, detail := "") -> bool) -> bool {
-	for e in links {
-		if link_state(e) == .Missing do continue
-		aside, _ := filepath.join({ASIDE_DIR, filepath.base(e.path)}, context.temp_allocator)
-		if err := os.rename(e.path, aside); err != nil {
-			return done(r, report, .Aside, false, fmt.tprintf("cannot move %s aside: %v", e.path, err))
-		}
-		append(moved, e)
-	}
-	r.moved = len(moved)
-	done(r, report, .Aside, true, fmt.tprintf("%d plugin links", len(moved)))
-	if report == nil do fmt.printfln("mh: %d plugin links aside, building the bare shell", len(moved))
-	if !done(r, report, .Prebuild, prebuild()) do return false
+_build_bare :: proc(r: ^No_Plugins_Result, report: proc(stage: No_Plugins_Stage, ok: bool, detail: string), done: proc(r: ^No_Plugins_Result, report: proc(stage: No_Plugins_Stage, ok: bool, detail: string), stage: No_Plugins_Stage, ok: bool, detail := "") -> bool) -> bool {
+	if report == nil do fmt.println("mh: building the bare shell, the packages folder ignored")
+	if !done(r, report, .Prebuild, prebuild(no_packages = true)) do return false
 	os.make_directory_all("builds")
 	built := step("editor build (no plugins)", "odin", "build", "moonhug/editor", IGNORE_ATTRS, COLLECTION, VET, fmt.tprintf("-out:%s", NOPLUGINS_BIN))
 	if !done(r, report, .Build, built, NOPLUGINS_BIN if built else "") do return false
@@ -114,6 +75,9 @@ _aside_and_build :: proc(r: ^No_Plugins_Result, report: proc(stage: No_Plugins_S
 	if report == nil do fmt.printfln("mh: the shell runs with no plugins (%s)", detail)
 	return true
 }
+
+// The scratch project the no-plugins editor runs in.
+SMOKE_PROJECT_DIR :: "builds/noplugins-project"
 
 // How long the no-plugins editor runs in the smoke stage. Its first frames
 // are what fail when the shell leans on something only a plugin installs,
@@ -136,10 +100,20 @@ _smoke_run :: proc() -> (ok: bool, detail: string) {
 	}
 	out := run_log if run_log != nil else os.stdout
 	errs := run_log if run_log != nil else os.stderr
-	// Its layout and settings go to a folder of their own: the editor
-	// normalizes its working directory, so the path is absolute.
-	user_dir, _ := filepath.abs("builds/noplugins-user", context.temp_allocator)
-	p, err := os.process_start({command = {NOPLUGINS_BIN, fmt.tprintf("--user-dir=%s", user_dir)}, stdout = out, stderr = errs})
+	// It runs in a scratch project of its own, named outright with
+	// `--project=` so the editor's startup walk cannot climb into the user's
+	// project (assets/project_root.odin). Its layout, settings and artifact
+	// library land there. In the user's project it would sweep the artifacts
+	// of the plugins it cannot see as stale, and overwrite the window layout.
+	// Absolute paths from the working directory: filepath.abs goes through
+	// the filesystem and returns nothing for a directory not created yet.
+	cwd, cerr := os.get_working_directory(context.temp_allocator)
+	if cerr != nil do return false, fmt.tprintf("cannot read the working directory: %v", cerr)
+	project, _ := filepath.join({cwd, SMOKE_PROJECT_DIR}, context.temp_allocator)
+	bin, _ := filepath.join({cwd, NOPLUGINS_BIN}, context.temp_allocator)
+	os.make_directory_all(fmt.tprintf("%s/assets", project))
+	os.make_directory_all(fmt.tprintf("%s/ProjectSettings", project))
+	p, err := os.process_start({command = {bin, fmt.tprintf("--project=%s", project)}, working_dir = project, stdout = out, stderr = errs})
 	if err != nil do return false, fmt.tprintf("cannot start %s: %v", NOPLUGINS_BIN, err)
 	state, werr := os.process_wait(p, SMOKE_SECONDS * time.Second)
 	if werr == nil && state.exited {
@@ -158,68 +132,10 @@ _smoke_run :: proc() -> (ok: bool, detail: string) {
 	return true, fmt.tprintf("ran %d s, closed on terminate", SMOKE_SECONDS)
 }
 
-// Every plugin link in moonhug/packages: the ones git tracks, and links that
-// are on disk but not committed yet (a plugin just added). All of them go
-// aside, or a new plugin would stay installed and need the absent engine.
-@(private = "file")
-_all_package_links :: proc() -> []Link_Entry {
-	out := make([dynamic]Link_Entry, context.temp_allocator)
-	seen := make(map[string]bool, context.temp_allocator)
-	for e in tracked_links() {
-		append(&out, e)
-		seen[e.path] = true
-	}
-	handle, oerr := os.open(PACKAGES_DIR)
-	if oerr != nil do return out[:]
-	defer os.close(handle)
-	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
-	if rerr != nil do return out[:]
-	for e in entries {
-		path := fmt.tprintf("%s/%s", PACKAGES_DIR, e.name)
-		if path in seen do continue
-		if _, lerr := os.read_link(path, context.temp_allocator); lerr != nil do continue
-		append(&out, Link_Entry{path = path})
-	}
-	return out[:]
-}
-
-// Puts the links back. A link another program put back meanwhile is removed
-// as a link and listed in `relinked`. A directory a generator created where a
-// link was is removed first and listed in `strays`. False when a link could
-// not be put back.
-@(private = "file")
-_restore_links :: proc(moved: []Link_Entry, strays: ^[dynamic]string, relinked: ^[dynamic]string, quiet := false) -> (ok: bool) {
-	ok = true
-	for e in moved {
-		if _, lerr := os.read_link(e.path, context.temp_allocator); lerr == nil {
-			// Never os.remove_all here: on a link it empties the plugin.
-			if !quiet do fmt.eprintfln("mh: %s was put back by another program during the no-plugins build (a git operation?), replacing it with the moved link", e.path)
-			append(relinked, e.path)
-			if err := os.remove(e.path); err != nil {
-				fmt.eprintfln("mh: cannot remove the link %s: %v", e.path, err)
-				ok = false
-				continue
-			}
-		} else if os.exists(e.path) {
-			// Only a generator writing into an absent plugin produces this.
-			if !quiet do fmt.eprintfln("mh: %s was recreated as a real directory during the no-plugins build (a generator wrote into an absent plugin), removing it", e.path)
-			append(strays, e.path)
-			os.remove_all(e.path)
-		}
-		aside, _ := filepath.join({ASIDE_DIR, filepath.base(e.path)}, context.temp_allocator)
-		if err := os.rename(aside, e.path); err != nil {
-			fmt.eprintfln("mh: cannot restore %s from %s: %v (mh setup repairs links from the index)", e.path, aside, err)
-			ok = false
-		}
-	}
-	os.remove(ASIDE_DIR)
-	return
-}
-
 // `mh check-noplugins`: the no-plugins build and run as a pass or fail check. The
 // tools' output goes to a log, the terminal gets one row per stage, and on a
-// failure the first errors from the log and its path. The plugins are back
-// and the installed state regenerated either way.
+// failure the first errors from the log and its path. The installed state is
+// regenerated either way.
 NOPLUGINS_LOG :: "builds/noplugins-check.log"
 
 cmd_check_noplugins :: proc(args: []string) -> int {
@@ -233,7 +149,7 @@ cmd_check_noplugins :: proc(args: []string) -> int {
 	_last_mark = 0
 	_fail_segment = {}
 	start := time.now()
-	fmt.println("No-plugins build check: the editor shell must build with every plugin set aside")
+	fmt.println("No-plugins build check: the editor shell must build and run with the packages folder ignored")
 	r := _no_plugins(proc(stage: No_Plugins_Stage, ok: bool, detail: string) {
 		// The log from the end of the stage before to here is this stage's.
 		size: i64
@@ -255,7 +171,7 @@ cmd_check_noplugins :: proc(args: []string) -> int {
 		fmt.printfln("PASS: the editor builds and runs with no plugins (%.0f s, log %s)", secs, NOPLUGINS_LOG)
 		return 0
 	}
-	failed := r.failed.? or_else .Aside
+	failed := r.failed.? or_else .Prebuild
 	fmt.printfln("FAIL: %s (%.0f s). Its output, from %s:", _STAGE_NAMES[failed], secs, NOPLUGINS_LOG)
 	for line in _stage_output(NOPLUGINS_LOG, _fail_segment, 20) do fmt.printfln("    %s", line)
 	return 1
@@ -263,11 +179,9 @@ cmd_check_noplugins :: proc(args: []string) -> int {
 
 @(private = "file")
 _STAGE_NAMES := [No_Plugins_Stage]string{
-	.Aside      = "move the plugin links aside",
-	.Prebuild   = "prebuild on the bare shell",
+	.Prebuild   = "prebuild with the packages folder ignored",
 	.Build      = "build the editor",
 	.Run        = "run the editor",
-	.Restore    = "restore the plugin links",
 	.Regenerate = "regenerate the installed state",
 }
 
