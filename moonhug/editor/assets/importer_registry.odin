@@ -24,6 +24,7 @@ package asset_pipeline
 //   importer refines its settings. nil = the main artifact only.
 
 import "base:runtime"
+import "moonhug:libs/log"
 
 Importer_Desc :: struct {
 	name:         string,
@@ -66,6 +67,11 @@ importer_register :: proc(desc: Importer_Desc) {
 	context.allocator = runtime.default_allocator()
 	_importers[desc.name] = desc
 	for ext in desc.extensions {
+		// Two importers for one extension: the later registration takes it, and
+		// the log says so, since the files then import with the other one.
+		if owner, taken := _importer_by_ext[ext]; taken && owner != desc.name {
+			log.warningf("importer %q takes %s from importer %q", desc.name, ext, owner)
+		}
 		_importer_by_ext[ext] = desc.name
 	}
 }

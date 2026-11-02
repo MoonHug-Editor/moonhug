@@ -16,6 +16,11 @@ package assets
 // A cache of a file reacts to Modified and Removed. A cache of an artifact
 // reacts to Reimported, and may see Modified first, which it can ignore or
 // act on twice. The hook gets the guid and the path, so it looks nothing up.
+//
+// Hooks on one change run by `order`, lower first, equal orders in
+// registration order. A hook that unloads needs none. A hook that imports
+// (the shader hot reload) declares a positive order, so every unload of the
+// file has run before the import rebuilds its artifact.
 
 import "base:runtime"
 import "core:encoding/uuid"
@@ -33,23 +38,28 @@ Asset_Hook :: proc(guid: core.Asset_GUID, path: string, change: Asset_Change)
 
 @(private = "file")
 _Asset_Hook_Entry :: struct {
-	ext:  string, // ".mat", "" for every asset
-	hook: Asset_Hook,
+	ext:   string, // ".mat", "" for every asset
+	hook:  Asset_Hook,
+	order: int,
 }
 
 @(private = "file")
 _asset_hooks: [dynamic]_Asset_Hook_Entry
 
 // Registers `hook` for assets with extension `ext`, written with or without
-// the dot, "" for every asset. Registry state never borrows the caller's
-// allocator: tests hand out scoped tracking allocators.
-@(extension_point={attribute="asset_hook", target="proc", fields="ext"})
-asset_hook_add :: proc(ext: string, hook: Asset_Hook) {
+// the dot, "" for every asset, at `order` among the hooks of one change.
+// Registry state never borrows the caller's allocator: tests hand out scoped
+// tracking allocators.
+@(extension_point={attribute="asset_hook", target="proc", fields="ext order"})
+asset_hook_add :: proc(ext: string, hook: Asset_Hook, order := 0) {
 	context.allocator = runtime.default_allocator()
 	e := ext
 	if e != "" && e[0] != '.' do e = strings.concatenate({".", e})
 	for h in _asset_hooks do if h.hook == hook && h.ext == e do return
-	append(&_asset_hooks, _Asset_Hook_Entry{ext = strings.clone(e), hook = hook})
+	// Kept sorted: insert after the last entry of a lower or equal order.
+	at := len(_asset_hooks)
+	for h, i in _asset_hooks do if h.order > order { at = i; break }
+	inject_at(&_asset_hooks, at, _Asset_Hook_Entry{ext = strings.clone(e), hook = hook, order = order})
 }
 
 // Tells every hook registered for the asset's extension that it changed.
