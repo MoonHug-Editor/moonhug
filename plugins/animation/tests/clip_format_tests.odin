@@ -87,7 +87,7 @@ test_clip_format_float_shape_round_trips :: proc(t: ^testing.T) {
 		"values": [[0.0, 0.0, -0.087156, 0.996195], [0.0, 0.0, -0.965926, 0.258819], [0, 0, 0, 1]]}]}`
 	clip: anim.AnimationClip
 	err := json.unmarshal(transmute([]byte)src, &clip, .JSON, context.allocator)
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	testing.expect(t, err == nil, "today's shape unmarshals")
 	if len(clip.channels) != 1 do return
 	ch := &clip.channels[0]
@@ -117,7 +117,7 @@ test_clip_format_empty_values_are_floats :: proc(t: ^testing.T) {
 	src := `{"length": 1.0, "channels": [{"target": "", "path": 0, "times": [], "values": []}]}`
 	clip: anim.AnimationClip
 	err := json.unmarshal(transmute([]byte)src, &clip, .JSON, context.allocator)
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	testing.expect(t, err == nil, "an empty row unmarshals")
 	if len(clip.channels) == 1 do testing.expect(t, anim.animation_channel_is_float(&clip.channels[0]), "an empty array is a float row")
 }
@@ -158,7 +158,7 @@ test_clip_format_typed_rows_round_trip :: proc(t: ^testing.T) {
 	strs := make([dynamic]string)
 	append(&strs, strings.clone("hello", strs.allocator), strings.clone("wörld \"q\"", strs.allocator))
 	append(&clip.channels, _prop_channel("slot", strs, {0, 1}))
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 
 	data, merr := json.marshal(clip, {spec = .JSON}, context.temp_allocator)
 	testing.expect(t, merr == nil, "the clip marshals")
@@ -171,7 +171,7 @@ test_clip_format_typed_rows_round_trip :: proc(t: ^testing.T) {
 
 	loaded: anim.AnimationClip
 	uerr := json.unmarshal(data, &loaded, .JSON, context.allocator)
-	defer anim.cleanup_AnimationClip(&loaded)
+	defer anim.type_cleanup_AnimationClip(&loaded)
 	testing.expect(t, uerr == nil, "the clip unmarshals")
 	if len(loaded.channels) != 3 do return
 
@@ -185,7 +185,7 @@ test_clip_format_typed_rows_round_trip :: proc(t: ^testing.T) {
 	// The document path (editor asset docs, undo) reads the same way.
 	doc: anim.AnimationClip
 	derr := engine.unmarshal_over_reset(data, &doc, typeid_of(anim.AnimationClip))
-	defer anim.cleanup_AnimationClip(&doc)
+	defer anim.type_cleanup_AnimationClip(&doc)
 	testing.expect(t, derr == nil, "the document path unmarshals")
 	if len(doc.channels) == 3 {
 		di, dok := doc.channels[0].values.([dynamic]i64)
@@ -202,12 +202,12 @@ test_clip_format_modes_and_tangents_round_trip :: proc(t: ^testing.T) {
 	append(&ch.modes, anim.Key_Mode.Free, anim.Key_Mode.Smooth)
 	append(&ch.tangents, [2][4]f32{{0, 0, 0, 0}, {3, 0, 0, 0}})
 	append(&clip.channels, ch)
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 
 	data, _ := json.marshal(clip, {spec = .JSON}, context.temp_allocator)
 	loaded: anim.AnimationClip
 	uerr := json.unmarshal(data, &loaded, .JSON, context.allocator)
-	defer anim.cleanup_AnimationClip(&loaded)
+	defer anim.type_cleanup_AnimationClip(&loaded)
 	testing.expect(t, uerr == nil, "the clip unmarshals")
 	if len(loaded.channels) != 1 do return
 	l := &loaded.channels[0]
@@ -271,7 +271,7 @@ test_clip_format_existing_files_load_unchanged :: proc(t: ^testing.T) {
 				step, _ := fc["step"].(json.Boolean)
 				testing.expectf(t, ch.step == bool(step), "%s channel %d keeps its step flag", path, i)
 			}
-			anim.cleanup_AnimationClip(&clip)
+			anim.type_cleanup_AnimationClip(&clip)
 		}
 	}
 }
@@ -294,7 +294,7 @@ _free_channel :: proc(ch: ^anim.Animation_Channel) {
 	clip := anim.AnimationClip{}
 	clip.channels = make([dynamic]anim.Animation_Channel)
 	append(&clip.channels, ch^)
-	anim.cleanup_AnimationClip(&clip)
+	anim.type_cleanup_AnimationClip(&clip)
 }
 
 @(private = "file")
@@ -441,7 +441,7 @@ test_clip_format_preview_copy_is_deep :: proc(t: ^testing.T) {
 	strs := make([dynamic]string)
 	append(&strs, strings.clone("x", strs.allocator))
 	append(&clip.channels, _prop_channel("slot", strs, {0}))
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 
 	ref := engine.PPtr{guid = _clip_guid(0x92)}
 	anim.animation_clip_preview(ref, clip)
@@ -462,7 +462,7 @@ test_clip_format_euler_row_round_trips :: proc(t: ^testing.T) {
 		"values": [[10, 20, 30, 0], [10, 80, 30, 0]], "lanes": [false, true, false]}]}`
 	clip: anim.AnimationClip
 	err := json.unmarshal(transmute([]byte)src, &clip, .JSON, context.allocator)
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	testing.expect(t, err == nil, "the Euler row unmarshals")
 	if !testing.expect_value(t, len(clip.channels), 1) do return
 	ch := &clip.channels[0]
@@ -481,7 +481,7 @@ test_clip_format_euler_row_round_trips :: proc(t: ^testing.T) {
 
 	again: anim.AnimationClip
 	err = json.unmarshal(data, &again, .JSON, context.allocator)
-	defer anim.cleanup_AnimationClip(&again)
+	defer anim.type_cleanup_AnimationClip(&again)
 	testing.expect(t, err == nil, "the written clip unmarshals")
 	if len(again.channels) == 1 {
 		testing.expect_value(t, again.channels[0].path, anim.Animation_Path.Euler)
@@ -508,7 +508,7 @@ test_clip_format_euler_row_apply_writes_its_lanes :: proc(t: ^testing.T) {
 
 	clip := anim.AnimationClip{length = 1}
 	clip.channels = make([dynamic]anim.Animation_Channel)
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	ch := _float_channel({0}, {{70, 60, -40, 0}}, .Euler)
 	ch.lanes_off = {0, 2}
 	append(&clip.channels, ch)
@@ -659,7 +659,7 @@ test_clip_format_trim_keeps_curves :: proc(t: ^testing.T) {
 	append(&ch.modes, anim.Key_Mode.Smooth, anim.Key_Mode.Smooth, anim.Key_Mode.Free)
 	append(&ch.tangents, [2][4]f32{}, [2][4]f32{}, [2][4]f32{{-2, 0, 0, 0}, {}})
 	append(&clip.channels, ch)
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	src := clip.channels[0]
 	probes := [?]f32{0.4, 0.8, 1.0, 1.3, 1.6}
 	want: [len(probes)]f32
@@ -707,7 +707,7 @@ test_clip_cache_shutdown_frees_entries_with_their_allocator :: proc(t: ^testing.
 	strs := make([dynamic]string)
 	append(&strs, strings.clone("x", strs.allocator))
 	append(&clip.channels, _prop_channel("slot", strs, {0}))
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	anim.animation_clip_preview(engine.PPtr{guid = _clip_guid(0x93)}, clip)
 	anim.animation_clip_cache_shutdown()
 	// The runner's tracking allocator fails the test on a bad free.

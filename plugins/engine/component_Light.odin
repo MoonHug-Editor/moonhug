@@ -46,7 +46,7 @@ Light :: struct {
     shadow_caster_mask: u32 `decor:layers(domain="render")`,
 }
 
-reset_Light :: proc(l: ^Light) {
+type_reset_Light :: proc(l: ^Light) {
     l.type = .Directional
     l.color = {1, 1, 1, 1}
     l.intensity = 1

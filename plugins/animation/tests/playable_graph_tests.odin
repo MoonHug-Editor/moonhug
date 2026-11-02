@@ -477,7 +477,7 @@ test_animation_clip_preview_replaces_cache :: proc(t: ^testing.T) {
 	anim.animation_clip_cache[engine.PPtr{guid = guid}] = _const_clip(.Position, {1, 0, 0, 0})
 
 	doc := _const_clip(.Position, {7, 0, 0, 0}, length = 2)
-	defer anim.cleanup_AnimationClip(&doc)
+	defer anim.type_cleanup_AnimationClip(&doc)
 	anim.animation_clip_preview(engine.PPtr{guid = guid}, doc)
 
 	cached, ok := anim.animation_clip_load(engine.PPtr{guid = guid})

@@ -92,7 +92,7 @@ test_sdf_backend_scales_metrics_and_lays_out :: proc(t: ^testing.T) {
 		testing.expect(t, quads[1].pos.x > quads[0].pos.x, "glyphs advance left to right")
 		testing.expect(t, quads[0].pos.y < 100 && quads[0].pos.y + quads[0].size.y <= 100 + 1, "first line hangs from the rect's top")
 	}
-	text.font_reimported(guid) // frees the cached font
+	text.font_unload(guid) // frees the cached font
 }
 
 // A glyph outside the baked ranges comes from the font file at first use,
@@ -111,7 +111,7 @@ test_sdf_backend_adds_glyphs_outside_the_bake :: proc(t: ^testing.T) {
 	testing.expect(t, f.has_info, "the artifact carries the font file")
 	guid := engine.Asset_GUID{9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9}
 	text.font_cache_insert(guid, f)
-	defer text.font_reimported(guid)
+	defer text.font_unload(guid)
 
 	b := text.sdf_backend()
 	e_acute, eok := b.glyph(guid, 32, 'é')
@@ -130,7 +130,7 @@ test_sdf_backend_adds_glyphs_outside_the_bake :: proc(t: ^testing.T) {
 	testing.expect_value(t, snowman.uvs, question.uvs) // not in Roboto: the fallback
 }
 
-// A new settings instance gets its defaults from reset_<Type>, through the
+// A new settings instance gets its defaults from type_reset_<Type>, through the
 // generated registration.
 @(test)
 test_font_settings_instance_has_defaults :: proc(t: ^testing.T) {
@@ -142,7 +142,7 @@ test_font_settings_instance_has_defaults :: proc(t: ^testing.T) {
 	testing.expect(t, s.latin1, "latin1 on by default")
 }
 
-// reset_T on a live value: it runs cleanup_T first, then the defaults. The
+// type_reset_T on a live value: it runs type_cleanup_T first, then the defaults. The
 // test context's tracking allocator reports a leak if the old string survives.
 @(test)
 test_type_reset_frees_then_defaults :: proc(t: ^testing.T) {

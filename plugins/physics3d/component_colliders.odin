@@ -37,8 +37,8 @@ BoxCollider :: struct {
 	static_body: b3.BodyId `json:"-" inspect:"-"`, // only when no ancestor RB
 }
 
-reset_BoxCollider :: proc(comp: ^BoxCollider) {
-	cleanup_BoxCollider(comp)
+type_reset_BoxCollider :: proc(comp: ^BoxCollider) {
+	type_cleanup_BoxCollider(comp)
 	comp.layers = 1
 	comp.size = {1, 1, 1}
 	comp.density = 1
@@ -47,7 +47,7 @@ reset_BoxCollider :: proc(comp: ^BoxCollider) {
 // Every collider's cleanup runs on destroy, removal, Reset and undo: the
 // shape and the implicit static body go with the component, or they keep
 // colliding as ghosts.
-cleanup_BoxCollider :: proc(comp: ^BoxCollider) {
+type_cleanup_BoxCollider :: proc(comp: ^BoxCollider) {
 	_destroy_shape(&comp.shape, &comp.static_body)
 	engine.comp_zero(comp)
 }
@@ -70,14 +70,14 @@ SphereCollider :: struct {
 	static_body: b3.BodyId `json:"-" inspect:"-"`,
 }
 
-reset_SphereCollider :: proc(comp: ^SphereCollider) {
-	cleanup_SphereCollider(comp)
+type_reset_SphereCollider :: proc(comp: ^SphereCollider) {
+	type_cleanup_SphereCollider(comp)
 	comp.layers = 1
 	comp.radius = 0.5
 	comp.density = 1
 }
 
-cleanup_SphereCollider :: proc(comp: ^SphereCollider) {
+type_cleanup_SphereCollider :: proc(comp: ^SphereCollider) {
 	_destroy_shape(&comp.shape, &comp.static_body)
 	engine.comp_zero(comp)
 }
@@ -109,8 +109,8 @@ CapsuleCollider :: struct {
 	static_body: b3.BodyId `json:"-" inspect:"-"`,
 }
 
-reset_CapsuleCollider :: proc(comp: ^CapsuleCollider) {
-	cleanup_CapsuleCollider(comp)
+type_reset_CapsuleCollider :: proc(comp: ^CapsuleCollider) {
+	type_cleanup_CapsuleCollider(comp)
 	comp.layers = 1
 	comp.radius = 0.5
 	comp.height = 2
@@ -118,7 +118,7 @@ reset_CapsuleCollider :: proc(comp: ^CapsuleCollider) {
 	comp.density = 1
 }
 
-cleanup_CapsuleCollider :: proc(comp: ^CapsuleCollider) {
+type_cleanup_CapsuleCollider :: proc(comp: ^CapsuleCollider) {
 	_destroy_shape(&comp.shape, &comp.static_body)
 	engine.comp_zero(comp)
 }
@@ -165,13 +165,13 @@ MeshCollider :: struct {
 	build_failed: bool `json:"-" inspect:"-"`,
 }
 
-reset_MeshCollider :: proc(comp: ^MeshCollider) {
-	cleanup_MeshCollider(comp)
+type_reset_MeshCollider :: proc(comp: ^MeshCollider) {
+	type_cleanup_MeshCollider(comp)
 	comp.layers = 1
 	comp.density = 1
 }
 
-cleanup_MeshCollider :: proc(comp: ^MeshCollider) {
+type_cleanup_MeshCollider :: proc(comp: ^MeshCollider) {
 	for &s in comp.shapes {
 		no_body: b3.BodyId // the static body goes once, with `shape` below
 		_destroy_shape(&s, &no_body)

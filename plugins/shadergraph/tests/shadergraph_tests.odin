@@ -14,7 +14,7 @@ import sg "moonhug:packages/shadergraph"
 @(private)
 _rim_graph :: proc() -> sg.Shader_Graph {
 	g: sg.Shader_Graph
-	sg.reset_Shader_Graph(&g)
+	sg.type_reset_Shader_Graph(&g)
 	sg.graph_add_property(&g, "rim_color", .Color, {1, 0.8, 0.4, 1})
 	sg.graph_add_property(&g, "rim_power", .Float, {3, 0, 0, 0})
 	color := sg.graph_add_node(&g, sg.PROPERTY_KIND, {0, 0}, "rim_color")
@@ -42,7 +42,7 @@ _rim_graph :: proc() -> sg.Shader_Graph {
 @(test)
 test_codegen_rim_graph :: proc(t: ^testing.T) {
 	g := _rim_graph()
-	defer sg.cleanup_Shader_Graph(&g)
+	defer sg.type_cleanup_Shader_Graph(&g)
 	r, ok := sg.generate(&g)
 	testing.expect(t, ok, "codegen reports no error")
 	testing.expect_value(t, len(r.errors), 0)
@@ -60,8 +60,8 @@ test_codegen_rim_graph :: proc(t: ^testing.T) {
 @(test)
 test_codegen_empty_graph_is_the_lit_shader :: proc(t: ^testing.T) {
 	g: sg.Shader_Graph
-	sg.reset_Shader_Graph(&g)
-	defer sg.cleanup_Shader_Graph(&g)
+	sg.type_reset_Shader_Graph(&g)
+	defer sg.type_cleanup_Shader_Graph(&g)
 	r, ok := sg.generate(&g)
 	testing.expect(t, ok)
 	testing.expect(t, strings.contains(r.glsl, "void surface(inout Surface s) {\n}"), "an empty surface()")
@@ -71,8 +71,8 @@ test_codegen_empty_graph_is_the_lit_shader :: proc(t: ^testing.T) {
 @(test)
 test_codegen_skips_unreachable_nodes_and_coerces :: proc(t: ^testing.T) {
 	g: sg.Shader_Graph
-	sg.reset_Shader_Graph(&g)
-	defer sg.cleanup_Shader_Graph(&g)
+	sg.type_reset_Shader_Graph(&g)
+	defer sg.type_cleanup_Shader_Graph(&g)
 	surface := g.nodes[0].id
 	stray := sg.graph_add_node(&g, "Sine", {0, 0})
 	f := sg.graph_add_node(&g, "Float", {0, 0})
@@ -89,8 +89,8 @@ test_codegen_skips_unreachable_nodes_and_coerces :: proc(t: ^testing.T) {
 @(test)
 test_graph_link_rejects_cycles_and_replaces_inputs :: proc(t: ^testing.T) {
 	g: sg.Shader_Graph
-	sg.reset_Shader_Graph(&g)
-	defer sg.cleanup_Shader_Graph(&g)
+	sg.type_reset_Shader_Graph(&g)
+	defer sg.type_cleanup_Shader_Graph(&g)
 	a := sg.graph_add_node(&g, "Add", {0, 0})
 	b := sg.graph_add_node(&g, "Add", {0, 0})
 	testing.expect(t, sg.graph_link(&g, a, 0, b, 0))
@@ -108,12 +108,12 @@ test_graph_link_rejects_cycles_and_replaces_inputs :: proc(t: ^testing.T) {
 @(test)
 test_graph_file_round_trip :: proc(t: ^testing.T) {
 	g := _rim_graph()
-	defer sg.cleanup_Shader_Graph(&g)
+	defer sg.type_cleanup_Shader_Graph(&g)
 	path := "moonhug/tests/fixtures/_test_shader_graph.shadergraph"
 	testing.expect(t, sg.graph_save_file(&g, path))
 	loaded, ok := sg.graph_load_file(path)
 	testing.expect(t, ok)
-	defer sg.cleanup_Shader_Graph(&loaded)
+	defer sg.type_cleanup_Shader_Graph(&loaded)
 	testing.expect_value(t, len(loaded.nodes), len(g.nodes))
 	testing.expect_value(t, len(loaded.links), len(g.links))
 	testing.expect_value(t, len(loaded.properties), 2)
@@ -136,8 +136,8 @@ test_property_identifier :: proc(t: ^testing.T) {
 @(test)
 test_codegen_normal_map_and_texture_uvs :: proc(t: ^testing.T) {
 	g: sg.Shader_Graph
-	sg.reset_Shader_Graph(&g)
-	defer sg.cleanup_Shader_Graph(&g)
+	sg.type_reset_Shader_Graph(&g)
+	defer sg.type_cleanup_Shader_Graph(&g)
 	surface := g.nodes[0].id
 	sg.graph_add_property(&g, "bumps", .Texture)
 	sg.graph_add_property(&g, "base", .Texture)

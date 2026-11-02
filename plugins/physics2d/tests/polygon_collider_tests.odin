@@ -160,7 +160,7 @@ physics2d_edge_collider_catches_a_ball :: proc(t: ^testing.T) {
 
 	// Wound the other way the V is solid outside: a ball passes through.
 	engine.transform_destroy(ball)
-	physics2d.cleanup_EdgeCollider2D(ec)
+	physics2d.type_cleanup_EdgeCollider2D(ec)
 	ec.enabled = true
 	ec.layers = 1
 	append(&ec.points, [2]f32{-3, 3}, [2]f32{0, 0}, [2]f32{3, 3})
@@ -184,7 +184,7 @@ physics2d_edge_collider_two_sided :: proc(t: ^testing.T) {
 	ec := cast(^physics2d.EdgeCollider2D)ec_ptr
 	testing.expect(t, ec.two_sided, "a new edge collider is two-sided")
 	for winding in 0 ..< 2 {
-		physics2d.cleanup_EdgeCollider2D(ec)
+		physics2d.type_cleanup_EdgeCollider2D(ec)
 		ec.enabled = true
 		ec.layers = 1
 		ec.two_sided = true

@@ -147,7 +147,7 @@ test_clip_runtime_trim_edge_outside_keys_holds :: proc(t: ^testing.T) {
 	append(&ch.modes, anim.Key_Mode.Free, anim.Key_Mode.Free)
 	append(&ch.tangents, [2][4]f32{{4, 0, 0, 0}, {2, 0, 0, 0}}, [2][4]f32{{2, 0, 0, 0}, {-6, 0, 0, 0}})
 	append(&clip.channels, ch)
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	src := clip.channels[0]
 	mid_want := anim._animation_channel_sample(&src, 1.5).x
 

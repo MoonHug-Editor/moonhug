@@ -205,8 +205,8 @@ Animation :: struct {
 // variants all carry @(typ_guid), so nothing here has to remember. The
 // variants' pointer types come with their @(typ_guid).
 
-reset_Animation :: proc(comp: ^Animation) {
-	cleanup_Animation(comp)
+type_reset_Animation :: proc(comp: ^Animation) {
+	type_cleanup_Animation(comp)
 	comp.play_automatically = true
 	comp.speed = 1
 }
@@ -214,7 +214,7 @@ reset_Animation :: proc(comp: ^Animation) {
 // Releases everything the component owns. Reached two ways, and BOTH matter:
 // component destruction (engine.component_on_destroy), and a value being replaced
 // under it — undo calls type_cleanup before unmarshalling a restored value, and
-// type_cleanup dispatches on the `cleanup_<Type>` name. Without this proc the
+// type_cleanup dispatches on the `type_cleanup_<Type>` name. Without this proc the
 // undo path silently orphaned `layers` and every nested `clips` on each restore.
 //
 // The runtime side (`graph`, `rt_layers`) is guarded by graph_ready:
@@ -223,7 +223,7 @@ reset_Animation :: proc(comp: ^Animation) {
 // made. engine.comp_zero at the end clears graph_ready along with every freed pointer,
 // which is what makes a second call safe — the guards all read false and the
 // nil checks all short-circuit.
-cleanup_Animation :: proc(a: ^Animation) {
+type_cleanup_Animation :: proc(a: ^Animation) {
 	if a.graph_ready {
 		playable_graph_destroy(&a.graph)
 		for &l in a.rt_layers {

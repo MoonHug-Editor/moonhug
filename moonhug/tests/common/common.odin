@@ -21,7 +21,6 @@ import "core:strings"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:libs/assets"
-import "moonhug:packages/engine/editor/importers"
 import "moonhug:editor/inspector"
 import "moonhug:registration"
 
@@ -60,7 +59,6 @@ _register_once :: proc() {
 	// the dispatcher above) — tests import like the editor does.
 	// Every @(importer) of every installed package, as the editor does.
 	registration.register_importers()
-	importers.shader_reload_hook_install()
 	asset_pipeline.import_pipeline_install()
 	// Tests run from the repo root, where the editor's library path would
 	// put the artifact cache: it goes under builds/ instead.

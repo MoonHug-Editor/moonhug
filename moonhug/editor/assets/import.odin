@@ -47,7 +47,7 @@ import_settings_or_default :: proc(source_path: string, allocator := context.all
 }
 
 // Fresh default-valued settings instance for an importer, allocated on
-// `allocator`. Defaults come from the settings type's reset_<T>
+// `allocator`. Defaults come from the settings type's type_reset_<T>
 // (plugins/engine/docs/Components.md, "Lifecycle procs") — none = zeroed.
 _settings_new :: proc(importer: string, allocator := context.allocator) -> (settings: any, ok: bool) {
 	desc, has := _importers[importer]

@@ -619,8 +619,8 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
    comes from the animator instead of being created per director. Same
    package, so that stays internal too.
 3. ~~**The component and its graph skeleton.**~~ DONE.
-   `plugins/animation/sequencer/component_TimelineAnimator.odin` — fields, `reset_`,
-   `cleanup_`, a lazily built graph guarded by `graph_ready`, and the tick. One
+   `plugins/animation/sequencer/component_TimelineAnimator.odin` — fields, `type_reset_`,
+   `type_cleanup_`, a lazily built graph guarded by `graph_ready`, and the tick. One
    output per bound target, a layer mixer at each output's root, one mixer per
    layer under it, layer weights pushed every tick since they are authored
    data.
@@ -646,7 +646,7 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
    TimelineAnimator that owns a director, which is item 5. Until then `key` is
    stored and inert, and tracks resolve through levels 1-3 exactly as before.
 
-   `TrackAnimation` gained `cleanup_TrackAnimation` — adding a string made it
+   `TrackAnimation` gained `type_cleanup_TrackAnimation` — adding a string made it
    an owning component, which a contract test enforces.
 5. ~~**State instances.**~~ DONE. A state points at its timeline with a
    `PPtr`, which covers both authoring modes:

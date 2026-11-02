@@ -15,7 +15,7 @@ import anim "moonhug:packages/animation"
 import animation_editor "moonhug:packages/animation/editor"
 
 // Appends a float row on "Arm" with keys at `times` holding `values`, heap
-// allocated so anim.cleanup_AnimationClip frees it. `modes` is optional.
+// allocated so anim.type_cleanup_AnimationClip frees it. `modes` is optional.
 // A property row of `field` on a Light when `field` is set, else a
 // transform row on `path`.
 @(private = "file")
@@ -54,7 +54,7 @@ _ls_floats :: proc(clip: ^anim.AnimationClip, ch: int) -> [][4]f32 {
 @(test)
 test_lane_split_makes_one_channel_per_lane :: proc(t: ^testing.T) {
 	clip := _ls_clip()
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	_ls_row(&clip, .Position, {0, 1}, {{1, 2, 3, 0}, {4, 5, 6, 0}}, modes = {.Smooth, .Linear})
 	_ls_row(&clip, .Scale, {0}, {{1, 1, 1, 0}})
 
@@ -95,7 +95,7 @@ test_lane_split_makes_one_channel_per_lane :: proc(t: ^testing.T) {
 @(test)
 test_lane_split_refuses_scalar_single_lane_and_split_rows :: proc(t: ^testing.T) {
 	clip := _ls_clip()
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	_ls_row(&clip, .Position, {0}, {{1, 0, 0, 0}}, field = "intensity")
 	_ls_row(&clip, .Scale, {0}, {{1, 2, 3, 0}}, off = {0, 1})
 	_ls_row(&clip, .Rotation, {0}, {{0, 0, 0, 1}})
@@ -118,7 +118,7 @@ test_lane_split_refuses_scalar_single_lane_and_split_rows :: proc(t: ^testing.T)
 @(test)
 test_lane_join_keeps_every_lanes_curve :: proc(t: ^testing.T) {
 	clip := _ls_clip()
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	_ls_row(&clip, .Position, {0, 1, 2}, {{0, 0, 0, 0}, {2, 0, 0, 0}, {1, 0, 0, 0}}, off = {1, 2}, modes = {.Smooth, .Smooth, .Smooth})
 	_ls_row(&clip, .Position, {0, 0.5, 2}, {{0, 0, 0, 0}, {0, 1, 0, 0}, {0, 3, 0, 0}}, off = {0, 2})
 	_ls_row(&clip, .Position, {0.25, 1.5}, {{0, 0, 5, 0}, {0, 0, -1, 0}}, off = {0, 1}, modes = {.Smooth, .Linear})
@@ -160,7 +160,7 @@ test_lane_join_keeps_every_lanes_curve :: proc(t: ^testing.T) {
 @(test)
 test_lane_join_disables_a_lane_without_a_channel :: proc(t: ^testing.T) {
 	clip := _ls_clip()
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	_ls_row(&clip, .Position, {0, 1}, {{1, 0, 0, 0}, {2, 0, 0, 0}}, off = {1, 2})
 	_ls_row(&clip, .Position, {0.5}, {{0, 0, 7, 0}}, off = {0, 1})
 
@@ -177,7 +177,7 @@ test_lane_join_disables_a_lane_without_a_channel :: proc(t: ^testing.T) {
 @(test)
 test_lane_add_appends_a_masked_channel_after_the_group :: proc(t: ^testing.T) {
 	clip := _ls_clip()
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	_ls_row(&clip, .Position, {0, 1}, {{1, 2, 3, 0}, {4, 5, 6, 0}}, off = {1, 2})
 	_ls_row(&clip, .Position, {0.5}, {{0, 0, 7, 0}}, off = {0, 1})
 	_ls_row(&clip, .Scale, {0}, {{1, 1, 1, 0}})
@@ -204,7 +204,7 @@ test_lane_add_appends_a_masked_channel_after_the_group :: proc(t: ^testing.T) {
 @(test)
 test_lane_split_then_join_round_trips :: proc(t: ^testing.T) {
 	clip := _ls_clip()
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	times := []f32{0, 0.5, 1.5}
 	values := [][4]f32{{1, 2, 3, 0}, {4, -5, 6, 0}, {0, 1, 2, 0}}
 	_ls_row(&clip, .Position, times, values)

@@ -18,7 +18,7 @@ Spinner :: struct {
 	speed:      [3]f32,
 }
 
-reset_Spinner :: proc(comp: ^Spinner) {
+type_reset_Spinner :: proc(comp: ^Spinner) {
 	comp.speed = {0, 0, 90}
 }
 

@@ -37,8 +37,8 @@ BoxCollider2D :: struct {
 	static_body: b2.BodyId `json:"-" inspect:"-"`, // only when no ancestor RB
 }
 
-reset_BoxCollider2D :: proc(comp: ^BoxCollider2D) {
-	cleanup_BoxCollider2D(comp)
+type_reset_BoxCollider2D :: proc(comp: ^BoxCollider2D) {
+	type_cleanup_BoxCollider2D(comp)
 	comp.layers = 1
 	comp.size = {1, 1}
 	comp.density = 1
@@ -47,7 +47,7 @@ reset_BoxCollider2D :: proc(comp: ^BoxCollider2D) {
 // Every collider's cleanup runs on destroy, removal, Reset and undo: the
 // shape and the implicit static body go with the component, or they keep
 // colliding as ghosts.
-cleanup_BoxCollider2D :: proc(comp: ^BoxCollider2D) {
+type_cleanup_BoxCollider2D :: proc(comp: ^BoxCollider2D) {
 	_destroy_shape(&comp.shape, &comp.static_body)
 	engine.comp_zero(comp)
 }
@@ -70,14 +70,14 @@ CircleCollider2D :: struct {
 	static_body: b2.BodyId `json:"-" inspect:"-"`,
 }
 
-reset_CircleCollider2D :: proc(comp: ^CircleCollider2D) {
-	cleanup_CircleCollider2D(comp)
+type_reset_CircleCollider2D :: proc(comp: ^CircleCollider2D) {
+	type_cleanup_CircleCollider2D(comp)
 	comp.layers = 1
 	comp.radius = 0.5
 	comp.density = 1
 }
 
-cleanup_CircleCollider2D :: proc(comp: ^CircleCollider2D) {
+type_cleanup_CircleCollider2D :: proc(comp: ^CircleCollider2D) {
 	_destroy_shape(&comp.shape, &comp.static_body)
 	engine.comp_zero(comp)
 }
@@ -106,14 +106,14 @@ CapsuleCollider2D :: struct {
 	static_body: b2.BodyId `json:"-" inspect:"-"`,
 }
 
-reset_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {
-	cleanup_CapsuleCollider2D(comp)
+type_reset_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {
+	type_cleanup_CapsuleCollider2D(comp)
 	comp.layers = 1
 	comp.size = {1, 2}
 	comp.density = 1
 }
 
-cleanup_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {
+type_cleanup_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {
 	_destroy_shape(&comp.shape, &comp.static_body)
 	engine.comp_zero(comp)
 }
@@ -151,15 +151,15 @@ PolygonCollider2D :: struct {
 // object without a sprite, a new collider starts as a pentagon.
 polygon_sprite_outline: proc(owner: engine.Transform_Handle, points: ^[dynamic][2]f32) -> bool
 
-reset_PolygonCollider2D :: proc(comp: ^PolygonCollider2D) {
-	cleanup_PolygonCollider2D(comp)
+type_reset_PolygonCollider2D :: proc(comp: ^PolygonCollider2D) {
+	type_cleanup_PolygonCollider2D(comp)
 	comp.layers = 1
 	comp.density = 1
 	if polygon_sprite_outline != nil && polygon_sprite_outline(comp.owner, &comp.points) do return
 	polygon_regular(&comp.points, 5, 0.5)
 }
 
-cleanup_PolygonCollider2D :: proc(comp: ^PolygonCollider2D) {
+type_cleanup_PolygonCollider2D :: proc(comp: ^PolygonCollider2D) {
 	_destroy_shapes(&comp.shapes, &comp.static_body)
 	if comp.points != nil do delete(comp.points)
 	engine.comp_zero(comp)
@@ -191,15 +191,15 @@ EdgeCollider2D :: struct {
 	static_body: b2.BodyId `json:"-" inspect:"-"`,
 }
 
-reset_EdgeCollider2D :: proc(comp: ^EdgeCollider2D) {
-	cleanup_EdgeCollider2D(comp)
+type_reset_EdgeCollider2D :: proc(comp: ^EdgeCollider2D) {
+	type_cleanup_EdgeCollider2D(comp)
 	comp.layers = 1
 	comp.two_sided = true
 	clear(&comp.points)
 	append(&comp.points, [2]f32{-0.5, 0}, [2]f32{0.5, 0})
 }
 
-cleanup_EdgeCollider2D :: proc(comp: ^EdgeCollider2D) {
+type_cleanup_EdgeCollider2D :: proc(comp: ^EdgeCollider2D) {
 	_destroy_chain(&comp.chain, &comp.segments, &comp.static_body)
 	if comp.points != nil do delete(comp.points)
 	engine.comp_zero(comp)

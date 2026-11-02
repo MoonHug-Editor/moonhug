@@ -33,7 +33,7 @@ AnimationDemo :: struct {
 	pushed:     f32 `json:"-" inspect:"-"`, // last value written to the blend
 }
 
-reset_AnimationDemo :: proc(d: ^AnimationDemo) {
+type_reset_AnimationDemo :: proc(d: ^AnimationDemo) {
 	d.fade = 0.25
 	d.auto_start = true
 }

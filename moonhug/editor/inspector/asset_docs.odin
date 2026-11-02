@@ -13,7 +13,7 @@ package inspector
 //
 // A document lives as long as its asset. Save writes to the asset's CURRENT
 // path (looked up by guid), and deleting the asset drops the document and its
-// undo steps (_asset_doc_gone), so no save or undo writes a deleted file back.
+// undo steps (asset_on_changed_asset_doc_gone), so no save or undo writes a deleted file back.
 // Documents outlive frames, so every proc here pins the default allocator.
 
 import "base:runtime"
@@ -59,8 +59,8 @@ _docs: map[Doc_Key]^Asset_Doc
 // document's values into the runtime its asset is sampled from (the engine's
 // material cache for materials), so the change shows before it is saved.
 // `doc` is the document's typed value, the registered typeid. Declared as
-// `on_changed_<Type>` with @(asset_doc={type=T}) on the proc, registered by
-// the generated register_asset_docs (asset_doc_gen); `on_saved_<Type>` is
+// `doc_on_changed_<Type>` with @(asset_doc={type=T}) on the proc, registered
+// by the generated register_asset_docs (asset_doc_gen); `doc_on_saved_<Type>` is
 // Doc_Saved below. Rows around the document's fields are an inspector
 // wrapper (inspector_funnel.odin), not a hook.
 Doc_Changed :: proc(guid: core.Asset_GUID, doc: any)
@@ -266,11 +266,12 @@ _doc_replace :: proc(doc: ^Asset_Doc, fresh: any, dirty: bool) {
     asset_doc_changed(doc)
 }
 
-// The asset left the project (engine asset-gone hook, fired by a refresh
-// after a delete, never for a rename). Its undo steps go first, then the
-// document. The inspector lets go of the file if it shows it.
-@(private="file")
-_asset_doc_gone :: proc(guid: core.Asset_GUID, path: string) {
+// The asset left the project (.Removed, fired by a refresh after a delete,
+// never for a rename). Its undo steps go first, then the document. The
+// inspector lets go of the file if it shows it.
+@(asset_hook)
+asset_on_changed_asset_doc_gone :: proc(guid: core.Asset_GUID, path: string, change: assets.Asset_Change) {
+    if change != .Removed do return
     // Before the pin: undo entries free with the allocator that made them, the
     // caller's, like every purge.
     undo.purge_asset(undo.get(), guid)
@@ -295,7 +296,7 @@ _asset_doc_gone :: proc(guid: core.Asset_GUID, path: string) {
     }
 }
 
-// A document's typed instance: what it owns through its cleanup_T, then
+// A document's typed instance: what it owns through its type_cleanup_T, then
 // the instance. Documents live on the default allocator.
 doc_data_release :: proc(data: any) {
     if data.data == nil do return
@@ -350,12 +351,6 @@ _asset_doc_free :: proc(doc: ^Asset_Doc) {
     delete(doc.applied)
     doc_data_release(doc.data)
     free(doc)
-}
-
-@(init)
-_asset_docs_register :: proc "contextless" () {
-    context = runtime.default_context()
-    assets.asset_db_add_asset_gone_hook(_asset_doc_gone)
 }
 
 asset_docs_shutdown :: proc() {

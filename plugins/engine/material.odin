@@ -123,8 +123,8 @@ MATERIAL_LIT_DEFAULT :: Material_Lit{smoothness = 0.5, normal_scale = 1, occlusi
 
 // A new material is Lit. `shader` is stored as a number and
 // every saved material carries it, so this changes nothing already written.
-reset_Material :: proc(m: ^Material) {
-	cleanup_Material(m)
+type_reset_Material :: proc(m: ^Material) {
+	type_cleanup_Material(m)
 	m.shader = .Lit
 	m.color = {1, 1, 1, 1}
 	m.alpha_cutoff = MATERIAL_ALPHA_CUTOFF_DEFAULT
@@ -399,7 +399,7 @@ material_cache_init :: proc() {
 material_cache_shutdown :: proc() {
 	context.allocator = runtime.default_allocator()
 	for _, &mat in material_cache {
-		cleanup_Material(&mat)
+		type_cleanup_Material(&mat)
 	}
 	delete(material_cache)
 	material_cache = nil
@@ -430,7 +430,7 @@ material_unload :: proc(guid: Asset_GUID) {
 	context.allocator = runtime.default_allocator()
 	if mat, ok := &material_cache[guid]; ok {
 		material_cache_version += 1
-		cleanup_Material(mat)
+		type_cleanup_Material(mat)
 		delete_key(&material_cache, guid)
 	}
 }
@@ -445,31 +445,21 @@ material_preview :: proc(guid: Asset_GUID, mat: Material) {
 	context.allocator = runtime.default_allocator()
 	if existing, ok := &material_cache[guid]; ok {
 		if _material_equal(existing^, mat) do return
-		cleanup_Material(existing)
+		type_cleanup_Material(existing)
 	}
 	material_cache[guid] = _material_clone(mat)
 	material_cache_version += 1
 }
 
-// Cache invalidation for external file changes and removed files, the asset
-// database's evict hook (editor saves push values directly via
-// material_preview).
-@(init)
-_material_evict_hook_register :: proc "contextless" () {
-	context = runtime.default_context()
-	asset_db_add_evict_hook(material_path_changed)
-}
-
-material_path_changed :: proc(path: string) {
-	if !strings.has_suffix(path, ".mat") do return
-	if guid, ok := asset_db_get_guid(path); ok {
-		material_unload(Asset_GUID(guid))
-	}
+// An edited or deleted .mat leaves the cache, so the next draw reads the file.
+@(asset_hook={ext="mat"})
+asset_on_changed_material :: proc(guid: Asset_GUID, path: string, change: Asset_Change) {
+	material_unload(guid)
 }
 
 // Frees what a material owns and leaves it zeroed (plugins/engine/docs/Components.md,
 // "Lifecycle procs").
-cleanup_Material :: proc(mat: ^Material) {
+type_cleanup_Material :: proc(mat: ^Material) {
 	for &prop in mat.properties {
 		delete(prop.name)
 	}
@@ -512,11 +502,11 @@ _material_equal :: proc(a, b: Material) -> bool {
 // the unknown key. Fields absent from the file keep the defaults set here.
 // Allocates with context.allocator (properties live in the cache).
 _material_parse :: proc(data: []byte) -> (Material, bool) {
-	// The same defaults as reset_Material, for a hand-written file that
+	// The same defaults as type_reset_Material, for a hand-written file that
 	// leaves a field out.
 	mat := Material{shader = .Lit, color = {1, 1, 1, 1}, alpha_cutoff = MATERIAL_ALPHA_CUTOFF_DEFAULT, lit = MATERIAL_LIT_DEFAULT}
 	if json.unmarshal(data, &mat, .JSON, context.allocator) != nil {
-		cleanup_Material(&mat)
+		type_cleanup_Material(&mat)
 		return {}, false
 	}
 	return mat, true

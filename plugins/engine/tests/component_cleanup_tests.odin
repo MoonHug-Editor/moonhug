@@ -4,10 +4,10 @@ package engine_tests
 // registered: components, assets and settings alike.
 //
 // `engine.type_cleanup` dispatches through core's lifecycle table, which the
-// generator fills from a proc named `cleanup_<TypeName>`. A type holding a
+// generator fills from a proc named `type_cleanup_<TypeName>`. A type holding a
 // [dynamic] or a string without one leaks that memory every time its value is
 // replaced underneath it — undo calls type_cleanup before unmarshalling a
-// restored value, reset_T calls it before the defaults, and the inspector's
+// restored value, type_reset_T calls it before the defaults, and the inspector's
 // documents call it when a document is rebuilt or closed.
 //
 // The leak is silent: nothing fails, the allocation is simply never returned.
@@ -83,7 +83,7 @@ test_every_owning_type_has_cleanup :: proc(t: ^testing.T) {
 	if len(missing) > 0 {
 		testing.expectf(
 			t, false,
-			"types own heap memory but have no cleanup_<Type> proc, so undo, reset and document release leak their allocations: %v",
+			"types own heap memory but have no type_cleanup_<Type> proc, so undo, reset and document release leak their allocations: %v",
 			missing[:],
 		)
 	}

@@ -43,7 +43,7 @@ ClipTween :: struct {
 }
 
 
-cleanup_ClipTween :: proc(c: ^ClipTween) {
+type_cleanup_ClipTween :: proc(c: ^ClipTween) {
 	for &tw in c.tweens do tween_destroy(&tw)
 	delete(c.tweens)
 	engine.comp_zero(c)

@@ -12,5 +12,5 @@ AudioListener :: struct {
 	using base: engine.CompData `inspect:"-"`,
 }
 
-reset_AudioListener :: proc(comp: ^AudioListener) {
+type_reset_AudioListener :: proc(comp: ^AudioListener) {
 }

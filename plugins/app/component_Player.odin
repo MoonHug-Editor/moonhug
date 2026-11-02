@@ -22,8 +22,8 @@ Player :: struct {
     sprite: engine.Ref_Local `ref:"SpriteRenderer"`,
 }
 
-reset_Player :: proc(p: ^Player) {
-    cleanup_Player(p)
+type_reset_Player :: proc(p: ^Player) {
+    type_cleanup_Player(p)
     p.speed = 5
 
     p.colors = make([dynamic][4]f32)
@@ -33,7 +33,7 @@ reset_Player :: proc(p: ^Player) {
 }
 
 
-cleanup_Player :: proc(p: ^Player) {
+type_cleanup_Player :: proc(p: ^Player) {
 	if p.colors != nil do delete(p.colors)
 	if p.animations != nil {
 		for &anim in p.animations do tween.authored_destroy(&anim)

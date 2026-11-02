@@ -28,8 +28,8 @@ AudioSource :: struct {
 	started: bool `json:"-" inspect:"-"`,
 }
 
-reset_AudioSource :: proc(comp: ^AudioSource) {
-	cleanup_AudioSource(comp)
+type_reset_AudioSource :: proc(comp: ^AudioSource) {
+	type_cleanup_AudioSource(comp)
 	comp.volume = 1
 	comp.pitch = 1
 	comp.play_on_awake = true
@@ -39,7 +39,7 @@ reset_AudioSource :: proc(comp: ^AudioSource) {
 
 // Runs on destroy, removal, Reset and undo: the track goes with the
 // component, or it keeps playing.
-cleanup_AudioSource :: proc(comp: ^AudioSource) {
+type_cleanup_AudioSource :: proc(comp: ^AudioSource) {
 	_destroy_track(comp)
 	engine.comp_zero(comp)
 }

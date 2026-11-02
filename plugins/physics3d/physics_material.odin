@@ -14,7 +14,6 @@ package physics3d
 // the world's friction and restitution callbacks.
 
 import "base:runtime"
-import "core:strings"
 import b3 "vendor:box3d"
 import "moonhug:packages/engine"
 
@@ -35,7 +34,7 @@ PhysicsMaterial :: struct {
 	bounce_combine:   Material_Combine,
 }
 
-reset_PhysicsMaterial :: proc(m: ^PhysicsMaterial) {
+type_reset_PhysicsMaterial :: proc(m: ^PhysicsMaterial) {
 	m^ = {friction = 0.6}
 }
 
@@ -70,7 +69,7 @@ material_preview :: proc(guid: engine.Asset_GUID, m: PhysicsMaterial) {
 @(private = "file")
 _default_material :: proc() -> PhysicsMaterial {
 	m: PhysicsMaterial
-	reset_PhysicsMaterial(&m)
+	type_reset_PhysicsMaterial(&m)
 	return m
 }
 
@@ -83,18 +82,14 @@ _materials: struct {
 	default_guid: engine.Asset_GUID,
 }
 
-@(init)
-_materials_register :: proc "contextless" () {
-	context = runtime.default_context()
-	engine.asset_db_add_evict_hook(proc(path: string) {
-		if !strings.has_suffix(path, ".asset") do return
-		guid, ok := engine.asset_db_get_guid(path)
-		if !ok do return
-		if engine.Asset_GUID(guid) in _materials.cache {
-			delete_key(&_materials.cache, engine.Asset_GUID(guid))
-			_materials.dirty = true
-		}
-	})
+// A changed or removed material leaves the cache, and the next step pushes
+// materials into the live shapes again.
+@(asset_hook={ext="asset"})
+asset_on_changed_physics_material :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
+	if guid in _materials.cache {
+		delete_key(&_materials.cache, guid)
+		_materials.dirty = true
+	}
 }
 
 // Puts `m` into a shape's material: friction, restitution, and both combine

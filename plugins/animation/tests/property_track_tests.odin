@@ -145,7 +145,7 @@ test_property_channel_partial_weight_blends_default :: proc(t: ^testing.T) {
 	groot := mixer
 	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Playable_Clip{clip = engine.PPtr{guid = guid}}), 0.25)
 
-	// Bind-time default fov is 60 (reset_Camera): 0.25*100 + 0.75*60 = 70.
+	// Bind-time default fov is 60 (type_reset_Camera): 0.25*100 + 0.75*60 = 70.
 	pose := anim.playable_graph_evaluate(&pt.g, groot, &pt.b)
 	anim.animation_pose_apply(&pt.b, pose)
 	testing.expect(t, abs(pt.camera.fov - 70) < 0.001, "partial weight blends toward the bind-time default")
@@ -200,7 +200,7 @@ test_property_channel_direct_apply :: proc(t: ^testing.T) {
 	defer _prop_teardown(&pt)
 
 	clip := _prop_clip(_camera_guid_str(), "fov", {42, 0, 0, 0})
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	anim.animation_clip_apply(&clip, pt.owner, 0)
 	testing.expect(t, abs(pt.camera.fov - 42) < 0.001, "the legacy direct apply path honors property channels")
 }
@@ -213,14 +213,14 @@ test_property_channel_json_round_trip :: proc(t: ^testing.T) {
 	defer _prop_teardown(&pt)
 
 	clip := _prop_clip(_camera_guid_str(), "clear_color", {0, 1, 0, 1})
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 
 	data, merr := json.marshal(clip, {}, context.temp_allocator)
 	testing.expect(t, merr == nil, "clip marshals")
 
 	loaded: anim.AnimationClip
 	uerr := json.unmarshal(data, &loaded, .JSON, context.allocator)
-	defer anim.cleanup_AnimationClip(&loaded)
+	defer anim.type_cleanup_AnimationClip(&loaded)
 	testing.expect(t, uerr == nil, "clip unmarshals")
 	testing.expect(t, len(loaded.channels) == 1, "channel survives")
 	testing.expect(t, loaded.channels[0].component == clip.channels[0].component, "component guid round-trips")

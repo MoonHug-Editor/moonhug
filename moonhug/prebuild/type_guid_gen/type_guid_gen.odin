@@ -73,9 +73,9 @@ _register :: proc "contextless" () {
 		owner   = "type_guid_gen",
 		scope   = .Subject_File,
 		procs   = {
-			{prefix = "reset_", signature = "proc(v: ^T)", summary = "Sets a fresh instance to its defaults: Reset in the inspector, Add Component, a new asset."},
-			{prefix = "cleanup_", signature = "proc(v: ^T)", summary = "Frees what the instance owns. Runs before undo, reset and document release overwrite it, and must be safe to call twice."},
-			{prefix = "on_validate_", signature = "proc(v: ^T)", summary = "Runs after a value is written into the instance: an inspector edit, undo, a load."},
+			{prefix = "type_reset_", signature = "proc(v: ^T)", summary = "Sets a fresh instance to its defaults: Reset in the inspector, Add Component, a new asset."},
+			{prefix = "type_cleanup_", signature = "proc(v: ^T)", summary = "Frees what the instance owns. Runs before undo, reset and document release overwrite it, and must be safe to call twice."},
+			{prefix = "type_on_validate_", signature = "proc(v: ^T)", summary = "Runs after a value is written into the instance: an inspector edit, undo, a load."},
 		},
 		doc     = "The type registry calls these for every registered type, so a component, an asset type or a plain data type gets defaults, cleanup and validation by declaring them next to itself. A cleanup can also come from `@(cleanup)` on a proc of any name.",
 	})
@@ -141,14 +141,14 @@ provide :: proc(w: ^db.World) -> bool {
 			guid, make_proc, create, has_create_menu, found := _has_typ_guid_attr(attr_set, decl)
 			if found {
 				if make_proc != "" {
-					fmt.eprintf("type_guid_gen: %s.%s: makeProcName is gone, write reset_%s next to the type for its defaults (plugins/engine/docs/Components.md)\n", pkg_name, type_name, type_name)
+					fmt.eprintf("type_guid_gen: %s.%s: makeProcName is gone, write type_reset_%s next to the type for its defaults (plugins/engine/docs/Components.md)\n", pkg_name, type_name, type_name)
 					return false
 				}
 				// The lifecycle procs, by name in the type's own file
 				// (plugins/engine/docs/Components.md, "Lifecycle procs").
-				reset_name       := strings.concatenate({"reset_",       type_name})
-				cleanup_name     := strings.concatenate({"cleanup_",     type_name})
-				on_validate_name := strings.concatenate({"on_validate_", type_name})
+				reset_name       := strings.concatenate({"type_reset_",       type_name})
+				cleanup_name     := strings.concatenate({"type_cleanup_",     type_name})
+				on_validate_name := strings.concatenate({"type_on_validate_", type_name})
 				gen_facts.naming_subject("type_lifecycle", type_name, decl.file_path, fmt.tprintf("%s:%d", gen_facts.decl_rel_path(decl), decl.decl.pos.line))
 				tag := TypeGuid_GenComp{
 					pkg_name        = pkg_name,
@@ -516,11 +516,11 @@ _bindings_for_type_entry :: proc(cleanup_bindings: []_CleanupRow, e: _TypeGuidRo
 
 // One type's lifecycle procs as type_register_* calls. `core_q` qualifies the
 // core procs ("" inside package core), `q` the type's own package ("" inside
-// it). @(cleanup) bindings replace cleanup_T, and several run in priority order.
+// it). @(cleanup) bindings replace type_cleanup_T, and several run in priority order.
 _write_type_procs :: proc(b: ^strings.Builder, e: _TypeGuidRow, cleanup_bindings: []_CleanupRow, scratch: ^[dynamic]_CleanupRow, indent, core_q, q: string) {
 	ct := e.tid_expr != "" ? e.tid_expr : fmt.tprintf("%s%s", q, e.type_name)
 	if e.has_reset {
-		fmt.sbprintf(b, "%s%stype_register_reset(.%s, proc(ptr: rawptr) {{ %sreset_%s(cast(^%s)ptr) }})\n", indent, core_q, e.type_name, q, e.type_name, ct)
+		fmt.sbprintf(b, "%s%stype_register_reset(.%s, proc(ptr: rawptr) {{ %stype_reset_%s(cast(^%s)ptr) }})\n", indent, core_q, e.type_name, q, e.type_name, ct)
 	}
 	_bindings_for_type_entry(cleanup_bindings, e, scratch)
 	if len(scratch) == 1 {
@@ -532,10 +532,10 @@ _write_type_procs :: proc(b: ^strings.Builder, e: _TypeGuidRow, cleanup_bindings
 		}
 		fmt.sbprintf(b, "%s})\n", indent)
 	} else if e.has_cleanup {
-		fmt.sbprintf(b, "%s%stype_register_cleanup(.%s, proc(ptr: rawptr) {{ %scleanup_%s(cast(^%s)ptr) }})\n", indent, core_q, e.type_name, q, e.type_name, ct)
+		fmt.sbprintf(b, "%s%stype_register_cleanup(.%s, proc(ptr: rawptr) {{ %stype_cleanup_%s(cast(^%s)ptr) }})\n", indent, core_q, e.type_name, q, e.type_name, ct)
 	}
 	if e.has_on_validate {
-		fmt.sbprintf(b, "%s%stype_register_on_validate(.%s, proc(ptr: rawptr) {{ %son_validate_%s(cast(^%s)ptr) }})\n", indent, core_q, e.type_name, q, e.type_name, ct)
+		fmt.sbprintf(b, "%s%stype_register_on_validate(.%s, proc(ptr: rawptr) {{ %stype_on_validate_%s(cast(^%s)ptr) }})\n", indent, core_q, e.type_name, q, e.type_name, ct)
 	}
 }
 

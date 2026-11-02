@@ -27,11 +27,11 @@ Spawn_Entry :: struct {
 }
 
 // An inspector edit or an undo changes the entries: the total follows.
-on_validate_Spawn_Table :: proc(t: ^Spawn_Table) {
+type_on_validate_Spawn_Table :: proc(t: ^Spawn_Table) {
 	spawn_table_refresh(t)
 }
 
-cleanup_Spawn_Table :: proc(t: ^Spawn_Table) {
+type_cleanup_Spawn_Table :: proc(t: ^Spawn_Table) {
 	for e in t.entries do delete(e.name)
 	delete(t.entries)
 	t^ = {}
@@ -39,7 +39,7 @@ cleanup_Spawn_Table :: proc(t: ^Spawn_Table) {
 
 // The file has no total weight: it comes back from the entries on load.
 @(after_deserialize={type=Spawn_Table})
-spawn_table_after_deserialize :: proc(ptr: rawptr, tid: typeid) {
+type_after_deserialize_Spawn_Table :: proc(ptr: rawptr, tid: typeid) {
 	spawn_table_refresh(cast(^Spawn_Table)ptr)
 }
 
@@ -48,7 +48,7 @@ spawn_table_after_deserialize :: proc(ptr: rawptr, tid: typeid) {
 // true after, so a hook that changes the value only for the file can put it
 // back. This one keeps the clamp.
 @(before_serialize={type=Spawn_Table})
-spawn_table_before_serialize :: proc(ptr: rawptr, tid: typeid, is_cleanup: bool) {
+type_before_serialize_Spawn_Table :: proc(ptr: rawptr, tid: typeid, is_cleanup: bool) {
 	if is_cleanup do return
 	t := cast(^Spawn_Table)ptr
 	for &e in t.entries do e.weight = max(e.weight, 0)

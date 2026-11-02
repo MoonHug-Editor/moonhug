@@ -26,7 +26,7 @@ _add :: proc(tH: engine.Transform_Handle, key: engine.TypeKey) -> rawptr {
 @(test)
 test_rect_resolve_centered_fixed_size :: proc(t: ^testing.T) {
 	rt: engine.RectTransform
-	engine.reset_RectTransform(&rt) // anchors and pivot centered, 100x100
+	engine.type_reset_RectTransform(&rt) // anchors and pivot centered, 100x100
 	r := engine.rect_resolve(engine.Rect{{0, 0}, {800, 600}}, &rt)
 	testing.expect_value(t, r.pos, [2]f32{350, 250})
 	testing.expect_value(t, r.size, [2]f32{100, 100})
@@ -164,7 +164,7 @@ test_collect_emits_one_quad_per_renderer_in_game_views :: proc(t: ^testing.T) {
 test_rect_drag_edges_keeps_opposite_edge :: proc(t: ^testing.T) {
 	parent := engine.Rect{{0, 0}, {800, 600}}
 	rt: engine.RectTransform
-	engine.reset_RectTransform(&rt) // centered 100x100: x 350..450, y 250..350
+	engine.type_reset_RectTransform(&rt) // centered 100x100: x 350..450, y 250..350
 	before := engine.rect_resolve(parent, &rt)
 
 	// Drag the right edge 20px right: left edge stays, width grows.
@@ -231,7 +231,7 @@ test_image_uvs_flip_v_for_top_left_rects :: proc(t: ^testing.T) {
 @(test)
 test_scaler_factor_modes :: proc(t: ^testing.T) {
 	cs: engine.CanvasScaler
-	engine.reset_CanvasScaler(&cs) // scale with screen size, 1920x1080, match 0.5
+	engine.type_reset_CanvasScaler(&cs) // scale with screen size, 1920x1080, match 0.5
 	testing.expect_value(t, engine.scaler_factor(&cs, {1920, 1080}), 1)
 	// Twice the reference in both axes: 2 whatever the match.
 	testing.expect_value(t, engine.scaler_factor(&cs, {3840, 2160}), 2)
@@ -253,7 +253,7 @@ test_scaler_factor_modes :: proc(t: ^testing.T) {
 @(test)
 test_layout_horizontal_and_vertical :: proc(t: ^testing.T) {
 	g: mhgui.LayoutGroup
-	mhgui.reset_LayoutGroup(&g) // spacing 8
+	mhgui.type_reset_LayoutGroup(&g) // spacing 8
 	g.padding = {left = 10, right = 10, top = 5, bottom = 5}
 	area := engine.Rect{{0, 0}, {300, 100}}
 	sizes := [][2]f32{{40, 20}, {60, 30}}
@@ -291,7 +291,7 @@ test_layout_horizontal_and_vertical :: proc(t: ^testing.T) {
 @(test)
 test_layout_grid_fills_rows_from_the_top :: proc(t: ^testing.T) {
 	g: mhgui.LayoutGroup
-	mhgui.reset_LayoutGroup(&g)
+	mhgui.type_reset_LayoutGroup(&g)
 	g.direction = .Grid
 	g.cell_size = {50, 50}
 	g.spacing = {10, 10}
@@ -378,7 +378,7 @@ test_position_api_converts_through_anchored_position :: proc(t: ^testing.T) {
 	_add(canvas, .Canvas)
 	image := engine.transform_new("Image", canvas)
 	rt := cast(^engine.RectTransform)_add(image, .RectTransform)
-	engine.reset_RectTransform(rt) // anchors and pivot centered, 100x100
+	engine.type_reset_RectTransform(rt) // anchors and pivot centered, 100x100
 
 	// Centered image: local position is relative to the canvas center, which
 	// is also its anchor reference point, so local == anchored.
@@ -427,7 +427,7 @@ test_rotation_and_scale_apply_around_pivot :: proc(t: ^testing.T) {
 	_add(canvas, .Canvas)
 	panel := engine.transform_new("Panel", canvas)
 	prt := cast(^engine.RectTransform)_add(panel, .RectTransform)
-	engine.reset_RectTransform(prt) // 100x100 centered: 50..150 x 0..100, pivot (100, 50)
+	engine.type_reset_RectTransform(prt) // 100x100 centered: 50..150 x 0..100, pivot (100, 50)
 	pt := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(panel))
 	pt.rotation = engine.quat_from_euler_xyz(0, 0, 90)
 
@@ -501,15 +501,15 @@ test_canvas_raycast_hits_topmost_raycast_target :: proc(t: ^testing.T) {
 	// A 100x100 image centered in the 200x100 canvas: x 50..150, y 0..100.
 	node := engine.transform_new("Image", canvas)
 	rt := cast(^engine.RectTransform)_add(node, .RectTransform)
-	engine.reset_RectTransform(rt)
+	engine.type_reset_RectTransform(rt)
 	_add(node, .CanvasRenderer)
 	img := cast(^mhgui.Image)_add(node, .Image)
-	mhgui.reset_Image(img)
+	mhgui.type_reset_Image(img)
 
 	// No raycaster on the canvas: nothing is hit.
 	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), engine.Transform_Handle{})
 	rc := cast(^engine.GraphicRaycaster)_add(canvas, .GraphicRaycaster)
-	engine.reset_GraphicRaycaster(rc)
+	engine.type_reset_GraphicRaycaster(rc)
 	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), node)
 	testing.expect_value(t, engine.canvas_raycast({20, 50}, viewport), engine.Transform_Handle{}) // left of the image
 	testing.expect_value(t, engine.canvas_raycast({100, 99}, viewport), node) // viewport y down, the image spans the full height
@@ -517,10 +517,10 @@ test_canvas_raycast_hits_topmost_raycast_target :: proc(t: ^testing.T) {
 	// A later node over the same spot wins; without raycast_target it takes no part.
 	top := engine.transform_new("Top", canvas)
 	trt := cast(^engine.RectTransform)_add(top, .RectTransform)
-	engine.reset_RectTransform(trt)
+	engine.type_reset_RectTransform(trt)
 	_add(top, .CanvasRenderer)
 	timg := cast(^mhgui.Image)_add(top, .Image)
-	mhgui.reset_Image(timg)
+	mhgui.type_reset_Image(timg)
 	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), top)
 	timg.raycast_target = false
 	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), node)
@@ -553,10 +553,10 @@ test_canvas_placement_modes :: proc(t: ^testing.T) {
 	// World space: the node's RectTransform around its pivot, through its transform.
 	world := engine.transform_new("World")
 	cv := cast(^engine.Canvas)_add(world, .Canvas)
-	engine.reset_Canvas(cv)
+	engine.type_reset_Canvas(cv)
 	cv.render_mode = .WorldSpace
 	rt := cast(^engine.RectTransform)_add(world, .RectTransform)
-	engine.reset_RectTransform(rt)
+	engine.type_reset_RectTransform(rt)
 	rt.size_delta = {200, 100}
 	if tr := engine.pool_get(&tc.world.transforms, engine.Handle(world)); tr != nil do tr.position = {10, 5, 0}
 	root, xform, in_world = engine.canvas_placement(world, viewport)
@@ -569,11 +569,11 @@ test_canvas_placement_modes :: proc(t: ^testing.T) {
 	// -Z with a 90 degree fov: at distance 10 the view is 20 high.
 	cam_node := engine.transform_new("Camera")
 	cam := cast(^engine.Camera)_add(cam_node, .Camera)
-	engine.reset_Camera(cam)
+	engine.type_reset_Camera(cam)
 	cam.fov = 90
 	camc := engine.transform_new("CamCanvas")
 	ccv := cast(^engine.Canvas)_add(camc, .Canvas)
-	engine.reset_Canvas(ccv)
+	engine.type_reset_Canvas(ccv)
 	ccv.render_mode = .ScreenSpaceCamera
 	ccv.plane_distance = 10
 	ccv.render_camera.handle = engine.Handle(cam_node)
@@ -648,7 +648,7 @@ test_keep_rect_and_driven_flag :: proc(t: ^testing.T) {
 
 	parent := engine.Rect{{0, 0}, {800, 600}}
 	rt: engine.RectTransform
-	engine.reset_RectTransform(&rt) // centered 100x100
+	engine.type_reset_RectTransform(&rt) // centered 100x100
 	before := engine.rect_resolve(parent, &rt)
 	rt.anchor_min = {0, 0}
 	rt.anchor_max = {1, 1}
@@ -661,15 +661,15 @@ test_keep_rect_and_driven_flag :: proc(t: ^testing.T) {
 	_add(canvas, .Canvas)
 	group := engine.transform_new("Group", canvas)
 	grt := cast(^engine.RectTransform)_add(group, .RectTransform)
-	engine.reset_RectTransform(grt)
+	engine.type_reset_RectTransform(grt)
 	lg := cast(^mhgui.LayoutGroup)_add(group, .LayoutGroup)
-	mhgui.reset_LayoutGroup(lg)
+	mhgui.type_reset_LayoutGroup(lg)
 	child := engine.transform_new("Child", group)
 	crt := cast(^engine.RectTransform)_add(child, .RectTransform)
-	engine.reset_RectTransform(crt)
+	engine.type_reset_RectTransform(crt)
 	free_node := engine.transform_new("Free", canvas)
 	frt := cast(^engine.RectTransform)_add(free_node, .RectTransform)
-	engine.reset_RectTransform(frt)
+	engine.type_reset_RectTransform(frt)
 
 	testing.expect(t, engine.rect_transform_driven(child), "a LayoutGroup child is driven")
 	testing.expect(t, !engine.rect_transform_driven(free_node), "a plain node is not")

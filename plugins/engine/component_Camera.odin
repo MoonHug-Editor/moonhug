@@ -17,12 +17,12 @@ Camera :: struct {
     slot:              string,
 }
 
-cleanup_Camera :: proc(cam: ^Camera) {
+type_cleanup_Camera :: proc(cam: ^Camera) {
     delete(cam.slot)
     comp_zero(cam)
 }
 
-reset_Camera :: proc(cam: ^Camera) {
+type_reset_Camera :: proc(cam: ^Camera) {
     cam.order = 0
     cam.fov = 60
     cam.near_clip = 0.3

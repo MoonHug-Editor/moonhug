@@ -121,8 +121,14 @@ _install_hull_jobs :: proc() {
 		for j in _jobs.queue do if j.key == key do return true
 		return false
 	}
-	engine.asset_pipeline_add_reimport_hook(proc(guid: engine.Asset_GUID) { hull_sets_reconcile(guid) })
 	tasks.register(_task_source)
+}
+
+// A reimported model brings its hull files in line with its sets.
+@(asset_hook)
+asset_on_changed_hull_jobs :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
+	if change != .Reimported do return
+	hull_sets_reconcile(guid)
 }
 
 // Every model's sets, once the editor has imported its assets: queues what

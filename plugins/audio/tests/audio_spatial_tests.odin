@@ -60,7 +60,7 @@ test_spatial_gains :: proc(t: ^testing.T) {
 @(test)
 test_audiosource_spatial_defaults :: proc(t: ^testing.T) {
 	src: audio.AudioSource
-	audio.reset_AudioSource(&src)
+	audio.type_reset_AudioSource(&src)
 	testing.expect_value(t, src.pitch, f32(1))
 	testing.expect_value(t, src.mute, false)
 	testing.expect_value(t, src.spatial_blend, f32(0))

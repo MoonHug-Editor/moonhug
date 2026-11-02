@@ -10,7 +10,6 @@ package audio_editor
 
 import "core:fmt"
 import asset_pipeline "moonhug:editor/assets"
-import engine "moonhug:packages/engine"
 import audio "moonhug:packages/audio"
 
 _AUDIO_EXTS := []string{".mp3", ".wav", ".ogg"}
@@ -24,14 +23,6 @@ audio_importer :: proc() -> asset_pipeline.Importer_Desc {
 		settings_tid = typeid_of(audio.AudioSettings),
 		run          = _import_audio,
 	}
-}
-
-@(phase={key=ImportersInit, order=1, mode=Editor})
-audio_importers_init :: proc() {
-	@(static) done := false
-	if done do return
-	done = true
-	engine.asset_pipeline_add_reimport_hook(audio._clip_reimported)
 }
 
 // The pipeline creates the artifact directory before calling run.

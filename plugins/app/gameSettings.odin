@@ -31,13 +31,13 @@ GameSettings :: struct {
     comps3: [3]UnionTest,
 }
 
-cleanup_GameSettings :: proc(g: ^GameSettings) {
-    cleanup_A(&g.a)
-    cleanup_A(&g.a2)
+type_cleanup_GameSettings :: proc(g: ^GameSettings) {
+    type_cleanup_A(&g.a)
+    type_cleanup_A(&g.a2)
     for n in g.gameNames do delete(n)
     delete(g.gameNames)
     delete(g.dynamicInt)
-    for &a in g.dynamicA do cleanup_A(&a)
+    for &a in g.dynamicA do type_cleanup_A(&a)
     delete(g.dynamicA)
     g^ = {}
 }

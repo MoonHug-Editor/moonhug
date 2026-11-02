@@ -15,7 +15,6 @@ import "moonhug:registration"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
 import audio "moonhug:packages/audio"
-import audio_editor "moonhug:packages/audio/editor"
 import common "moonhug:tests/common"
 _SAMPLE_RATE :: 22050
 _FRAMES :: 2205 // 0.1 s
@@ -77,7 +76,6 @@ test_import_bakes_volume_and_clip_loads :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
-	audio_editor.audio_importers_init()
 	registration.register_importers()
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
@@ -192,7 +190,6 @@ test_audiosource_component :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
-	audio_editor.audio_importers_init()
 	registration.register_importers()
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)

@@ -396,8 +396,8 @@ test_stale_artifact_sweep_keeps_clip_fan_out :: proc(t: ^testing.T) {
 @(private = "file") _reimport_count: int
 
 @(private = "file")
-_reimport_counter :: proc(guid: engine.Asset_GUID) {
-	if guid == _reimport_watch do _reimport_count += 1
+_reimport_counter :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
+	if change == .Reimported && guid == _reimport_watch do _reimport_count += 1
 }
 
 // In the editor, only a missing MAIN artifact asks for an import. A missing
@@ -444,7 +444,7 @@ test_missing_sub_files_do_not_reimport :: proc(t: ^testing.T) {
 	@(static) hooked := false
 	if !hooked {
 		hooked = true
-		engine.asset_pipeline_add_reimport_hook(_reimport_counter)
+		engine.asset_hook_add("", _reimport_counter)
 	}
 	_reimport_watch, _reimport_count = model, 0
 	defer _reimport_watch = {}

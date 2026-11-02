@@ -33,13 +33,13 @@ LAYER_DOMAIN_RENDER :: "render"
 
 // A new Render Layers asset, and the render names a project has when no asset
 // is installed: layer 0 "Default", layer 31 "Editor".
-reset_Render_Layers :: proc(l: ^Render_Layers) {
-	cleanup_Render_Layers(l)
+type_reset_Render_Layers :: proc(l: ^Render_Layers) {
+	type_cleanup_Render_Layers(l)
 	l.names[RENDER_LAYER_DEFAULT] = strings.clone("Default")
 	l.names[RENDER_LAYER_EDITOR] = strings.clone("Editor")
 }
 
-cleanup_Render_Layers :: proc(l: ^Render_Layers) {
+type_cleanup_Render_Layers :: proc(l: ^Render_Layers) {
 	for s in l.names do delete(s)
 	l^ = {}
 }
@@ -88,11 +88,10 @@ _render: struct {
 _layers_register :: proc "contextless" () {
 	context = runtime.default_context()
 	src: Render_Layers
-	reset_Render_Layers(&src)
-	defer cleanup_Render_Layers(&src)
+	type_reset_Render_Layers(&src)
+	defer type_cleanup_Render_Layers(&src)
 	_copy_names(&_render.names, src.names)
 	layer_domain_register(LAYER_DOMAIN_RENDER, &_render.names, hidden = 1 << RENDER_LAYER_EDITOR, refresh = layers_sync)
-	asset_db_add_evict_hook(_layers_path_changed)
 }
 
 // The Render Layers asset the project uses now: the Layers setting's, else
@@ -120,9 +119,9 @@ layers_sync :: proc() {
 	if want != {} do src, ok = asset_load_as(want, Render_Layers)
 	if !ok {
 		if want != {} do log.warningf("[Layers] the Layers setting names no readable Render_Layers asset, using the built-in names")
-		reset_Render_Layers(&src)
+		type_reset_Render_Layers(&src)
 	}
-	defer cleanup_Render_Layers(&src)
+	defer type_cleanup_Render_Layers(&src)
 	_copy_names(&_render.names, src.names)
 }
 
@@ -138,12 +137,9 @@ render_layers_preview :: proc(guid: Asset_GUID, l: Render_Layers) {
 
 // An asset file changed on disk or went away: the names reload on the next
 // sync when it is the active asset.
-@(private = "file")
-_layers_path_changed :: proc(path: string) {
-	if !strings.has_suffix(path, ".asset") do return
-	guid, ok := asset_db_get_guid(path)
-	if !ok do return
-	if _render.loaded && _render.guid == Asset_GUID(guid) do _render.loaded = false
+@(asset_hook={ext="asset"})
+asset_on_changed_render_layers :: proc(guid: Asset_GUID, path: string, change: Asset_Change) {
+	if _render.loaded && _render.guid == guid do _render.loaded = false
 }
 
 // The next sync reads the setting and the asset again. The registered names

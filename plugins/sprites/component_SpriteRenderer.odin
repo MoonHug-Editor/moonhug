@@ -22,6 +22,6 @@ SpriteRenderer :: struct {
     order_in_layer: i32,
 }
 
-reset_SpriteRenderer :: proc(sr: ^SpriteRenderer) {
+type_reset_SpriteRenderer :: proc(sr: ^SpriteRenderer) {
     sr.color = {1, 1, 1, 1}
 }

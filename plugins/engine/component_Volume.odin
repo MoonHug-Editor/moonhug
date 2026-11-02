@@ -33,8 +33,8 @@ Volume :: struct {
 	overrides:      [dynamic]Volume_Override `inspect:"-"`,
 }
 
-reset_Volume :: proc(v: ^Volume) {
-	cleanup_Volume(v)
+type_reset_Volume :: proc(v: ^Volume) {
+	type_cleanup_Volume(v)
 	v.global = false
 	v.size = {10, 10, 10}
 	v.blend_distance = 1
@@ -42,7 +42,7 @@ reset_Volume :: proc(v: ^Volume) {
 	v.priority = 0
 }
 
-cleanup_Volume :: proc(v: ^Volume) {
+type_cleanup_Volume :: proc(v: ^Volume) {
 	for &o in v.overrides {
 		delete(o.step)
 		delete(o.settings)

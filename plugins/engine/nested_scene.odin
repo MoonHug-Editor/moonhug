@@ -2724,7 +2724,7 @@ _find_lid_in_subtree :: proc(root_tH: Transform_Handle, lid: Local_ID) -> Handle
 }
 
 // Patches the live field at `(target_id, property_path)` inside `ns`'s
-// instance using `value` JSON. `cleanup_T` (registered as `type_cleanup_by_typeid`)
+// instance using `value` JSON. `type_cleanup_T` (registered as `type_cleanup_by_typeid`)
 // is contracted to free + zero the field, so unmarshal_any sees a valid empty
 // slot. Returns true on success. Logs and returns false when the locate fails
 // or the field type has no registered pointer typeid.

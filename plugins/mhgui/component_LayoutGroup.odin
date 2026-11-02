@@ -46,7 +46,7 @@ LayoutGroup :: struct {
 	constraint_count: i32, // Grid, Fixed_* constraints
 }
 
-reset_LayoutGroup :: proc(g: ^LayoutGroup) {
+type_reset_LayoutGroup :: proc(g: ^LayoutGroup) {
 	g.spacing = {8, 8}
 	g.cell_size = {100, 100}
 	g.constraint_count = 2

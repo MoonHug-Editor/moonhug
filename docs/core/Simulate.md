@@ -69,7 +69,7 @@ The snapshot is **the same bytes a save writes**, held in memory instead of writ
 
 So "can Simulate revert correctly?" is the same question as "can the editor save and load a scene?", which every save and `tests/resave_scenes` exercise. There is no separate capture format to fall behind when a field is added.
 
-Restore reuses the ordinary scene load, so per-object teardown runs the same code path a manual delete does: `transform_destroy` runs each component's `cleanup_T`, releasing subsystem state (box2d bodies, audio voices, animation runners). `physics2d/tests` covers this for physics.
+Restore reuses the ordinary scene load, so per-object teardown runs the same code path a manual delete does: `transform_destroy` runs each component's `type_cleanup_T`, releasing subsystem state (box2d bodies, audio voices, animation runners). `physics2d/tests` covers this for physics.
 
 Stop turns playing off before the restore. That runs the game's `@(comp_on_destroy)` on every live component while the run's objects are all alive, so the restore's destroys and reloads after it run in edit mode and run no game hook (plugins/engine/docs/Components.md "Game lifecycle").
 

@@ -102,13 +102,13 @@ default_mesh_settings :: proc() -> MeshSettings {
 
 // A zero scale or remesh resolution is no value (a meta predating the
 // field): the default.
-on_validate_MeshSettings :: proc(s: ^MeshSettings) {
+type_on_validate_MeshSettings :: proc(s: ^MeshSettings) {
     if s.scale == 0 do s.scale = 1
     // A set written before the field: CoACD's default.
     for &h in s.hull_sets do if h.remesh_resolution == 0 do h.remesh_resolution = MESH_HULL_REMESH_DEFAULT
 }
 
-cleanup_MeshSettings :: proc(s: ^MeshSettings) {
+type_cleanup_MeshSettings :: proc(s: ^MeshSettings) {
     for &p in s.parts do delete(p.name)
     delete(s.parts)
     for &c in s.clips {
@@ -120,8 +120,8 @@ cleanup_MeshSettings :: proc(s: ^MeshSettings) {
     s^ = {}
 }
 
-reset_MeshSettings :: proc(p: ^MeshSettings) {
-    cleanup_MeshSettings(p)
+type_reset_MeshSettings :: proc(p: ^MeshSettings) {
+    type_cleanup_MeshSettings(p)
     p^ = default_mesh_settings()
 }
 

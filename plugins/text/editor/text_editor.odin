@@ -73,7 +73,7 @@ ui_menu_text :: proc() {
 	_add_comp(tH, .CanvasRenderer)
 	_add_comp(tH, .Text, proc(ptr: rawptr) {
 		tx := cast(^text.Text)ptr
-		tx.text = strings.clone("New Text") // the component owns its string (cleanup_Text)
+		tx.text = strings.clone("New Text") // the component owns its string (type_cleanup_Text)
 		tx.font = text.default_font_guid()
 		tx.material = text.default_material_guid()
 	})
@@ -116,7 +116,7 @@ _text_row :: proc(tx: ^text.Text, ptr: rawptr, tid: typeid, label: cstring, path
 _TEXT_AREA_LINES :: 4
 
 // A multi-line editor for the string. The component owns its string
-// (cleanup_Text), so the old value is freed on every change.
+// (type_cleanup_Text), so the old value is freed on every change.
 @(private = "file")
 _draw_text_area :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	str_ptr := cast(^string)ptr

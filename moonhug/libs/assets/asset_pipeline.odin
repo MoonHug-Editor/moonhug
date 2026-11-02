@@ -64,7 +64,7 @@ ImportMeta :: struct {
 
 // Overlays a parsed settings object onto a typed instance: present keys
 // overwrite, absent keys keep what the instance holds. The instance is a
-// zeroed one or a hand-seeded scalar struct, never a reset_T value: a reset
+// zeroed one or a hand-seeded scalar struct, never a type_reset_T value: a reset
 // may allocate and the unmarshal allocates over it.
 _settings_overlay :: proc(settings: any, v: json.Value) -> bool {
     bytes, merr := json.marshal(v, {spec = .JSON}, context.temp_allocator)
@@ -404,25 +404,6 @@ asset_pipeline_artifact_path :: proc(guid: core.Asset_GUID) -> (path: string, ok
         return _artifact_key_path(e.artifact, context.temp_allocator), true
     }
     return "", false
-}
-
-// Reimport hooks: guid-keyed caches (textures, package-owned asset caches)
-// register to evict their entry when an asset's artifact changes. Fired on
-// every import that did work (importer ran or the index re-pointed).
-Reimport_Hook :: proc(guid: core.Asset_GUID)
-
-_reimport_hooks: [dynamic]Reimport_Hook
-
-asset_pipeline_add_reimport_hook :: proc(hook: Reimport_Hook) {
-    // Registry state never borrows the caller's allocator (same rule as
-    // component_register — tests hand out scoped tracking allocators).
-    context.allocator = runtime.default_allocator()
-    append(&_reimport_hooks, hook)
-}
-
-_notify_reimported :: proc(guid: uuid.Identifier) {
-    _artifact_failed_forget(core.Asset_GUID(guid))
-    for hook in _reimport_hooks do hook(core.Asset_GUID(guid))
 }
 
 // Loader self-heal seam: a loader that finds its artifact missing or

@@ -20,7 +20,7 @@ import animation_editor "moonhug:packages/animation/editor"
 import common "moonhug:tests/common"
 
 // Appends a one-key row on `target` holding `value`, heap allocated so
-// anim.cleanup_AnimationClip frees it. A property row of `field` on a Light
+// anim.type_cleanup_AnimationClip frees it. A property row of `field` on a Light
 // when `field` is set, else a transform row on `path`. `off` is its lane mask.
 @(private = "file")
 _trs_row :: proc(clip: ^anim.AnimationClip, target: string, path: anim.Animation_Path, value: [4]f32, off: anim.Channel_Lanes_Off = {}, field := "") {
@@ -50,7 +50,7 @@ _trs_clip :: proc() -> anim.AnimationClip {
 @(test)
 test_clip_validate_overlapping_lanes_fail :: proc(t: ^testing.T) {
 	clip := _trs_clip()
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	_trs_row(&clip, "Arm", .Position, {1, 0, 0, 0}, off = {1, 2}) // x
 	_trs_row(&clip, "Arm", .Position, {2, 3, 0, 0}, off = {2})    // x and y
 
@@ -65,7 +65,7 @@ test_clip_validate_overlapping_lanes_fail :: proc(t: ^testing.T) {
 @(test)
 test_clip_validate_disjoint_lanes_and_rotation_forms_pass :: proc(t: ^testing.T) {
 	clip := _trs_clip()
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	_trs_row(&clip, "Arm", .Position, {1, 0, 0, 0}, off = {1, 2}) // x
 	_trs_row(&clip, "Arm", .Position, {0, 2, 3, 0}, off = {0})    // y and z
 	_trs_row(&clip, "Arm", .Rotation, {0, 0, 0, 1})
@@ -82,7 +82,7 @@ test_clip_validate_disjoint_lanes_and_rotation_forms_pass :: proc(t: ^testing.T)
 @(test)
 test_clip_validate_two_unmasked_property_rows_fail :: proc(t: ^testing.T) {
 	clip := _trs_clip()
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	_trs_row(&clip, "Lamp", .Position, {1, 0, 0, 0}, field = "intensity")
 	_trs_row(&clip, "Lamp", .Position, {2, 0, 0, 0}, field = "intensity")
 	testing.expect_value(t, anim.animation_channel_mask_width(&clip.channels[0]), 0)
@@ -100,7 +100,7 @@ test_clip_validate_two_unmasked_property_rows_fail :: proc(t: ^testing.T) {
 @(test)
 test_clip_property_channels_group_by_target_and_field :: proc(t: ^testing.T) {
 	clip := _trs_clip()
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	_trs_row(&clip, "Arm", .Position, {1, 0, 0, 0}, off = {1, 2})   // 0
 	_trs_row(&clip, "Arm", .Rotation, {0, 0, 0, 1})                 // 1
 	_trs_row(&clip, "Arm", .Euler, {0, 30, 0, 0})                   // 2
@@ -169,7 +169,7 @@ test_clip_trs_direct_apply_and_graph_leaf_agree :: proc(t: ^testing.T) {
 	da.position = {7, 7, 7}
 	da.rotation = own
 	clip := _trs_mixed_clip(rot)
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	anim.animation_clip_apply(&clip, direct, 0)
 	da = engine.pool_get(&w.transforms, engine.Handle(direct))
 
@@ -203,7 +203,7 @@ test_clip_trs_direct_apply_and_graph_leaf_agree :: proc(t: ^testing.T) {
 @(test)
 test_clip_trs_euler_replaces_only_its_lanes :: proc(t: ^testing.T) {
 	clip := _trs_clip()
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	_trs_row(&clip, "", .Euler, {70, 40, -60, 0}, off = {0, 2})
 
 	trs: anim.Clip_TRS

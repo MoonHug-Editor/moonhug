@@ -66,7 +66,7 @@ _registry_init :: proc "contextless" () {
 
 // Registers a tween node type. $T must embed Tween at offset 0 and carry
 // @(typ_guid). A node that owns heap beyond the children array (which the
-// runtime frees itself) declares cleanup_T next to itself
+// runtime frees itself) declares type_cleanup_T next to itself
 // (plugins/engine/docs/Components.md, "Lifecycle procs"). Idempotent per type.
 register_node :: proc(
 	$T: typeid,

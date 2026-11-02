@@ -26,7 +26,7 @@ FontSettings :: struct {
 	latin1:        bool, // bake U+00A0..U+00FF too (ASCII is always baked); anything else is added at runtime from the font file
 }
 
-reset_FontSettings :: proc(s: ^FontSettings) {
+type_reset_FontSettings :: proc(s: ^FontSettings) {
 	s.sampling_size = 64
 	s.padding = 8
 	s.atlas_size = 1024
@@ -34,7 +34,7 @@ reset_FontSettings :: proc(s: ^FontSettings) {
 }
 
 // Zero sizes are no value (a meta predating the field): the defaults.
-on_validate_FontSettings :: proc(s: ^FontSettings) {
+type_on_validate_FontSettings :: proc(s: ^FontSettings) {
 	if s.sampling_size == 0 do s.sampling_size = 64
 	if s.atlas_size == 0 do s.atlas_size = 1024
 }
@@ -412,8 +412,14 @@ font_load :: proc(guid: engine.Asset_GUID) -> (^Font, bool) {
 	return &_fonts[guid], true
 }
 
-// Reimport hook: a rebaked artifact evicts its font so the next draw reloads.
-font_reimported :: proc(guid: engine.Asset_GUID) {
+// A changed or rebaked font leaves the cache so the next draw reloads it.
+@(asset_hook)
+asset_on_changed_font :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
+	font_unload(guid)
+}
+
+// Frees the cached font, if any.
+font_unload :: proc(guid: engine.Asset_GUID) {
 	if f, ok := &_fonts[guid]; ok {
 		font_destroy(f)
 		delete_key(&_fonts, guid)
@@ -500,7 +506,7 @@ font_import :: proc(source_path, artifact_path: string, settings: rawptr) -> boo
 	if settings != nil {
 		s = (cast(^FontSettings)settings)^
 	} else {
-		reset_FontSettings(&s)
+		type_reset_FontSettings(&s)
 	}
 	ttf, rerr := os.read_entire_file(source_path, context.temp_allocator)
 	if rerr != nil do return false

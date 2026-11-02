@@ -30,7 +30,7 @@ _make_test_clip :: proc(alloc := context.allocator) -> anim.AnimationClip {
 	append(&clip.channels, pos)
 
 	arm := anim.Animation_Channel{path = .Scale, step = true}
-	// Cloned, not a literal: cleanup_AnimationClip deletes channel targets.
+	// Cloned, not a literal: type_cleanup_AnimationClip deletes channel targets.
 	arm.target = strings.clone("Arm", alloc)
 	arm.times = make([dynamic]f32, alloc)
 	arm.values = make([dynamic][4]f32, alloc)
@@ -211,7 +211,7 @@ test_scene_from_gltf :: proc(t: ^testing.T) {
 	if a != nil do testing.expect(t, a.play_automatically, "Animation should default to play automatically")
 }
 
-// cleanup_Animation frees two levels of owned memory (layers, each layer's
+// type_cleanup_Animation frees two levels of owned memory (layers, each layer's
 // clips) and must be idempotent: undo calls type_cleanup before restoring a
 // value, so a second call over already-freed state is a normal event.
 // comp_zero at the end of cleanup is what makes this safe — it clears the

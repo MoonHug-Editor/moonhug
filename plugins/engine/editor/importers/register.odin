@@ -7,9 +7,7 @@ package importers
 import "base:runtime"
 import cgltf "vendor:cgltf"
 import "core:encoding/json"
-import "core:strings"
 import "moonhug:packages/engine"
-import assets "moonhug:libs/assets"
 import asset_pipeline "moonhug:editor/assets"
 
 // Bakes one glTF animation of `data` to `out_path`, the clip's sub-asset
@@ -72,21 +70,12 @@ shader_importer :: proc() -> asset_pipeline.Importer_Desc {
 	}
 }
 
-@(phase={key=ImportersInit, order=0, mode=Editor})
-shader_reload_hook_install :: proc() {
-	@(static) done := false
-	if done do return
-	done = true
-	assets.asset_db_add_path_changed_hook(_reimport_changed_shader)
-}
-
-// Shader hot reload: the shader cache's evict hook drops an edited .glsl, this
-// path-changed hook reimports it.
-@(private = "file")
-_reimport_changed_shader :: proc(path: string) {
-	if strings.has_suffix(path, ".glsl") {
-		_ = asset_pipeline.asset_pipeline_import_asset(path)
-	}
+// Shader hot reload: the shader cache's hook drops an edited .glsl, this one
+// reimports it.
+@(asset_hook={ext="glsl"})
+asset_on_changed_shader_reimport :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
+	if change != .Modified do return
+	_ = asset_pipeline.asset_pipeline_import_asset(path)
 }
 
 @(private = "file")

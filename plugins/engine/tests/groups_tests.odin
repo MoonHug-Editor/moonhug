@@ -82,8 +82,8 @@ test_groups_index_follows_lifecycle :: proc(t: ^testing.T) {
 @(test)
 test_group_names_domain :: proc(t: ^testing.T) {
 	g: engine.Group_Names
-	engine.reset_Group_Names(&g)
-	defer engine.cleanup_Group_Names(&g)
+	engine.type_reset_Group_Names(&g)
+	defer engine.type_cleanup_Group_Names(&g)
 	for n in g.names do testing.expect_value(t, n, "")
 
 	names := engine.layer_names(engine.GROUP_DOMAIN)

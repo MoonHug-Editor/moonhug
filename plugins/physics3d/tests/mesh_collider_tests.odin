@@ -174,7 +174,7 @@ physics3d_mesh_collider_non_convex_needs_a_static_body :: proc(t: ^testing.T) {
 	testing.expect(t, !b3.Shape_IsValid(mc.shape), "and builds no shape")
 
 	// Reset clears the refusal, and convex builds on the next step.
-	physics3d.reset_MeshCollider(mc)
+	physics3d.type_reset_MeshCollider(mc)
 	mc.enabled = true
 	mc.convex = true
 	mc.mesh = cube

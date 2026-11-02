@@ -27,7 +27,7 @@ Backend: SDL3_mixer (`vendor:sdl3/mixer`, needs `brew install sdl3_mixer`).
 - The mixer device is created lazily on first use. Headless contexts
   (tests, tooling) fall back to a deviceless mixer — loading works, nothing
   is audible.
-- A reimport evicts the cached clip (pipeline reimport hook), so a settings
+- A reimport evicts the cached clip (an asset hook on `.Reimported`), so a settings
   change takes effect on the next play without a restart. Playing tracks
   detach first and play-on-awake sources restart with the new master.
 

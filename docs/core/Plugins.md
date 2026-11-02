@@ -22,10 +22,23 @@ A package extends the editor and the engine in four ways. The first is the one t
 - **Seams** are one slot per service the editor shell needs and does not implement itself, filled by one package: the selection source, the object and override providers, the pick and viewport providers, the undo selection hooks. The shell builds with zero plugins, so each seam has a fallback, and the engine plugin fills nearly all of them. A seam is one implementation of an interface, not a list of contributions, so an attribute does not replace it. A second filler replaces the first.
 - **Conventions** decide the rest without code: the `editor/`, `tests/` and `gen/` folders, integration subpackages named after the plugin they extend, the plugin manifest, the symlink in the packages folder as the enable switch, `resources` folders that ship whole, and the `docs/` folder that joins the docs site.
 
+### Hooks by subject
+
+Every proc the generators call by name starts with the word for what it is about. Reading the name tells the subject, the attribute above it tells the group, and the reference page of the attribute lists every one.
+
+| Prefix | Subject | Runs in | Procs |
+|---|---|---|---|
+| `comp_` | a component instance in a running world | editor and game | `comp_awake_<T>`, `comp_on_enable_<T>`, `comp_on_disable_<T>`, `comp_on_destroy_<T>`, `comp_update_<T>`, `comp_fixed_update_<T>`, `comp_late_update_<T>`, `comp_on_collision_enter_<T>` and the other contact procs ([Components](../../plugins/engine/docs/Components.md)) |
+| `type_` | a value of a type in memory, no world and no file | editor and game | `type_reset_<T>` sets the defaults, `type_cleanup_<T>` frees what it owns, `type_on_validate_<T>` runs after a value is written into it, `type_before_serialize_<T>` and `type_after_deserialize_<T>` run around its JSON ([Components](../../plugins/engine/docs/Components.md) "Lifecycle procs") |
+| `doc_` | an asset open as a document in the editor | editor | `doc_on_changed_<T>` once per change by any route, `doc_on_saved_<T>` after the file is written (`@(asset_doc)`) |
+| `asset_` | a file on disk and its artifact | editor | `asset_on_changed_<name>` with the change modified, removed or reimported (`@(asset_hook)`) |
+
+`on_` marks a proc that answers an event. `reset`, `cleanup`, `before_serialize` and `after_deserialize` are done to the value, so they carry no `on_`.
+
 Which one a new extension point gets:
 
-- An attribute, when the registration is static, has about five or more users across packages, and a table or a reference page of all of them is useful.
-- A registry, when the data is runtime, the lifetime is dynamic, or the users are few. It is called from a `@(provider_install)` proc, never from an ad hoc place.
+- An attribute, whenever the registration is static: a name, a type, a proc, literals. The number of users today does not matter. The editor ships a feature with one or two uses, and plugin authors add theirs the same way, so the attribute and its reference page exist for them.
+- A registry, only when the data exists at run time or is unregistered later: a shader compiled from an artifact, an entry per loaded asset. It is called from a `@(provider_install)` proc, never from an ad hoc place.
 - A seam, when exactly one package implements a service the shell needs.
 
 ## app plugin
@@ -213,18 +226,19 @@ _import_audio :: proc(source_path, artifact_path: string, settings: rawptr) -> b
 - Hooks around an importer (a reimport hook, an evict hook, the glTF clip seams) stay in the package's own `@(phase={key=ImportersInit, mode=Editor})` proc.
 - `name` is stored in .meta files and seeds artifact keys — keep it stable.
 - Bump `version` when the importer's output changes.
-- Settings defaults come from the type's `reset_<Type>` (plugins/engine/docs/Components.md, "Lifecycle procs"). The pipeline creates a defaulted instance and overlays the meta's settings object, so fields absent from old metas keep their defaults, as described in [Missing fields and reset defaults](../../plugins/engine/docs/Components.md#missing-fields-and-reset-defaults).
+- Settings defaults come from the type's `type_reset_<Type>` (plugins/engine/docs/Components.md, "Lifecycle procs"). The pipeline creates a defaulted instance and overlays the meta's settings object, so fields absent from old metas keep their defaults, as described in [Missing fields and reset defaults](../../plugins/engine/docs/Components.md#missing-fields-and-reset-defaults).
 
 ## Asset types
 
 A package can own an asset type end to end — the audio package is the reference (plugins/audio/docs/Audio.md):
 
 - The importer above produces the artifact (audio bakes its settings into float32 WAV PCM).
-- A guid-keyed runtime cache in the package loads the artifact (`clip_load`), mirroring the engine's texture cache. It registers an `engine.asset_pipeline_add_reimport_hook` to evict on artifact change — the same hook the texture cache uses, so settings edits apply live.
+- A guid-keyed runtime cache in the package loads the artifact (`clip_load`), mirroring the engine's texture cache. Its `asset_on_changed_<name>` proc, declared with `@(asset_hook)`, drops the entry when the artifact changes — the same hook the texture cache uses, so settings edits apply live.
 - An editor subpackage can register `inspector.mapAssetPreview[".ext"]` from an `@(provider_install)` proc — the drawer renders in the Preview section pinned to the bottom of the Project Inspector when a matching asset is selected.
-- An asset type edited as a document in the Project Inspector (a `@(typ_guid)` struct saved as a `.asset` file) attaches procs to its document with `@(asset_doc={type=T})`. The name is the contract, as with `reset_<Type>`: `on_changed_<Type>` runs once each time the document changed by any route, an inspector edit, an undo, a revert (`proc(guid: core.Asset_GUID, doc: any)`), and pushes its values wherever they are used live. `on_saved_<Type>` runs after a save (`proc(guid: core.Asset_GUID, path: string)`). `<Type>` is the type's own name without its package, and the prebuild refuses any other name. Rows above or below the document's fields, or context the field drawers read, are an inspector wrapper on the type (`inspector.add_component_wrapper`, "Inspector funnel" below), as a custom inspector that calls the default drawer in the middle: the render pipeline's Open button and the material's shader context are wrappers. The generated `register_asset_docs` (asset_doc_gen, `registration/asset_docs_generated.odin`) registers them after `inspector.init`, in the editor and the tests bootstrap. The reference page of `@(asset_doc)` lists them all. Materials, the layer tables, the physics materials, the Input Actions asset and the Shader Graph use it.
+- A package that caches something derived from an asset file or its artifact declares `@(asset_hook={ext="mat"})` on `asset_on_changed_<name>`, which gets the guid, the path and the change: modified, removed or reimported. The generated registration adds it before the first scan. A cache of a file reacts to modified and removed, a cache of an artifact to reimported, and the body is the unload. See "Hooks by subject" below.
+- An asset type edited as a document in the Project Inspector (a `@(typ_guid)` struct saved as a `.asset` file) attaches procs to its document with `@(asset_doc={type=T})`. The name is the contract, as with `type_reset_<Type>`: `doc_on_changed_<Type>` runs once each time the document changed by any route, an inspector edit, an undo, a revert (`proc(guid: core.Asset_GUID, doc: any)`), and pushes its values wherever they are used live. `doc_on_saved_<Type>` runs after a save (`proc(guid: core.Asset_GUID, path: string)`). `<Type>` is the type's own name without its package, and the prebuild refuses any other name. Rows above or below the document's fields, or context the field drawers read, are an inspector wrapper on the type (`inspector.add_component_wrapper`, "Inspector funnel" below), as a custom inspector that calls the default drawer in the middle: the render pipeline's Open button and the material's shader context are wrappers. The generated `register_asset_docs` (asset_doc_gen, `registration/asset_docs_generated.odin`) registers them after `inspector.init`, in the editor and the tests bootstrap. The reference page of `@(asset_doc)` lists them all. Materials, the layer tables, the physics materials, the Input Actions asset and the Shader Graph use it.
 - A component references the asset through a plain `engine.Asset_GUID` field. An `ext:"mp3,wav,ogg"` field tag gives it the standard inspector picker and drag-drop, filtered to those extensions — no editor code.
-- Playback state stays in runtime-only fields (`json:"-" inspect:"-"`), released in the component's `cleanup_` proc.
+- Playback state stays in runtime-only fields (`json:"-" inspect:"-"`), released in the component's `type_cleanup_<Type>` proc.
 
 The engine contributes only generated glue (type registration, pool accessors, update dispatch). No engine or editor source knows the asset type exists.
 

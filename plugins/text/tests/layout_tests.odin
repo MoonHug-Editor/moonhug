@@ -241,7 +241,7 @@ test_layout_overflow_modes :: proc(t: ^testing.T) {
 test_text_component_helpers :: proc(t: ^testing.T) {
 	b := _fake_backend()
 	tx: text.Text
-	text.reset_Text(&tx)
+	text.type_reset_Text(&tx)
 	tx.font = _font()
 	tx.text = "a\\nb"
 	tx.parse_escape_characters = true
@@ -286,7 +286,7 @@ test_collector_emits_glyph_quads_through_any_backend :: proc(t: ^testing.T) {
 	_, txp := engine.transform_add_comp(node, .Text)
 	tx := cast(^text.Text)txp
 	tx.enabled = true
-	tx.text = strings.clone("hi") // cleanup_Text frees it on destroy
+	tx.text = strings.clone("hi") // type_cleanup_Text frees it on destroy
 	tx.font = _font()
 	tx.font_size = 12
 	tx.color = {0, 1, 0, 1}

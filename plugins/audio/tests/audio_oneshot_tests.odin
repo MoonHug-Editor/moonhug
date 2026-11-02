@@ -13,7 +13,6 @@ import mix "vendor:sdl3/mixer"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
 import audio "moonhug:packages/audio"
-import audio_editor "moonhug:packages/audio/editor"
 import common "moonhug:tests/common"
 
 @(test)
@@ -21,7 +20,6 @@ test_one_shot_lifecycle :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
-	audio_editor.audio_importers_init()
 	registration.register_importers()
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)

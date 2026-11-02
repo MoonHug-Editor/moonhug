@@ -107,8 +107,8 @@ TimelineAnimator :: struct {
 	graph_ready: bool `json:"-" inspect:"-"`,
 }
 
-reset_TimelineAnimator :: proc(a: ^TimelineAnimator) {
-	cleanup_TimelineAnimator(a)
+type_reset_TimelineAnimator :: proc(a: ^TimelineAnimator) {
+	type_cleanup_TimelineAnimator(a)
 	a.speed = 1
 }
 
@@ -116,7 +116,7 @@ reset_TimelineAnimator :: proc(a: ^TimelineAnimator) {
 // replaced under it — undo calls type_cleanup before unmarshalling a restored
 // value. comp_zero clears graph_ready along with every freed pointer, which is
 // what makes a second call safe.
-cleanup_TimelineAnimator :: proc(a: ^TimelineAnimator) {
+type_cleanup_TimelineAnimator :: proc(a: ^TimelineAnimator) {
 	if a.graph_ready {
 		// Hand every claimed target back first: a component destroyed while
 		// holding them would leave them suppressed forever.

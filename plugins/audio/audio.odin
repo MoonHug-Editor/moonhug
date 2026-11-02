@@ -20,7 +20,7 @@ AudioSettings :: struct {
 	normalize: bool,
 }
 
-reset_AudioSettings :: proc(p: ^AudioSettings) {
+type_reset_AudioSettings :: proc(p: ^AudioSettings) {
 	p.volume = 1.0
 }
 

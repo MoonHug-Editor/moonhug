@@ -35,7 +35,7 @@ TimelineAnimatorDemo :: struct {
 	returning:  bool `json:"-" inspect:"-"`,
 }
 
-reset_TimelineAnimatorDemo :: proc(d: ^TimelineAnimatorDemo) {
+type_reset_TimelineAnimatorDemo :: proc(d: ^TimelineAnimatorDemo) {
 	d.fade = -1
 	d.auto_start = true
 }

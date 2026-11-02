@@ -39,7 +39,7 @@ Image_Type :: enum u8 {
 	Tiled,
 }
 
-reset_Image :: proc(img: ^Image) {
+type_reset_Image :: proc(img: ^Image) {
 	img.color = {1, 1, 1, 1}
 	img.raycast_target = true
 	img.fill_center = true

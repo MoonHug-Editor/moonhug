@@ -53,7 +53,7 @@ Reflection_Probe :: struct {
 	refresh:        Probe_Refresh,
 }
 
-reset_Reflection_Probe :: proc(p: ^Reflection_Probe) {
+type_reset_Reflection_Probe :: proc(p: ^Reflection_Probe) {
 	p.size = {10, 10, 10}
 	p.blend_distance = 1
 	p.box_projection = true

@@ -69,6 +69,10 @@ provide :: proc(w: ^db.World) -> bool {
 		attr_set := db.get(attrs, entity)
 
 		if type_name, priority, found := _attr_field(attr_set, "before_serialize"); found {
+			if !_named_for(decl.name, "type_before_serialize_", type_name) {
+				fmt.eprintf("serialization_gen: %s.%s must be named type_before_serialize_<Type>, the type's own name\n", decl.pkg.name, decl.name)
+				return false
+			}
 			db.set(_serializations, entity, Serialization_GenComp{
 				kind       = .BeforeSerialize,
 				type_name  = type_name,
@@ -80,6 +84,10 @@ provide :: proc(w: ^db.World) -> bool {
 			continue
 		}
 		if type_name, priority, found := _attr_field(attr_set, "after_deserialize"); found {
+			if !_named_for(decl.name, "type_after_deserialize_", type_name) {
+				fmt.eprintf("serialization_gen: %s.%s must be named type_after_deserialize_<Type>, the type's own name\n", decl.pkg.name, decl.name)
+				return false
+			}
 			db.set(_serializations, entity, Serialization_GenComp{
 				kind       = .AfterDeserialize,
 				type_name  = type_name,
@@ -94,6 +102,14 @@ provide :: proc(w: ^db.World) -> bool {
 }
 
 _OUT_DIR :: "moonhug/libs/serialization"
+
+// True when `name` is `prefix` plus the type's own name, without its package.
+@(private = "file")
+_named_for :: proc(name, prefix, type_name: string) -> bool {
+	bare := type_name
+	if dot := strings.last_index_byte(bare, '.'); dot >= 0 do bare = bare[dot + 1:]
+	return strings.has_prefix(name, prefix) && name[len(prefix):] == bare
+}
 
 _SerializationRow :: struct {
 	kind:        SerializationCallbackKind,

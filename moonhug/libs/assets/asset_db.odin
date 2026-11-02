@@ -182,65 +182,11 @@ asset_db_request_refresh :: proc() {
     if _refresh_proc != nil do _refresh_proc()
 }
 
-// Fired by asset_db_refresh for every created or modified source path, after
-// the evict hooks. Packages register cache invalidation for their asset
-// extensions here (the animation package drops edited .anim clips).
-Path_Changed_Hook :: proc(path: string)
-
-_path_changed_hooks: [dynamic]Path_Changed_Hook
-
-asset_db_add_path_changed_hook :: proc(hook: Path_Changed_Hook) {
-    for h in _path_changed_hooks {
-        if h == hook do return
-    }
-    // Registry state never borrows the caller's allocator (same rule as
-    // asset_pipeline_add_reimport_hook — tests hand out scoped tracking
-    // allocators).
-    context.allocator = runtime.default_allocator()
-    append(&_path_changed_hooks, hook)
-}
-
-// Runs once per asset that left the project in a refresh: deleted, not
-// renamed or moved (a rename keeps its guid under a new path, so it never
-// fires). `path` is where the asset was. Editor state keyed by the guid,
-// such as an open asset document and its undo steps, drops here.
-Asset_Gone_Hook :: proc(guid: core.Asset_GUID, path: string)
-
-_asset_gone_hooks: [dynamic]Asset_Gone_Hook
-
-asset_db_add_asset_gone_hook :: proc(hook: Asset_Gone_Hook) {
-    for h in _asset_gone_hooks {
-        if h == hook do return
-    }
-    context.allocator = runtime.default_allocator()
-    append(&_asset_gone_hooks, hook)
-}
-
-// Drops a cache entry derived from the asset at `path`. Runs for every
-// changed path in a refresh, before the path-changed hooks, and for every
-// removed asset while its guid still resolves. The engine's material and
-// shader caches register here at @(init). Each hook checks the extension
-// itself.
-Evict_Hook :: proc(path: string)
-
-_evict_hooks: [dynamic]Evict_Hook
-
-asset_db_add_evict_hook :: proc(hook: Evict_Hook) {
-    for h in _evict_hooks {
-        if h == hook do return
-    }
-    context.allocator = runtime.default_allocator()
-    append(&_evict_hooks, hook)
-}
-
-asset_db_run_evict_hooks :: proc(path: string) {
-    for hook in _evict_hooks do hook(path)
-}
-
+// Forgets the asset at `path`. The scan tells the asset hooks afterwards,
+// once it knows whether the asset left the project or moved (asset_hooks.odin).
 _asset_removed :: proc(path: string) {
     guid, ok := asset_db.path_to_guid[path]
     if !ok do return
-    asset_db_run_evict_hooks(path)
     stored := asset_db.guid_to_path[guid] // the one owned clone (used as key AND value)
     delete_key(&asset_db.path_to_guid, path)
     delete_key(&asset_db.guid_to_path, guid)

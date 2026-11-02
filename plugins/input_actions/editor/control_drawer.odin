@@ -21,7 +21,7 @@ _register_key_drawer :: proc() {
 // The open document reaches the running game every frame, saved or not,
 // as the Render Layers and Material documents do.
 @(asset_doc={type=actions.Input_Actions})
-on_changed_Input_Actions :: proc(guid: core.Asset_GUID, doc: any) {
+doc_on_changed_Input_Actions :: proc(guid: core.Asset_GUID, doc: any) {
 	actions.actions_preview(guid, (cast(^actions.Input_Actions)doc.data)^)
 }
 

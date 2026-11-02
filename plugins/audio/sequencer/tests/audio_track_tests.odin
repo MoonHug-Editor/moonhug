@@ -14,7 +14,6 @@ import asset_pipeline "moonhug:editor/assets"
 import anim "moonhug:packages/animation"
 import seq "moonhug:packages/sequencer"
 import audio "moonhug:packages/audio"
-import audio_editor "moonhug:packages/audio/editor"
 import "moonhug:editor/inspector"
 import "moonhug:editor/undo"
 import common "moonhug:tests/common"
@@ -74,7 +73,6 @@ test_audio_timeline_track :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
-	audio_editor.audio_importers_init()
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 	audio.mixer_init_headless()
@@ -152,7 +150,6 @@ test_audio_track_enters_span_at_offset :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
-	audio_editor.audio_importers_init()
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 	audio.mixer_init_headless()
@@ -220,7 +217,6 @@ test_audio_track_overlap_crossfades :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
-	audio_editor.audio_importers_init()
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 	audio.mixer_init_headless()
@@ -366,7 +362,6 @@ test_audio_preview_play :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
-	audio_editor.audio_importers_init()
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 	audio.mixer_init_headless()

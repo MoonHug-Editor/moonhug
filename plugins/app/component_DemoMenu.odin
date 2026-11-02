@@ -13,13 +13,13 @@ DemoMenu :: struct {
     list:  engine.Ref_Local `ref:"Transform"`, // the LayoutGroup node the scene rows are created under
 }
 
-reset_DemoMenu :: proc(comp: ^DemoMenu) {
-    cleanup_DemoMenu(comp)
+type_reset_DemoMenu :: proc(comp: ^DemoMenu) {
+    type_cleanup_DemoMenu(comp)
     comp.demos = make([dynamic]engine.Asset_GUID)
 }
 
 
-cleanup_DemoMenu :: proc(comp: ^DemoMenu) {
+type_cleanup_DemoMenu :: proc(comp: ^DemoMenu) {
     if comp.demos != nil do delete(comp.demos)
     engine.comp_zero(comp)
 }

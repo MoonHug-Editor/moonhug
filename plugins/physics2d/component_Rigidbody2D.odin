@@ -42,15 +42,15 @@ Rigidbody2D :: struct {
 	mass_set: bool `json:"-" inspect:"-"`,
 }
 
-reset_Rigidbody2D :: proc(comp: ^Rigidbody2D) {
-	cleanup_Rigidbody2D(comp)
+type_reset_Rigidbody2D :: proc(comp: ^Rigidbody2D) {
+	type_cleanup_Rigidbody2D(comp)
 	comp.mass = 1
 	comp.gravity_scale = 1
 }
 
 // Runs on destroy, removal, Reset and undo: the body goes with the
 // component, or it keeps colliding as a ghost.
-cleanup_Rigidbody2D :: proc(comp: ^Rigidbody2D) {
+type_cleanup_Rigidbody2D :: proc(comp: ^Rigidbody2D) {
 	_destroy_body(&comp.body)
 	engine.comp_zero(comp)
 }

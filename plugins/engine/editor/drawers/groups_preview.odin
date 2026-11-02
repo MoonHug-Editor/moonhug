@@ -7,6 +7,6 @@ package drawers
 import "moonhug:packages/engine"
 
 @(asset_doc={type=engine.Group_Names})
-on_changed_Group_Names :: proc(guid: engine.Asset_GUID, doc: any) {
+doc_on_changed_Group_Names :: proc(guid: engine.Asset_GUID, doc: any) {
 	engine.group_names_preview(guid, (cast(^engine.Group_Names)doc.data)^)
 }

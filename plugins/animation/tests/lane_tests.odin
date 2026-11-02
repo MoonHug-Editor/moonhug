@@ -210,7 +210,7 @@ test_lane_missing_key_loads_all_enabled :: proc(t: ^testing.T) {
 	src := `{"length": 1.0, "channels": [{"target": "", "path": 0, "times": [0.0], "values": [[1, 2, 3, 0]]}]}`
 	clip: anim.AnimationClip
 	err := json.unmarshal(transmute([]byte)src, &clip, .JSON, context.allocator)
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	testing.expect(t, err == nil, "the clip unmarshals")
 	if len(clip.channels) != 1 do return
 	ch := &clip.channels[0]
@@ -232,7 +232,7 @@ test_lane_partial_mask_round_trips :: proc(t: ^testing.T) {
 		{"target": "", "path": 1, "times": [0.0], "values": [[0, 0, 0, 1]], "lanes": [false, true, true, true]}]}`
 	clip: anim.AnimationClip
 	err := json.unmarshal(transmute([]byte)src, &clip, .JSON, context.allocator)
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 	testing.expect(t, err == nil, "the clip unmarshals")
 	if len(clip.channels) != 2 do return
 	ch := &clip.channels[0]
@@ -252,7 +252,7 @@ test_lane_partial_mask_round_trips :: proc(t: ^testing.T) {
 
 	again: anim.AnimationClip
 	err = json.unmarshal(data, &again, .JSON, context.allocator)
-	defer anim.cleanup_AnimationClip(&again)
+	defer anim.type_cleanup_AnimationClip(&again)
 	testing.expect(t, err == nil, "the written clip unmarshals")
 	if len(again.channels) == 2 do testing.expect_value(t, again.channels[0].lanes_off, anim.Channel_Lanes_Off{1})
 }

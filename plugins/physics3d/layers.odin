@@ -42,13 +42,13 @@ Physics3D_Layer_Overrides :: struct {
 
 // A new Physics 3D Layers asset, and the layers without one: layer 0
 // "Default", every pair colliding.
-reset_Physics3D_Layers :: proc(l: ^Physics3D_Layers) {
-	cleanup_Physics3D_Layers(l)
+type_reset_Physics3D_Layers :: proc(l: ^Physics3D_Layers) {
+	type_cleanup_Physics3D_Layers(l)
 	l.names[0] = strings.clone("Default")
 	for &row in l.rows do row = ~u32(0)
 }
 
-cleanup_Physics3D_Layers :: proc(l: ^Physics3D_Layers) {
+type_cleanup_Physics3D_Layers :: proc(l: ^Physics3D_Layers) {
 	for s in l.names do delete(s)
 	l^ = {}
 }
@@ -85,11 +85,10 @@ _layers: struct {
 _layers_register :: proc "contextless" () {
 	context = runtime.default_context()
 	l: Physics3D_Layers
-	reset_Physics3D_Layers(&l)
-	defer cleanup_Physics3D_Layers(&l)
+	type_reset_Physics3D_Layers(&l)
+	defer type_cleanup_Physics3D_Layers(&l)
 	_take(l)
 	engine.layer_domain_register(LAYER_DOMAIN, &_layers.names, refresh = layers_sync)
-	engine.asset_db_add_evict_hook(_layers_path_changed)
 }
 
 // Brings the names and the matrix up to date with the asset the Physics 3D
@@ -106,9 +105,9 @@ layers_sync :: proc() {
 	if want != {} do l, ok = engine.asset_load_as(want, Physics3D_Layers)
 	if !ok {
 		if want != {} do log.warningf("[Physics3D] the settings name no readable Physics3D_Layers asset, using the built-in layers")
-		reset_Physics3D_Layers(&l)
+		type_reset_Physics3D_Layers(&l)
 	}
-	defer cleanup_Physics3D_Layers(&l)
+	defer type_cleanup_Physics3D_Layers(&l)
 	_take(l)
 }
 
@@ -124,12 +123,9 @@ layers_preview :: proc(guid: engine.Asset_GUID, l: Physics3D_Layers) {
 
 // An asset file changed on disk or went away: the copy reloads on the next
 // sync when it is the active asset.
-@(private = "file")
-_layers_path_changed :: proc(path: string) {
-	if !strings.has_suffix(path, ".asset") do return
-	guid, ok := engine.asset_db_get_guid(path)
-	if !ok do return
-	if _layers.loaded && _layers.guid == engine.Asset_GUID(guid) do _layers.loaded = false
+@(asset_hook={ext="asset"})
+asset_on_changed_layers :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
+	if _layers.loaded && _layers.guid == guid do _layers.loaded = false
 }
 
 // Copies `l` into the active copy: the rows, and the names in place, so a name

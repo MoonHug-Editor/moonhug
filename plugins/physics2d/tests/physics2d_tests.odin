@@ -358,8 +358,8 @@ _pair_is :: proc(c: physics2d.Contact, x, y: engine.Transform_Handle) -> bool {
 @(test)
 physics2d_layers_asset :: proc(t: ^testing.T) {
 	l: physics2d.Physics2D_Layers
-	physics2d.reset_Physics2D_Layers(&l)
-	defer physics2d.cleanup_Physics2D_Layers(&l)
+	physics2d.type_reset_Physics2D_Layers(&l)
+	defer physics2d.type_cleanup_Physics2D_Layers(&l)
 	testing.expect_value(t, l.names[0], "Default")
 	testing.expect_value(t, l.names[1], "")
 	for row in l.rows do testing.expect_value(t, row, ~u32(0))
@@ -367,14 +367,14 @@ physics2d_layers_asset :: proc(t: ^testing.T) {
 	tg := engine.get_guid_by_typeid(physics2d.Physics2D_Layers)
 	data := fmt.tprintf(`{{"__type_guid": "%s", "names": ["Default", "Player"], "rows": [4294967291, 4294967295, 4294967294]}}`, uuid.to_string(tg, context.temp_allocator))
 	got, ok := engine.asset_parse_as(transmute([]u8)data, physics2d.Physics2D_Layers)
-	defer physics2d.cleanup_Physics2D_Layers(&got)
+	defer physics2d.type_cleanup_Physics2D_Layers(&got)
 	testing.expect(t, ok, "a Physics 2D Layers file loads")
 	testing.expect_value(t, got.names[1], "Player")
 	testing.expect_value(t, got.rows[0], u32(4294967291))
 	testing.expect_value(t, got.rows[2], u32(4294967294))
 
 	sparse, sok := engine.asset_parse_as(transmute([]u8)fmt.tprintf(`{{"__type_guid": "%s"}}`, uuid.to_string(tg, context.temp_allocator)), physics2d.Physics2D_Layers)
-	defer physics2d.cleanup_Physics2D_Layers(&sparse)
+	defer physics2d.type_cleanup_Physics2D_Layers(&sparse)
 	testing.expect(t, sok, "a file without fields loads")
 	testing.expect_value(t, sparse.names[0], "Default")
 	testing.expect_value(t, sparse.rows[5], ~u32(0))
@@ -411,8 +411,8 @@ physics2d_collision_mask :: proc(t: ^testing.T) {
 
 	// Layers 1 and 2 do not collide, every other pair does.
 	l: physics2d.Physics2D_Layers
-	physics2d.reset_Physics2D_Layers(&l)
-	defer physics2d.cleanup_Physics2D_Layers(&l)
+	physics2d.type_reset_Physics2D_Layers(&l)
+	defer physics2d.type_cleanup_Physics2D_Layers(&l)
 	l.names[1] = strings.clone("Player")
 	l.rows[1] &~= 1 << 2
 	l.rows[2] &~= 1 << 1

@@ -55,7 +55,7 @@ mesh_cache: map[Mesh_Key]Mesh
 // disagree about when a file gets its next try.
 //
 // Keyed by (guid, part): one unbuildable part must not stop the rest of the
-// model loading. Cleared for an asset by mesh_unload, the reimport hook.
+// model loading. Cleared for an asset by mesh_unload (asset_on_changed_mesh).
 @(private = "file") _mesh_failed: map[Mesh_Key]bool
 
 // Whether the parts and clips caches are live. A flag, not a nil check on the
@@ -86,13 +86,13 @@ mesh_cache_init :: proc() {
     _mesh_clips = make(map[Asset_GUID][]Mesh_Clip, runtime.default_allocator())
     _mesh_hull_sets = make(map[Asset_GUID][]Mesh_Hull_Set, runtime.default_allocator())
     _mesh_cache_ready = true
-    // A reimport rewrites the model's artifact and the parts and clips lists
-    // in its meta, so both cached lists and every loaded part go with it.
-    @(static) hooked := false
-    if !hooked {
-        hooked = true
-        asset_pipeline_add_reimport_hook(mesh_unload)
-    }
+}
+
+// A reimport rewrites the model's artifact and the parts and clips lists in
+// its meta, so both cached lists and every loaded part go with it.
+@(asset_hook)
+asset_on_changed_mesh :: proc(guid: Asset_GUID, path: string, change: Asset_Change) {
+    mesh_unload(guid)
 }
 
 mesh_cache_shutdown :: proc() {

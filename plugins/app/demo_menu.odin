@@ -150,7 +150,7 @@ _ui_text :: proc(parent: engine.Transform_Handle, label: string, size: [2]f32, f
     tH := _ui_node(label, parent, size)
     _, txp := engine.transform_add_comp(tH, .Text)
     tx := cast(^text.Text)txp
-    tx.text = strings.clone(label) // the component owns its string (cleanup_Text)
+    tx.text = strings.clone(label) // the component owns its string (type_cleanup_Text)
     tx.font = text.default_font_guid()
     tx.material = text.default_material_guid()
     tx.font_size = font_size

@@ -30,11 +30,11 @@ Group_Names :: struct {
 // The layer domain of the groups: the Groups component's bits.
 GROUP_DOMAIN :: "group"
 
-reset_Group_Names :: proc(g: ^Group_Names) {
-	cleanup_Group_Names(g)
+type_reset_Group_Names :: proc(g: ^Group_Names) {
+	type_cleanup_Group_Names(g)
 }
 
-cleanup_Group_Names :: proc(g: ^Group_Names) {
+type_cleanup_Group_Names :: proc(g: ^Group_Names) {
 	for s in g.names do delete(s)
 	g^ = {}
 }
@@ -73,7 +73,6 @@ _group_names: struct {
 _groups_register :: proc "contextless" () {
 	context = runtime.default_context()
 	layer_domain_register(GROUP_DOMAIN, &_group_names.names, refresh = groups_sync)
-	asset_db_add_evict_hook(_group_names_path_changed)
 }
 
 groups_settings_ensure_loaded :: proc() {
@@ -97,9 +96,9 @@ groups_sync :: proc() {
 	if want != {} do src, ok = asset_load_as(want, Group_Names)
 	if !ok {
 		if want != {} do log.warningf("[Groups] the Groups setting names no readable Group_Names asset, using no names")
-		reset_Group_Names(&src)
+		type_reset_Group_Names(&src)
 	}
-	defer cleanup_Group_Names(&src)
+	defer type_cleanup_Group_Names(&src)
 	_group_names_copy(&_group_names.names, src.names)
 }
 
@@ -113,12 +112,11 @@ group_names_preview :: proc(guid: Asset_GUID, g: Group_Names) {
 	_group_names_copy(&_group_names.names, g.names)
 }
 
-@(private = "file")
-_group_names_path_changed :: proc(path: string) {
-	if !strings.has_suffix(path, ".asset") do return
-	guid, ok := asset_db_get_guid(path)
-	if !ok do return
-	if _group_names.loaded && _group_names.guid == Asset_GUID(guid) do _group_names.loaded = false
+// An asset file changed on disk or went away: the names reload on the next
+// sync when it is the active asset.
+@(asset_hook={ext="asset"})
+asset_on_changed_group_names :: proc(guid: Asset_GUID, path: string, change: Asset_Change) {
+	if _group_names.loaded && _group_names.guid == guid do _group_names.loaded = false
 }
 
 // The next sync reads the setting and the asset again.

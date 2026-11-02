@@ -15,5 +15,5 @@ SceneRefs :: struct {
     tank: engine.Ref_Local `ref:"Transform"`,
 }
 
-reset_SceneRefs :: proc(comp: ^SceneRefs) {
+type_reset_SceneRefs :: proc(comp: ^SceneRefs) {
 }

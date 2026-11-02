@@ -85,13 +85,13 @@ kind_reads_property :: proc(kind: string) -> bool {
 }
 
 // A new graph: one Surface node, no properties. What the Create menu writes.
-reset_Shader_Graph :: proc(g: ^Shader_Graph) {
-	cleanup_Shader_Graph(g)
+type_reset_Shader_Graph :: proc(g: ^Shader_Graph) {
+	type_cleanup_Shader_Graph(g)
 	g.next_id = 1
 	graph_add_node(g, SURFACE_KIND, {520, 160})
 }
 
-cleanup_Shader_Graph :: proc(g: ^Shader_Graph) {
+type_cleanup_Shader_Graph :: proc(g: ^Shader_Graph) {
 	for p in g.properties do delete(p.name)
 	delete(g.properties)
 	for &n in g.nodes do node_destroy(&n)
@@ -221,7 +221,7 @@ graph_remove_property :: proc(g: ^Shader_Graph, name: string) {
 
 // --- File ------------------------------------------------------------------
 
-// Reads a .shadergraph. The graph owns what it holds (cleanup_Shader_Graph).
+// Reads a .shadergraph. The graph owns what it holds (type_cleanup_Shader_Graph).
 graph_load_file :: proc(path: string) -> (g: Shader_Graph, ok: bool) {
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	if err != nil do return {}, false
@@ -230,7 +230,7 @@ graph_load_file :: proc(path: string) -> (g: Shader_Graph, ok: bool) {
 
 graph_parse :: proc(data: []u8) -> (g: Shader_Graph, ok: bool) {
 	if json.unmarshal(data, &g, .JSON, context.allocator) != nil {
-		cleanup_Shader_Graph(&g)
+		type_cleanup_Shader_Graph(&g)
 		return {}, false
 	}
 	return g, true

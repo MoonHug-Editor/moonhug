@@ -48,7 +48,7 @@ Button :: struct {
 	clicked: bool             `json:"-" inspect:"-"`, // pressed and released on this node this frame
 }
 
-reset_Button :: proc(b: ^Button) {
+type_reset_Button :: proc(b: ^Button) {
 	b.interactable = true
 	b.transition = .Color_Tint
 	b.colors = Color_Block{

@@ -5,10 +5,9 @@ package shadergraph_editor
 // then loads a graph exactly as it loads a .glsl (engine.shader_load reads
 // the artifact by guid, whatever the source was).
 //
-// Editing the graph reimports it: the evict hook drops the cached shader
+// Editing the graph reimports it: its asset hook drops the cached shader
 // and asks the pipeline for a new artifact, the way a .glsl edit does.
 
-import "core:strings"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:packages/engine/editor/importers"
@@ -28,14 +27,6 @@ shadergraph_importer :: proc() -> asset_pipeline.Importer_Desc {
 	}
 }
 
-@(phase={key=ImportersInit, order=2, mode=Editor})
-shadergraph_importers_init :: proc() {
-	@(static) done := false
-	if done do return
-	done = true
-	engine.asset_db_add_evict_hook(_shadergraph_path_changed)
-}
-
 @(private = "file")
 _import_shadergraph :: proc(source_path: string, artifact_path: string, settings: rawptr) -> bool {
 	g, ok := sg.graph_load_file(source_path)
@@ -43,7 +34,7 @@ _import_shadergraph :: proc(source_path: string, artifact_path: string, settings
 		log.errorf("[Pipeline] %s is not a shader graph", source_path)
 		return false
 	}
-	defer sg.cleanup_Shader_Graph(&g)
+	defer sg.type_cleanup_Shader_Graph(&g)
 	result, gen_ok := sg.generate(&g)
 	if !gen_ok {
 		for e in result.errors do log.errorf("[Pipeline] %s: node %d: %s", source_path, e.node_id, e.message)
@@ -54,11 +45,9 @@ _import_shadergraph :: proc(source_path: string, artifact_path: string, settings
 
 // A changed or deleted graph: drop its shader and reimport, so the next
 // draw with a material on it picks up the new artifact.
-@(private = "file")
-_shadergraph_path_changed :: proc(path: string) {
-	if !strings.has_suffix(path, ".shadergraph") do return
-	guid, ok := engine.asset_db_get_guid(path)
-	if !ok do return
-	engine.shader_unload(engine.Asset_GUID(guid))
-	_ = asset_pipeline.asset_pipeline_import_asset(path)
+@(asset_hook={ext="shadergraph"})
+asset_on_changed_shadergraph :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
+	if change == .Reimported do return
+	engine.shader_unload(guid)
+	if change == .Modified do _ = asset_pipeline.asset_pipeline_import_asset(path)
 }

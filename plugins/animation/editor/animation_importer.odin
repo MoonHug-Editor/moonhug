@@ -38,7 +38,6 @@ animation_importers_init :: proc() {
 	@(static) done := false
 	if done do return
 	done = true
-	engine.asset_pipeline_add_reimport_hook(anim.animation_clip_reimported)
 	// The mesh importer hands every glTF animation here, so a model's clips
 	// bake to its own artifacts and need no extraction to be played.
 	importers.gltf_clip_baker = bake_gltf_clip
@@ -73,7 +72,7 @@ bake_gltf_clip :: proc(data: ^cgltf.data, an: ^cgltf.animation, settings: json.V
 	if settings != nil {
 		engine._settings_overlay(any{&s, typeid_of(anim.Animation_Clip_Settings)}, settings)
 	}
-	anim.on_validate_Animation_Clip_Settings(&s)
+	anim.type_on_validate_Animation_Clip_Settings(&s)
 	anim.animation_clip_apply_settings(&clip, s)
 	return serialization.write_asset_to_path(
 		out_path, engine.get_guid_by_type_key(engine.TypeKey.AnimationClip), clip)
@@ -92,7 +91,7 @@ _import_animation :: proc(source_path, artifact_path: string, settings: rawptr) 
 		log.errorf("[Pipeline] Failed to parse clip: %s", source_path)
 		return false
 	}
-	defer anim.cleanup_AnimationClip(&clip)
+	defer anim.type_cleanup_AnimationClip(&clip)
 
 	// Settings are absent for a clip whose meta predates them: the defaults
 	// then apply, which is the clip as authored.

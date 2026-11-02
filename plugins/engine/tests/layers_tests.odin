@@ -64,8 +64,8 @@ test_layer_registry :: proc(t: ^testing.T) {
 @(test)
 test_layers_assets_reset_defaults :: proc(t: ^testing.T) {
 	r: engine.Render_Layers
-	engine.reset_Render_Layers(&r)
-	defer engine.cleanup_Render_Layers(&r)
+	engine.type_reset_Render_Layers(&r)
+	defer engine.type_cleanup_Render_Layers(&r)
 	_expect_default_render(t, r)
 }
 
@@ -78,13 +78,13 @@ test_layers_assets_parse :: proc(t: ^testing.T) {
 		"names": ["Default", "Water", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "Editor"]
 	}`
 	r, rok := engine.asset_parse_as(transmute([]byte)string(render_json), engine.Render_Layers)
-	defer engine.cleanup_Render_Layers(&r)
+	defer engine.type_cleanup_Render_Layers(&r)
 	testing.expect(t, rok, "the render file parses")
 	testing.expect_value(t, r.names[1], "Water")
 	testing.expect_value(t, r.names[engine.RENDER_LAYER_EDITOR], "Editor")
 
 	sparse, sok := engine.asset_parse_as(transmute([]byte)string(`{"__type_guid": "61bc7a2f-3326-4f13-b233-7bccf12f709e"}`), engine.Render_Layers)
-	defer engine.cleanup_Render_Layers(&sparse)
+	defer engine.type_cleanup_Render_Layers(&sparse)
 	testing.expect(t, sok, "a file without names parses")
 	_expect_default_render(t, sparse)
 
@@ -102,7 +102,7 @@ test_shipped_default_layers :: proc(t: ^testing.T) {
 	render_path :: "plugins/essentials/assets/rendering/DefaultRenderLayers.asset"
 	if !os.exists(render_path) do return
 	r, rok := engine.layers_load_file(render_path)
-	defer engine.cleanup_Render_Layers(&r)
+	defer engine.type_cleanup_Render_Layers(&r)
 	testing.expect(t, rok, "DefaultRenderLayers.asset loads")
 	_expect_default_render(t, r)
 	testing.expect(t, _meta_guid(render_path + ".meta") == "df291cbd-037a-46f5-bad4-f27e885029c0", "the render default keeps its guid")
@@ -127,8 +127,8 @@ _RENDER_B_GUID :: "6a0f6f86-3a55-4a8e-a2a1-0d6c43f4e1b2"
 @(private = "file")
 _write_render :: proc(t: ^testing.T, path, guid, name1: string) {
 	l: engine.Render_Layers
-	engine.reset_Render_Layers(&l)
-	defer engine.cleanup_Render_Layers(&l)
+	engine.type_reset_Render_Layers(&l)
+	defer engine.type_cleanup_Render_Layers(&l)
 	l.names[1] = strings.clone(name1)
 	testing.expect(t, serialization.write_asset_to_path(path, engine.get_guid_by_typeid(engine.Render_Layers), l))
 	_write_meta(t, path, guid)
@@ -201,8 +201,8 @@ test_layers_follow_layers_setting :: proc(t: ^testing.T) {
 	// An inspector edit of the active asset reaches the picker, an edit of
 	// another asset does not.
 	edit: engine.Render_Layers
-	engine.reset_Render_Layers(&edit)
-	defer engine.cleanup_Render_Layers(&edit)
+	engine.type_reset_Render_Layers(&edit)
+	defer engine.type_cleanup_Render_Layers(&edit)
 	edit.names[2] = strings.clone("UI")
 	engine.render_layers_preview(render_a, edit)
 	testing.expect_value(t, engine.layer_name(engine.LAYER_DOMAIN_RENDER, 2), "")
@@ -363,7 +363,7 @@ test_unmarshal_over_reset_frees_replaced_defaults :: proc(t: ^testing.T) {
 	data := `{"steps": [], "next_id": 5}`
 	p: engine.Render_Pipeline
 	err := engine.unmarshal_over_reset(transmute([]byte)data, &p, typeid_of(engine.Render_Pipeline))
-	defer engine.cleanup_Render_Pipeline(&p)
+	defer engine.type_cleanup_Render_Pipeline(&p)
 	testing.expect(t, err == nil, "unmarshal should succeed")
 	testing.expect_value(t, len(p.steps), 0)
 	testing.expect_value(t, p.next_id, i32(5))

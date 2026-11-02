@@ -291,7 +291,7 @@ test_script_clip_serialize_roundtrip :: proc(t: ^testing.T) {
 
 // The crash class from the editor's debug build: undo applying a value
 // record over a ClipScript frees the clip's CURRENT strings
-// (_cleanup_before_unmarshal -> cleanup_ClipScript) and unmarshals the
+// (_cleanup_before_unmarshal -> type_cleanup_ClipScript) and unmarshals the
 // payload's replacements (union_unmarshal). Every allocation and free in
 // that chain must use context.allocator — under the test runner that is the
 // tracking allocator, so a path reverting to a forced default allocator
@@ -339,7 +339,7 @@ test_script_clip_undo_apply_roundtrip :: proc(t: ^testing.T) {
 	if ok2 do testing.expect_value(t, lg2.enter, "before")
 }
 
-// A script's cleanup_<Name> reaches the engine's lifecycle table through the
+// A script's type_cleanup_<Name> reaches the engine's lifecycle table through the
 // generated registration, so any holder of a value can free it by TypeKey.
 @(test)
 test_type_cleanup_runs_a_script_cleanup :: proc(t: ^testing.T) {

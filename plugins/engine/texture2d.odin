@@ -45,13 +45,13 @@ texture_cache: map[Asset_GUID]Texture2D
 
 texture_cache_init :: proc() {
     texture_cache = make(map[Asset_GUID]Texture2D)
-    // Cached textures bake pixels_per_unit at load — evict on reimport so
-    // new settings apply without a restart.
-    @(static) hooked := false
-    if !hooked {
-        hooked = true
-        asset_pipeline_add_reimport_hook(texture_unload)
-    }
+}
+
+// Cached textures bake pixels_per_unit at load — a changed or reimported
+// texture leaves the cache so new settings apply without a restart.
+@(asset_hook)
+asset_on_changed_texture :: proc(guid: Asset_GUID, path: string, change: Asset_Change) {
+    texture_unload(guid)
 }
 
 texture_cache_shutdown :: proc() {

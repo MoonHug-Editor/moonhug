@@ -44,12 +44,12 @@ PlayableDirector :: struct {
 	track_state_kinds: [dynamic]engine.TypeKey `json:"-" inspect:"-"`,
 }
 
-reset_PlayableDirector :: proc(d: ^PlayableDirector) {
-	cleanup_PlayableDirector(d)
+type_reset_PlayableDirector :: proc(d: ^PlayableDirector) {
+	type_cleanup_PlayableDirector(d)
 	d.speed = 1
 	d.wrap = .Loop
 }
 
-cleanup_PlayableDirector :: proc(d: ^PlayableDirector) {
+type_cleanup_PlayableDirector :: proc(d: ^PlayableDirector) {
 	director_teardown(d)
 }

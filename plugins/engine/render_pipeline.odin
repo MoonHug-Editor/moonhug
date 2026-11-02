@@ -76,8 +76,8 @@ Render_Pipeline :: struct {
 
 // A new pipeline: the engine's frame on one Main slot. What the Create menu
 // writes, and the built-in frame when no asset is installed.
-reset_Render_Pipeline :: proc(p: ^Render_Pipeline) {
-	cleanup_Render_Pipeline(p)
+type_reset_Render_Pipeline :: proc(p: ^Render_Pipeline) {
+	type_cleanup_Render_Pipeline(p)
 	p.next_id = 1
 	pipeline_add_slot(p, MAIN_SLOT)
 	pipeline_add_step(p, "environment_pass", "")
@@ -87,7 +87,7 @@ reset_Render_Pipeline :: proc(p: ^Render_Pipeline) {
 	}
 }
 
-cleanup_Render_Pipeline :: proc(p: ^Render_Pipeline) {
+type_cleanup_Render_Pipeline :: proc(p: ^Render_Pipeline) {
 	for s in p.slots do delete(s.name)
 	delete(p.slots)
 	for &e in p.steps do pipeline_entry_destroy(&e)
@@ -232,7 +232,7 @@ pipeline_load_file :: proc(path: string) -> (p: Render_Pipeline, ok: bool) {
 
 pipeline_parse :: proc(data: []u8) -> (p: Render_Pipeline, ok: bool) {
 	if json.unmarshal(data, &p, .JSON, context.allocator) != nil {
-		cleanup_Render_Pipeline(&p)
+		type_cleanup_Render_Pipeline(&p)
 		return {}, false
 	}
 	return p, true
@@ -353,7 +353,7 @@ render_pipeline_active :: proc() -> ^Pipeline_Runtime {
 	src, ok := _pipeline_asset_load(want)
 	if !ok {
 		if want != {} do log.warningf("[Render] the Rendering setting names no readable .renderpipeline, using the built-in frame")
-		reset_Render_Pipeline(&src)
+		type_reset_Render_Pipeline(&src)
 		want = {}
 	}
 	_active = _pipeline_runtime_build(src, want)
@@ -373,21 +373,19 @@ render_pipeline_preview :: proc(guid: Asset_GUID, p: Render_Pipeline) {
 	_active_built = true
 }
 
-// The asset file changed on disk or went away: rebuild from it next frame.
 @(init)
-_pipeline_evict_hook_register :: proc "contextless" () {
+_pipeline_register :: proc "contextless" () {
 	context = runtime.default_context()
-	asset_db_add_evict_hook(_pipeline_path_changed)
 	// A `ref:"Render_Pipeline"` field's picker lists the pipeline assets.
 	asset_db_add_indexer(".renderpipeline", asset_db_index_typed_asset)
 	_frame_ran = make(map[_Frame_Run_Key]u64, runtime.default_allocator())
 	_warned_slots = make(map[string]bool, runtime.default_allocator())
 }
 
-@(private = "file")
-_pipeline_path_changed :: proc(path: string) {
-	if !strings.has_suffix(path, ".renderpipeline") do return
-	if guid, ok := asset_db_get_guid(path); ok && _active_built && _active.guid == Asset_GUID(guid) {
+// The asset file changed on disk or went away: rebuild from it next frame.
+@(asset_hook={ext="renderpipeline"})
+asset_on_changed_render_pipeline :: proc(guid: Asset_GUID, path: string, change: Asset_Change) {
+	if _active_built && _active.guid == guid {
 		_active_built = false // rebuilt from the file on next use
 	}
 }
@@ -431,7 +429,7 @@ _pipeline_runtime_destroy :: proc(r: ^Pipeline_Runtime) {
 		delete(name)
 	}
 	delete(r.slots)
-	cleanup_Render_Pipeline(&r.src)
+	type_cleanup_Render_Pipeline(&r.src)
 	r^ = {}
 }
 

@@ -80,12 +80,7 @@ draw_mesh_collider_wires :: proc(c: ^MeshCollider, color: [4]f32) {
 _hull_wire :: proc(ref: engine.PPtr, geom: ^engine.Mesh_Geometry) -> [][2][3]f32 {
 	if edges, cached := _hull_wires[ref]; cached do return edges
 	context.allocator = runtime.default_allocator()
-	@(static) hooked := false
-	if !hooked {
-		hooked = true
-		_hull_wires = make(map[engine.PPtr][][2][3]f32)
-		engine.asset_pipeline_add_reimport_hook(_hull_wires_drop)
-	}
+	if _hull_wires == nil do _hull_wires = make(map[engine.PPtr][][2][3]f32)
 	list := make([dynamic][2][3]f32)
 	if geom == nil {
 		// Nothing to draw until the editor has computed the set, and nothing
@@ -118,9 +113,10 @@ _append_hull_edges :: proc(list: ^[dynamic][2][3]f32, points: [][3]f32) {
 	}
 }
 
-// A reimport rewrites the model, so its hulls go with the mesh cache.
-@(private = "file")
-_hull_wires_drop :: proc(guid: engine.Asset_GUID) {
+// A changed or reimported model takes its hull wires with it, like the mesh
+// cache.
+@(asset_hook)
+asset_on_changed_hull_wires :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	context.allocator = runtime.default_allocator()
 	keys := make([dynamic]engine.PPtr, context.temp_allocator)
 	for key in _hull_wires do if key.guid == guid do append(&keys, key)

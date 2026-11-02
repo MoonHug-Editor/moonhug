@@ -15,11 +15,11 @@ Lifetime :: struct {
     time_spent: f32 `inspect:"-"`,
 }
 
-reset_Lifetime :: proc(comp: ^Lifetime) {
+type_reset_Lifetime :: proc(comp: ^Lifetime) {
     comp.duration = 1
 }
 
-on_validate_Lifetime :: proc(comp: ^Lifetime)
+type_on_validate_Lifetime :: proc(comp: ^Lifetime)
 {
     if (comp.duration < 0) {
         comp.duration = 0

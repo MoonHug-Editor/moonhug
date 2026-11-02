@@ -34,7 +34,7 @@ model_clips_install :: proc() {
 }
 
 @(asset_doc={type=anim.AnimationClip})
-on_changed_AnimationClip :: proc(guid: engine.Asset_GUID, doc: any) {
+doc_on_changed_AnimationClip :: proc(guid: engine.Asset_GUID, doc: any) {
 	anim.animation_clip_preview(engine.PPtr{guid = guid}, doc.(anim.AnimationClip))
 }
 
@@ -78,7 +78,7 @@ _clip_edit_load :: proc(path: string, clip: ^engine.Mesh_Clip) {
 	if clip.settings != nil {
 		engine._settings_overlay(any{&_clip_edit.s, typeid_of(anim.Animation_Clip_Settings)}, clip.settings)
 	}
-	anim.on_validate_Animation_Clip_Settings(&_clip_edit.s)
+	anim.type_on_validate_Animation_Clip_Settings(&_clip_edit.s)
 	_clip_edit.valid = true
 }
 

@@ -223,12 +223,8 @@ Asset_Index_Entry                 :: assets.Asset_Index_Entry
 Asset_Indexer                     :: assets.Asset_Indexer
 Asset_Package_Root                :: assets.Asset_Package_Root
 Asset_Pipeline_Kind               :: assets.Asset_Pipeline_Kind
-Asset_Gone_Hook                   :: assets.Asset_Gone_Hook
-Evict_Hook                        :: assets.Evict_Hook
 ImportMeta                        :: assets.ImportMeta
 MetaFile                          :: assets.MetaFile
-Path_Changed_Hook                 :: assets.Path_Changed_Hook
-Reimport_Hook                     :: assets.Reimport_Hook
 
 LIBRARY_DIR                       :: assets.LIBRARY_DIR
 ASSET_DB_PACKAGES_DIR             :: assets.ASSET_DB_PACKAGES_DIR
@@ -255,10 +251,9 @@ asset_db_add_indexer              :: assets.asset_db_add_indexer
 asset_db_index_set                :: assets.asset_db_index_set
 asset_db_index_typed_asset        :: assets.asset_db_index_typed_asset
 asset_db_reindex                  :: assets.asset_db_reindex
-asset_db_add_evict_hook           :: assets.asset_db_add_evict_hook
-asset_db_run_evict_hooks          :: assets.asset_db_run_evict_hooks
-asset_db_add_path_changed_hook    :: assets.asset_db_add_path_changed_hook
-asset_db_add_asset_gone_hook      :: assets.asset_db_add_asset_gone_hook
+asset_hook_add                    :: assets.asset_hook_add
+Asset_Change                      :: assets.Asset_Change
+Asset_Hook                        :: assets.Asset_Hook
 asset_db_set_refresh_proc         :: assets.asset_db_set_refresh_proc
 asset_db_request_refresh          :: assets.asset_db_request_refresh
 asset_catalog_path                :: assets.asset_catalog_path
@@ -274,7 +269,6 @@ artifact_read                     :: assets.artifact_read
 artifact_load                     :: assets.artifact_load
 artifact_fail                     :: assets.artifact_fail
 artifact_written                  :: assets.artifact_written
-asset_pipeline_add_reimport_hook  :: assets.asset_pipeline_add_reimport_hook
 asset_pipeline_set_import_request :: assets.asset_pipeline_set_import_request
 asset_pipeline_request_import     :: assets.asset_pipeline_request_import
 

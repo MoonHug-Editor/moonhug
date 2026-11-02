@@ -17,7 +17,7 @@ A :: struct {
     c: string,
 }
 
-cleanup_A :: proc(a: ^A) {
+type_cleanup_A :: proc(a: ^A) {
     delete(a.c)
     a^ = {}
 }
@@ -27,7 +27,7 @@ B :: struct {
     b_string: string,
 }
 
-cleanup_B :: proc(b: ^B) {
+type_cleanup_B :: proc(b: ^B) {
     delete(b.b_string)
     b^ = {}
 }

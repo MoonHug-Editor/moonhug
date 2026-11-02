@@ -82,7 +82,7 @@ NestedScene {
 Analogous to Unity's `m_Modifications[i]`. Each override is a modification recorded at the root scene level only.
   - The currently open scene file owns all overrides it applies to its nested instances.
   - Inner prefab files own their own overrides on their direct children. Those are *opaque* to the parent — the parent sees the inner instance with its own overrides already baked in.
-  - At runtime each level applies its own overrides to its own direct child during bake. The root's overrides on something deep in the chain are then patched onto the live tree post-resolve (`cleanup_T` + `unmarshal_any` on the located field).
+  - At runtime each level applies its own overrides to its own direct child during bake. The root's overrides on something deep in the chain are then patched onto the live tree post-resolve (`type_cleanup_T` + `unmarshal_any` on the located field).
 
 ```
 Override {
@@ -254,7 +254,7 @@ Mechanics — each touched file is RESAVED once, not patched textually:
 Revert override — discards a specific override on the `NestedScene` record, restoring the field to the value it would have without that override.
 - Removes the matching `(target, property_path)` entry from the root NS's overrides.
 - Recomputes the baseline by re-baking the prefab chain WITHOUT the entry being reverted (peer overrides on the same NS still apply). For depth ≥ 2 this composes every level's prefab file overrides correctly, not just the immediate outer.
-- Locates the live field via reflection over the materialized subtree, calls `cleanup_T` on it, then `json.unmarshal_any` writes the recomputed baseline value into the slot.
+- Locates the live field via reflection over the materialized subtree, calls `type_cleanup_T` on it, then `json.unmarshal_any` writes the recomputed baseline value into the slot.
 
 ### Prefab variants
 

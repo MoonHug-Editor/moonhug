@@ -40,12 +40,12 @@ Animation_Clip_Settings :: struct {
 	trim_stop:  f32,
 }
 
-reset_Animation_Clip_Settings :: proc(p: ^Animation_Clip_Settings) {
+type_reset_Animation_Clip_Settings :: proc(p: ^Animation_Clip_Settings) {
 	p.frame_rate = ANIMATION_FRAME_RATE_DEFAULT
 }
 
 // A zero frame rate (an entry from before the field, or typed) is the default.
-on_validate_Animation_Clip_Settings :: proc(p: ^Animation_Clip_Settings) {
+type_on_validate_Animation_Clip_Settings :: proc(p: ^Animation_Clip_Settings) {
 	if p.frame_rate <= 0 do p.frame_rate = ANIMATION_FRAME_RATE_DEFAULT
 }
 

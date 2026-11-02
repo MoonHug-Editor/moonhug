@@ -88,11 +88,11 @@ Modifier :: enum u8 {
 	Right,
 }
 
-reset_Input_Actions :: proc(a: ^Input_Actions) {
-	cleanup_Input_Actions(a)
+type_reset_Input_Actions :: proc(a: ^Input_Actions) {
+	type_cleanup_Input_Actions(a)
 }
 
-cleanup_Input_Actions :: proc(a: ^Input_Actions) {
+type_cleanup_Input_Actions :: proc(a: ^Input_Actions) {
 	for &m in a.contexts {
 		delete(m.name)
 		for &ac in m.actions {
@@ -272,7 +272,7 @@ _ensure_built :: proc() {
 	ok: bool
 	if input_settings.actions != {} do src, ok = assets.asset_load_as(input_settings.actions, Input_Actions)
 	if !ok && input_settings.actions != {} do log.warningf("[Input] the Input setting names no readable Input_Actions asset")
-	defer cleanup_Input_Actions(&src)
+	defer type_cleanup_Input_Actions(&src)
 	actions_install(src)
 	_rt.guid = input_settings.actions
 }
@@ -388,19 +388,15 @@ actions_reset :: proc() {
 	_settings_loaded = false
 }
 
-@(init)
-_register :: proc "contextless" () {
-	context = runtime.default_context()
-	// The active asset's file changed: rebuild from it, keeping the stack.
-	assets.asset_db_add_evict_hook(proc(path: string) {
-		if !strings.has_suffix(path, ".asset") do return
-		guid, ok := assets.asset_db_get_guid(path)
-		if !ok || !_rt.built || core.Asset_GUID(guid) != _rt.guid do return
-		src, lok := assets.asset_load_as(_rt.guid, Input_Actions)
-		if !lok do return
-		defer cleanup_Input_Actions(&src)
-		actions_install(src)
-	})
+// The active asset's file changed: rebuild from it, keeping the stack.
+@(asset_hook={ext="asset"})
+asset_on_changed_input_actions :: proc(guid: core.Asset_GUID, path: string, change: assets.Asset_Change) {
+	if change != .Modified do return
+	if !_rt.built || guid != _rt.guid do return
+	src, lok := assets.asset_load_as(_rt.guid, Input_Actions)
+	if !lok do return
+	defer type_cleanup_Input_Actions(&src)
+	actions_install(src)
 }
 
 // The game stops: no map stays pushed into the next run.

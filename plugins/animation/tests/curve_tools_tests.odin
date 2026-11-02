@@ -40,7 +40,7 @@ _free :: proc(ch: ^anim.Animation_Channel) {
 	clip := anim.AnimationClip{}
 	clip.channels = make([dynamic]anim.Animation_Channel)
 	append(&clip.channels, ch^)
-	anim.cleanup_AnimationClip(&clip)
+	anim.type_cleanup_AnimationClip(&clip)
 }
 
 @(private = "file")

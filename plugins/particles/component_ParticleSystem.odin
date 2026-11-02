@@ -255,8 +255,8 @@ ParticleSystem :: struct {
 	stopped: bool `json:"-" inspect:"-"`,
 }
 
-reset_ParticleSystem :: proc(ps: ^ParticleSystem) {
-	cleanup_ParticleSystem(ps)
+type_reset_ParticleSystem :: proc(ps: ^ParticleSystem) {
+	type_cleanup_ParticleSystem(ps)
 	ps.duration = 5
 	ps.looping = true
 	ps.start_lifetime = engine.minmax_constant(5)
@@ -274,7 +274,7 @@ reset_ParticleSystem :: proc(ps: ^ParticleSystem) {
 	ps.shape_box = {1, 1, 1}
 }
 
-cleanup_ParticleSystem :: proc(ps: ^ParticleSystem) {
+type_cleanup_ParticleSystem :: proc(ps: ^ParticleSystem) {
 	delete(ps.bursts)
 	delete(ps.sub_emitters)
 	engine.minmax_cleanup(&ps.start_lifetime)

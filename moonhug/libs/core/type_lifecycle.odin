@@ -4,15 +4,15 @@ package core
 // @(typ_guid) type declares them by name in its own file, and the generated
 // registration (type_guid_gen) puts them in these tables by TypeKey.
 //
-// - reset_T:       cleanup_T first when the type has one, then the defaults,
+// - type_reset_T:       type_cleanup_T first when the type has one, then the defaults,
 //                  so a reset on a live value frees what it owned. A new
 //                  instance gets it, a value loaded from data gets it under
 //                  the data (unmarshal_over_reset), and the inspector's Reset
 //                  runs it on a live value.
-// - cleanup_T:     frees what a value owns and leaves it zeroed. Runs when a
+// - type_cleanup_T:     frees what a value owns and leaves it zeroed. Runs when a
 //                  component is destroyed, when a union variant goes, when a
 //                  tween node is destroyed.
-// - on_validate_T: after an inspector edit and after a value is loaded from
+// - type_on_validate_T: after an inspector edit and after a value is loaded from
 //                  data, to keep the value consistent (a zero that means
 //                  "default" becomes the default here).
 //
@@ -90,9 +90,9 @@ type_on_validate_by_typeid :: proc(tid: typeid, ptr: rawptr) {
 // reads it, and core cannot import the engine.
 Serialization_Settings :: struct {
 	// On: a top-level field a scene, prefab, asset, import settings or union
-	// variant file does not name loads as the type's reset_T default. The cost
+	// variant file does not name loads as the type's type_reset_T default. The cost
 	// is a reset and a cleanup on a scratch copy for every loaded value whose
-	// type has a reset_T. Off: a field missing from a file loads as zero, so a
+	// type has a type_reset_T. Off: a field missing from a file loads as zero, so a
 	// field added to a type after a file was saved must tolerate zero or be
 	// migrated by hand.
 	load_defaults_for_missing_fields: bool `decor:help(text="On: a field a file does not name loads as the type's reset default, not zero. Costs a reset and a cleanup on a scratch copy per loaded component or asset. Off: a missing field loads as zero.")`,
@@ -113,7 +113,7 @@ _serialization_settings_load :: proc() {
 // keeps T's reset default, so a field added to T after the data was saved
 // loads as its reset value, not zero. Every load of a typed value from data
 // goes through here or through the two variants below: scene and prefab
-// components, assets, import settings, union variants. A T with no reset_T,
+// components, assets, import settings, union variants. A T with no type_reset_T,
 // or serialization_settings.load_defaults_for_missing_fields off, gets a plain
 // unmarshal.
 //
@@ -141,9 +141,9 @@ unmarshal_over_reset :: proc(
 // unmarshal_over_reset for a caller that holds `obj`, the parsed form of
 // `data`: the key set comes from `obj`, so `data` is not parsed a second time.
 //
-// reset_T runs on a scratch T, never on `ptr`: a reset may allocate, and the
+// type_reset_T runs on a scratch T, never on `ptr`: a reset may allocate, and the
 // unmarshal would allocate over it. The fields the data lacks then move from
-// the scratch into `ptr`, and cleanup_T frees what the scratch still holds
+// the scratch into `ptr`, and type_cleanup_T frees what the scratch still holds
 // (the defaults of the fields the data supplied). The scratch and the moved
 // defaults are on `allocator`, the same as the unmarshaled fields.
 unmarshal_over_reset_object :: proc(
@@ -191,7 +191,7 @@ unmarshal_value_over_reset :: proc(
 }
 
 // True when a load of `tid` keeps reset defaults for absent fields: the
-// setting is on, and T is a struct with a reset_T.
+// setting is on, and T is a struct with a type_reset_T.
 @(private = "file")
 _needs_reset_defaults :: proc(tid: typeid) -> bool {
 	if !serialization_settings.load_defaults_for_missing_fields do return false

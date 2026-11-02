@@ -1,8 +1,8 @@
 package gen_facts
 
 // Naming conventions: code a generator finds by the name of a proc, not by an
-// attribute or a field tag. `cleanup_Camera` is called because type_guid_gen
-// looks for `cleanup_<T>` next to every `@(typ_guid)` type, `decorator_min`
+// attribute or a field tag. `type_cleanup_Camera` is called because type_guid_gen
+// looks for `type_cleanup_<T>` next to every `@(typ_guid)` type, `decorator_min`
 // because a field says `decor:min(...)`.
 //
 // The generator that resolves a convention declares it here at @(init) and

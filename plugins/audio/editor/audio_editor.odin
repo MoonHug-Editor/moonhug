@@ -21,7 +21,6 @@ audio_editor_install :: proc() {
 	inspector.mapAssetPreview[".wav"] = _draw_audio_preview
 	inspector.mapAssetPreview[".ogg"] = _draw_audio_preview
 	inspector.add_asset_wrapper("audio", _audio_settings_extras)
-	engine.asset_pipeline_add_reimport_hook(_wave_evict)
 }
 
 // Asset-funnel wrapper: clip stats under the default import settings
@@ -46,7 +45,10 @@ _Waveform :: struct {
 
 _wave_cache: map[engine.Asset_GUID]_Waveform
 
-_wave_evict :: proc(guid: engine.Asset_GUID) {
+// Any change of an asset drops its cached envelope, so the next draw reads
+// the new artifact.
+@(asset_hook)
+asset_on_changed_waveform :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	if wf, ok := _wave_cache[guid]; ok {
 		// The envelope slices live on the default heap (_waveform_get) — the
 		// hook fires under the reimport caller's allocator.

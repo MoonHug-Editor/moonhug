@@ -16,9 +16,9 @@ App code doesn't use the undo feature. It is an editor-only package (`moonhug/ed
 
 For components to work cleanly with undo during authoring, the existing rules are sufficient:
 
-- Implement `cleanup_T` so defaults survive a delete + undo round trip.
-  - `cleanup_T` deallocates the type's data and calls `comp_zero(self)`.
-- Implement `on_validate_T` when a value change needs to recompute derived state. It is called after restoring a component field.
+- Implement `type_cleanup_T` so defaults survive a delete + undo round trip.
+  - `type_cleanup_T` deallocates the type's data and calls `comp_zero(self)`.
+- Implement `type_on_validate_T` when a value change needs to recompute derived state. It is called after restoring a component field.
 
 ## History view
 
@@ -305,7 +305,7 @@ replaces the document payload through the hook installed by
 file path) and re-pushes material live preview. Undo edits the doc, not the
 disk — Save persists, like unsaved live-preview edits always worked.
 
-A document lives as long as its asset. Save writes to the asset's current path, looked up by guid, so a renamed or moved asset saves where it is now. A file that is gone from disk is never written back. Deleting an asset drops its document and its undo steps (`purge_asset`, through the asset-gone hook), and the Project Inspector lets go of it. Without that, undo or File/Save would bring the file back without its `.meta`, as a different asset.
+A document lives as long as its asset. Save writes to the asset's current path, looked up by guid, so a renamed or moved asset saves where it is now. A file that is gone from disk is never written back. Deleting an asset drops its document and its undo steps (`purge_asset`, through an asset hook on `.Removed`), and the Project Inspector lets go of it. Without that, undo or File/Save would bring the file back without its `.meta`, as a different asset.
 
 Discard reads the document again from its file and drops its undo steps with `purge_asset`, after a confirmation, so it cannot be undone ([Views](Views.md), The asset a view edits).
 

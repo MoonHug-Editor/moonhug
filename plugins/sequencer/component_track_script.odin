@@ -31,7 +31,7 @@ ClipScript :: struct {
 }
 
 
-cleanup_ClipScript :: proc(c: ^ClipScript) {
+type_cleanup_ClipScript :: proc(c: ^ClipScript) {
 	for &s in c.scripts do script_destroy(&s)
 	delete(c.scripts)
 	engine.comp_zero(c)

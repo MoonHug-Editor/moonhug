@@ -31,7 +31,7 @@ _shader_cache_ready: bool
 
 // Guids whose GPU registration failed (gfx rejected the compiled stages). A
 // failed registration is NOT retried per call: shader_load is called per
-// draw. The memo clears when the source changes (shader_path_changed), giving
+// draw. The memo clears when the source changes (asset_on_changed_shader), giving
 // one retry per edit. A missing or bad artifact file (compile error, missing
 // toolchain, stale format) is recorded by the artifact reader instead
 // (assets._artifact_failed, cleared when the shader reimports), never here,
@@ -185,26 +185,18 @@ _shader_artifact_load :: proc(guid: Asset_GUID) -> (blob: []u8, header: Shader_A
 	return r.blob, r.header, r.spv, r.msl, r.properties, r.textures, true
 }
 
-// The asset database's evict hook, registered here.
-@(init)
-_shader_evict_hook_register :: proc "contextless" () {
-	context = runtime.default_context()
-	asset_db_add_evict_hook(shader_path_changed)
-}
-
-// AssetDB evict hook (change + delete). Reimport is mtime-guarded, so refresh
-// passes that didn't touch the source are free. A changed source clears the
+// A changed, removed or reimported .glsl leaves the cache. Reimport is
+// mtime-guarded, so refresh passes that didn't touch the source are free. A
+// changed source clears the
 // failed memo — the edit earns one fresh compile attempt. When the compile
 // fails, the index keeps pointing at the last GOOD artifact (it only
 // re-points on success), so the next shader_load re-registers the previous
 // working pipelines instead of dropping the draw.
-shader_path_changed :: proc(path: string) {
-	if !strings.has_suffix(path, ".glsl") do return
-	guid, ok := asset_db_get_guid(path)
-	if !ok do return
-	delete_key(&_shader_failed, Asset_GUID(guid))
-	// The REIMPORT is editor-side (the engine editor half's path-changed hook runs
-	// after this proc) — here only the eviction, so the next load re-registers
-	// from whatever artifact the index points at.
-	shader_unload(Asset_GUID(guid))
+@(asset_hook={ext="glsl"})
+asset_on_changed_shader :: proc(guid: Asset_GUID, path: string, change: Asset_Change) {
+	delete_key(&_shader_failed, guid)
+	// The REIMPORT is editor-side (asset_on_changed_shader_reimport in the
+	// engine editor half) — here only the eviction, so the next load
+	// re-registers from whatever artifact the index points at.
+	shader_unload(guid)
 }

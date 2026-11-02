@@ -170,7 +170,7 @@ Feature-package kinds:
 
 A script is a `@(typ_guid)` struct plus whichever lifecycle procs it
 implements — `enter_<Name>`, `tick_<Name>`, `exit_<Name>`, all optional, and
-a `cleanup_<Name>` when it owns heap (plugins/engine/docs/Components.md, "Lifecycle procs"). `ScriptUnion`
+a `type_cleanup_<Name>` when it owns heap (plugins/engine/docs/Components.md, "Lifecycle procs"). `ScriptUnion`
 (`sequencer/script_union.odin`) names every variant and dispatches each
 phase with an exhaustive switch — a variant without its cases is a compile
 error, not a clip that silently does nothing.

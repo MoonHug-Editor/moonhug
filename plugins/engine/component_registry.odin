@@ -36,7 +36,7 @@ Component_Desc :: struct {
 
 	// The game's lifecycle hooks, nil = none: @(comp_awake),
 	// @(comp_on_destroy), @(comp_on_enable), @(comp_on_disable)
-	// (component_lifecycle.odin). reset_T, cleanup_T and on_validate_T are
+	// (component_lifecycle.odin). type_reset_T, type_cleanup_T and type_on_validate_T are
 	// not here: the type tables (core/type_lifecycle.odin) hold them for
 	// every @(typ_guid) type, filled by register_type_guids.
 	awake:       proc(comp: rawptr),
@@ -180,7 +180,7 @@ _ext_desc_for_value :: proc(v: json.Value) -> (Component_Desc, bool) {
 }
 
 // json.Value -> typed component memory (ptr must point at a zeroed T of
-// desc.tid). Zero → reset_T → JSON → on_validate_T: absent keys keep the
+// desc.tid). Zero → type_reset_T → JSON → type_on_validate_T: absent keys keep the
 // type's reset default while the Serialization setting is on, and on_validate
 // makes the result consistent (plugins/engine/docs/Components.md, "Missing
 // fields and reset defaults").

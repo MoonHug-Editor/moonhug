@@ -43,7 +43,7 @@ render_pass_includes :: proc(pass: View_Pass, cast_shadows: Shadow_Casting, refl
     return false, false
 }
 
-cleanup_MeshRenderer :: proc(mr: ^MeshRenderer) {
+type_cleanup_MeshRenderer :: proc(mr: ^MeshRenderer) {
     if mr.materials != nil do delete(mr.materials)
     comp_zero(mr)
 }

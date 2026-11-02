@@ -40,8 +40,8 @@ Text :: struct {
 	parse_escape_characters: bool, // "\n", "\t" and "\\" typed into the string become the characters
 }
 
-reset_Text :: proc(t: ^Text) {
-	cleanup_Text(t)
+type_reset_Text :: proc(t: ^Text) {
+	type_cleanup_Text(t)
 	t.font_size = 36
 	t.auto_size_min = 18
 	t.auto_size_max = 72
@@ -51,7 +51,7 @@ reset_Text :: proc(t: ^Text) {
 	t.kerning = true
 }
 
-cleanup_Text :: proc(t: ^Text) {
+type_cleanup_Text :: proc(t: ^Text) {
 	if t.text != "" do delete(t.text)
 	t.text = ""
 }
@@ -150,7 +150,6 @@ text_package_init :: proc() {
 	context.allocator = runtime.default_allocator()
 	_fonts = make(map[engine.Asset_GUID]Font)
 	backend_set(sdf_backend())
-	engine.asset_pipeline_add_reimport_hook(font_reimported)
 	engine.canvas_graphic_register(engine.Graphic_Desc{
 		key            = .Text,
 		graphic_offset = offset_of(Text, graphic),

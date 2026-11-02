@@ -32,9 +32,6 @@ _register_asset_previews :: proc() {
 	}
 	inspector.mapAssetPreview[".scene"] = _preview_scene
 	inspector.mapAssetPreview[".mat"] = _preview_thumb
-	// Asset content changes: the live previews redraw (_pv_needs_draw).
-	engine.asset_db_add_evict_hook(_pv_asset_changed)
-	engine.asset_pipeline_add_reimport_hook(_pv_asset_reimported)
 }
 
 // Before the editor's own shutdown (order 0), which tears down the scene
@@ -115,8 +112,8 @@ _preview_texture :: proc(path: string) {
 // orbit or zoom input, a clip's time, or a change to asset content. An idle
 // preview shows the picture it rendered last, so a selected scene costs
 // nothing per frame however large it is. Asset content changes arrive through
-// the asset database's evict hook (a changed or removed file), the pipeline's
-// reimport hook and the material cache's version (live material edits).
+// asset_on_changed_previews (a changed, removed or reimported asset) and the
+// material cache's version (live material edits).
 
 @(private = "file")
 _Pv_Kind :: enum u8 {
@@ -158,20 +155,11 @@ _pv_needs_draw :: proc(key: _Pv_Key) -> bool {
 	return true
 }
 
-// The asset database's evict hook: a file changed or went away. The previewed
-// scene's own file respawns its instance.
-@(private = "file")
-_pv_asset_changed :: proc(path: string) {
-	_pv_content += 1
-	if guid, ok := engine.asset_db_get_guid(path); ok && engine.Asset_GUID(guid) == _scene_pv_guid {
-		_scene_pv_stale = true
-	}
-}
-
-// The asset pipeline's reimport hook: an artifact changed (a model, a
-// texture, a shader).
-@(private = "file")
-_pv_asset_reimported :: proc(guid: engine.Asset_GUID) {
+// Asset content changes: the live previews redraw (_pv_needs_draw). A file
+// changed or went away, or an artifact changed (a model, a texture, a
+// shader). The previewed scene's own asset respawns its instance.
+@(asset_hook)
+asset_on_changed_previews :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	_pv_content += 1
 	if guid == _scene_pv_guid do _scene_pv_stale = true
 }
@@ -284,7 +272,7 @@ _pv_image_orbit :: proc(rt: ^gfx.Render_Target, avail: im.Vec2) {
 @(private = "file") _scene_pv_root: engine.Transform_Handle
 @(private = "file") _scene_pv_center: [3]f32
 @(private = "file") _scene_pv_radius: f32
-// The previewed scene's file changed since it was spawned (_pv_asset_changed).
+// The previewed scene's file changed since it was spawned (asset_on_changed_previews).
 @(private = "file") _scene_pv_stale: bool
 
 // Frees the instance. Must run inside preview_world_begin/end — its

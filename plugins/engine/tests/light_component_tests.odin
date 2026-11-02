@@ -21,9 +21,9 @@ test_save_load_scene_with_light :: proc(t: ^testing.T) {
 	_, l := engine.transform_get_or_add_comp(tH, engine.Light)
 	testing.expect(t, l != nil, "Light should be added")
 	if l == nil do return
-	testing.expect(t, l.intensity == 1 && l.ambient == 0.35, "reset_Light defaults should apply")
+	testing.expect(t, l.intensity == 1 && l.ambient == 0.35, "type_reset_Light defaults should apply")
 	testing.expect(t, l.type == .Directional && l.range == 10 && l.spot_angle == 30,
-		"reset_Light type/range/spot defaults should apply")
+		"type_reset_Light type/range/spot defaults should apply")
 	l.type = .Spot
 	l.color = {1, 0.9, 0.7, 1}
 	l.intensity = 1.5

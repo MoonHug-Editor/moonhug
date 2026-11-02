@@ -12,6 +12,6 @@ Projectile :: struct {
     dir:   [2]f32 `inspect:"-"`,
 }
 
-reset_Projectile :: proc(comp: ^Projectile) {
+type_reset_Projectile :: proc(comp: ^Projectile) {
     comp.speed = 3
 }

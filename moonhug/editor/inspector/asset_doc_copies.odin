@@ -206,8 +206,9 @@ _copy_apply_json :: proc(copy: u64, json_bytes: []byte) -> bool {
 
 // After a reimport of an asset, its import settings copies with no unapplied
 // edits reload, so they match what the importer wrote.
-@(private = "file")
-_copies_reimported :: proc(guid: core.Asset_GUID) {
+@(asset_hook)
+asset_on_changed_doc_copies :: proc(guid: core.Asset_GUID, path: string, change: assets.Asset_Change) {
+	if change != .Reimported do return
 	for _, c in _copies {
 		if c.guid == guid && c.kind == .Import_Settings && !c.dirty do _copy_reload(c)
 	}
@@ -217,7 +218,6 @@ _copies_reimported :: proc(guid: core.Asset_GUID) {
 _copies_register :: proc "contextless" () {
 	context = runtime.default_context()
 	undo.set_asset_copy_apply(_copy_apply_json)
-	assets.asset_pipeline_add_reimport_hook(_copies_reimported)
 }
 
 // Loads the copy from the file again, clean. The replaced value is retired,

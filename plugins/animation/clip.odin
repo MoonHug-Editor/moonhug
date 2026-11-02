@@ -194,8 +194,8 @@ animation_key_bounds :: proc(times: []f32, selected: []bool, k: int, length: f32
 	return
 }
 
-reset_AnimationClip :: proc(c: ^AnimationClip) {
-	cleanup_AnimationClip(c)
+type_reset_AnimationClip :: proc(c: ^AnimationClip) {
+	type_cleanup_AnimationClip(c)
 	c.length = 1
 	c.frame_rate = ANIMATION_FRAME_RATE_DEFAULT
 }
@@ -208,7 +208,7 @@ _animation_clip_cache_ready: bool
 // animation_clip_preview): default-allocator memory, freed under the default
 // allocator. An entry put in directly (tests) is the caller's memory and is
 // freed under the context allocator of the unload or shutdown.
-// cleanup_AnimationClip frees a clip's strings with the context allocator,
+// type_cleanup_AnimationClip frees a clip's strings with the context allocator,
 // its arrays with their own.
 _animation_clip_owned: map[engine.PPtr]bool
 
@@ -218,7 +218,6 @@ _animation_clip_owned: map[engine.PPtr]bool
 @(phase={key=ImportersInit, order=2})
 animation_package_init :: proc() {
 	if !_animation_clip_cache_ready do animation_clip_cache_init()
-	engine.asset_db_add_path_changed_hook(animation_clip_path_changed)
 }
 
 animation_clip_cache_init :: proc() {
@@ -234,7 +233,7 @@ _animation_clip_entry_free :: proc(ref: engine.PPtr, clip: ^AnimationClip) {
 	owned := ref in _animation_clip_owned
 	context.allocator = owned ? runtime.default_allocator() : context.allocator
 	if owned do delete_key(&_animation_clip_owned, ref)
-	cleanup_AnimationClip(clip)
+	type_cleanup_AnimationClip(clip)
 }
 
 animation_clip_cache_shutdown :: proc() {
@@ -287,7 +286,7 @@ animation_clip_load :: proc(ref: engine.PPtr) -> (^AnimationClip, bool) {
 				return true
 			}
 		}
-		cleanup_AnimationClip(clip)
+		type_cleanup_AnimationClip(clip)
 		return false
 	}
 	if !engine.artifact_load(ref.guid, ref.local_id, "clip", &clip, parse) do return nil, false
@@ -350,19 +349,12 @@ animation_clip_preview :: proc(ref: engine.PPtr, clip: AnimationClip) {
 	_animation_clip_owned[ref] = true
 }
 
-// Cache invalidation for external file changes, called from asset_db_refresh.
-animation_clip_path_changed :: proc(path: string) {
-	if !strings.has_suffix(path, ".anim") do return
-	if guid, ok := engine.asset_db_get_guid(path); ok {
-		animation_clip_unload(engine.PPtr{guid = engine.Asset_GUID(guid)})
-	}
-}
-
-// A reimported clip drops its cached copy, so the next load picks up the new
-// artifact — settings changed in the inspector apply without a restart.
-animation_clip_reimported :: proc(guid: engine.Asset_GUID) {
-	// A reimported MODEL rebakes every clip it holds, each cached under
-	// {model guid, clip id}, so every entry with the guid goes.
+// A changed, removed or reimported clip drops its cached copy, so the next
+// load picks up the new file or artifact — settings changed in the inspector
+// apply without a restart. A reimported MODEL rebakes every clip it holds,
+// each cached under {model guid, clip id}, so every entry with the guid goes.
+@(asset_hook)
+asset_on_changed_animation_clip :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
 	owned := make([dynamic]engine.PPtr, context.temp_allocator)
 	for k in animation_clip_cache do if k.guid == guid do append(&owned, k)
 	for k in owned do animation_clip_unload(k)
@@ -373,7 +365,7 @@ animation_clip_reimported :: proc(guid: engine.Asset_GUID) {
 // arrays with their own: the caller runs this under the allocator that owns
 // the clip (a cache entry's is the default allocator, a document's the
 // document's).
-cleanup_AnimationClip :: proc(clip: ^AnimationClip) {
+type_cleanup_AnimationClip :: proc(clip: ^AnimationClip) {
 	for &ch in clip.channels {
 		delete(ch.target)
 		delete(ch.component)

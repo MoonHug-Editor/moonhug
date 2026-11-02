@@ -19,7 +19,7 @@ package inspector
 //   state clears it.
 // - A reimport may rewrite the .meta itself (the model importer adds entries
 //   for new clips). A document with no unapplied edits then reloads
-//   (_import_settings_reimported), so the next Apply does not write the old
+//   (asset_on_changed_import_settings), so the next Apply does not write the old
 //   version back.
 // - The document outlives frames, so its fields use the default allocator.
 //   Bytes handed to undo use the caller's allocator, like every undo entry.
@@ -87,7 +87,7 @@ import_settings_apply :: proc(doc: ^Asset_Doc) -> bool {
 	doc.applied = _settings_json(doc.data)
 	doc.dirty = false
 	// Clean before the reimport: the importer may refine the .meta, and the
-	// reimport hook then reloads this document. The hooks also evict every
+	// asset hook on .Reimported then reloads this document. The hooks also evict every
 	// guid-keyed cache (textures, package asset caches), so the new settings
 	// apply without a restart.
 	asset_pipeline.asset_pipeline_reimport_later(path)
@@ -111,8 +111,9 @@ import_settings_revert :: proc(doc: ^Asset_Doc) {
 
 // After any reimport of the asset. The replaced instance is retired, for the
 // same reason as in Revert.
-@(private = "file")
-_import_settings_reimported :: proc(guid: core.Asset_GUID) {
+@(asset_hook)
+asset_on_changed_import_settings :: proc(guid: core.Asset_GUID, path: string, change: assets.Asset_Change) {
+	if change != .Reimported do return
 	context.allocator = doc_alloc()
 	doc, found := _docs[Doc_Key{guid, .Import_Settings}]
 	if !found || doc.dirty do return
@@ -123,12 +124,6 @@ _import_settings_reimported :: proc(guid: core.Asset_GUID) {
 	delete(doc.applied)
 	doc.applied = _settings_json(doc.data)
 	_import_settings_rebaseline(doc)
-}
-
-@(init)
-_import_settings_register :: proc "contextless" () {
-	context = runtime.default_context()
-	assets.asset_pipeline_add_reimport_hook(_import_settings_reimported)
 }
 
 // Once per frame, after every view drew. With `check` set (the main loop's

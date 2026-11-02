@@ -28,7 +28,7 @@ package engine
 // - comp_on_destroy runs when an instance leaves the running game: its object
 //   destroyed, the component removed, its scene unloaded, play stopped, the
 //   player quitting. on_disable runs before it when the instance was enabled.
-//   cleanup_T runs after it, in every mode.
+//   type_cleanup_T runs after it, in every mode.
 
 import "core:fmt"
 
@@ -48,7 +48,7 @@ component_awake_procs: [TypeKey]proc(rawptr)
 //
 // `component = T` names a @(component) type of the same package, and the proc
 // is `proc(c: ^T)`, named `comp_on_destroy_<T>`. It is for game logic and for
-// what comp_awake_<T> created outside the instance. cleanup_T runs right after
+// what comp_awake_<T> created outside the instance. type_cleanup_T runs right after
 // it and frees what the instance owns. A type has at most one: the name is
 // fixed and it sits in the type's package.
 @(extension_point={attribute="comp_on_destroy", target="proc", fields="component"})
@@ -242,7 +242,7 @@ enabled_verify :: proc() {
 }
 
 // A component instance leaves the world: on_disable when it was enabled and
-// its @(comp_on_destroy) proc, while the game runs, then its cleanup_T frees
+// its @(comp_on_destroy) proc, while the game runs, then its type_cleanup_T frees
 // what it owns, in every mode. Runs on destroy and on removal, before the pool
 // slot goes.
 component_on_destroy :: proc(key: TypeKey, ptr: rawptr) {
@@ -268,7 +268,7 @@ _component_on_destroy_notify :: proc(key: TypeKey, ptr: rawptr) {
 // - Starting awakes every loaded scene, in scene slot order.
 // - Stopping runs on_disable and comp_on_destroy on every live component
 //   first, while the game still runs, and drops the pending destroys. What is destroyed after
-//   it (a Simulate restore, the world teardown) only runs cleanup_T.
+//   it (a Simulate restore, the world teardown) only runs type_cleanup_T.
 application_set_playing :: proc(playing: bool) {
 	uc := ctx_get()
 	if uc == nil || uc.is_playing == playing do return

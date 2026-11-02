@@ -20,5 +20,5 @@ MeshFilter :: struct {
     mesh: PPtr `inspect:"-"`,
 }
 
-reset_MeshFilter :: proc(mf: ^MeshFilter) {
+type_reset_MeshFilter :: proc(mf: ^MeshFilter) {
 }

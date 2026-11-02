@@ -56,7 +56,7 @@ Environment_Fog :: struct {
 
 ENVIRONMENT_FOG_DEFAULT :: Environment_Fog{color = {0.7, 0.75, 0.8, 1}, density = 0.02, start = 10, end = 100, sky = 0.5}
 
-reset_Environment :: proc(e: ^Environment) {
+type_reset_Environment :: proc(e: ^Environment) {
 	e.sky = .Procedural
 	e.sky_top = {0.35, 0.55, 0.85, 1}
 	e.sky_horizon = {0.75, 0.82, 0.9, 1}

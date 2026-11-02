@@ -13,7 +13,7 @@ Parallel :: struct {
 
 // The runtime frees and nils children before this runs (node_destroy), so
 // this only matters for a value outside a pool.
-cleanup_Parallel :: proc(p: ^Parallel) {
+type_cleanup_Parallel :: proc(p: ^Parallel) {
     delete(p.children)
     p^ = {}
 }
@@ -39,7 +39,7 @@ Sequence :: struct {
     children: [dynamic]Node_Handle `json:"-" inspect:"-"`,
 }
 
-cleanup_Sequence :: proc(s: ^Sequence) {
+type_cleanup_Sequence :: proc(s: ^Sequence) {
     delete(s.children)
     s^ = {}
 }

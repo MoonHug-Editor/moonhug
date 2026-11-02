@@ -15,5 +15,5 @@ Tank :: struct {
     ref_example:       engine.Ref `ref:"SpriteRenderer"`,
 }
 
-reset_Tank :: proc(comp: ^Tank) {
+type_reset_Tank :: proc(comp: ^Tank) {
 }

@@ -39,7 +39,7 @@ RectTransform :: struct {
 	size_delta:        [2]f32, // size added to the anchor span, canvas units
 }
 
-reset_RectTransform :: proc(rt: ^RectTransform) {
+type_reset_RectTransform :: proc(rt: ^RectTransform) {
 	rt.anchor_min = {0.5, 0.5}
 	rt.anchor_max = {0.5, 0.5}
 	rt.pivot = {0.5, 0.5}
@@ -77,7 +77,7 @@ Canvas :: struct {
 	plane_distance: f32, // ScreenSpaceCamera: how far in front of the camera the canvas plane sits
 }
 
-reset_Canvas :: proc(c: ^Canvas) {
+type_reset_Canvas :: proc(c: ^Canvas) {
 	c.plane_distance = 100
 }
 
@@ -90,7 +90,7 @@ GraphicRaycaster :: struct {
 	ignore_reversed_graphics: bool, // a graphic whose rect faces away from the viewer (flipped by a transform) is not hit
 }
 
-reset_GraphicRaycaster :: proc(r: ^GraphicRaycaster) {
+type_reset_GraphicRaycaster :: proc(r: ^GraphicRaycaster) {
 	r.ignore_reversed_graphics = true
 }
 
@@ -114,7 +114,7 @@ canvas_renderer_set_tint :: proc(cr: ^CanvasRenderer, tint: [4]f32) {
 	cr.tinted = true
 }
 
-reset_CanvasRenderer :: proc(cr: ^CanvasRenderer) {
+type_reset_CanvasRenderer :: proc(cr: ^CanvasRenderer) {
 }
 
 // --- CanvasScaler -----------------------------------------------------------------------
@@ -140,7 +140,7 @@ CanvasScaler :: struct {
 	match:                f32,
 }
 
-reset_CanvasScaler :: proc(cs: ^CanvasScaler) {
+type_reset_CanvasScaler :: proc(cs: ^CanvasScaler) {
 	cs.mode = .Scale_With_Screen_Size
 	cs.scale_factor = 1
 	cs.reference_resolution = {1920, 1080}

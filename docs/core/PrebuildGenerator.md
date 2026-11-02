@@ -58,7 +58,7 @@ components. Every `*_gen` module then works against those components and **never
 The libs and shell generators name no plugin. Their output compiles with an empty `moonhug/packages`, and a plugin's package is imported only when its declarations were scanned. `type_guid_gen` is the model:
 
 - `moonhug/libs/core/type_key_generated.odin`: the `TypeKey` enum over every `@(typ_guid)` type.
-- `moonhug/libs/core/type_procs_generated.odin`: `core.__type_procs_init`, the lifecycle procs (`reset_T`, `cleanup_T`, `on_validate_T`, `@(cleanup)` bindings) of core's own types.
+- `moonhug/libs/core/type_procs_generated.odin`: `core.__type_procs_init`, the lifecycle procs (`type_reset_T`, `type_cleanup_T`, `type_on_validate_T`, `@(cleanup)` bindings) of core's own types.
 - `type_registration_generated.odin` in `moonhug/registration` and in each runnable package: `register_type_guids`, which registers each type with its guid written as a literal, calls `core.__type_procs_init`, then registers the lifecycle procs of every other package's types, the engine's included. A `@(cleanup)` proc must be declared in the package of the type it frees.
 - `moonhug/editor/create_asset_menus_generated.odin`: the Assets/Create entries, through `core` only.
 

@@ -186,7 +186,7 @@ components_provide :: proc(w: ^db.World) -> bool {
 			}
 			menu_path := args.fields["menu"]
 			if menu_path == "" do menu_path = type_name
-			// reset_T, cleanup_T and on_validate_T are type_guid_gen's: one
+			// type_reset_T, type_cleanup_T and type_on_validate_T are type_guid_gen's: one
 			// source for every @(typ_guid) type, component or not.
 			// The guid is written into the Component_Desc as a literal, so the
 			// registration needs no guid global from another package.
@@ -864,7 +864,7 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "}\n\n")
 	// The lifecycle name (plugins/engine/docs/Components.md), so type_cleanup covers a
 	// SceneFile like any other owning type.
-	strings.write_string(&b, "cleanup_SceneFile :: proc(sf: ^SceneFile) {\n")
+	strings.write_string(&b, "type_cleanup_SceneFile :: proc(sf: ^SceneFile) {\n")
 	strings.write_string(&b, "\tscene_file_destroy(sf)\n")
 	strings.write_string(&b, "\tsf^ = {}\n")
 	strings.write_string(&b, "}\n")

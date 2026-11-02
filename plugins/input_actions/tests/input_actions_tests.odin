@@ -44,7 +44,7 @@ _asset :: proc() -> actions.Input_Actions {
 	append(&menu.actions, actions.Action{name = "Confirm", value_type = .Digital, mappings = {{key = "key:SPACE"}}})
 	append(&a.contexts, player, gun, menu)
 	// The literals above are not heap strings: clone them, so the asset owns
-	// its text as a loaded one does and cleanup_Input_Actions frees it.
+	// its text as a loaded one does and type_cleanup_Input_Actions frees it.
 	for &m in a.contexts {
 		m.name = strings.clone(m.name)
 		for &ac in m.actions {
@@ -58,7 +58,7 @@ _asset :: proc() -> actions.Input_Actions {
 @(test)
 test_asset_round_trip :: proc(t: ^testing.T) {
 	a := _asset()
-	defer actions.cleanup_Input_Actions(&a)
+	defer actions.type_cleanup_Input_Actions(&a)
 	path := "moonhug/tests/fixtures/_input_actions_round_trip.asset"
 	defer os.remove(path)
 	testing.expect(t, serialization.write_asset_to_path(path, core.get_guid_by_typeid(actions.Input_Actions), a), "the asset writes")
@@ -66,7 +66,7 @@ test_asset_round_trip :: proc(t: ^testing.T) {
 	testing.expect(t, rerr == nil, "the file reads")
 	back, bok := assets.asset_parse_as(data, actions.Input_Actions)
 	testing.expect(t, bok, "and parses back")
-	defer actions.cleanup_Input_Actions(&back)
+	defer actions.type_cleanup_Input_Actions(&back)
 	testing.expect_value(t, len(back.contexts), 3)
 	testing.expect_value(t, string(back.contexts[0].actions[0].mappings[0].key), "key:SPACE")
 	testing.expect_value(t, back.contexts[2].priority, 100)
@@ -94,7 +94,7 @@ test_key_parse :: proc(t: ^testing.T) {
 @(test)
 test_actions_resolve_and_stack :: proc(t: ^testing.T) {
 	a := _asset()
-	defer actions.cleanup_Input_Actions(&a)
+	defer actions.type_cleanup_Input_Actions(&a)
 	actions.actions_install(a)
 	defer actions.actions_reset()
 	// The fixed accumulators record edges only while the app is focused.
@@ -185,7 +185,7 @@ test_dead_zone :: proc(t: ^testing.T) {
 	m: actions.Mapping_Context = {name = strings.clone("M"), consume = .All}
 	append(&m.actions, actions.Action{name = strings.clone("Look"), value_type = .Axis2D, dead_zone = 0.5, mappings = {{key = actions.Key_Name(strings.clone("mouse:Delta")), scalar = 0.1}}})
 	append(&a.contexts, m)
-	defer actions.cleanup_Input_Actions(&a)
+	defer actions.type_cleanup_Input_Actions(&a)
 	actions.actions_install(a)
 	defer actions.actions_reset()
 	actions.context_push("M")

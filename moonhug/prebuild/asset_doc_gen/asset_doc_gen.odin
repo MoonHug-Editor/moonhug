@@ -4,11 +4,11 @@ package asset_doc_gen
 // the Project Inspector (docs/core/Plugins.md, "Asset types").
 //
 //   @(asset_doc={type=engine.Material})
-//   on_changed_Material :: proc(guid: core.Asset_GUID, doc: any) { ... }
+//   doc_on_changed_Material :: proc(guid: core.Asset_GUID, doc: any) { ... }
 //
-//   The name is the contract, as reset_<Type> and cleanup_<Type> are:
-//   on_changed_<Type>  proc(guid: core.Asset_GUID, doc: any)      once per change of the document, by any route
-//   on_saved_<Type>    proc(guid: core.Asset_GUID, path: string)  once after the document is saved
+//   The name is the contract, as type_reset_<Type> and type_cleanup_<Type> are:
+//   doc_on_changed_<Type>  proc(guid: core.Asset_GUID, doc: any)      once per change of the document, by any route
+//   doc_on_saved_<Type>    proc(guid: core.Asset_GUID, path: string)  once after the document is saved
 //   <Type> is the type's own name, without its package.
 //
 // Rows around a document's fields are an inspector wrapper on the type
@@ -71,14 +71,17 @@ provide :: proc(w: ^db.World) -> bool {
 			return false
 		}
 		// The hook is the name's prefix, the type its suffix.
-		hook := ""
-		for prefix in ([]string{"on_changed_", "on_saved_"}) {
-			if strings.has_prefix(decl.name, prefix) do hook = prefix[:len(prefix) - 1]
+		hook, prefix_len := "", 0
+		for prefix in ([]string{"doc_on_changed_", "doc_on_saved_"}) {
+			if strings.has_prefix(decl.name, prefix) {
+				hook = prefix[len("doc_"):len(prefix) - 1]
+				prefix_len = len(prefix)
+			}
 		}
 		bare := type_name
 		if dot := strings.last_index_byte(bare, '.'); dot >= 0 do bare = bare[dot + 1:]
-		if hook == "" || decl.name[len(hook) + 1:] != bare {
-			fmt.eprintf("asset_doc: %s.%s must be named on_changed_%s or on_saved_%s\n", decl.pkg.name, decl.name, bare, bare)
+		if hook == "" || decl.name[prefix_len:] != bare {
+			fmt.eprintf("asset_doc: %s.%s must be named doc_on_changed_%s or doc_on_saved_%s\n", decl.pkg.name, decl.name, bare, bare)
 			return false
 		}
 		// The type's package, through the declaring file's import of its alias.

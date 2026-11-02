@@ -16,7 +16,7 @@ TweenPlayer :: struct {
 }
 
 
-cleanup_TweenPlayer :: proc(p: ^TweenPlayer) {
+type_cleanup_TweenPlayer :: proc(p: ^TweenPlayer) {
 	if p.animations != nil {
 		for &anim in p.animations do authored_destroy(&anim)
 		delete(p.animations)

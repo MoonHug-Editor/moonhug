@@ -115,7 +115,7 @@ A declared key no field uses is a warning, unless its constant carries `@(reserv
 
 ## Naming
 
-Some procs are called because of their name. `cleanup_Camera` runs because type_guid_gen looks for `cleanup_<T>` in the file of every `@(typ_guid)` type, `decorator_min` because a field says `decor:min(...)`, `apply_Value_Command` because the undo command dispatch calls it. Naming conventions are neither attributes nor field tags. Each belongs to the generator that resolves it, which declares it at `@(init)` and records its subjects in its provide step:
+Some procs are called because of their name. `type_cleanup_Camera` runs because type_guid_gen looks for `type_cleanup_<T>` in the file of every `@(typ_guid)` type, `decorator_min` because a field says `decor:min(...)`, `apply_Value_Command` because the undo command dispatch calls it. Naming conventions are neither attributes nor field tags. Each belongs to the generator that resolves it, which declares it at `@(init)` and records its subjects in its provide step:
 
 ```odin
 gen_facts.register_naming({
@@ -142,8 +142,8 @@ gen_facts.naming_subject("clip_tween", decl.name, decl.file_path, where_)
 
 The types and the registry are in `moonhug/prebuild/gen_facts/naming.odin`. The prebuild stops on:
 
-- a proc that names a subject but is not where the owner looks, so it is never called: `on_validate_Camera` in another file than `Camera`
-- a proc that is a near miss of a subject, with the subject as a suggestion: `cleanup_Camra`
+- a proc that names a subject but is not where the owner looks, so it is never called: `type_on_validate_Camera` in another file than `Camera`
+- a proc that is a near miss of a subject, with the subject as a suggestion: `type_cleanup_Camra`
 - for a convention with `unclaimed = .Error`, a proc with its prefix that is not one of its subjects: `mcp_tool_probe` without `@(mcp_tool)`
 
 With `unclaimed = .Warn` such a proc is a warning instead, as an unused decorator is, unless the proc carries `@(reserved)`. Missing required procs are the owner's error, since the owner knows what it cannot generate without them. A generator that finds code by name declares its convention in the same change.

@@ -31,15 +31,15 @@ Rigidbody :: struct {
 	body: b3.BodyId `json:"-" inspect:"-"`,
 }
 
-reset_Rigidbody :: proc(comp: ^Rigidbody) {
-	cleanup_Rigidbody(comp)
+type_reset_Rigidbody :: proc(comp: ^Rigidbody) {
+	type_cleanup_Rigidbody(comp)
 	comp.mass = 1
 	comp.use_gravity = true
 }
 
 // Runs on destroy, removal, Reset and undo: the body goes with the
 // component, or it keeps colliding as a ghost.
-cleanup_Rigidbody :: proc(comp: ^Rigidbody) {
+type_cleanup_Rigidbody :: proc(comp: ^Rigidbody) {
 	_destroy_body(&comp.body)
 	engine.comp_zero(comp)
 }

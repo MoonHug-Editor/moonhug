@@ -54,12 +54,7 @@ mesh_hulls :: proc(guid: engine.Asset_GUID, set: engine.Local_ID) -> ([][][3]f32
 	if hulls, cached := _hull_sets[path]; cached do return hulls, .Ready
 
 	context.allocator = runtime.default_allocator()
-	@(static) hooked := false
-	if !hooked {
-		hooked = true
-		_hull_sets = make(map[string][][][3]f32)
-		engine.asset_pipeline_add_reimport_hook(_hull_sets_drop)
-	}
+	if _hull_sets == nil do _hull_sets = make(map[string][][][3]f32)
 	// A set the editor is computing may have no file yet, which is no failure.
 	if mesh_hulls_pending != nil && mesh_hulls_pending(guid, set) {
 		if _, hulls, ok := mesh_hulls_read(path, context.allocator); ok {
@@ -115,10 +110,12 @@ mesh_hulls_free :: proc(hulls: [][][3]f32, allocator := context.allocator) {
 	delete(hulls, allocator)
 }
 
-// Every cached set goes: the reimported model has a new key, so its old file
-// names no longer resolve, and the other models' sets reload cheaply.
-@(private = "file")
-_hull_sets_drop :: proc(guid: engine.Asset_GUID) {
+// Every cached set goes on any reimport: the reimported model has a new key,
+// so its old file names no longer resolve, and the other models' sets reload
+// cheaply.
+@(asset_hook)
+asset_on_changed_hull_sets :: proc(guid: engine.Asset_GUID, path: string, change: engine.Asset_Change) {
+	if change != .Reimported do return
 	context.allocator = runtime.default_allocator()
 	for path, hulls in _hull_sets {
 		delete(path)

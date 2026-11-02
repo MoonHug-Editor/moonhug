@@ -49,7 +49,7 @@ TextureSettings :: struct {
     // Unity's Pixels Per Unit: a sprite's world size = pixel size / this.
     // 100 (the default) makes 100 px = 1 world unit = 1 m, the physics
     // convention (plugins/engine/docs/FixedTick.md). 0 means the default: a meta predating
-    // the field reads 0, and on_validate_TextureSettings makes it 100.
+    // the field reads 0, and type_on_validate_TextureSettings makes it 100.
     pixels_per_unit: f32,
     // Unity's TextureImporter.spriteImportMode: slicing is importer data, so
     // it bakes into the catalog with the rest of the settings and reaches
@@ -72,18 +72,18 @@ default_texture_settings :: proc() -> TextureSettings {
 }
 
 // A zero PPU is no value (a meta predating the field): the default.
-on_validate_TextureSettings :: proc(s: ^TextureSettings) {
+type_on_validate_TextureSettings :: proc(s: ^TextureSettings) {
     if s.pixels_per_unit <= 0 do s.pixels_per_unit = PIXELS_PER_UNIT
 }
 
-cleanup_TextureSettings :: proc(s: ^TextureSettings) {
+type_cleanup_TextureSettings :: proc(s: ^TextureSettings) {
     for &r in s.sprites do delete(r.name)
     delete(s.sprites)
     s^ = {}
 }
 
-reset_TextureSettings :: proc(p: ^TextureSettings) {
-    cleanup_TextureSettings(p)
+type_reset_TextureSettings :: proc(p: ^TextureSettings) {
+    type_cleanup_TextureSettings(p)
     p^ = default_texture_settings()
 }
 

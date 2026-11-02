@@ -93,7 +93,7 @@ test_render_pipeline_runs_lanes_in_order :: proc(t: ^testing.T) {
 	// The built-in frame is the active pipeline in a test (no asset db):
 	// previewing with its guid replaces it.
 	engine.render_pipeline_preview({}, p)
-	engine.cleanup_Render_Pipeline(&p)
+	engine.type_cleanup_Render_Pipeline(&p)
 	defer engine.render_pipeline_preview({}, {}) // leaves an empty pipeline behind, not the test steps
 
 	ctx: engine.Render_Ctx
@@ -125,7 +125,7 @@ test_render_pipeline_runs_lanes_in_order :: proc(t: ^testing.T) {
 _check_mute_and_absent_inputs :: proc(t: ^testing.T) {
 	clear(&_calls)
 	p: engine.Render_Pipeline
-	defer engine.cleanup_Render_Pipeline(&p)
+	defer engine.type_cleanup_Render_Pipeline(&p)
 	engine.pipeline_add_slot(&p, engine.MAIN_SLOT)
 	f := engine.pipeline_add_step(&p, "t_frame", "")
 	a := engine.pipeline_add_step(&p, "t_a", engine.MAIN_SLOT)
@@ -135,7 +135,7 @@ _check_mute_and_absent_inputs :: proc(t: ^testing.T) {
 
 	clone := engine.pipeline_clone(p)
 	testing.expect(t, engine.pipeline_find_step(&clone, f).muted, "the clone keeps muted")
-	engine.cleanup_Render_Pipeline(&clone)
+	engine.type_cleanup_Render_Pipeline(&clone)
 
 	engine.render_pipeline_preview({}, p)
 	gfx.frame_index += 1
@@ -165,7 +165,7 @@ _check_mute_and_absent_inputs :: proc(t: ^testing.T) {
 test_render_pipeline_move_and_bind :: proc(t: ^testing.T) {
 	_register_test_steps()
 	p: engine.Render_Pipeline
-	defer engine.cleanup_Render_Pipeline(&p)
+	defer engine.type_cleanup_Render_Pipeline(&p)
 	engine.pipeline_add_slot(&p, engine.MAIN_SLOT)
 	a := engine.pipeline_add_step(&p, "t_a", engine.MAIN_SLOT)
 	b := engine.pipeline_add_step(&p, "t_tint", engine.MAIN_SLOT)
@@ -186,12 +186,12 @@ test_render_pipeline_move_and_bind :: proc(t: ^testing.T) {
 	// Bindings survive the clone and the JSON round trip.
 	engine.pipeline_entry_bind(e, "hdr", "hdr_wide")
 	c := engine.pipeline_clone(p)
-	defer engine.cleanup_Render_Pipeline(&c)
+	defer engine.type_cleanup_Render_Pipeline(&c)
 	testing.expect_value(t, engine.pipeline_entry_port(engine.pipeline_find_step(&c, b)^, "hdr"), "hdr_wide")
 	data, err := json.marshal(p, {spec = .JSON}, context.temp_allocator)
 	testing.expect(t, err == nil)
 	back, ok := engine.pipeline_parse(data)
-	defer engine.cleanup_Render_Pipeline(&back)
+	defer engine.type_cleanup_Render_Pipeline(&back)
 	testing.expect(t, ok && engine.pipeline_entry_port(engine.pipeline_find_step(&back, b)^, "hdr") == "hdr_wide")
 }
 
@@ -200,8 +200,8 @@ test_render_pipeline_move_and_bind :: proc(t: ^testing.T) {
 @(test)
 test_render_pipeline_reset_and_roundtrip :: proc(t: ^testing.T) {
 	p: engine.Render_Pipeline
-	engine.reset_Render_Pipeline(&p)
-	defer engine.cleanup_Render_Pipeline(&p)
+	engine.type_reset_Render_Pipeline(&p)
+	defer engine.type_cleanup_Render_Pipeline(&p)
 	testing.expect_value(t, len(p.slots), 1)
 	testing.expect_value(t, p.slots[0].name, engine.MAIN_SLOT)
 	// The frame lane (environment, spot and point shadows), then Main from
@@ -220,7 +220,7 @@ test_render_pipeline_reset_and_roundtrip :: proc(t: ^testing.T) {
 	data, err := json.marshal(p, {spec = .JSON}, context.temp_allocator)
 	testing.expect(t, err == nil)
 	back, ok := engine.pipeline_parse(data)
-	defer engine.cleanup_Render_Pipeline(&back)
+	defer engine.type_cleanup_Render_Pipeline(&back)
 	testing.expect(t, ok, "a pipeline parses back")
 	testing.expect_value(t, len(back.steps), 9)
 	testing.expect_value(t, back.next_id, p.next_id)
@@ -228,7 +228,7 @@ test_render_pipeline_reset_and_roundtrip :: proc(t: ^testing.T) {
 	testing.expect(t, has && bias.(json.Float) == 0.01, "the settings JSON round-trips")
 
 	clone := engine.pipeline_clone(back)
-	defer engine.cleanup_Render_Pipeline(&clone)
+	defer engine.type_cleanup_Render_Pipeline(&clone)
 	testing.expect_value(t, len(clone.steps), 9)
 	engine.pipeline_remove_slot(&clone, engine.MAIN_SLOT)
 	testing.expect_value(t, len(clone.steps), 2) // only the frame lane remains
@@ -329,7 +329,7 @@ test_render_pipeline_window_optional_reads :: proc(t: ^testing.T) {
 	}
 
 	with: engine.Render_Pipeline
-	defer engine.cleanup_Render_Pipeline(&with)
+	defer engine.type_cleanup_Render_Pipeline(&with)
 	engine.pipeline_add_slot(&with, engine.MAIN_SLOT)
 	engine.pipeline_add_step(&with, "scene_ssao", engine.MAIN_SLOT)
 	engine.pipeline_add_step(&with, "scene_opaque", engine.MAIN_SLOT)
@@ -343,7 +343,7 @@ test_render_pipeline_window_optional_reads :: proc(t: ^testing.T) {
 	}
 
 	without: engine.Render_Pipeline
-	defer engine.cleanup_Render_Pipeline(&without)
+	defer engine.type_cleanup_Render_Pipeline(&without)
 	engine.pipeline_add_slot(&without, engine.MAIN_SLOT)
 	engine.pipeline_add_step(&without, "scene_opaque", engine.MAIN_SLOT)
 	rpv._rp.doc = &without
@@ -443,7 +443,7 @@ test_render_pipeline_volume_overrides_settings :: proc(t: ^testing.T) {
 	tint := engine.pipeline_add_step(&p, "t_tint", engine.MAIN_SLOT)
 	engine.pipeline_find_step(&p, tint).settings = _settings_json("amount", 2)
 	engine.render_pipeline_preview({}, p)
-	engine.cleanup_Render_Pipeline(&p)
+	engine.type_cleanup_Render_Pipeline(&p)
 	defer engine.render_pipeline_preview({}, {})
 
 	root := engine.Transform_Handle(tc_mem.scene.root.handle)
@@ -485,7 +485,7 @@ test_render_pipeline_window_mute_previews :: proc(t: ^testing.T) {
 		_remove_tree(engine.library_dir())
 	}
 	p: engine.Render_Pipeline
-	defer engine.cleanup_Render_Pipeline(&p)
+	defer engine.type_cleanup_Render_Pipeline(&p)
 	engine.pipeline_add_slot(&p, engine.MAIN_SLOT)
 	engine.pipeline_add_step(&p, "scene_opaque", engine.MAIN_SLOT)
 	testing.expect(t, engine.pipeline_save_file(&p, path), "the pipeline file is written")

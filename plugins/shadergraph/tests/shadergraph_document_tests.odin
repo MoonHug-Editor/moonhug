@@ -32,7 +32,7 @@ shadergraph_saves_as_a_shared_document :: proc(t: ^testing.T) {
 
 	path :: _DIR + "/Rim.shadergraph"
 	g := _rim_graph()
-	defer sg.cleanup_Shader_Graph(&g)
+	defer sg.type_cleanup_Shader_Graph(&g)
 	testing.expect(t, sg.graph_save_file(&g, path), "the graph file is written")
 	asset_pipeline.asset_pipeline_init()
 	engine.asset_db_init(_DIR)
@@ -56,6 +56,6 @@ shadergraph_saves_as_a_shared_document :: proc(t: ^testing.T) {
 	type_guid := uuid.to_string(engine.get_guid_by_typeid(sg.Shader_Graph), context.temp_allocator)
 	testing.expect(t, err == nil && strings.contains(string(data), type_guid), "the file carries the Shader_Graph type tag")
 	loaded, ok := sg.graph_load_file(path)
-	defer sg.cleanup_Shader_Graph(&loaded)
+	defer sg.type_cleanup_Shader_Graph(&loaded)
 	testing.expect(t, ok && len(loaded.properties) == 3, "the saved graph has the added property")
 }

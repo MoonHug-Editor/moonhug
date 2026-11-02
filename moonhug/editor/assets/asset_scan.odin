@@ -87,10 +87,8 @@ asset_db_refresh :: proc() {
 	}
 	for path in changed {
 		assets.asset_db_reindex(path)
-		// Cache eviction first (an edited .mat or .glsl drops its entry), then
-		// the path-changed hooks (the shader hook below reimports).
-		assets.asset_db_run_evict_hooks(path)
-		for hook in assets._path_changed_hooks do hook(path)
+		// Caches drop their entry, the shader hook reimports (asset_hooks.odin).
+		if guid, has := assets.asset_db.path_to_guid[path]; has do assets.asset_changed(core.Asset_GUID(guid), path, .Modified)
 	}
 	// Changed assets reimport, one index write for the lot. Created ones are
 	// in `changed` too and are left to import when first needed.
@@ -105,7 +103,7 @@ asset_db_refresh :: proc() {
 	}
 	for r in gone {
 		if uuid.Identifier(r.guid) in assets.asset_db.guid_to_path do continue // renamed or moved
-		for hook in assets._asset_gone_hooks do hook(r.guid, r.path)
+		assets.asset_changed(r.guid, r.path, .Removed)
 	}
 
 	// Orphaned metas: a .meta whose asset (file or folder) is gone.

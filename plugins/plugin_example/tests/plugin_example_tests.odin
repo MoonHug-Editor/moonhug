@@ -60,7 +60,7 @@ test_spawn_table_serialization_hooks :: proc(t: ^testing.T) {
 	defer os.remove(path)
 
 	table: plugin_example.Spawn_Table
-	defer plugin_example.cleanup_Spawn_Table(&table)
+	defer plugin_example.type_cleanup_Spawn_Table(&table)
 	plugin_example.spawn_table_add(&table, "Slime", 3)
 	plugin_example.spawn_table_add(&table, "Bat", -2)
 	plugin_example.spawn_table_add(&table, "Dragon", 1)
@@ -76,7 +76,7 @@ test_spawn_table_serialization_hooks :: proc(t: ^testing.T) {
 	if !ok do return
 	back := cast(^plugin_example.Spawn_Table)loaded.data
 	defer {
-		plugin_example.cleanup_Spawn_Table(back)
+		plugin_example.type_cleanup_Spawn_Table(back)
 		free(back)
 	}
 	testing.expect_value(t, len(back.entries), 3)
