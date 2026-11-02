@@ -136,7 +136,10 @@ _smoke_run :: proc() -> (ok: bool, detail: string) {
 	}
 	out := run_log if run_log != nil else os.stdout
 	errs := run_log if run_log != nil else os.stderr
-	p, err := os.process_start({command = {NOPLUGINS_BIN}, stdout = out, stderr = errs})
+	// Its layout and settings go to a folder of their own: the editor
+	// normalizes its working directory, so the path is absolute.
+	user_dir, _ := filepath.abs("builds/noplugins-user", context.temp_allocator)
+	p, err := os.process_start({command = {NOPLUGINS_BIN, fmt.tprintf("--user-dir=%s", user_dir)}, stdout = out, stderr = errs})
 	if err != nil do return false, fmt.tprintf("cannot start %s: %v", NOPLUGINS_BIN, err)
 	state, werr := os.process_wait(p, SMOKE_SECONDS * time.Second)
 	if werr == nil && state.exited {

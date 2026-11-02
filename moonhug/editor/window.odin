@@ -4,6 +4,7 @@ import gfx "moonhug:libs/gfx"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
+import "core:strings"
 import "menu"
 import wnd "window"
 import "moonhug:editor/handles"
@@ -24,8 +25,10 @@ VERSION :: #load("../version", string)
 //
 // The other half is core.PROJECT_SETTINGS_DIR: settings about the PROJECT,
 // committed, read by the game too (docs/core/Plugins.md "Project settings").
-USER_SETTINGS_DIR :: "UserSettings"
-EDITOR_SETTINGS_FILE :: USER_SETTINGS_DIR + "/editor_settings.json"
+// The editor's own file in core.user_settings_dir. Temp-allocated.
+editor_settings_file :: proc() -> string {
+    return strings.concatenate({core.user_settings_dir, "/editor_settings.json"}, context.temp_allocator)
+}
 
 // Read once at startup to migrate a pre-split checkout, then ignored.
 LEGACY_EDITOR_SETTINGS_FILE :: core.PROJECT_SETTINGS_DIR + "/editor_settings.json"
@@ -67,13 +70,13 @@ EditorSettings :: struct {
 editor_settings: EditorSettings
 
 load_editor_settings :: proc() -> (w, h, x, y: i32) {
-    data, read_err := os.read_entire_file(EDITOR_SETTINGS_FILE, context.temp_allocator)
+    data, read_err := os.read_entire_file(editor_settings_file(), context.temp_allocator)
     if read_err != nil {
         // Pre-split checkout: adopt the committed file's values once. The next
         // save writes UserSettings/ and this branch stops being taken.
         data, read_err = os.read_entire_file(LEGACY_EDITOR_SETTINGS_FILE, context.temp_allocator)
         if read_err == nil {
-            log.infof("[startup] migrating %q to %q", LEGACY_EDITOR_SETTINGS_FILE, EDITOR_SETTINGS_FILE)
+            log.infof("[startup] migrating %q to %q", LEGACY_EDITOR_SETTINGS_FILE, editor_settings_file())
         }
     }
     if read_err == nil {
@@ -123,7 +126,7 @@ apply_default_window_size :: proc() {
 }
 
 save_editor_settings :: proc() {
-    os.make_directory(USER_SETTINGS_DIR)
+    os.make_directory(core.user_settings_dir)
     pos := gfx.window_position()
     size := gfx.window_size()
     editor_settings.width  = size.x
@@ -179,6 +182,6 @@ save_editor_settings :: proc() {
         spaces     = 2,
     }
     if data, err := json.marshal(editor_settings, opts, allocator = context.temp_allocator); err == nil {
-        _ = os.write_entire_file(EDITOR_SETTINGS_FILE, data)
+        _ = os.write_entire_file(editor_settings_file(), data)
     }
 }

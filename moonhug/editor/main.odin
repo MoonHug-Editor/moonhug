@@ -64,6 +64,14 @@ main :: proc() {
             fmt.eprintfln("crash journal self-test: writing %s and faulting", crash_journal.path())
             crash_journal.test_crash()
         }
+        // Another folder for this run's layout and settings, so a second
+        // editor on the project (the no-plugins check) leaves the user's alone.
+        if strings.has_prefix(arg, "--user-dir=") {
+            dir := strings.clone(arg[len("--user-dir="):])
+            core.user_settings_dir = dir
+            imgui_ini_path = strings.concatenate({dir, "/imgui.ini"})
+            os.make_directory(dir)
+        }
     }
 
     win_w, win_h, win_x, win_y := load_editor_settings()
@@ -95,6 +103,7 @@ main :: proc() {
     // frames during startup): the plugin window declarations, then the saved
     // window placement renamed onto the windows' current ids.
     _register_editor_windows()
+    if imgui_ini_path != "imgui.ini" do im.GetIO().IniFilename = strings.clone_to_cstring(imgui_ini_path)
     migrate_imgui_ini()
     defer im.DestroyContext(ctx)
 

@@ -31,14 +31,18 @@ import "core:encoding/json"
 import "core:os"
 import "core:strings"
 
-// Never committed: .gitignore covers the directory, the same as Unity's
-// UserSettings. Editor/window.odin writes its own file in here too.
+// Never committed: .gitignore covers the directory. Editor/window.odin
+// writes its own file in here too. `user_settings_dir` is where the files go,
+// this folder unless the editor was started with `--user-dir=<path>`, which a
+// second editor on the same project uses to keep its layout and settings
+// apart (the no-plugins check runs one).
 USER_SETTINGS_DIR :: "UserSettings"
+user_settings_dir := USER_SETTINGS_DIR
 
 // "Animation" -> "UserSettings/animation.json". Temp-allocated.
 user_settings_file :: proc(name: string) -> string {
     slug, _ := strings.replace_all(strings.to_lower(name, context.temp_allocator), " ", "_", context.temp_allocator)
-    return strings.concatenate({USER_SETTINGS_DIR, "/", slug, ".json"}, context.temp_allocator)
+    return strings.concatenate({user_settings_dir, "/", slug, ".json"}, context.temp_allocator)
 }
 
 // Persists a package-level struct variable per developer, in
@@ -71,7 +75,7 @@ user_settings_create :: proc(name: string, ptr: rawptr, tid: typeid) -> bool {
 
 user_settings_save :: proc(name: string, ptr: rawptr, tid: typeid) -> bool {
     if ptr == nil || tid == nil do return false
-    os.make_directory(USER_SETTINGS_DIR)
+    os.make_directory(user_settings_dir)
     opts := json.Marshal_Options{
         spec = .JSON, pretty = true, use_spaces = true, spaces = 2,
         sort_maps_by_key = true,
