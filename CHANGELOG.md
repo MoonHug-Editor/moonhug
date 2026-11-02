@@ -1,3 +1,20 @@
+## [0.155.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.154.0...v0.155.0) (2026-11-02)
+
+### Features
+
+* @(asset_doc) attaches on_changed and on_saved to an asset type's document, chrome moves to inspector wrappers ([6313438](https://github.com/MoonHug-Editor/moonhug/commit/6313438b1b41af39106858ce779d80ce293b656f))
+* @(canvas_graphic) and @(canvas_layout) attrs on procs ([4692a71](https://github.com/MoonHug-Editor/moonhug/commit/4692a7172cce547235501d852f7a6fa21aa2990f))
+* @(importer) declares asset importers, register_importers generated into registration ([e1c5b31](https://github.com/MoonHug-Editor/moonhug/commit/e1c5b31573e9c559a27e26d65e594247b9f3c809))
+* @(render_collector) declares collectors, the engine's own three included, quads_only replaces the meshes parameter ([70f916d](https://github.com/MoonHug-Editor/moonhug/commit/70f916dcf5ebce945a904fd68f2000623fbf9d85))
+* **editor:** --user-dir keeps a run's layout and settings apart, the no-plugins smoke uses its own ([84564d0](https://github.com/MoonHug-Editor/moonhug/commit/84564d0c3620ec48694d36616a4f31b7656b93fa))
+* **mh:** check-noplugins ignores the packages folder through prebuild --no-packages, nothing moves on disk ([d130248](https://github.com/MoonHug-Editor/moonhug/commit/d13024858824eba2cc7519ce63edd599f527a12b))
+* order among hooks of one change, importer and document hook conflicts warn and pick one ([810baef](https://github.com/MoonHug-Editor/moonhug/commit/810baef910e76c10c743d976d6148c93ce8c1362))
+
+### Bug Fixes
+
+* docs server ignores test temporary folders, view lock docs show a plugin example ([b39727e](https://github.com/MoonHug-Editor/moonhug/commit/b39727ed2c6cc71b4b69bf805eeb3a8daa2818c8))
+* the editor builds with no plugins, empty generated registrations import nothing, typed asset load requires its imports, runs the no-plugins editor for five seconds and closes it( skipped while an editor is open) ([6fe3f74](https://github.com/MoonHug-Editor/moonhug/commit/6fe3f748ad08daa1b3b593ec0d9f01afbd37c7e4))
+
 ## [0.154.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.153.0...v0.154.0) (2026-11-01)
 
 ### Features
