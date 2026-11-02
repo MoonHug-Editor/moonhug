@@ -11,7 +11,22 @@ Plugin is a package folder in `moonhug/packages/`.
 - Its `assets/` folder is scanned by the asset db — nothing else in the package is.
 - Samples install as further packages.
 
-The attribute system (`@component`, `@update`, `@phase`, `@menu_item`, `@property_drawer`, …) is the plugin API — packages use the exact same markers app code already uses.
+The attribute system (`@component`, `@update`, `@phase`, `@menu_item`, `@property_drawer`, …) is the main plugin API — packages use the exact same markers app code already uses. It is one of four ways a package reaches the editor and the engine, see "Extension mechanisms".
+
+## Extension mechanisms
+
+A package extends the editor and the engine in four ways. The first is the one to reach for, the other three exist for what it cannot express.
+
+- **Attributes** (46, see the Reference section of the docs). The prebuild scans every package for them and generates the registration: components, phases, menu items, windows, property drawers, render steps. An attribute carries names and literals only, and fires once at build time. Every use of one is listed on its reference page.
+- **Registries** are procs a package calls at load time from a `@(provider_install)` proc or an `@(init)` proc: Project Inspector previews and asset document hooks by type, reimport and evict hooks, render collectors, layer domains, canvas layouts. A registry takes what an attribute cannot: a value that exists only at run time (a shader blob read from an artifact, a pointer to a live table), a registration that is undone later, or a hook with two callers that does not pay for a generator. Render steps started as a registry and became `@(render_step)` once they had many users.
+- **Seams** are one slot per service the editor shell needs and does not implement itself, filled by one package: the selection source, the object and override providers, the pick and viewport providers, the undo selection hooks. The shell builds with zero plugins, so each seam has a fallback, and the engine plugin fills nearly all of them. A seam is one implementation of an interface, not a list of contributions, so an attribute does not replace it. A second filler replaces the first.
+- **Conventions** decide the rest without code: the `editor/`, `tests/` and `gen/` folders, integration subpackages named after the plugin they extend, the plugin manifest, the symlink in the packages folder as the enable switch, `resources` folders that ship whole, and the `docs/` folder that joins the docs site.
+
+Which one a new extension point gets:
+
+- An attribute, when the registration is static, has about five or more users across packages, and a table or a reference page of all of them is useful.
+- A registry, when the data is runtime, the lifetime is dynamic, or the users are few. It is called from a `@(provider_install)` proc, never from an ad hoc place.
+- A seam, when exactly one package implements a service the shell needs.
 
 ## app plugin
 **The app is a plugin too** (`packages/app`) — an ordinary package with a `main :: proc()` that calls the generated `__standalone_run`: the engine's phases around the game's, the boot scene, and the frame loop (`plugins/engine/standalone.odin`). The window, its size and the fallback boot scene are the Player project setting.
@@ -171,7 +186,7 @@ An editor package may import its own runtime package, the engine plugin (`moonhu
 
 ## Asset importers
 
-A package ships an asset importer by registering an `engine.Importer_Desc` on the `ImportersInit` phase (`moonhug/packages/audio` is the reference — settings type, defaults and logic all in the package):
+A package ships an asset importer with `@(importer)` on a proc that returns its `asset_pipeline.Importer_Desc` (`moonhug/packages/audio` is the reference — settings type, defaults and logic all in the package). The generated `register_importers` (importer_gen, `registration/importers_generated.odin`) registers every one before the `ImportersInit` phase, in the editor and in the tests bootstrap. The reference page of `@(importer)` lists them all.
 
 ```odin
 @(typ_guid={guid="..."})
@@ -179,12 +194,12 @@ AudioSettings :: struct { volume: f32 }
 
 reset_AudioSettings :: proc(s: ^AudioSettings) { s.volume = 1 } // the defaults
 
-@(phase={key=ImportersInit, order=1})
-audio_importers_init :: proc() {
-    engine.importer_register({
+@(importer)
+audio_importer :: proc() -> asset_pipeline.Importer_Desc {
+    return {
         name = "audio", version = 2, extensions = _AUDIO_EXTS,
         settings_tid = typeid_of(AudioSettings), run = _import_audio,
-    })
+    }
 }
 
 _import_audio :: proc(source_path, artifact_path: string, settings: rawptr) -> bool {
@@ -193,6 +208,9 @@ _import_audio :: proc(source_path, artifact_path: string, settings: rawptr) -> b
 }
 ```
 
+- The proc returns the description instead of a var holding it, so `version` can call a proc (the shader importers read the template's text) and a var initializer cannot.
+- `extensions` names a package-level slice. An inline slice literal in the returned struct is stack memory, and the compiler refuses it.
+- Hooks around an importer (a reimport hook, an evict hook, the glTF clip seams) stay in the package's own `@(phase={key=ImportersInit, mode=Editor})` proc.
 - `name` is stored in .meta files and seeds artifact keys — keep it stable.
 - Bump `version` when the importer's output changes.
 - Settings defaults come from the type's `reset_<Type>` (plugins/engine/docs/Components.md, "Lifecycle procs"). The pipeline creates a defaulted instance and overlays the meta's settings object, so fields absent from old metas keep their defaults, as described in [Missing fields and reset defaults](../../plugins/engine/docs/Components.md#missing-fields-and-reset-defaults).

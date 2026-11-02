@@ -15,18 +15,24 @@ import "moonhug:packages/engine/editor/importers"
 import "moonhug:libs/log"
 import sg "moonhug:packages/shadergraph"
 
+_SHADERGRAPH_EXTS := []string{".shadergraph"}
+
+@(importer)
+shadergraph_importer :: proc() -> asset_pipeline.Importer_Desc {
+	return {
+		name         = "shadergraph",
+		version      = importers.shader_importer_version(), // the template is an input here too
+		extensions   = _SHADERGRAPH_EXTS,
+		settings_tid = typeid_of(engine.ShaderSettings),
+		run          = _import_shadergraph,
+	}
+}
+
 @(phase={key=ImportersInit, order=2, mode=Editor})
 shadergraph_importers_init :: proc() {
 	@(static) done := false
 	if done do return
 	done = true
-	asset_pipeline.importer_register({
-		name         = "shadergraph",
-		version      = importers.shader_importer_version(), // the template is an input here too
-		extensions   = {".shadergraph"},
-		settings_tid = typeid_of(engine.ShaderSettings),
-		run          = _import_shadergraph,
-	})
 	engine.asset_db_add_evict_hook(_shadergraph_path_changed)
 }
 

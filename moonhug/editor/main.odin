@@ -372,6 +372,7 @@ editor_init :: proc() {
     // registries inspector.init just created.
     install_providers()
     phase_editor_run(.SerializationInit)
+    registration.register_importers()
     phase_editor_run(.ImportersInit)
     clip.init()
     inspector.selected_sub = _inspected_sub

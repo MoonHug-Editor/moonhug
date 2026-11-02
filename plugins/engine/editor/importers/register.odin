@@ -36,38 +36,48 @@ _TEXTURE_EXTS := []string{".png", ".jpg", ".jpeg", ".bmp", ".hdr"} // .hdr decod
 _MESH_EXTS    := []string{".glb", ".gltf"}
 _SHADER_EXTS  := []string{".glsl"}
 
-@(phase={key=ImportersInit, order=0, mode=Editor})
-register_builtin_importers :: proc() {
-	@(static) done := false
-	if done do return
-	done = true
-
-	assets.asset_db_add_path_changed_hook(_reimport_changed_shader)
-
-	asset_pipeline.importer_register({
+@(importer)
+texture_importer :: proc() -> asset_pipeline.Importer_Desc {
+	return {
 		name         = "texture",
 		version      = 1,
 		extensions   = _TEXTURE_EXTS,
 		settings_tid = typeid_of(engine.TextureSettings),
 		run          = _import_texture,
-	})
-	asset_pipeline.importer_register({
+	}
+}
+
+@(importer)
+mesh_importer :: proc() -> asset_pipeline.Importer_Desc {
+	return {
 		name         = "mesh",
 		version      = 10, // 2: artifacts carry skin data. 3: clips baked to a fan-out. 4: re-bake the clips the startup sweep deleted. 5: vertex tangents. 6: a second uv set. 7: the clips listed as subs in the meta. 8: part and clip files named by id (_s<id>). 9: a part with no triangles gets an empty file, ids are never reused (next_id). 10: cubic glTF clips bake their tangents
 		extensions   = _MESH_EXTS,
 		settings_tid = typeid_of(engine.MeshSettings),
 		run          = _import_mesh,
 		artifacts    = _mesh_artifacts,
-	})
-	// The surface template is an input of every surface shader, so its text
-	// is part of the importer version: a template edit reimports them all.
-	asset_pipeline.importer_register({
+	}
+}
+
+// The surface template is an input of every surface shader, so its text is
+// part of the importer version: a template edit reimports them all.
+@(importer)
+shader_importer :: proc() -> asset_pipeline.Importer_Desc {
+	return {
 		name         = "shader",
 		version      = shader_importer_version(),
 		extensions   = _SHADER_EXTS,
 		settings_tid = typeid_of(engine.ShaderSettings),
 		run          = _import_shader,
-	})
+	}
+}
+
+@(phase={key=ImportersInit, order=0, mode=Editor})
+shader_reload_hook_install :: proc() {
+	@(static) done := false
+	if done do return
+	done = true
+	assets.asset_db_add_path_changed_hook(_reimport_changed_shader)
 }
 
 // Shader hot reload: the shader cache's evict hook drops an edited .glsl, this

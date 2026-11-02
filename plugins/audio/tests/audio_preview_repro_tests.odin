@@ -9,6 +9,7 @@ import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
 import "core:testing"
+import "moonhug:registration"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
 import audio "moonhug:packages/audio"
@@ -21,6 +22,7 @@ test_preview_apply_reimport :: proc(t: ^testing.T) {
 	defer free(tc)
 	common.setup(tc)
 	audio_editor.audio_importers_init()
+	registration.register_importers()
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 	audio.mixer_init_headless()

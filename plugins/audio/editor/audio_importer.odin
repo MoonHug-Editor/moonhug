@@ -15,18 +15,22 @@ import audio "moonhug:packages/audio"
 
 _AUDIO_EXTS := []string{".mp3", ".wav", ".ogg"}
 
-@(phase={key=ImportersInit, order=1, mode=Editor})
-audio_importers_init :: proc() {
-	@(static) done := false
-	if done do return
-	done = true
-	asset_pipeline.importer_register({
+@(importer)
+audio_importer :: proc() -> asset_pipeline.Importer_Desc {
+	return {
 		name         = "audio",
 		version      = 2,
 		extensions   = _AUDIO_EXTS,
 		settings_tid = typeid_of(audio.AudioSettings),
 		run          = _import_audio,
-	})
+	}
+}
+
+@(phase={key=ImportersInit, order=1, mode=Editor})
+audio_importers_init :: proc() {
+	@(static) done := false
+	if done do return
+	done = true
 	engine.asset_pipeline_add_reimport_hook(audio._clip_reimported)
 }
 

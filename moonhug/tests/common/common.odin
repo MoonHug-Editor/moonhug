@@ -58,9 +58,9 @@ _register_once :: proc() {
 	registration.phase_run(.ImportersInit)
 	// The import stack is editor-side (mode=Editor phases, absent from
 	// the dispatcher above) — tests import like the editor does.
-	// Package importers register from the package's OWN tests (this
-	// package never imports moonhug:packages).
-	importers.register_builtin_importers()
+	// Every @(importer) of every installed package, as the editor does.
+	registration.register_importers()
+	importers.shader_reload_hook_install()
 	asset_pipeline.import_pipeline_install()
 	// Tests run from the repo root, where the editor's library path would
 	// put the artifact cache: it goes under builds/ instead.

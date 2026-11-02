@@ -12,6 +12,7 @@ import "core:math/linalg"
 import "core:os"
 import "core:strings"
 import "core:testing"
+import "moonhug:registration"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
@@ -270,6 +271,7 @@ test_clip_load_refuses_an_invalid_clip :: proc(t: ^testing.T) {
 	testing.expect(t, os.write_entire_file(good, transmute([]u8)string(_GOOD_CLIP)) == nil, "the good clip is written")
 	// The .anim importer is an editor phase the test bootstrap does not run.
 	animation_editor.animation_importers_init()
+	registration.register_importers()
 	asset_pipeline.asset_pipeline_init()
 	engine.asset_db_init(_LOAD_DIR)
 	defer {

@@ -16,18 +16,15 @@ import text "moonhug:packages/text"
 
 _FONT_EXTS := []string{".ttf", ".otf"}
 
-@(phase={key=ImportersInit, order=1, mode=Editor})
-text_importers_init :: proc() {
-	@(static) done := false
-	if done do return
-	done = true
-	asset_pipeline.importer_register({
+@(importer)
+font_importer :: proc() -> asset_pipeline.Importer_Desc {
+	return {
 		name         = "font",
 		version      = 3,
 		extensions   = _FONT_EXTS,
 		settings_tid = typeid_of(text.FontSettings),
 		run          = text.font_import,
-	})
+	}
 }
 
 // `init` fills the new component before the step is recorded, so redo

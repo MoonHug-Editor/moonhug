@@ -20,18 +20,24 @@ import "moonhug:libs/log"
 import anim "moonhug:packages/animation"
 import cgltf "vendor:cgltf"
 
+_ANIM_EXTS := []string{".anim"}
+
+@(importer)
+animation_importer :: proc() -> asset_pipeline.Importer_Desc {
+	return {
+		name         = "animation",
+		version      = 1,
+		extensions   = _ANIM_EXTS,
+		settings_tid = typeid_of(anim.Animation_Clip_Settings),
+		run          = _import_animation,
+	}
+}
+
 @(phase={key=ImportersInit, order=1, mode=Editor})
 animation_importers_init :: proc() {
 	@(static) done := false
 	if done do return
 	done = true
-	asset_pipeline.importer_register({
-		name         = "animation",
-		version      = 1,
-		extensions   = {".anim"},
-		settings_tid = typeid_of(anim.Animation_Clip_Settings),
-		run          = _import_animation,
-	})
 	engine.asset_pipeline_add_reimport_hook(anim.animation_clip_reimported)
 	// The mesh importer hands every glTF animation here, so a model's clips
 	// bake to its own artifacts and need no extraction to be played.

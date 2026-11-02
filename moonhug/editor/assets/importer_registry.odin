@@ -55,6 +55,11 @@ _importer_registry_maps_init :: proc "contextless" () {
 	_importer_by_ext = make(map[string]string, alloc)
 }
 
+// Declares an asset importer: the proc returns its Importer_Desc, and the
+// generated register_importers (importer_gen) registers it before the
+// ImportersInit phase. A package's hooks around its importer (reimport,
+// evict) stay in its own ImportersInit proc.
+@(extension_point={attribute="importer", target="proc", fields=""})
 importer_register :: proc(desc: Importer_Desc) {
 	// Process-global registry: never borrow the caller's allocator (tests hand
 	// out scoped tracking allocators that tear down afterwards).

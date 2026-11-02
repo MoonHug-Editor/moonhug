@@ -11,6 +11,7 @@ import "core:math"
 import "core:os"
 import "core:strings"
 import "core:testing"
+import "moonhug:registration"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
 import audio "moonhug:packages/audio"
@@ -77,6 +78,7 @@ test_import_bakes_volume_and_clip_loads :: proc(t: ^testing.T) {
 	defer free(tc)
 	common.setup(tc)
 	audio_editor.audio_importers_init()
+	registration.register_importers()
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 	audio.mixer_init_headless()
@@ -191,6 +193,7 @@ test_audiosource_component :: proc(t: ^testing.T) {
 	defer free(tc)
 	common.setup(tc)
 	audio_editor.audio_importers_init()
+	registration.register_importers()
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 
