@@ -54,21 +54,39 @@ Doc_Key :: struct {
 @(private)
 _docs: map[Doc_Key]^Asset_Doc
 
-// Pushes an asset document's values into the runtime cache its asset is
-// sampled from (the engine's material cache for materials), so an undone or
-// redone document shows before it is saved. The engine and packages register
-// one for their asset types at EditorInit. `doc` is the document's typed
-// value, the registered typeid.
-Doc_Preview :: proc(guid: core.Asset_GUID, doc: any)
+// Runs once each time a document of its type changed, by any route: an
+// inspector edit, an undo or redo, a revert. The one for a type pushes the
+// document's values into the runtime its asset is sampled from (the engine's
+// material cache for materials), so the change shows before it is saved.
+// `doc` is the document's typed value, the registered typeid. Declared as
+// `on_changed_<Type>` with @(asset_doc={type=T}) on the proc, registered by
+// the generated register_asset_docs (asset_doc_gen); `on_saved_<Type>` is
+// Doc_Saved below. Rows around the document's fields are an inspector
+// wrapper (inspector_funnel.odin), not a hook.
+Doc_Changed :: proc(guid: core.Asset_GUID, doc: any)
 
 @(private)
-_doc_previews: map[typeid]Doc_Preview
+_doc_changed_hooks: map[typeid]Doc_Changed
 
 // Process-global registry: never borrows the caller's allocator.
-doc_preview_register :: proc(tid: typeid, p: Doc_Preview) {
+@(extension_point={attribute="asset_doc", target="proc", fields="type"})
+doc_changed_register :: proc(tid: typeid, p: Doc_Changed) {
     context.allocator = runtime.default_allocator()
-    if _doc_previews == nil do _doc_previews = make(map[typeid]Doc_Preview)
-    _doc_previews[tid] = p
+    if _doc_changed_hooks == nil do _doc_changed_hooks = make(map[typeid]Doc_Changed)
+    _doc_changed_hooks[tid] = p
+}
+
+// Tells the type's on_changed proc, if any, that `doc` changed.
+asset_doc_changed :: proc(doc: ^Asset_Doc) {
+    if changed, has := _doc_changed_hooks[doc.data.id]; has do changed(doc.guid, doc.data)
+}
+
+// The open document whose value lives at `ptr`, nil when none does. An
+// inspector wrapper on a document type asks for its document this way: the
+// wrapper's ctx carries the value, the document carries the path and guid.
+asset_doc_of :: proc(ptr: rawptr) -> ^Asset_Doc {
+    for _, doc in _docs do if doc.data.data == ptr do return doc
+    return nil
 }
 
 // Runs after a document of its type is written: what the file feeds and a
@@ -239,17 +257,13 @@ asset_doc_discard :: proc(doc: ^Asset_Doc) {
 @(private = "file")
 _doc_replace :: proc(doc: ^Asset_Doc, fresh: any, dirty: bool) {
     context.allocator = doc_alloc()
-    tid := fresh.id
     doc_data_retire(doc.data)
     doc.data = fresh
     doc.edits += 1 // a new value: undo, redo, discard
     doc.dirty = dirty
     // The inspector may be showing this doc — repoint its view.
     for data in _all_data() do if data.doc == doc do data.fileData = doc.data
-    // Live preview only syncs the DISPLAYED doc each frame. A document undone
-    // while another asset is shown must still reach its runtime cache (the
-    // material cache, the clip cache the scrub preview samples from).
-    if preview, has := _doc_previews[tid]; has do preview(doc.guid, doc.data)
+    asset_doc_changed(doc)
 }
 
 // The asset left the project (engine asset-gone hook, fired by a refresh

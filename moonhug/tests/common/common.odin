@@ -68,6 +68,7 @@ _register_once :: proc() {
 	// Like editor_init: the inspector registries, then every @(provider_install)
 	// proc (providers_generated.odin) fills them and the providers.
 	inspector.init()
+	registration.register_asset_docs()
 	install_providers()
 	// The asset each view edits (@(view_document)), as the editor registers them.
 	register_view_documents()

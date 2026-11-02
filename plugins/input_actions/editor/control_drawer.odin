@@ -16,16 +16,13 @@ import actions "moonhug:packages/input_actions"
 @(provider_install)
 _register_key_drawer :: proc() {
 	inspector.add_property_drawer(typeid_of(actions.Key_Name), draw_key_name)
-	// The open document reaches the running game every frame, saved or not,
-	// as the Render Layers and Material documents do.
-	inspector.add_asset_doc_hook(typeid_of(actions.Input_Actions), {
-		after = proc(doc: ^inspector.Asset_Doc) {
-			actions.actions_preview(doc.guid, (cast(^actions.Input_Actions)doc.data.data)^)
-		},
-	})
-	inspector.doc_preview_register(typeid_of(actions.Input_Actions), proc(guid: core.Asset_GUID, doc: any) {
-		actions.actions_preview(guid, (cast(^actions.Input_Actions)doc.data)^)
-	})
+}
+
+// The open document reaches the running game every frame, saved or not,
+// as the Render Layers and Material documents do.
+@(asset_doc={type=actions.Input_Actions})
+on_changed_Input_Actions :: proc(guid: core.Asset_GUID, doc: any) {
+	actions.actions_preview(guid, (cast(^actions.Input_Actions)doc.data)^)
 }
 
 @(private = "file") _search: [64]u8

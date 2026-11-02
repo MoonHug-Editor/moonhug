@@ -12,33 +12,25 @@ import "moonhug:packages/engine"
 _register_container_drawers :: proc() {
 	inspector.add_property_drawer(typeid_of([dynamic]engine.Material_Property), draw_material_properties)
 	inspector.add_property_drawer(typeid_of([dynamic]engine.Material_Texture), draw_material_textures)
+	inspector.add_component_wrapper(typeid_of(engine.Material), _material_wrapper)
 }
 
-// The open .mat document is the material the property drawers read their
-// shader from, and its edits render live: the values go into the engine's
-// material cache every frame, saved or not. Save persists them, unsaved edits
-// revert on the next editor run. Property rows for the assigned custom shader
-// come from its reflected UBO members, so names are never typed by hand.
-@(provider_install)
-_register_material_doc_hook :: proc() {
-	inspector.add_asset_doc_hook(typeid_of(engine.Material), {
-		before = proc(doc: ^inspector.Asset_Doc) { current_material = cast(^engine.Material)doc.data.data },
-		after = proc(doc: ^inspector.Asset_Doc) {
-			mat := cast(^engine.Material)doc.data.data
-			_ = engine.material_sync_properties(mat)
-			engine.material_preview(doc.guid, mat^)
-			current_material = nil
-		},
-	})
-	register_material_doc_preview()
+// The material being drawn is the one the property drawers read their shader
+// from: property rows for the assigned custom shader come from its reflected
+// UBO members, so names are never typed by hand.
+@(private = "file")
+_material_wrapper :: proc(ctx: ^inspector.Component_Ctx) {
+	current_material = cast(^engine.Material)ctx.ptr
+	inspector.draw(ctx)
+	current_material = nil
 }
 
-// A material undone or reverted while another asset is shown reaches the
-// cache too.
-register_material_doc_preview :: proc() {
-	inspector.doc_preview_register(typeid_of(engine.Material), proc(guid: engine.Asset_GUID, doc: any) {
-		mat := cast(^engine.Material)doc.data
-		_ = engine.material_sync_properties(mat)
-		engine.material_preview(guid, mat^)
-	})
+// A changed material renders live: its values go into the engine's material
+// cache, saved or not, after an edit, an undo or a revert. Save persists
+// them, unsaved edits revert on the next editor run.
+@(asset_doc={type=engine.Material})
+on_changed_Material :: proc(guid: engine.Asset_GUID, doc: any) {
+	mat := cast(^engine.Material)doc.data
+	_ = engine.material_sync_properties(mat)
+	engine.material_preview(guid, mat^)
 }

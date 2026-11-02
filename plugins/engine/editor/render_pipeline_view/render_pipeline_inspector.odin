@@ -15,7 +15,7 @@ import "moonhug:packages/engine"
 
 @(phase={key=EditorInit, order=1, mode=Editor})
 render_pipeline_inspector_install :: proc() {
-	inspector.add_asset_doc_hook(typeid_of(engine.Render_Pipeline), {before = _render_pipeline_doc_before})
+	inspector.add_component_wrapper(typeid_of(engine.Render_Pipeline), _render_pipeline_wrapper)
 	// A double click or Enter on a .renderpipeline in the Project view opens it.
 	asset_pipeline.asset_open_handler_add(".renderpipeline", _open_from_project)
 }
@@ -28,8 +28,12 @@ _open_from_project :: proc(path: string) -> bool {
 	return true
 }
 
+// An Open button above the pipeline's fields, for the document being drawn.
 @(private = "file")
-_render_pipeline_doc_before :: proc(doc: ^inspector.Asset_Doc) {
-	if im.Button("Open Render Pipeline") do render_pipeline_open(doc.path, doc.guid)
-	im.Separator()
+_render_pipeline_wrapper :: proc(ctx: ^inspector.Component_Ctx) {
+	if doc := inspector.asset_doc_of(ctx.ptr); doc != nil {
+		if im.Button("Open Render Pipeline") do render_pipeline_open(doc.path, doc.guid)
+		im.Separator()
+	}
+	inspector.draw(ctx)
 }

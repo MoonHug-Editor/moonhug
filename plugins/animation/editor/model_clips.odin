@@ -8,7 +8,7 @@ package animation_editor
 // - The sampler that poses the editor's clip rig, for the clip preview and
 //   clip thumbnails (subassets.clip_sampler).
 // - The live preview of an edited .anim document, so an undone or redone
-//   clip reaches the clip cache (inspector.doc_preview_register).
+//   clip reaches the clip cache (clip_doc_preview).
 //
 // The clip rows themselves come from the model provider in
 // plugins/engine/editor/mesh_editor, which lists parts and clips. A clip row drags as
@@ -31,9 +31,11 @@ import anim "moonhug:packages/animation"
 model_clips_install :: proc() {
 	inspector.add_asset_wrapper("mesh", _model_clip_section)
 	subassets.clip_sampler = _sample_clip
-	inspector.doc_preview_register(typeid_of(anim.AnimationClip), proc(guid: engine.Asset_GUID, doc: any) {
-		anim.animation_clip_preview(engine.PPtr{guid = guid}, doc.(anim.AnimationClip))
-	})
+}
+
+@(asset_doc={type=anim.AnimationClip})
+on_changed_AnimationClip :: proc(guid: engine.Asset_GUID, doc: any) {
+	anim.animation_clip_preview(engine.PPtr{guid = guid}, doc.(anim.AnimationClip))
 }
 
 @(private = "file")

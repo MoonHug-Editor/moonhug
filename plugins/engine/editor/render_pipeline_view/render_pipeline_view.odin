@@ -396,11 +396,9 @@ _rp_select_slot :: proc(name: string) {
 }
 
 // A save reimports the pipeline.
-@(provider_install)
-_rp_install_document :: proc() {
-	inspector.doc_saved_register(typeid_of(engine.Render_Pipeline), proc(guid: engine.Asset_GUID, path: string) {
-		_ = asset_pipeline.asset_pipeline_import_asset(path)
-	})
+@(asset_doc={type=engine.Render_Pipeline})
+on_saved_Render_Pipeline :: proc(guid: engine.Asset_GUID, path: string) {
+	_ = asset_pipeline.asset_pipeline_import_asset(path)
 }
 
 // --- Popups -------------------------------------------------------------------------

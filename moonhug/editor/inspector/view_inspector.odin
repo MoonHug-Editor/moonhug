@@ -136,7 +136,6 @@ selected_sub: proc(path: string) -> core.Local_ID
 init :: proc() {
     mapPropertyDrawer = make(MapPropertyDrawer)
     mapPropertyDrawerOrigin = make(map[typeid]string)
-    asset_doc_hooks = make(map[typeid]Asset_Doc_Hook)
     mapAssetPreview = make(map[string]proc(path: string))
     decorator_registry = make(DecoratorsMap)
     decorator_origin_registry = make(map[typeid][]string)
@@ -160,7 +159,6 @@ shutdown_registries :: proc() {
     _shutdown_context_menu_registry()
     delete(mapPropertyDrawer)
     delete(mapPropertyDrawerOrigin)
-    delete(asset_doc_hooks)
     delete(mapAssetPreview)
     for _, v in decorator_registry {
         delete(v)
@@ -521,38 +519,25 @@ _draw_asset_inspector :: proc() {
     }
 }
 
-// The body of an asset document: its rows, whole-document undo, and the live
-// preview. Drawn by the Project Inspector for its open file and by an
-// `expand` foldout under a component's reference row (asset_expand.odin), so
-// both edit the same document and an unsaved change shows in both.
+// The body of an asset document: its rows and whole-document undo, with the
+// type's on_changed proc told after a frame that edited it. Drawn by the
+// Project Inspector for its open file and by an `expand` foldout under a
+// component's reference row (asset_expand.odin), so both edit the same
+// document and an unsaved change shows in both.
 draw_asset_doc :: proc(doc: ^Asset_Doc) {
     if doc == nil || doc.data.data == nil do return
-    hook := asset_doc_hooks[doc.data.id]
-    if hook.before != nil do hook.before(doc)
     // Whole-document undo: _undo_finalize_widget after each drawer snapshots
     // and commits against this owner, exactly like the component inspector.
     undo.push_asset_owner(doc.guid, doc.data.data, doc.data.id)
     prev_changed := inspector_changed
     inspector_changed = false
     draw_inspector(doc.data)
-    if inspector_changed do asset_doc_mark_edited(doc)
+    if inspector_changed {
+        asset_doc_mark_edited(doc)
+        asset_doc_changed(doc)
+    }
     inspector_changed |= prev_changed
     undo.pop_owner()
-    if hook.after != nil do hook.after(doc)
-}
-
-// Runs around draw_asset_doc for one document type: `before` sees the
-// document before its fields draw, `after` sees it after every edit of the
-// frame. Engine-side packages register theirs at EditorInit order 1 or later.
-Asset_Doc_Hook :: struct {
-	before, after: proc(doc: ^Asset_Doc),
-}
-
-asset_doc_hooks: map[typeid]Asset_Doc_Hook
-
-add_asset_doc_hook :: proc(tid: typeid, hook: Asset_Doc_Hook) {
-	assert(_registries_ready, "add_asset_doc_hook before inspector.init")
-	asset_doc_hooks[tid] = hook
 }
 
 _draw_import_settings_inspector :: proc() {

@@ -345,7 +345,7 @@ System :: struct {
 // A fixed-capacity backing array keeps registration allocation-free. Modules no
 // longer need a setup proc: a component store is created lazily by the first
 // gen_db.get_or_create_comps(w, T) call, so there is nothing to initialize up front.
-@(private) _MAX :: 64
+@(private) _MAX :: 128
 @(private) _systems: [_MAX]System
 @(private) _system_count: int
 @(private) _packages: []string

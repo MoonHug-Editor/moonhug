@@ -368,6 +368,8 @@ editor_init :: proc() {
     // Documents live on this allocator, the one drawers and undo writes use.
     inspector.doc_allocator = context.allocator
     inspector.init()
+    // Every @(asset_doc) declaration (registration/asset_docs_generated.odin).
+    registration.register_asset_docs()
     // Every @(provider_install) proc (providers_generated.odin): they fill the
     // registries inspector.init just created.
     install_providers()
