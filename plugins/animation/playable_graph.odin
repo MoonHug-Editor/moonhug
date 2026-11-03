@@ -306,6 +306,10 @@ Binding_Slot :: struct {
 	// them keeps the transform's current value at every write. A rotation
 	// has no lanes: an Euler row's unanimated angles come from default_rot.
 	pos_lanes:   Lane_Set,
+	// The euler angles the rows drive, and whether a quaternion row drives
+	// the rotation whole: the restore puts only the driven angles back.
+	eul_lanes:   Lane_Set,
+	rot_whole:   bool,
 	scl_lanes:   Lane_Set,
 	default_pos: [3]f32,
 	default_rot: [4]f32,
@@ -366,6 +370,8 @@ _binding_slot :: proc(b: ^Animation_Binding, path: string, ch_path: Animation_Pa
 	#partial switch ch_path {
 	case .Position: s.pos_lanes += lanes
 	case .Scale:    s.scl_lanes += lanes
+	case .Euler:    s.eul_lanes += lanes & {0, 1, 2} // the angles only, lane 3 is the mask's fourth bit
+	case .Rotation: s.rot_whole = true
 	}
 }
 
@@ -496,7 +502,18 @@ animation_binding_write_defaults :: proc(b: ^Animation_Binding) {
 		t := engine.pool_get(&w.transforms, engine.Handle(s.target))
 		if t == nil do continue
 		if .Position in s.animated do for l in s.pos_lanes do if l < 3 do t.position[l] = s.default_pos[l]
-		if .Rotation in s.animated do t.rotation = s.default_rot
+		if .Rotation in s.animated {
+			if s.rot_whole || s.eul_lanes == {} {
+				t.rotation = s.default_rot
+			} else {
+				// Euler rows: the default's driven angles over the angles the
+				// object holds now, by the one combining rule, so an angle
+				// the rows leave to the object keeps a write made meanwhile.
+				d := engine.quat_to_euler_xyz(s.default_rot)
+				trs := Clip_TRS{eul = {d.x, d.y, d.z, 0}, eul_lanes = s.eul_lanes}
+				t.rotation = animation_trs_rotation(trs, t.rotation)
+			}
+		}
 		if .Scale in s.animated do for l in s.scl_lanes do if l < 3 do t.scale[l] = s.default_scl[l]
 	}
 	for &s in b.prop_slots {

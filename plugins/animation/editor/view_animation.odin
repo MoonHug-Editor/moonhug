@@ -81,6 +81,7 @@ _pv: struct {
 	graph:     anim.Playable_Graph, // the component's FULL authored graph
 	node:      anim.Playable_Handle, // the scrubbed clip's node (weight 1)
 	graph_sig: u64, // authored clip set the graph was built from
+	rows_sig:  u64, // the shown clip's rows and lanes the binding holds (_pv_rows_sig)
 	ready:     bool,
 
 	// STATE mode: the States tree is previewing an authored state rather than

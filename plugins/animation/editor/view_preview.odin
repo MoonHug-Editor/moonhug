@@ -45,6 +45,22 @@ _pv_authored_sig :: proc(a: ^anim.Animation) -> u64 {
 	return sig
 }
 
+// A fingerprint of the clip's rows: which fields they drive and in which
+// lanes, what the binding is built from.
+@(private = "file")
+_pv_rows_sig :: proc(clip: ^anim.AnimationClip) -> u64 {
+	sig := u64(0xcbf29ce484222325)
+	for &ch in clip.channels {
+		for s in ([]string{ch.target, ch.component, ch.field}) {
+			for b in transmute([]u8)s do sig = (sig ~ u64(b)) * 0x100000001b3
+			sig = (sig ~ 0xff) * 0x100000001b3
+		}
+		sig = (sig ~ u64(ch.path)) * 0x100000001b3
+		for l in 0 ..< 4 do if l in ch.lanes_off do sig = (sig ~ u64(0x10 + l)) * 0x100000001b3
+	}
+	return sig
+}
+
 @(private = "file")
 _pv_sig_mix :: proc(sig: ^u64, g: engine.PPtr) {
 	// Asset_GUID is a distinct [16]u8: transmute, not cast — an array type
@@ -155,7 +171,14 @@ animation_preview_apply :: proc() {
 	}
 
 	if _pv.ready && _pv.graph_sig != _pv_authored_sig(a) do _pv_teardown()
-	if !_pv.ready do _pv_build_graph(a)
+	// The binding takes each row's lanes when the graph binds: a row added,
+	// removed or with a lane toggled since then rebinds, or the pose and its
+	// restore would keep writing lanes the clip no longer drives.
+	if _pv.ready && clip != nil && _pv.rows_sig != _pv_rows_sig(clip) do _pv_teardown()
+	if !_pv.ready {
+		_pv_build_graph(a)
+		if clip != nil do _pv.rows_sig = _pv_rows_sig(clip)
+	}
 
 	if _pv.entry != 0 {
 		_pv_entry_tick(a, im.GetIO().DeltaTime)

@@ -12,6 +12,7 @@ import "core:testing"
 import "moonhug:packages/engine"
 import "moonhug:editor"
 import "moonhug:editor/handles"
+import "moonhug:editor/inspector"
 import "moonhug:editor/undo"
 import "moonhug:packages/engine/editor/scene_tools"
 import "moonhug:editor/viewport"
@@ -174,6 +175,204 @@ test_tool_move_moves_the_selection :: proc(t: ^testing.T) {
 	testing.expect_value(t, s.top, steps + 1)
 	undo.apply_undo(s)
 	testing.expectf(t, _close(_pos(a), {0, 0, 0}, 1e-4) && _close(_pos(b), {3, -2, 0}, 1e-4), "one step: %v %v", _pos(a), _pos(b))
+}
+
+// The preview drives A's position with Record off: the drag leaves A where the
+// pose puts it and records nothing for it, and B moves as usual.
+@(private = "file")
+_driven_pos_owner: engine.Handle
+@(private = "file")
+_driven_pos_own: inspector.Driven_Lanes // lanes the clip leaves to the object
+
+@(private = "file")
+_driven_pos_provider :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid, out: rawptr) -> (driven: bool, editable: bool, own: inspector.Driven_Lanes) {
+	if owner != _driven_pos_owner || field_offset != offset_of(engine.Transform, position) do return false, false, {}
+	(cast(^[3]f32)out)^ = {0, 0, 0}
+	return true, false, _driven_pos_own
+}
+
+// The same for one field at `_driven_field`, the scale or the rotation (asked
+// as euler angles).
+@(private = "file")
+_driven_field: uintptr
+@(private = "file")
+_driven_pos_whole: bool // the position is driven in every lane as well
+@(private = "file")
+_driven_field_provider :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid, out: rawptr) -> (driven: bool, editable: bool, own: inspector.Driven_Lanes) {
+	if owner != _driven_pos_owner || field_tid != typeid_of([3]f32) do return false, false, {}
+	(cast(^[3]f32)out)^ = {0, 0, 0}
+	if _driven_pos_whole && field_offset == offset_of(engine.Transform, position) do return true, false, {}
+	if field_offset != _driven_field do return false, false, {}
+	return true, false, _driven_pos_own
+}
+
+// The clip drives X of A's scale: the X handle does nothing, the Y handle scales Y.
+@(test)
+test_tool_scale_follows_the_lanes_the_clip_leaves :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+	saved := _tool_save()
+	defer _tool_restore(saved)
+
+	a := engine.transform_new("A")
+	_driven_pos_owner = engine.Handle(a)
+	_driven_field = offset_of(engine.Transform, scale)
+	_driven_pos_own = {1, 2}
+	_driven_pos_whole = true // a driven position keeps the object in Scale mode
+	defer _driven_pos_whole = false
+	prev_provider := inspector.driven_provider
+	inspector.driven_provider = _driven_field_provider
+	defer inspector.driven_provider = prev_provider
+
+	editor.sel_scene_only(a)
+	viewport.gizmo_mode = .Scale
+	steps := s.top
+	handles_drag(handles_test_view(), {0.75, 0, 0}, {1.5, 0, 0}, _tool_body, nil)
+	testing.expectf(t, _close(_scale(a), {1, 1, 1}, 1e-4), "X is driven: the scale stays, got %v", _scale(a))
+	testing.expect_value(t, s.top, steps)
+
+	handles_drag(handles_test_view(), {0, 0.75, 0}, {0, 1.5, 0}, _tool_body, nil)
+	testing.expectf(t, _close(_scale(a), {1, 1.5, 1}, 1e-3), "Y is the object's: Y scales, got %v", _scale(a))
+	testing.expectf(t, _close(_pos(a), {0, 0, 0}, 1e-4), "the driven position stays, got %v", _pos(a))
+	testing.expect_value(t, s.top, steps + 1)
+}
+
+// The clip drives Z of A's rotation as an euler angle: the Z ring does
+// nothing. With Z left to the object the ring turns it about Z.
+@(test)
+test_tool_rotate_follows_the_angles_the_clip_leaves :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+	saved := _tool_save()
+	defer _tool_restore(saved)
+
+	a := engine.transform_new("A")
+	_driven_pos_owner = engine.Handle(a)
+	_driven_field = offset_of(engine.Transform, rotation)
+	_driven_pos_own = {0, 1} // Z driven
+	prev_provider := inspector.driven_provider
+	inspector.driven_provider = _driven_field_provider
+	defer inspector.driven_provider = prev_provider
+
+	editor.sel_scene_only(a)
+	viewport.gizmo_mode = .Rotate
+	steps := s.top
+	handles_drag(handles_test_view(), _ring_point(45), _ring_point(135), _tool_body, nil)
+	testing.expectf(t, _close(_turned_x(a), {1, 0, 0}, 1e-3), "Z is driven: no turn, got %v", _turned_x(a))
+	testing.expect_value(t, s.top, steps)
+
+	_driven_pos_own = {2} // X and Y driven, Z the object's
+	handles_drag(handles_test_view(), _ring_point(45), _ring_point(135), _tool_body, nil)
+	testing.expectf(t, _close(_turned_x(a), {0, 1, 0}, 1e-3), "Z is the object's: 90 degrees about Z, got %v", _turned_x(a))
+	testing.expect_value(t, s.top, steps + 1)
+}
+
+@(test)
+test_tool_move_leaves_a_driven_transform :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+	saved := _tool_save()
+	defer _tool_restore(saved)
+
+	a := engine.transform_new("A")
+	b := engine.transform_new("B")
+	engine.transform_set_world_position(b, {3, -2, 0})
+	_driven_pos_owner = engine.Handle(a)
+	_driven_pos_own = {}
+	prev_provider := inspector.driven_provider
+	inspector.driven_provider = _driven_pos_provider
+	defer inspector.driven_provider = prev_provider
+
+	editor.sel_scene_only(b)
+	editor.sel_scene_add(a) // active: the gizmo sits on A
+	viewport.gizmo_mode = .Translate
+	steps := s.top
+	handles_drag(handles_test_view(), {0.75, 0, 0}, {1.75, 0, 0}, _tool_body, nil)
+
+	testing.expectf(t, _close(_pos(a), {0, 0, 0}, 1e-4), "A is driven and stays, got %v", _pos(a))
+	testing.expectf(t, _close(_pos(b), {4, -2, 0}), "B moves, got %v", _pos(b))
+	testing.expect_value(t, s.top, steps + 1)
+	undo.apply_undo(s)
+	testing.expectf(t, _close(_pos(a), {0, 0, 0}, 1e-4) && _close(_pos(b), {3, -2, 0}, 1e-4), "one step for B only: %v %v", _pos(a), _pos(b))
+}
+
+// The clip drives A's X only: a drag along X leaves A, a drag along Y moves it,
+// as the inspector's row lets the Y lane be edited.
+@(test)
+test_tool_move_follows_the_lanes_the_clip_leaves :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+	saved := _tool_save()
+	defer _tool_restore(saved)
+
+	a := engine.transform_new("A")
+	_driven_pos_owner = engine.Handle(a)
+	_driven_pos_own = {1, 2}
+	prev_provider := inspector.driven_provider
+	inspector.driven_provider = _driven_pos_provider
+	defer inspector.driven_provider = prev_provider
+
+	editor.sel_scene_only(a)
+	viewport.gizmo_mode = .Translate
+	steps := s.top
+	handles_drag(handles_test_view(), {0.75, 0, 0}, {1.75, 0.5, 0}, _tool_body, nil)
+	testing.expectf(t, _close(_pos(a), {0, 0, 0}, 1e-4), "X is driven: A stays, got %v", _pos(a))
+	testing.expect_value(t, s.top, steps)
+
+	handles_drag(handles_test_view(), {0, 0.75, 0}, {0.5, 1.75, 0}, _tool_body, nil)
+	testing.expectf(t, _close(_pos(a), {0, 1, 0}), "Y is the object's: A moves along Y, got %v", _pos(a))
+	testing.expect_value(t, s.top, steps + 1)
+	undo.apply_undo(s)
+	testing.expectf(t, _close(_pos(a), {0, 0, 0}, 1e-4), "undo puts it back, got %v", _pos(a))
+}
+
+// A drag on an object of a prefab instance records the override of the field
+// it changed, as the inspector's row does.
+@(test)
+test_tool_move_records_the_override_on_a_prefab_instance :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+	saved := _tool_save()
+	defer _tool_restore(saved)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	host := find_transform_named(&tc.world, loaded, "RootC", false)
+	edited := find_transform_named(&tc.world, loaded, "TransformC_Variant", true)
+	if host == {} || edited == {} {
+		testing.fail_now(t, "the fixture has RootC and TransformC_Variant")
+	}
+	ct := engine.pool_get(&tc.world.transforms, engine.Handle(edited))
+	// The variant overrides its position already: the scale is free.
+	engine.transform_set_world_position(edited, {0, 0, 0})
+	ct.scale = {1, 1, 1}
+	testing.expect(t, !engine.nested_scene_has_root_override(loaded, host, ct.local_id, "scale"), "no scale override before the drag")
+
+	editor.sel_scene_only(edited)
+	viewport.gizmo_mode = .Scale
+	handles_drag(handles_test_view(), {0.75, 0, 0}, {1.5, 0, 0}, _tool_body, nil)
+
+	testing.expectf(t, _close(_scale(edited), {1.5, 1, 1}), "X scales, got %v", _scale(edited))
+	testing.expect(t, engine.nested_scene_has_root_override(loaded, host, ct.local_id, "scale"), "the drag records the scale override")
 }
 
 // --- Rotate ---------------------------------------------------------------------------
