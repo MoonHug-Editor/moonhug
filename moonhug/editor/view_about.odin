@@ -1,5 +1,6 @@
 package editor
 
+import "core:fmt"
 import gfx "moonhug:libs/gfx"
 import im "moonhug:external/odin-imgui"
 import "menu"
@@ -43,7 +44,8 @@ draw_about_popup :: proc() {
 
         im.Separator()
         im.Spacing()
-        im.Text("MoonHug Editor v%s", VERSION)
+        // imgui formats in C: the text is built here, one cstring for %s.
+        im.Text("%s", fmt.ctprintf("%s v%s", WINDOW_TITLE, version_text()))
         im.Spacing()
         im.Separator()
         im.Spacing()

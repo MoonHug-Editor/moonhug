@@ -94,7 +94,7 @@ _dock_nodes :: proc() -> map[^im.Window]^im.DockNode {
 // The windows a person sees as views: open this frame or the last, docked or
 // floating, not a child of another window, popup, tooltip or dock host, not
 // a "##" host (the dockspace, the menu bar).
-@(private = "file")
+@(private)
 _view_windows :: proc() -> []^im.Window {
 	ctx := im.GetCurrentContext()
 	out := make([dynamic]^im.Window, context.temp_allocator)
@@ -130,7 +130,7 @@ _is_child_name :: proc(name: string) -> bool {
 
 // The open window `query` names: its title or id, case ignored, else the
 // one window whose title or id contains it.
-@(private = "file")
+@(private)
 _find_view :: proc(query: string) -> (^im.Window, Mcp_Error) {
 	if query == "" do return nil, {"bad_request", "need window (a title or id from window_list)"}
 	q := strings.to_lower(query, context.temp_allocator)

@@ -3,7 +3,9 @@ package editor
 import gfx "moonhug:libs/gfx"
 import "core:encoding/json"
 import "core:encoding/uuid"
+import "core:fmt"
 import "core:os"
+import "core:strings"
 import "menu"
 import wnd "window"
 import "moonhug:editor/handles"
@@ -15,6 +17,16 @@ import "moonhug:libs/gizmos"
 
 WINDOW_TITLE :: "MoonHug Editor"
 VERSION :: #load("../version", string)
+
+// The version file ends in a newline: the number alone.
+version_text :: proc() -> string {
+	return strings.trim_space(VERSION)
+}
+
+// The OS window's title and the app menu's: the editor and its version.
+window_title :: proc() -> string {
+	return fmt.tprintf("%s %s", WINDOW_TITLE, version_text())
+}
 
 // Per-DEVELOPER editor state, never committed (Unity's UserSettings): window
 // geometry, which scenes and windows were open, panel visibility, theme, grid

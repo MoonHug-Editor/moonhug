@@ -529,6 +529,9 @@ _edit_begin :: proc(field_ptr: rawptr, field_tid: typeid, offset: uintptr, label
 _edit_end :: proc(e: ^Edit) -> (finished: bool) {
 	if !e.provisional do _edit_depth -= 1
 	if e.nested do return false
+	// The row probe (row_probe.odin) wants the widget: a provisional edit
+	// encloses rows of its own, whose last item is not this row's.
+	if !e.provisional do row_probe_record(e.label)
 	if e.driven {
 		// read-only: the buffer is the driven value, reseeded every frame, and
 		// an edit of a driven lane is dropped; an edit of a lane the driver
