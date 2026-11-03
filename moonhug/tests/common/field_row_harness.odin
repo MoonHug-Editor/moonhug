@@ -31,6 +31,7 @@ Frame :: struct {
 	activated:   bool, // the gesture began (mouse went down on the widget)
 	active:      bool, // the widget owns input (still dragging / focused)
 	deactivated: bool, // the gesture ended (released, or value committed)
+	popup:       bool, // any popup is open this frame
 
 	// What the drawer writes into the field this frame, if anything. nil leaves
 	// the value alone — which is the important case: a row that merely DRAWS
@@ -60,10 +61,8 @@ _harness_pending_write: proc(field_ptr: rawptr)
 
 @(private)
 _harness_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
-	if _harness_pending_write != nil {
-		_harness_pending_write(ptr)
-		inspector.mark_inspector_changed()
-	}
+	// Writes like a drawer: the row sees the change by comparing the value.
+	if _harness_pending_write != nil do _harness_pending_write(ptr)
 }
 
 // Replays `frames` through the real field_edit_row, one frame per entry.
@@ -80,6 +79,7 @@ row_replay :: proc(h: ^Row_Harness, frames: []Frame) -> (finish_count: int) {
 			active                 = f.active,
 			deactivated_after_edit = f.deactivated,
 			held                   = f.held,
+			popup                  = f.popup,
 		}
 		// The editor's frame start: a session with no active item anywhere
 		// ends here. Modeled only for popup frames, where it is the mouse

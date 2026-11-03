@@ -320,3 +320,39 @@ test_row_enum_same_pick_leaves_flag_clear :: proc(t: ^testing.T) {
 	testing.expect(t, inspector.is_changed_flag_set(), "a pick of another value raises the flag")
 	testing.expect_value(t, s.top, before_steps + 1)
 }
+
+// A value widget that opens a popup and does not report it: the gradient and
+// curve editors. The click on the row opens the popup, the writes come from
+// inside it with nothing on the row active or hovered.
+@(test)
+test_row_popup_write_without_hold_records :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	a := engine.transform_new("A")
+	w := engine.ctx_world()
+	ta := engine.pool_get(&w.transforms, engine.Handle(a))
+	ta.scale = {1, 1, 1}
+	undo.push_transform_owner(a)
+	defer undo.pop_owner()
+
+	before_steps := s.top
+	h := Row_Harness{
+		field_ptr = &ta.scale,
+		field_tid = typeid_of([3]f32),
+		offset    = offset_of(engine.Transform, scale),
+		label     = "scale",
+	}
+	write :: proc(p: rawptr) { (cast(^[3]f32)p)[1] = 5 }
+	row_replay(&h, {
+		Frame{activated = true, deactivated = true, popup = true}, // the click that opens the popup
+		Frame{write = write, popup = true},                        // a write from inside it
+		Frame{popup = true},                                       // the mouse released inside it
+		frame_idle(),                                              // the popup closed
+	})
+	testing.expect_value(t, ta.scale, [3]f32{1, 5, 1})
+	testing.expect_value(t, s.top, before_steps + 1)
+}

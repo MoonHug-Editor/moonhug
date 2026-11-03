@@ -268,6 +268,19 @@ _widget_hovered :: proc() -> bool {
 @(private = "file")
 _row_hold: bool
 
+// The row clicked on the frame a popup opened owns that popup, the gradient
+// and curve editors: the row is held while any popup stays open, and the
+// popup's writes record like the latch above. A drawer calls nothing for it.
+// Cleared by the row once no popup is open.
+@(private = "file")
+_popup_owner: rawptr
+
+@(private)
+_any_popup_open :: proc() -> bool {
+	if _widget_state_override != nil do return _widget_state_override.popup
+	return im.IsPopupOpen("", im.PopupFlags_AnyPopup)
+}
+
 field_edit_row_hold :: proc() {
 	_row_hold = true
 }
@@ -301,6 +314,7 @@ Widget_State :: struct {
 	active:                 bool, // the widget owns input this frame
 	deactivated_after_edit: bool, // the gesture ended this frame
 	held:                   bool, // a popup owned by the row is open this frame
+	popup:                  bool, // any popup is open this frame (see _popup_owner)
 }
 
 @(private)
@@ -557,6 +571,14 @@ _edit_end :: proc(e: ^Edit) -> (finished: bool) {
 	started := field_edit_row_started()
 	finished = field_edit_row_finished()
 	held := field_edit_row_held()
+	// The row that opened the popup now open is held (see _popup_owner). A
+	// picker brackets its popup's write on its own below.
+	if !e.picker {
+		open := _any_popup_open()
+		if !open && _popup_owner == e.ptr do _popup_owner = nil
+		if open && started do _popup_owner = e.ptr
+		if open && _popup_owner == e.ptr do held = true
+	}
 	// The row's value moved this frame: the inspector marks it, a drawer
 	// calls nothing for that (mark_inspector_changed is for a change outside
 	// the value). Compared on a frame the row is touched, active or under the
