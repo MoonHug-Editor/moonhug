@@ -216,7 +216,7 @@ cmd_test_asan :: proc(args: []string) -> int {
 // Build diagnostics go to stderr so stdout stays a clean JSON-RPC stream.
 cmd_mcp :: proc(args: []string) -> int {
 	os.make_directory_all("builds")
-	if code := run("odin", "build", "moonhug/mcp_shim", COLLECTION, fmt.tprintf("-out:%s", MCP_BIN), "-o:minimal"); code != 0 {
+	if code := run("odin", "build", "moonhug/mcp_shim", IGNORE_ATTRS, COLLECTION, fmt.tprintf("-out:%s", MCP_BIN), "-o:minimal"); code != 0 {
 		return code
 	}
 	return run(MCP_BIN)
