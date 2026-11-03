@@ -446,7 +446,9 @@ _edit_begin :: proc(field_ptr: rawptr, field_tid: typeid, offset: uintptr, label
 	// A driven field (driven.odin) shows the driven value. Asked for the active
 	// object only: peers are not queried. A row drawn by a decorator (no
 	// drawer) is handled by the field loop, which redirects the decorator.
-	e.grouped = _widget_state_override == nil
+	// No drawer: a decorator drew the row before this edit, so an empty group
+	// here would hide its items' gesture. The item state is the decorator's.
+	e.grouped = _widget_state_override == nil && has_drawer
 	if has_drawer do _driven_edit = driven_query_field(field_ptr, field_tid)
 	driven := has_drawer && _driven_edit.state != .None
 	// A provisional edit encloses nothing: the rows inside see depth 0 and
