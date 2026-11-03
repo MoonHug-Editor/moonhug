@@ -199,7 +199,14 @@ _driven_field: uintptr
 _driven_pos_whole: bool // the position is driven in every lane as well
 @(private = "file")
 _driven_field_provider :: proc(owner: engine.Handle, field_offset: uintptr, field_tid: typeid, out: rawptr) -> (driven: bool, editable: bool, own: inspector.Driven_Lanes) {
-	if owner != _driven_pos_owner || field_tid != typeid_of([3]f32) do return false, false, {}
+	if owner != _driven_pos_owner do return false, false, {}
+	// The rotation asked for as a quaternion is driven whole, as the real
+	// provider answers: the lanes come from the euler form.
+	if field_tid == typeid_of([4]f32) {
+		if field_offset == _driven_field && _driven_field == offset_of(engine.Transform, rotation) do return true, false, {}
+		return false, false, {}
+	}
+	if field_tid != typeid_of([3]f32) do return false, false, {}
 	(cast(^[3]f32)out)^ = {0, 0, 0}
 	if _driven_pos_whole && field_offset == offset_of(engine.Transform, position) do return true, false, {}
 	if field_offset != _driven_field do return false, false, {}

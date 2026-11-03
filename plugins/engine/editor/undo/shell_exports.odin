@@ -69,6 +69,10 @@ edit_session_abort              :: shell.edit_session_abort
 edit_session_active             :: shell.edit_session_active
 edit_session_begin              :: shell.edit_session_begin
 edit_session_end                :: shell.edit_session_end
+edit_session_keep_driven        :: shell.edit_session_keep_driven
+driven_lanes_of                 :: shell.driven_lanes_of
+Driven_Lanes                    :: shell.Driven_Lanes
+Driven_Mask                     :: shell.Driven_Mask
 edit_target_asset               :: shell.edit_target_asset
 edit_target_pooled              :: shell.edit_target_pooled
 edit_target_transform           :: shell.edit_target_transform

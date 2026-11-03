@@ -44,6 +44,7 @@ package inspector
 // which is while recording. Add Key keys the value the row shows: the driven
 // value on a driven row, the live value on any other.
 
+import "base:runtime"
 import "core:fmt"
 import "core:mem"
 import im "moonhug:external/odin-imgui"
@@ -61,7 +62,28 @@ import "moonhug:editor/widgets"
 driven_provider: proc(owner: core.Handle, field_offset: uintptr, field_tid: typeid, out: rawptr) -> (driven: bool, editable: bool, own: Driven_Lanes)
 
 // Lanes of a vector field, 0 x to 3 w.
-Driven_Lanes :: bit_set[0 ..< 4; u8]
+Driven_Lanes :: undo.Driven_Lanes
+
+// The undo package's view of the provider (undo.driven_lanes): the lanes a
+// write must not land in. A [4]f32 the provider drives whole is asked for
+// again as euler angles, the form a clip drives a rotation in, and answers
+// per angle when rows drive some of them.
+@(private)
+_undo_driven_lanes :: proc(owner: core.Handle, offset: uintptr, tid: typeid) -> undo.Driven_Mask {
+	if driven_provider == nil do return {}
+	out: [DRIVEN_VALUE_MAX / 8]u64
+	driven, editable, own := driven_provider(owner, offset, tid, &out)
+	if !driven || editable do return {}
+	if tid == typeid_of([4]f32) && own == {} {
+		d2, e2, own2 := driven_provider(owner, offset, typeid_of([3]f32), &out)
+		if d2 && !e2 && own2 != {} do return {lanes = {0, 1, 2} - own2, euler = true}
+	}
+	all: Driven_Lanes
+	n := 1
+	if ti, is_arr := runtime.type_info_base(type_info_of(tid)).variant.(runtime.Type_Info_Array); is_arr && ti.count <= 4 do n = ti.count
+	for l in 0 ..< n do all += {l}
+	return {lanes = all - own}
+}
 
 // Takes an edit of a driven, editable field: `value` holds the edited value in
 // the field's own type. Called once per gesture, when it ends. Returns false

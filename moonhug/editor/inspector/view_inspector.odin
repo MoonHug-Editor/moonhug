@@ -115,6 +115,7 @@ init :: proc() {
     _register_inspector_buttons()
     undo.set_asset_apply(asset_doc_apply_json)
     undo.set_asset_doc_lookup(asset_doc_payload_ptr)
+    undo.driven_lanes = _undo_driven_lanes
     _registries_ready = true
 }
 

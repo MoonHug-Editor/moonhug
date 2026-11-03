@@ -189,6 +189,9 @@ edit_session_end :: proc(sess: ^Edit_Session) {
 	// begin_group_command opens nothing while the stack is not recording or
 	// is applying, so the session notes the depth and closes only a group it
 	// opened itself. A caller's group below it stays open.
+	// A write to a driven lane never lands (undo_driven.odin).
+	edit_session_keep_driven(sess)
+
 	depth := len(s.txn_stack)
 	begin_group_command(s)
 	opened := len(s.txn_stack) == depth + 1

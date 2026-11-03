@@ -67,16 +67,13 @@ _Gizmo_Target :: struct {
 	start_pos:   [3]f32, // world
 	start_rot:   [4]f32, // world
 	start_scale: [3]f32, // local
-	// Lanes of the local position, the scale and the euler angles the preview
-	// drives with Record off: they keep the pose, the posed values are the
-	// local ones at grab.
-	pos_driven:  inspector.Driven_Lanes,
-	posed:       [3]f32,
-	scl_driven:  inspector.Driven_Lanes,
-	posed_scl:   [3]f32,
-	rot_driven:  inspector.Driven_Lanes,
+	// The local position and rotation at grab, for the override record.
+	grab_pos:    [3]f32,
+	grab_rot:    [4]f32,
+	// The euler angles the preview drives with Record off, and the angles at
+	// grab: a ring turns one angle (_gizmo_keep_driven_angles).
+	rot_driven:  undo.Driven_Lanes,
 	posed_eul:   [3]f32,
-	grab_rot:    [4]f32, // local rotation at grab, for the override record
 }
 _gizmo_targets: [dynamic]_Gizmo_Target
 
@@ -130,7 +127,7 @@ gizmo_draw_and_handle :: proc(tH: engine.Transform_Handle) {
 		if _gizmo_dragging && (d.dragging || d.released) {
 			delta := pos - _gizmo_start_world
 			for &tgt in _gizmo_targets {
-				_gizmo_move_to(&tgt, tgt.start_pos + delta)
+				engine.transform_set_world_position(tgt.tH, tgt.start_pos + delta)
 			}
 		}
 	case .Rotate:
@@ -151,7 +148,7 @@ gizmo_draw_and_handle :: proc(tH: engine.Transform_Handle) {
 				// AT the pivot: single-object Pivot mode keeps its place).
 				off := tgt.start_pos - _gizmo_start_world
 				if linalg.length(off) > 1e-6 {
-					_gizmo_move_to(&tgt, _gizmo_start_world + linalg.quaternion128_mul_vector3(turn, off))
+					engine.transform_set_world_position(tgt.tH, _gizmo_start_world + linalg.quaternion128_mul_vector3(turn, off))
 				}
 			}
 		}
@@ -167,7 +164,6 @@ gizmo_draw_and_handle :: proc(tH: engine.Transform_Handle) {
 				t := engine.pool_get(&w.transforms, engine.Handle(tgt.tH))
 				if t == nil do continue
 				t.scale = tgt.start_scale * f
-				for i in 0 ..< 3 do if i in tgt.scl_driven do t.scale[i] = tgt.posed_scl[i]
 				// Each object's offset from the pivot scales along the
 				// handle's axes by the same factors.
 				off := tgt.start_pos - _gizmo_start_world
@@ -179,11 +175,14 @@ gizmo_draw_and_handle :: proc(tH: engine.Transform_Handle) {
 						axis := linalg.quaternion128_mul_vector3(rot, e)
 						moved += axis * linalg.dot(off, axis) * f[i]
 					}
-					_gizmo_move_to(&tgt, moved)
+					engine.transform_set_world_position(tgt.tH, moved)
 				}
 			}
 		}
 	}
+	// The lanes the preview drives keep the pose this frame too, so the
+	// render shows it: the drag's writes above landed in them as well.
+	if _gizmo_dragging && (d.dragging || d.released) do undo.edit_session_keep_driven(&_gizmo_edit)
 	// A released drag is one step, and so is a drag whose handle went away
 	// (another mode's handle holds no drag).
 	if d.released || (_gizmo_dragging && !d.dragging) do gizmo_end_drag_if_any()
@@ -218,34 +217,23 @@ _gizmo_collect_targets :: proc() -> bool {
 	for h in session.top_level() {
 		t := engine.pool_get(&w.transforms, engine.Handle(h))
 		if t == nil do continue
-		// A field the preview drives with Record off stays where the pose puts
-		// it: the inspector ignores an edit of such a field for the same
-		// reason (inspector/driven.odin), and a session here would record the
-		// posed value as "before". A lane the clip leaves to the object moves
-		// as usual, as its inspector row does. With Record armed the session
-		// keys the clip through its listener instead (animation's record.odin).
-		// The rotation is asked for as euler angles, which is how a clip
-		// drives it per lane. A quaternion row drives every angle.
-		all := inspector.Driven_Lanes{0, 1, 2}
-		pos_driven, scl_driven, rot_driven: inspector.Driven_Lanes
-		switch viewport.gizmo_mode {
-		case .Picker, .Handles:
-		case .Translate:
-			pos_driven = _gizmo_driven_lanes(h, offset_of(engine.Transform, position), typeid_of([3]f32))
-		case .Rotate:
-			rot_driven = _gizmo_driven_lanes(h, offset_of(engine.Transform, rotation), typeid_of([3]f32))
-			pos_driven = _gizmo_driven_lanes(h, offset_of(engine.Transform, position), typeid_of([3]f32))
-		case .Scale:
-			scl_driven = _gizmo_driven_lanes(h, offset_of(engine.Transform, scale), typeid_of([3]f32))
-			pos_driven = _gizmo_driven_lanes(h, offset_of(engine.Transform, position), typeid_of([3]f32))
-		}
-		// The mode's own field driven whole leaves the object out. A driven
-		// position in Rotate or Scale mode only keeps its lanes (_gizmo_move_to).
+		// A field the preview drives with Record off in every lane leaves the
+		// object out of the mode that writes it (undo.driven_lanes). The lanes
+		// a field keeps are the session's job (undo.edit_session_keep_driven),
+		// each frame and at the end. The rotation's rings are the gizmo's: a
+		// ring turns one euler angle (_gizmo_keep_driven_angles).
+		all := undo.Driven_Lanes{0, 1, 2}
 		locked: bool
+		rot_driven: undo.Driven_Lanes
 		#partial switch viewport.gizmo_mode {
-		case .Translate: locked = pos_driven == all
-		case .Rotate:    locked = rot_driven == all
-		case .Scale:     locked = scl_driven == all
+		case .Translate:
+			locked = _gizmo_driven(h, offset_of(engine.Transform, position), typeid_of([3]f32)).lanes == all
+		case .Rotate:
+			m := _gizmo_driven(h, offset_of(engine.Transform, rotation), typeid_of([4]f32))
+			if m.euler do rot_driven = m.lanes
+			locked = (m.lanes != {} && !m.euler) || rot_driven == all
+		case .Scale:
+			locked = _gizmo_driven(h, offset_of(engine.Transform, scale), typeid_of([3]f32)).lanes == all
 		}
 		if locked do continue
 		append(&_gizmo_targets, _Gizmo_Target{
@@ -253,13 +241,10 @@ _gizmo_collect_targets :: proc() -> bool {
 			start_pos   = engine.transform_world_position(h),
 			start_rot   = engine.transform_world_rotation(h),
 			start_scale = t.scale,
-			pos_driven  = pos_driven,
-			posed       = t.position,
-			scl_driven  = scl_driven,
-			posed_scl   = t.scale,
+			grab_pos    = t.position,
+			grab_rot    = t.rotation,
 			rot_driven  = rot_driven,
 			posed_eul   = engine.quat_to_euler_xyz(t.rotation),
-			grab_rot    = t.rotation,
 		})
 		switch viewport.gizmo_mode {
 		case .Picker, .Handles:
@@ -292,17 +277,10 @@ _gizmo_collect_targets :: proc() -> bool {
 	return true
 }
 
-// The lanes of the field the preview drives and takes no edit of now: every
-// lane of a field driven whole, none of a field that is not driven.
+// What the preview drives of the field and takes no edit of now.
 @(private = "file")
-_gizmo_driven_lanes :: proc(h: engine.Transform_Handle, field_offset: uintptr, field_tid: typeid) -> inspector.Driven_Lanes {
-	if inspector.driven_provider == nil do return {}
-	out: [4]f32 // the widest transform field
-	driven, editable, own := inspector.driven_provider(engine.Handle(h), field_offset, field_tid, &out)
-	if !driven || editable do return {}
-	lanes: inspector.Driven_Lanes
-	for i in 0 ..< type_info_of(field_tid).size / size_of(f32) do lanes += {i}
-	return lanes - own
+_gizmo_driven :: proc(h: engine.Transform_Handle, field_offset: uintptr, field_tid: typeid) -> undo.Driven_Mask {
+	return undo.driven_lanes_of(engine.Handle(h), field_offset, field_tid)
 }
 
 // After a rotation write on a rotation the clip drives per euler angle: the
@@ -336,17 +314,6 @@ _gizmo_keep_driven_angles :: proc(tgt: ^_Gizmo_Target) {
 	t.rotation = engine.quat_from_euler_xyz(e.x, e.y, e.z)
 }
 
-// Moves the target to `world`, then puts the driven lanes of its local
-// position back at the pose.
-@(private = "file")
-_gizmo_move_to :: proc(tgt: ^_Gizmo_Target, world: [3]f32) {
-	engine.transform_set_world_position(tgt.tH, world)
-	if tgt.pos_driven == {} do return
-	t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(tgt.tH))
-	if t == nil do return
-	for i in 0 ..< 3 do if i in tgt.pos_driven do t.position[i] = tgt.posed[i]
-}
-
 @(private)
 _gizmo_label :: proc() -> string {
 	switch viewport.gizmo_mode {
@@ -373,7 +340,7 @@ _gizmo_end_drag :: proc() {
 		is_host := engine.scene_find_nested_scene_for_host(t.scene, tgt.tH) != nil
 		if !t.nested_owned && !is_host do continue
 		host := tgt.tH if is_host else engine.transform_immediate_nested_host(tgt.tH)
-		if t.position != tgt.posed do inspector.override_record(host, t.local_id, "position", &t.position, typeid_of([3]f32))
+		if t.position != tgt.grab_pos do inspector.override_record(host, t.local_id, "position", &t.position, typeid_of([3]f32))
 		if t.rotation != tgt.grab_rot do inspector.override_record(host, t.local_id, "rotation", &t.rotation, typeid_of([4]f32))
 		if t.scale != tgt.start_scale do inspector.override_record(host, t.local_id, "scale", &t.scale, typeid_of([3]f32))
 	}
