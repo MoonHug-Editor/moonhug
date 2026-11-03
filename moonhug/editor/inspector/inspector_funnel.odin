@@ -27,17 +27,19 @@ package inspector
 //   a union's variant picker, a pointer's target, or the value's text.
 //
 // Edits (field_edit.odin). A row of the inspector, a field or an array
-// element, marks its ctx with `_row`. On a row, the inspector opens the edit
-// around the chain for a leaf value, one edited as one row (is_row_kind):
-// a number, a string, an enum, a bit set, a fixed array of numbers. One undo
-// step, applied to every selected object. A container, a struct, a dynamic
-// array, a union, a pointer, draws as rows of its own, each with its edit,
-// unless a drawer draws it as one widget, the curve editor, a reference
-// picker, the material's property list: that drawer calls
-// edit_as_one_begin(ctx) and defers edit_as_one_end around its widgets, since
-// the inspector cannot tell the two apart. Off a row (a bare draw_value from
-// custom code, which runs its own edits or none), the pair does nothing. A
-// step that only adds rows around a drawing marks nothing.
+// element, marks its ctx with `_row` and draws through _draw_row, which
+// records the edit for every row: a drawer calls nothing for undo. A leaf
+// value (is_row_kind), a number, a string, an enum, a bit set, gets a real
+// edit around the chain: one undo step, applied to every selected object. A
+// container with steps, a struct, an array, a union, a pointer, gets a
+// provisional edit: when the chain draws rows of their own, each opens its
+// edit and the provisional one is dropped, and when the chain draws the
+// value as one widget, a vector, the curve editor, a reference picker, the
+// provisional edit records it. A container without steps draws as rows of
+// its own. A drawer that draws sub-rows and wants all of it as one step
+// calls edit_as_one_begin(ctx) and defers edit_as_one_end. Off a row (a bare
+// draw_value from custom code, which runs its own edits or none), nothing
+// opens.
 //
 // Odin has no closures, so the ctx carries the chain and a cursor instead
 // of a captured continuation.
@@ -46,8 +48,6 @@ import "base:runtime"
 import "core:reflect"
 import "core:slice"
 import core "moonhug:libs/core"
-import "moonhug:libs/log"
-import undo "moonhug:editor/undo"
 
 ORDER_OUTER :: -1000 // outermost frames (headers, foldouts, banners)
 ORDER_MIDDLE :: 0 // ordinary rows around the drawing
@@ -120,6 +120,20 @@ draw_value :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	_funnel_draw(&ctx)
 }
 
+// Draws a row's value from the top of its chain, inside the row's edit (see
+// the header): a real one for a leaf, a provisional one for a container with
+// steps, none for a container without steps, whose rows open their own.
+_draw_row :: proc(ctx: ^Ctx) {
+	leaf := is_row_kind(ctx.tid)
+	if !leaf && len(ctx._chain) == 0 {
+		_funnel_draw(ctx)
+		return
+	}
+	row := _edit_value_begin(ctx, provisional = !leaf)
+	_funnel_draw(ctx)
+	edit_as_one_end(ctx, &row)
+}
+
 // The chain's end: the default drawing for the kind of value.
 @(private = "file")
 _draw_end :: proc(ctx: ^Ctx) {
@@ -135,25 +149,18 @@ _draw_end :: proc(ctx: ^Ctx) {
 }
 
 // True for a leaf value, edited as one row: the inspector opens its edit on a
-// row. A number, a boolean, a string, a rune, an enum, a bit set, a type id,
-// or a fixed array of numbers (a vector, a color, a guid), which multi-edit
-// applies component by component. A fixed array's drawer draws it as one
-// widget. At the chain end it is a list of element rows inside that one edit.
+// row. A number, a boolean, a string, a rune, an enum, a bit set, a type id.
 // Everything else is a container, drawn as rows of its own unless a drawer
-// edits it as one.
+// draws it as one widget. A fixed array is a container too: a vector or a
+// guid has such a drawer, any other fixed array is a foldout of element rows,
+// each with its edit.
 is_row_kind :: proc(tid: typeid) -> bool {
 	ti := runtime.type_info_base(type_info_of(tid))
-	#partial switch v in ti.variant {
+	#partial switch _ in ti.variant {
 	case runtime.Type_Info_Integer, runtime.Type_Info_Float, runtime.Type_Info_Boolean,
 	     runtime.Type_Info_String, runtime.Type_Info_Rune, runtime.Type_Info_Enum,
 	     runtime.Type_Info_Bit_Set, runtime.Type_Info_Type_Id:
 		return true
-	case runtime.Type_Info_Array:
-		elem := runtime.type_info_base(v.elem)
-		#partial switch _ in elem.variant {
-		case runtime.Type_Info_Integer, runtime.Type_Info_Float:
-			return true
-		}
 	}
 	return false
 }
@@ -226,38 +233,7 @@ drawers_reset :: proc() {
 	for _, chain in _chains do delete(chain)
 	delete(_chains)
 	_chains = nil
-	delete(_unmarked)
-	_unmarked = nil
 }
-
-// What edit_check compares around a container's chain on a row.
-Edit_Probe :: struct {
-	edits:     int,
-	mutations: u64,
-	changed:   bool,
-}
-
-edit_probe :: proc() -> Edit_Probe {
-	return {edits = _edit_count, mutations = undo.mutation_count(), changed = inspector_changed}
-}
-
-// After a container's chain ran on a row, without an edit around it: reports,
-// once per type, a change of the value that nothing recorded. No row edit
-// opened inside, and no undo entry landed (an array's add and remove buttons
-// record their own). A drawer that draws the container as one widget without
-// edit_as_one_begin and edit_as_one_end does that, and its change records no
-// undo and reaches no other selected object.
-edit_check :: proc(ctx: ^Ctx, before: Edit_Probe) {
-	if !inspector_changed || before.changed do return
-	if _edit_count != before.edits || undo.mutation_count() != before.mutations do return
-	if ctx.tid in _unmarked do return
-	context.allocator = runtime.default_allocator()
-	_unmarked[ctx.tid] = true
-	log.errorf("inspector: a @(property_drawer) step on %v changed the value with nothing recorded: a drawer that draws it as one widget calls edit_as_one_begin(ctx) and defers edit_as_one_end around its widgets, or the change records no undo and reaches no other selected object (%s)", ctx.tid, drawer_origin(ctx.tid))
-}
-
-@(private = "file")
-_unmarked: map[typeid]bool
 
 // The type's chain, outermost step first. Read only: draws share it.
 _chain_of :: proc(tid: typeid) -> []Drawer {

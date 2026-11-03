@@ -43,9 +43,6 @@ _grad_bar :: proc(g: ^core.Gradient, p0, p1: im.Vec2) {
 
 @(property_drawer={type = core.Gradient})
 property_drawer_Gradient :: proc(ctx: ^Ctx) {
-	// Several fields edited as one widget: one row, one undo step.
-	row_edit := edit_as_one_begin(ctx)
-	defer edit_as_one_end(ctx, &row_edit)
 	ptr, label := ctx.ptr, ctx.label
 	g := cast(^core.Gradient)ptr
 	field_row(label)

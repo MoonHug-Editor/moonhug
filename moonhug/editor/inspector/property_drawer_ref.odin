@@ -16,9 +16,6 @@ import assets "moonhug:libs/assets"
 // tab is assignable. See docs/core/ObjectPicker.md.
 @(property_drawer={type = core.Ref})
 property_drawer_Ref :: proc(ctx: ^Ctx) {
-	// Several fields edited as one widget: one row, one undo step.
-	row_edit := edit_as_one_begin(ctx)
-	defer edit_as_one_end(ctx, &row_edit)
 	ptr, label := ctx.ptr, ctx.label
 	ref_ptr := cast(^core.Ref)ptr
 	spec := current_field_ref_target

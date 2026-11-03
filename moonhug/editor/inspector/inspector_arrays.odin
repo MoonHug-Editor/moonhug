@@ -3,7 +3,6 @@ package inspector
 import "core:c"
 import "core:fmt"
 import "core:mem"
-import "core:reflect"
 import "base:runtime"
 import strings "core:strings"
 import im "moonhug:external/odin-imgui"
@@ -260,59 +259,20 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 	}
 }
 
-// draw_array_element draws one element using the same rules as the inspector: property drawer, struct recursion, or text.
+// draw_array_element draws one element the way the field loop draws a field:
+// its chain, an empty one for a type without steps, inside the row's edit.
+// The reorder grip and the remove button sit outside it.
 //
 // `elem_offset` is the element's byte offset within the array's element storage.
 // The peer list has already been rebased onto each peer's storage, so this
 // addresses the same element on every selected object.
 draw_array_element :: proc(ptr: rawptr, elem_tid: typeid, label: cstring, elem_offset: uintptr = 0) {
-	if has_drawer(elem_tid) {
-		prev_changed := inspector_changed
-		inspector_changed = false
-		// The element's chain draws it. A leaf element gets its edit here, a
-		// container's drawer opens its own (inspector_funnel.odin).
-		ectx := Ctx{ptr = ptr, tid = elem_tid, label = label, offset = elem_offset, name = "Element", nested = true, _row = true, _element = true, _chain = _chain_of(elem_tid)}
-		if is_row_kind(elem_tid) {
-			row := edit_as_one_begin(&ectx)
-			_funnel_draw(&ectx)
-			edit_as_one_end(&ectx, &row)
-		} else {
-			probe := edit_probe()
-			_funnel_draw(&ectx)
-			edit_check(&ectx, probe)
-		}
-		if prev_changed || inspector_changed do inspector_changed = true
-		if !ectx.menu_drawn do draw_field_context_menu(ptr, elem_tid)
-		return
-	}
-	elem_ti := type_info_of(elem_tid)
-	if is_union_type(elem_tid) {
-		mprev := multi_suspend()
-		draw_inspector_union(ptr, elem_tid, label)
-		multi_resume(mprev)
-		return
-	}
-	if reflect.is_struct(elem_ti) {
-		elem_any := any{ptr, elem_tid}
-		tree_open := im.TreeNode(label)
-		draw_field_context_menu(ptr, elem_tid)
-		if tree_open {
-			prev_in_elem := _in_array_element
-			_in_array_element = true
-			// Fields inside the element are located from the element's start on
-			// each peer, so the recursion carries its offset.
-			prev_off := multi_push_offset(elem_offset)
-			draw_inspector(elem_any)
-			multi_pop_offset(prev_off)
-			_in_array_element = prev_in_elem
-			im.TreePop()
-		}
-		return
-	}
-	elem_any := any{ptr, elem_tid}
-	c_str := strings.clone_to_cstring(fmt.tprintf("%s: %v", label, elem_any), context.temp_allocator)
-	im.Text(c_str)
-	draw_field_context_menu(ptr, elem_tid)
+	prev_changed := inspector_changed
+	inspector_changed = false
+	ectx := Ctx{ptr = ptr, tid = elem_tid, label = label, offset = elem_offset, name = "Element", nested = true, _row = true, _element = true, _chain = _chain_of(elem_tid)}
+	_draw_row(&ectx)
+	if prev_changed || inspector_changed do inspector_changed = true
+	if !ectx.menu_drawn do draw_field_context_menu(ptr, elem_tid)
 }
 
 append_dynamic_array_element :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Type_Info) -> bool {

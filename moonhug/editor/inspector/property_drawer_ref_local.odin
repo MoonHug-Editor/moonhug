@@ -126,9 +126,6 @@ picker_field_row :: proc(label: cstring, display: string, has_value: bool, value
 
 @(property_drawer={type = core.Ref_Local})
 property_drawer_Ref_Local :: proc(ctx: ^Ctx) {
-	// Several fields edited as one widget: one row, one undo step.
-	row_edit := edit_as_one_begin(ctx)
-	defer edit_as_one_end(ctx, &row_edit)
 	ptr, label := ctx.ptr, ctx.label
 	ref_ptr := cast(^core.Ref_Local)ptr
 	spec := current_field_ref_target

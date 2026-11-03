@@ -15,9 +15,6 @@ import "moonhug:editor/inspector"
 
 @(property_drawer={type=[dynamic]engine.Material_Texture})
 property_drawer_material_textures :: proc(ctx: ^inspector.Ctx) {
-	// A container drawn as one widget: one row, one undo step.
-	row_edit := inspector.edit_as_one_begin(ctx)
-	defer inspector.edit_as_one_end(ctx, &row_edit)
 	ptr, label := ctx.ptr, ctx.label
 	texs := cast(^[dynamic]engine.Material_Texture)ptr
 

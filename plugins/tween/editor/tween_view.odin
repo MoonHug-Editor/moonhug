@@ -593,9 +593,6 @@ _ICON_GRAPH :: "\ue97a"
 // button (the graph panel is the field editor).
 @(property_drawer={type=tween.Authored})
 property_drawer_Authored :: proc(ctx: ^inspector.Ctx) {
-	// Several fields edited as one widget: one row, one undo step.
-	row_edit := inspector.edit_as_one_begin(ctx)
-	defer inspector.edit_as_one_end(ctx, &row_edit)
 	ptr, label := ctx.ptr, ctx.label
 	a := cast(^tween.Authored)ptr
 	if im.SmallButton(fmt.ctprintf("%s##tg_%v", _ICON_GRAPH, ptr)) {

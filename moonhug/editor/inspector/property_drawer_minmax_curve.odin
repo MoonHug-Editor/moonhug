@@ -39,9 +39,6 @@ _mm_curve_cell :: proc(c: ^core.Curve, id: cstring, w: f32) {
 
 @(property_drawer={type = core.MinMax_Curve})
 property_drawer_MinMax_Curve :: proc(ctx: ^Ctx) {
-	// Several fields edited as one widget: one row, one undo step.
-	row_edit := edit_as_one_begin(ctx)
-	defer edit_as_one_end(ctx, &row_edit)
 	ptr, label := ctx.ptr, ctx.label
 	mm := cast(^core.MinMax_Curve)ptr
 	field_row(label)

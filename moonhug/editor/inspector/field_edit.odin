@@ -308,12 +308,22 @@ field_edit_set_widget_state :: proc(ws: ^Widget_State) {
 // widgets draw and compared after, the change becomes one undo step and lands
 // on every selected object, and the prefab override is recorded.
 //
-// On a row of the inspector (Ctx._row, a field or an array element), the
-// inspector opens it around the chain of a leaf value (is_row_kind). A
-// drawer that draws a container as one widget, the curve editor, a reference
-// picker, the material's property list, opens it itself with
-// edit_as_one_begin and defers edit_as_one_end around its widgets: the
-// inspector cannot tell that container from one drawn as rows of its own.
+// The inspector opens it for every row (Ctx._row, a field or an array
+// element), around the row's chain (_draw_row), and a drawer calls nothing:
+// - a leaf value (is_row_kind) gets a real edit
+// - a container with steps gets a provisional edit: it does not enclose the
+//   rows drawn inside it, so each of them opens its own edit. When one opens
+//   during the chain, or an undo step lands (an array's add button), the
+//   provisional edit is dropped and records nothing. Otherwise the drawer
+//   drew the value as one widget and the edit records it like a real one,
+//   with its session opened on the first frame the value changed
+// - a container without steps opens nothing: its rows open their own
+// A driven row's edit is always real: the driven value is one value, drawn
+// on a buffer, and rows inside it are nested.
+//
+// edit_as_one_begin and edit_as_one_end open a real edit by hand. Only a
+// drawer that draws sub-rows (field_edit_row, the default drawing) and wants
+// all of it recorded as one step needs them: the sub-rows nest into it.
 // Off a row, a bare draw_value from custom code, the pair does nothing: that
 // code runs its own edits or none. A custom row passes its widgets to
 // field_edit_row.
@@ -332,6 +342,13 @@ Edit :: struct {
 	// puts ctx.ptr back.
 	cur:        rawptr,
 	nested:     bool, // inside another edit of a row: this one does nothing
+	// A container's edit that encloses nothing (see above). edits_before and
+	// mutations_before tell whether a row inside opened an edit or an undo
+	// step landed, which drops it.
+	provisional: bool,
+	dropped:    bool,
+	edits_before: int,
+	mutations_before: u64,
 	bare:       bool, // off a row (a bare draw_value): no edit at all
 	driven:     bool, // the row is driven: _driven_edit holds its value
 	grouped:    bool,
@@ -346,24 +363,32 @@ Edit :: struct {
 
 @(private = "file")
 _edit_depth: int
-// Edits opened so far: the field loop compares it around a leaf's chain to
-// catch a step that changed the value without opening one (edit_check).
+// Real edits opened so far, and provisional edits that recorded: a
+// provisional edit compares it around its chain.
 @(private)
 _edit_count: int
 
 // The driven value of the row being edited. Not a field of Edit: an Edit is
 // returned by value, and the widgets draw on a pointer into this, which has
-// to stay put. One at a time: a nested edit never queries the driver.
+// to stay put. One at a time: a nested edit never queries the driver, and a
+// driven edit is real, so every edit inside it is nested.
 @(private = "file")
 _driven_edit: Driven_Value
 
-// Opens an edit of the value `ctx` draws as one row, with `ctx.offset`,
-// `ctx.name` and `ctx.path` from the field loop. For a drawer that draws a
-// container as one widget. Does nothing off a row (ctx._row false). Redirects
-// ctx.ptr for a driven row, so the widgets read ctx.ptr AFTER this call.
+// Opens a real edit of the value `ctx` draws as one row, with `ctx.offset`,
+// `ctx.name` and `ctx.path` from the field loop. For a drawer that draws
+// sub-rows and wants them recorded as one step (see above). Does nothing off
+// a row (ctx._row false). Redirects ctx.ptr for a driven row, so the widgets
+// read ctx.ptr AFTER this call.
 edit_as_one_begin :: proc(ctx: ^Ctx) -> Edit {
+	return _edit_value_begin(ctx, provisional = false)
+}
+
+// The row's edit, real or provisional, opened by _draw_row or by the pair.
+@(private)
+_edit_value_begin :: proc(ctx: ^Ctx, provisional: bool) -> Edit {
 	if !ctx._row do return Edit{ptr = ctx.ptr, cur = ctx.ptr, tid = ctx.tid, bare = true}
-	e := _edit_begin(ctx.ptr, ctx.tid, ctx.offset, ctx.name, ctx.label, nil)
+	e := _edit_begin(ctx.ptr, ctx.tid, ctx.offset, ctx.name, ctx.label, nil, provisional = provisional)
 	e.path = ctx.path
 	if !e.nested && ctx.path != "" do e.prev_path = field_edit_set_path(ctx.path)
 	ctx.ptr = e.cur
@@ -371,6 +396,7 @@ edit_as_one_begin :: proc(ctx: ^Ctx) -> Edit {
 }
 
 // Closes it: compares, records, applies to the peers, records the override.
+// A dropped provisional edit only puts ctx.ptr and the path back.
 edit_as_one_end :: proc(ctx: ^Ctx, e: ^Edit) -> (finished: bool) {
 	if e.bare do return false
 	ctx.ptr = e.ptr
@@ -401,7 +427,7 @@ field_edit_row :: proc(
 }
 
 @(private = "file")
-_edit_begin :: proc(field_ptr: rawptr, field_tid: typeid, offset: uintptr, label: string, draw_label: cstring, pre_before: []byte, has_drawer := true) -> (e: Edit) {
+_edit_begin :: proc(field_ptr: rawptr, field_tid: typeid, offset: uintptr, label: string, draw_label: cstring, pre_before: []byte, has_drawer := true, provisional := false) -> (e: Edit) {
 	e.ptr, e.cur, e.tid, e.offset, e.label, e.draw_label = field_ptr, field_ptr, field_tid, offset, label, draw_label
 	// Inside another row's edit: the outer one records.
 	if _edit_depth > 0 {
@@ -409,14 +435,23 @@ _edit_begin :: proc(field_ptr: rawptr, field_tid: typeid, offset: uintptr, label
 		_edit_depth += 1
 		return
 	}
-	_edit_depth += 1
-	_edit_count += 1
 	// A driven field (driven.odin) shows the driven value. Asked for the active
 	// object only: peers are not queried. A row drawn by a decorator (no
 	// drawer) is handled by the field loop, which redirects the decorator.
 	e.grouped = _widget_state_override == nil
 	if has_drawer do _driven_edit = driven_query_field(field_ptr, field_tid)
-	if has_drawer && _driven_edit.state != .None {
+	driven := has_drawer && _driven_edit.state != .None
+	// A provisional edit encloses nothing: the rows inside see depth 0 and
+	// open their own edits. A driven one is real (see Edit).
+	if provisional && !driven {
+		e.provisional = true
+		e.edits_before = _edit_count
+		e.mutations_before = undo.mutation_count()
+	} else {
+		_edit_depth += 1
+		_edit_count += 1
+	}
+	if driven {
 		// The widgets draw on a buffer, never on the live field, and the
 		// driven lanes reach neither the object, the scene undo stack, the
 		// prefab overrides nor the peers (see _edit_end).
@@ -468,7 +503,7 @@ _edit_begin :: proc(field_ptr: rawptr, field_tid: typeid, offset: uintptr, label
 
 @(private = "file")
 _edit_end :: proc(e: ^Edit) -> (finished: bool) {
-	_edit_depth -= 1
+	if !e.provisional do _edit_depth -= 1
 	if e.nested do return false
 	if e.driven {
 		// read-only: the buffer is the driven value, reseeded every frame, and
@@ -489,10 +524,15 @@ _edit_end :: proc(e: ^Edit) -> (finished: bool) {
 		return driven_own_lanes_edit(e.ptr, e.cur, &_driven_edit, e.offset, e.label, active, ended)
 	}
 	defer if e.owns_before && e.before != nil do delete(e.before)
+	// A row inside opened its edit, or an undo step landed: the value is
+	// rows of its own, or a structural edit recorded it already.
+	if e.provisional {
+		e.dropped = _edit_count != e.edits_before || undo.mutation_count() != e.mutations_before
+	}
 	// A field with a row in the shown clip gets its mark beside the group.
 	if e.grouped {
 		im.EndGroup()
-		driven_mark_field(e.ptr, e.tid)
+		if !e.dropped do driven_mark_field(e.ptr, e.tid)
 	}
 	multi_clear_mixed()
 
@@ -507,13 +547,24 @@ _edit_end :: proc(e: ^Edit) -> (finished: bool) {
 	started := field_edit_row_started()
 	finished = field_edit_row_finished()
 	held := field_edit_row_held()
+	if e.dropped do return false
+	// Recorded like a real edit: it counts for a provisional edit around it.
+	if e.provisional do _edit_count += 1
 
 	// Opened with the pre-draw snapshot, because the widgets have already
 	// written this frame's value by now.
-	if !e.picker && started {
+	if !e.picker && !e.provisional && started {
 		field_edit_begin(e.ptr, e.tid, e.offset, e.label, e.before)
 	}
 	editing := field_edit_in_flight(e.ptr)
+	// A provisional edit cannot tell an activation on the value from one on
+	// a foldout or a button inside the chain, so its session opens on the
+	// first frame the value changed, with that frame's pre-draw snapshot. A
+	// click that changes nothing then copies nothing onto the peers.
+	if e.provisional && !e.picker && !editing && _changed_since(e.ptr, e.tid, e.before) {
+		field_edit_begin(e.ptr, e.tid, e.offset, e.label, e.before)
+		editing = true
+	}
 	if editing {
 		field_edit_apply_to_peers(e.ptr, e.tid, e.offset)
 	}

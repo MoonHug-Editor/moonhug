@@ -48,9 +48,6 @@ _curve_plot :: proc(c: ^core.Curve, p0, p1: im.Vec2) {
 
 @(property_drawer={type = core.Curve})
 property_drawer_Curve :: proc(ctx: ^Ctx) {
-	// Several fields edited as one widget: one row, one undo step.
-	row_edit := edit_as_one_begin(ctx)
-	defer edit_as_one_end(ctx, &row_edit)
 	ptr, label := ctx.ptr, ctx.label
 	c := cast(^core.Curve)ptr
 	field_row(label)

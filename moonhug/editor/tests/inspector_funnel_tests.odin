@@ -137,14 +137,18 @@ test_funnel_reset_restores_generated :: proc(t: ^testing.T) {
 	testing.expect(t, !inspector.has_drawer(typeid_of(_Funnel_Probe)), "a reset drops a test's steps")
 }
 
-// A container drawn as one widget opens its own edit, and only on a row of
-// the inspector: custom code that draws it with draw_value runs its own edits
-// or none, and a nested real edit there would record twice and reach the
-// selected objects at the wrong offset.
+// The explicit pair opens an edit only on a row of the inspector: custom code
+// that draws the value with draw_value runs its own edits or none, and a
+// nested real edit there would record twice and reach the selected objects
+// at the wrong offset.
+@(private = "file")
+_as_one_bare: bool
+
 @(private = "file")
 _as_one_widget :: proc(ctx: ^inspector.Ctx) {
 	row := inspector.edit_as_one_begin(ctx)
 	defer inspector.edit_as_one_end(ctx, &row)
+	_as_one_bare = row.bare
 	append(&_funnel_log, "widget")
 }
 
@@ -155,14 +159,14 @@ test_funnel_edit_as_one_is_a_no_op_off_a_row :: proc(t: ^testing.T) {
 	inspector.add_drawer(tid, _as_one_widget)
 
 	probe := _Funnel_Probe{}
-	before := inspector.edit_probe()
+	_as_one_bare = false
 	inspector.draw_value(&probe, tid, "bare")
 	testing.expect_value(t, _log_joined(), "widget")
-	testing.expect_value(t, inspector.edit_probe().edits, before.edits)
+	testing.expect(t, _as_one_bare, "off a row the pair opens nothing")
 }
 
-// Leaves are one row and get their edit from the inspector; containers are
-// rows of their own unless a drawer edits them as one.
+// Leaves are one row and get a real edit from the inspector. Containers get
+// a provisional one, dropped when they draw as rows of their own.
 @(test)
 test_funnel_row_kinds :: proc(t: ^testing.T) {
 	_Probe_Enum :: enum {A, B}
@@ -170,8 +174,9 @@ test_funnel_row_kinds :: proc(t: ^testing.T) {
 	testing.expect(t, inspector.is_row_kind(typeid_of(f32)))
 	testing.expect(t, inspector.is_row_kind(typeid_of(string)))
 	testing.expect(t, inspector.is_row_kind(typeid_of(_Probe_Enum)))
-	testing.expect(t, inspector.is_row_kind(typeid_of([3]f32)), "a vector is one row")
-	testing.expect(t, inspector.is_row_kind(typeid_of(core.Asset_GUID)), "a guid is a fixed array of bytes, one row")
+	testing.expect(t, !inspector.is_row_kind(typeid_of([3]f32)), "a vector is a container, its row edit is provisional")
+	testing.expect(t, !inspector.is_row_kind(typeid_of(core.Asset_GUID)), "a guid is a container, its row edit is provisional")
+	testing.expect(t, !inspector.is_row_kind(typeid_of([4]i32)), "a fixed array of numbers without a drawer is a foldout of element rows")
 	testing.expect(t, !inspector.is_row_kind(typeid_of(_Funnel_Probe)), "a struct is a container")
 	testing.expect(t, !inspector.is_row_kind(typeid_of([dynamic]f32)), "a dynamic array is a container")
 	testing.expect(t, !inspector.is_row_kind(typeid_of([4]string)), "a fixed array of strings is rows of its own")

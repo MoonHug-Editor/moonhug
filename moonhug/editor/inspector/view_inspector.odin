@@ -1015,14 +1015,10 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
         return
     }
 
-    // The type's registered steps funnel its draw (inspector_funnel.odin).
-    // No registration: straight to the default drawing.
-    if has_drawer(tid) {
-        cctx := Ctx{ptr = ptr, tid = tid, label = label, path_prefix = path_prefix, _chain = _chain_of(tid)}
-        _funnel_draw(&cctx)
-        return
-    }
-    draw_inspector_default(ptr, tid, label, path_prefix)
+    // The type's chain draws it (inspector_funnel.odin), an empty chain for
+    // a type without steps.
+    cctx := Ctx{ptr = ptr, tid = tid, label = label, path_prefix = path_prefix, _chain = _chain_of(tid)}
+    _funnel_draw(&cctx)
 }
 
 // The funnel's end of chain for a struct: the reflected field loop. Never
@@ -1053,7 +1049,6 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
     prev_in_elem := _in_array_element
     if ctx != nil && ctx._element do _in_array_element = true
     defer _in_array_element = prev_in_elem
-    xAny := any{ptr, tid}
     names := reflect.struct_field_names(tid)
     types := reflect.struct_field_types(tid)
     count := len(names)
@@ -1078,7 +1073,6 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
         c_field_name := strings.clone_to_cstring(field_name)
         defer delete(c_field_name)
         field_type := types[i]
-        field_val := reflect.struct_field_value(xAny, field_info)
 
         field_ptr := rawptr(uintptr(ptr) + field_info.offset)
 
@@ -1163,110 +1157,49 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             prev_tags := field_tags_set(field_info.tag)
             defer field_tags_restore(prev_tags)
 
-            if has_drawer(field_type.id) {
-                // The field's chain draws it (inspector_funnel.odin). A leaf
-                // value gets its edit opened here. A container's chain runs
-                // without one: a drawer that draws it as one widget opens the
-                // edit itself, and the default drawing lays it out as rows of
-                // its own, each with its edit.
-                // The innermost step owns this row, so its @(property_drawer)
-                // is what debug tooltips name for anything the row hovers.
-                origin_prev := widgets.ui_origin_push(drawer_origin(field_type.id))
-                defer widgets.ui_origin_pop(origin_prev)
+            // The field's chain draws it inside the row's edit
+            // (inspector_funnel.odin), an empty chain for a type without
+            // steps: the chain end draws the kind's own row.
+            // The innermost step owns this row, so its @(property_drawer) is
+            // what debug tooltips name for anything the row hovers. A type
+            // without steps keeps the enclosing origin.
+            steps := has_drawer(field_type.id)
+            origin_prev: string
+            if steps do origin_prev = widgets.ui_origin_push(drawer_origin(field_type.id))
+            defer if steps do widgets.ui_origin_pop(origin_prev)
 
-                // Group the row's widgets so the field context menu below
-                // binds to the WHOLE row. A step can emit several items (e.g.
-                // Ref_Local: picker button + "X" clear) and OpenPopupOnItemClick
-                // only tests the last one — right-click would then work only on
-                // the tiny X (or only when no value meant no X).
-                expands := current_field_expand && field_type.id == typeid_of(core.Asset_GUID)
-                if expands do current_field_trailing_w = EXPAND_BTN_W
-                im.BeginGroup()
-                fctx := Ctx{
-                    ptr         = field_ptr,
-                    tid         = field_type.id,
-                    label       = c_field_name,
-                    path_prefix = full_path,
-                    offset      = multi_offset_of(field_ptr, ptr),
-                    name        = field_name,
-                    path        = full_path,
-                    nested      = true,
-                    inline      = tag_has(field_info.tag, TAG_INLINE),
-                    _row        = true,
-                    _chain      = _chain_of(field_type.id),
-                }
-                if is_row_kind(field_type.id) {
-                    row := edit_as_one_begin(&fctx)
-                    _funnel_draw(&fctx)
-                    edit_as_one_end(&fctx, &row)
-                } else {
-                    probe := edit_probe()
-                    _funnel_draw(&fctx)
-                    edit_check(&fctx, probe)
-                }
-                im.EndGroup()
-                current_field_trailing_w = 0
-                row_popup_done = fctx.menu_drawn
-                // The arrow sits in the space the row left for it, and the
-                // document draws below, outside the row's transaction: its
-                // rows must not read as edits of this reference field.
-                if expands {
-                    guid := (^core.Asset_GUID)(field_ptr)^
-                    im.SameLine(0, 0)
-                    if expand_arrow(guid) do draw_expanded_asset(guid)
-                }
-            } else if is_array_type(field_type.id) {
-                // Elements multi-edit through their own rebased peer list —
-                // draw_inspector_array does that itself, since only it knows
-                // where the element storage is.
-                draw_inspector_array_multi(field_ptr, field_type.id, c_field_name, multi_offset_of(field_ptr, ptr))
-                row_popup_done = true
-            } else if is_union_type(field_type.id) {
-                // A union's payload type can differ per object, so the same
-                // bytes would mean different things — see multi_suspend.
-                mprev := multi_suspend()
-                draw_inspector_union(field_ptr, field_type.id, c_field_name)
-                multi_resume(mprev)
-                row_popup_done = true
-            } else if is_enum_type(field_type.id) {
-                // An enum row is a combo: the value lands from a popup, so the
-                // row brackets the change retroactively like the pickers
-                // (_is_picker_type). Opening a session up front would end any
-                // other row's gesture in flight on every frame this row draws.
-                multi_offset := multi_offset_of(field_ptr, ptr)
-                multi_probe_field(field_ptr, field_type.id, multi_offset)
-                prev_path := field_edit_set_path(full_path)
-                finished := field_edit_row(field_ptr, field_type.id, multi_offset,
-                                           field_name, draw_inspector_enum, c_field_name)
-                field_edit_set_path(prev_path)
-                record_nested_override(field_ptr, field_type.id, full_path, finished)
-                row_popup_done = true
-            } else if reflect.is_struct(field_type) || reflect.is_union(field_type) {
-                // Descending into a nested struct: the peers' matching fields
-                // sit at the same offset inside THEIR copy, so the recursion
-                // carries the accumulated offset rather than the raw pointer.
-                prev_off := multi_push_offset(uintptr(field_ptr) - uintptr(ptr))
-                defer multi_pop_offset(prev_off)
-                is_inline := tag_has(field_info.tag, TAG_INLINE)
-                if is_inline {
-                    draw_inspector(field_val, "", full_path)
-                    row_popup_done = true
-                } else {
-                    tree_open := im.TreeNode(c_field_name)
-                    draw_field_context_menu(field_ptr, field_type.id, full_path)
-                    row_popup_done = true
-                    if tree_open {
-                        draw_inspector(field_val, "", full_path)
-                        im.TreePop()
-                    }
-                }
-            } else if reflect.is_pointer(type_info_of(field_type.id)) {
-                draw_inspector(field_val, "", full_path)
-                row_popup_done = true
-            } else {
-                c_str := strings.clone_to_cstring(fmt.tprintf("%s: %v", field_name, field_val))
-                defer delete(c_str)
-                im.Text(c_str)
+            // Group the row's widgets so the field context menu below
+            // binds to the WHOLE row. A step can emit several items (e.g.
+            // Ref_Local: picker button + "X" clear) and OpenPopupOnItemClick
+            // only tests the last one — right-click would then work only on
+            // the tiny X (or only when no value meant no X).
+            expands := current_field_expand && field_type.id == typeid_of(core.Asset_GUID)
+            if expands do current_field_trailing_w = EXPAND_BTN_W
+            im.BeginGroup()
+            fctx := Ctx{
+                ptr         = field_ptr,
+                tid         = field_type.id,
+                label       = c_field_name,
+                path_prefix = full_path,
+                offset      = multi_offset_of(field_ptr, ptr),
+                name        = field_name,
+                path        = full_path,
+                nested      = true,
+                inline      = tag_has(field_info.tag, TAG_INLINE),
+                _row        = true,
+                _chain      = _chain_of(field_type.id),
+            }
+            _draw_row(&fctx)
+            im.EndGroup()
+            current_field_trailing_w = 0
+            row_popup_done = fctx.menu_drawn
+            // The arrow sits in the space the row left for it, and the
+            // document draws below, outside the row's transaction: its
+            // rows must not read as edits of this reference field.
+            if expands {
+                guid := (^core.Asset_GUID)(field_ptr)^
+                im.SameLine(0, 0)
+                if expand_arrow(guid) do draw_expanded_asset(guid)
             }
             if !row_popup_done {
                 draw_field_context_menu(field_ptr, field_type.id, full_path)

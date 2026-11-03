@@ -22,9 +22,6 @@ current_material: ^engine.Material
 
 @(property_drawer={type=[dynamic]engine.Material_Property})
 property_drawer_material_properties :: proc(ctx: ^inspector.Ctx) {
-	// A container drawn as one widget: one row, one undo step.
-	row_edit := inspector.edit_as_one_begin(ctx)
-	defer inspector.edit_as_one_end(ctx, &row_edit)
 	ptr, label := ctx.ptr, ctx.label
 	props := cast(^[dynamic]engine.Material_Property)ptr
 
