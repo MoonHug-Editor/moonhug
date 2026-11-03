@@ -69,7 +69,7 @@ main :: proc() {
     win_w, win_h, win_x, win_y := load_editor_settings()
     has_saved_settings := win_w > 0 && win_h > 0
     // Window starts hidden so saved geometry applies before first present.
-    if !gfx.init(WINDOW_TITLE, has_saved_settings ? win_w : 800, has_saved_settings ? win_h : 600, show = false) {
+    if !gfx.init(strings.clone_to_cstring(window_title(), context.temp_allocator), has_saved_settings ? win_w : 800, has_saved_settings ? win_h : 600, show = false) {
         fmt.eprintln("gfx init failed (is SDL3 installed? brew install sdl3)")
         return
     }
@@ -202,6 +202,7 @@ main :: proc() {
             if dock_icon_pending {
                 dock_icon_pending = false
                 set_dock_icon("../EditorIcon.png") // cwd was normalized to moonhug/ at startup
+                set_app_menu_title(window_title())
             }
         }
 

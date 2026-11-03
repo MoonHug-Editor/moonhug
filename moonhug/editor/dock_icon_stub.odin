@@ -5,3 +5,7 @@ package editor
 // bar icon would instead come from rl.SetWindowIcon (or an .exe resource).
 set_dock_icon :: proc(image_path: string) {
 }
+
+// The application menu is a macOS thing; see dock_icon_darwin.odin.
+set_app_menu_title :: proc(title: string) {
+}

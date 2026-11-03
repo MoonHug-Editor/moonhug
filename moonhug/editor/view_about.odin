@@ -43,7 +43,7 @@ draw_about_popup :: proc() {
 
         im.Separator()
         im.Spacing()
-        im.Text("MoonHug Editor v%s", VERSION)
+        im.Text("%s v%s", WINDOW_TITLE, version_text())
         im.Spacing()
         im.Separator()
         im.Spacing()
