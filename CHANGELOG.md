@@ -1,3 +1,21 @@
+## [0.156.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.155.0...v0.156.0) (2026-11-03)
+
+### Features
+
+* **editor:** the window title and the macOS app menu title carry the version ([4910873](https://github.com/MoonHug-Editor/moonhug/commit/49108739128de31b3063994f75d39fca850cdb81))
+* mcp input. version in title ([d7d597b](https://github.com/MoonHug-Editor/moonhug/commit/d7d597b6826c5eac3db133a7bb93e4a7f2e52793))
+* **mcp:** input and item_rect tools drive real imgui widgets through the bridge, one step per frame, rows found by field name and text by draw data ([e183f16](https://github.com/MoonHug-Editor/moonhug/commit/e183f16cabf7b74bee291ff52b77d1e6b9350df6))
+
+### Bug Fixes
+
+* **inspector:** a row drawn by a decorator opens no group, so its boxes' gesture reaches the edit again ([7ff96b0](https://github.com/MoonHug-Editor/moonhug/commit/7ff96b0ba4d24d9d1512f08ba2810b2de610e593))
+* **inspector:** array rebases zero the base offset without peers too, drop the dead edit pair on the vec3 pointer drawer, is_row_kind wording ([02cca7f](https://github.com/MoonHug-Editor/moonhug/commit/02cca7ffaab4e1959a1a7f7d593ad9e3ea7aad07))
+* **inspector:** drawer edits open only on a row, leaf vs container decides the row edit, chain end draws every kind's row, working missing-edit check ([93ff60c](https://github.com/MoonHug-Editor/moonhug/commit/93ff60c41577ebefc7b888f614cab840ee2466e9))
+* **inspector:** the inspector records the edit for every row, a provisional edit on containers with steps drops itself when inner rows record, drawers call nothing ([08365c1](https://github.com/MoonHug-Editor/moonhug/commit/08365c101fbaffabf7ab056f7fed8d801a51fc29))
+* **inspector:** the row clicked when a popup opened owns it and records its writes, row harness drawer stops marking changed ([a29a177](https://github.com/MoonHug-Editor/moonhug/commit/a29a17767fe0a3997280eaff9570f43914c115d7))
+* **inspector:** the row edit raises the changed flag when the value moved, drawers call nothing, 40 marks removed ([ff1e963](https://github.com/MoonHug-Editor/moonhug/commit/ff1e963081cc1f759c40db1a8c85782c8d4c87ac))
+* **mh:** the MCP shim build ignores unknown attributes like every other build, so the server starts again ([39f9aab](https://github.com/MoonHug-Editor/moonhug/commit/39f9aab6cabeca75bd74f7fd0c89f24e7af7075f))
+
 ## [0.155.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.154.0...v0.155.0) (2026-11-02)
 
 ### Features
