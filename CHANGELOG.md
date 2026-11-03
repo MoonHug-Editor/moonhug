@@ -1,3 +1,13 @@
+## [0.157.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.156.0...v0.157.0) (2026-11-03)
+
+### Features
+
+* **mcp:** undo_history tool lists the recorded steps and the undo cursor ([8c39f6c](https://github.com/MoonHug-Editor/moonhug/commit/8c39f6cac6288cd394f806264d3a843f85e1203e))
+
+### Bug Fixes
+
+* gizmo skips preview driven lanes, the preview rebinds when the shown clip's rows or lanes change ([d5100a2](https://github.com/MoonHug-Editor/moonhug/commit/d5100a28ab3b1a6c6e895702fb59900583f17927))
+
 ## [0.156.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.155.0...v0.156.0) (2026-11-03)
 
 ### Features
