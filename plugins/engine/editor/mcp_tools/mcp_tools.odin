@@ -14,6 +14,7 @@ import mcp "moonhug:editor/mcp"
 import "moonhug:editor/inspector"
 import sim "moonhug:editor/simulate"
 import "moonhug:editor/session"
+import undo "moonhug:packages/engine/editor/undo"
 import "moonhug:packages/engine"
 
 Mcp_Error :: mcp.Tool_Error
@@ -30,6 +31,32 @@ _mcp_selection_names :: proc() -> []string {
 		}
 	}
 	return names[:]
+}
+
+@(mcp_tool={description="The undo history: every recorded step, oldest first, with the position of the undo cursor. Steps at or past the cursor are redo. Reads the stack the active scene edits record into, the one Edit/Undo pops."})
+mcp_tool_undo_history :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	s := undo.get()
+	if s == nil do return mcp.tool_fail("not_found", "no undo stack")
+	max := int(mcp.json_int(params, "max", 30))
+	if max <= 0 do max = 30
+	Step :: struct {
+		index:   int,
+		label:   string,
+		in_play: bool,
+	}
+	steps := make([dynamic]Step, 0, max, context.temp_allocator)
+	first := len(s.items) - max
+	if first < 0 do first = 0
+	for e, i in s.items[first:] {
+		append(&steps, Step{index = first + i, label = e.label, in_play = e.in_play})
+	}
+	return mcp.tool_ok(struct {
+		steps:    []Step,
+		top:      int, // the cursor: steps before it undo, steps from it on redo
+		count:    int,
+		can_undo: bool,
+		can_redo: bool,
+	}{steps = steps[:], top = s.top, count = len(s.items), can_undo = undo.can_undo(s), can_redo = undo.can_redo(s)})
 }
 
 @(mcp_tool={description="Editor status: active scene, simulate state, selection. Call first to orient."})
