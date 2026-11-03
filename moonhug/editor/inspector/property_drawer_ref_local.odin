@@ -156,7 +156,6 @@ property_drawer_Ref_Local :: proc(ctx: ^Ctx) {
 	}
 	if cleared {
 		ref_ptr^ = {}
-		mark_inspector_changed()
 	}
 
 	if im.BeginPopup(popup_id) {
@@ -170,7 +169,6 @@ property_drawer_Ref_Local :: proc(ctx: ^Ctx) {
 				if im.BeginTabItem("Scene") {
 					if im.Selectable("None") {
 						ref_ptr^ = {}
-						mark_inspector_changed()
 					}
 					im.Separator()
 					objects := _find_objects_of_types(keys, owner_root_scene)
@@ -187,7 +185,6 @@ property_drawer_Ref_Local :: proc(ctx: ^Ctx) {
 						if im.Selectable(row) {
 							ref_ptr.handle = obj.handle
 							ref_ptr.local_id = object_mint_local_id(owner_root_scene, obj.handle)
-							mark_inspector_changed()
 						}
 					}
 					if shown == 0 {

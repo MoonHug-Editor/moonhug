@@ -86,15 +86,13 @@ property_drawer_Animation_inspector :: proc(ctx: ^inspector.Ctx) {
 
 @(private = "file")
 _slider_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
-	if widgets.slider_float(inspector.field_row(label), cast(^f32)ptr, _slider_lo, _slider_hi) {
-		inspector.mark_inspector_changed()
-	}
+	widgets.slider_float(inspector.field_row(label), cast(^f32)ptr, _slider_lo, _slider_hi)
 }
 
 @(private = "file")
 _pos_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	im.SetNextItemWidth(90)
-	if im.DragFloat(label, cast(^f32)ptr, 0.01, 0, 0, "at %.2f") do inspector.mark_inspector_changed()
+	im.DragFloat(label, cast(^f32)ptr, 0.01, 0, 0, "at %.2f")
 	widgets.tooltip("Where this clip sits on the blend axis")
 }
 
@@ -106,7 +104,6 @@ _wrap_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	im.SetNextItemWidth(110)
 	if im.Combo(id, &cur, "Default\x00Once\x00Loop\x00") && i32(w^) != cur {
 		w^ = anim.Animation_Wrap_Mode(cur)
-		inspector.mark_inspector_changed()
 	}
 	widgets.tooltip("Default takes the clip's own wrap")
 }

@@ -55,7 +55,6 @@ property_drawer_Ref :: proc(ctx: ^Ctx) {
 	}
 	if cleared {
 		ref_ptr^ = {}
-		mark_inspector_changed()
 	}
 
 	if im.BeginPopup(popup_id) {
@@ -65,7 +64,6 @@ property_drawer_Ref :: proc(ctx: ^Ctx) {
 			search := picker_search_bar()
 			if im.Selectable("None") {
 				ref_ptr^ = {}
-				mark_inspector_changed()
 			}
 			im.Separator()
 			if im.BeginTabBar("##picker_tabs") {
@@ -90,7 +88,6 @@ property_drawer_Ref :: proc(ctx: ^Ctx) {
 									local_id = object_mint_local_id(owner_root_scene, obj.handle),
 									guid     = {},
 								}
-								mark_inspector_changed()
 							}
 						}
 						if shown == 0 {
@@ -115,7 +112,6 @@ property_drawer_Ref :: proc(ctx: ^Ctx) {
 							// stays unresolved until the asset is loaded.
 							ref_ptr.pptr = picked
 							ref_ptr.handle = {}
-							mark_inspector_changed()
 						}
 					}
 					im.EndTabItem()

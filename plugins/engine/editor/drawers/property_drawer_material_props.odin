@@ -46,21 +46,19 @@ property_drawer_material_properties :: proc(ctx: ^inspector.Ctx) {
 		im.PushID(name_c)
 		defer im.PopID()
 
-		changed := false
 		switch sp.size {
 		case 4:
-			changed = inspector.drag_float(inspector.field_row(name_c), &prop.value.x, 0.01, format = "%g")
+			inspector.drag_float(inspector.field_row(name_c), &prop.value.x, 0.01, format = "%g")
 		case 8:
-			changed = inspector.drag_float2(inspector.field_row(name_c), cast(^[2]f32)&prop.value, 0.01, format = "%g")
+			inspector.drag_float2(inspector.field_row(name_c), cast(^[2]f32)&prop.value, 0.01, format = "%g")
 		case 12:
-			changed = inspector.drag_float3(inspector.field_row(name_c), cast(^[3]f32)&prop.value, 0.01, format = "%g")
+			inspector.drag_float3(inspector.field_row(name_c), cast(^[3]f32)&prop.value, 0.01, format = "%g")
 		case:
 			if engine.material_property_is_color(sp.name, sp.size) {
-				changed = im.ColorEdit4(inspector.field_row(name_c), &prop.value)
+				im.ColorEdit4(inspector.field_row(name_c), &prop.value)
 			} else {
-				changed = inspector.drag_float4(inspector.field_row(name_c), &prop.value, 0.01, format = "%g")
+				inspector.drag_float4(inspector.field_row(name_c), &prop.value, 0.01, format = "%g")
 			}
 		}
-		if changed do inspector.mark_inspector_changed()
 	}
 }

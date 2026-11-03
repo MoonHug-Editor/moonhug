@@ -281,6 +281,7 @@ property_drawer_My_Id :: proc(ctx: ^inspector.Ctx) {
 - The default drawing of an asset's import settings is Apply / Revert, the file row and the fields.
 - The default drawing of any other value is the kind's own row: an enum's combo, an array's list, a union's variant picker, a pointer's target, or the value's text. A step around any of them keeps that row.
 - On a row of the inspector, a field or an array element, the inspector records the edit for every row and a drawer calls nothing. The value is snapshotted before the chain, compared after, the change is one undo step applied to every selected object, and the prefab override is recorded.
+- The same edit raises the inspector's changed flag when the row's value moved, which the component's `type_on_validate` and the document's `doc_on_changed` follow. A pick of the value already there moves nothing and raises nothing. `inspector.mark_inspector_changed()` is only for a change outside the row's value: a structural edit, a write to another field or object, a custom panel that writes through its own undo session.
 - A leaf value (`inspector.is_row_kind`: a number, a string, an enum, a bit set) gets that edit around its chain.
 - A container with steps, a struct, an array, a union, a pointer, gets a provisional edit. When its chain draws rows of their own (the default drawing, `field_edit_row`), each row records its own step and the provisional edit is dropped. When an undo step lands during the chain (an array's add button), it is dropped too. Otherwise the chain drew the value as one widget, a vector, the curve editor, a reference picker, and the provisional edit records it.
 - A container without steps is rows of its own, each with its edit.
@@ -294,6 +295,7 @@ property_drawer_My_Id :: proc(ctx: ^inspector.Ctx) {
 
 Rules:
 
+- A step author names the proc by the contract, draws from `ctx.ptr`, and calls `inspector.draw(ctx)` when the step is around the type's drawing. Undo, multiedit, prefab overrides and the changed flag come from the row.
 - Call `draw(ctx)` at most once. Never call `draw_inspector` on the same value from inside a step: that re-enters the funnel.
 - A step that calls `draw` inherits undo, multiedit and prefab-override behavior: the default drawing owns that machinery. Skipping `draw` (replace) on a row keeps it, the row's edit records the value. On a component or a document, which is no row, a step that skips `draw` takes over that responsibility.
 - Declarative tags stay the front door for common cases (`inspect:`, `ext:`, `decor:button()`, `@(inspector_button)`). Steps are for structural changes those cannot express.

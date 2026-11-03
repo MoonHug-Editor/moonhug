@@ -254,6 +254,14 @@ _widget_active :: proc() -> bool {
 	return im.IsItemActive()
 }
 
+// The mouse is over the row: a right click or a wheel turn writes with no
+// activation. Under the test override the row is driven by the state alone.
+@(private)
+_widget_hovered :: proc() -> bool {
+	if _widget_state_override != nil do return false
+	return im.IsItemHovered()
+}
+
 // A row whose value widget opens a popup (the color swatch's picker) reports
 // the popup as open through this latch, from inside its drawer. Consumed by
 // the row, so it cannot leak into the next one.
@@ -547,6 +555,16 @@ _edit_end :: proc(e: ^Edit) -> (finished: bool) {
 	started := field_edit_row_started()
 	finished = field_edit_row_finished()
 	held := field_edit_row_held()
+	// The row's value moved this frame: the inspector marks it, a drawer
+	// calls nothing for that (mark_inspector_changed is for a change outside
+	// the value). Compared on a frame the row is touched, active or under the
+	// mouse, so idle rows cost nothing, and every frame for a picker and a
+	// provisional edit, whose change lands without a gesture. A dropped
+	// provisional edit compares too: a step's own widget above the rows
+	// inside.
+	touched := started || finished || held || _widget_active() || _widget_hovered() || field_edit_in_flight(e.ptr) || e.picker || e.provisional
+	moved := touched && _changed_since(e.ptr, e.tid, e.before)
+	if moved do mark_inspector_changed()
 	if e.dropped do return false
 	// Recorded like a real edit: it counts for a provisional edit around it.
 	if e.provisional do _edit_count += 1
@@ -561,7 +579,7 @@ _edit_end :: proc(e: ^Edit) -> (finished: bool) {
 	// a foldout or a button inside the chain, so its session opens on the
 	// first frame the value changed, with that frame's pre-draw snapshot. A
 	// click that changes nothing then copies nothing onto the peers.
-	if e.provisional && !e.picker && !editing && _changed_since(e.ptr, e.tid, e.before) {
+	if e.provisional && !e.picker && !editing && moved {
 		field_edit_begin(e.ptr, e.tid, e.offset, e.label, e.before)
 		editing = true
 	}
@@ -578,7 +596,7 @@ _edit_end :: proc(e: ^Edit) -> (finished: bool) {
 	// these frames: the row's own widget is never active while the popup has
 	// the mouse, and it would end the session every frame.
 	if held {
-		if !editing && _changed_since(e.ptr, e.tid, e.before) {
+		if !editing && moved {
 			field_edit_begin(e.ptr, e.tid, e.offset, e.label, e.before)
 			editing = true
 		}
@@ -588,7 +606,7 @@ _edit_end :: proc(e: ^Edit) -> (finished: bool) {
 
 	// The picker's value changed: bracket the change that already happened,
 	// handing the session the value from before it.
-	if e.picker && !editing && _changed_since(e.ptr, e.tid, e.before) {
+	if e.picker && !editing && moved {
 		field_edit_begin(e.ptr, e.tid, e.offset, e.label, e.before)
 		field_edit_apply_to_peers(e.ptr, e.tid, e.offset)
 		field_edit_end()

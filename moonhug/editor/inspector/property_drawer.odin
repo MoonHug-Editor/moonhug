@@ -10,7 +10,6 @@ property_drawer_int :: proc(ctx: ^Ctx) {
     value := cast(i32)(int_ptr^)
     if drag_int(field_row(label), &value) {
         int_ptr^ = int(value)
-        mark_inspector_changed()
     }
 }
 
@@ -21,7 +20,6 @@ property_drawer_i32 :: proc(ctx: ^Ctx) {
     value := i32_ptr^
     if drag_int(field_row(label), &value) {
         i32_ptr^ = value
-        mark_inspector_changed()
     }
 }
 
@@ -32,7 +30,6 @@ property_drawer_u32 :: proc(ctx: ^Ctx) {
     value := i32(min(u32_ptr^, u32(max(i32))))
     if drag_int(field_row(label), &value, 1, 0, max(i32)) {
         u32_ptr^ = u32(max(value, 0))
-        mark_inspector_changed()
     }
 }
 
@@ -61,7 +58,6 @@ property_drawer_string :: proc(ctx: ^Ctx) {
             delete(str_ptr^)
         }
         str_ptr^ = strings.clone(string(buf[:str_len]))
-        mark_inspector_changed()
     }
 }
 
@@ -84,7 +80,6 @@ property_drawer_bool :: proc(ctx: ^Ctx) {
     }
     if changed {
         bool_ptr^ = checkbox_value if !mixed else true
-        mark_inspector_changed()
     }
 }
 
@@ -111,14 +106,12 @@ draw_float_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
         value := float_ptr^
         if drag_float(field_row(label), &value, 0.01, format="%g") {
             float_ptr^ = value
-            mark_inspector_changed()
         }
     } else if tid == typeid_of(f64) {
         float_ptr := cast(^f64)(ptr)
         value := float_ptr^
         if im.InputDouble(field_row(label), &value, 0.01, 0.1, "%g") {
             float_ptr^ = value
-            mark_inspector_changed()
         }
     }
 }
@@ -141,9 +134,7 @@ property_drawer_vec3_ptr :: proc(ctx: ^Ctx) {
     ptr, label := ctx.ptr, ctx.label
     v := cast(^[3]f32)(ptr)
     im.BeginGroup()
-    if drag_float3(field_row(label), v, 0.1) {
-        mark_inspector_changed()
-    }
+    drag_float3(field_row(label), v, 0.1)
     im.EndGroup()
 }
 
@@ -151,25 +142,19 @@ property_drawer_vec3_ptr :: proc(ctx: ^Ctx) {
 property_drawer_vec3 :: proc(ctx: ^Ctx) {
     ptr, label := ctx.ptr, ctx.label
     v := cast(^[3]f32)(ptr)
-    if drag_float3(field_row(label), v, 0.1) {
-        mark_inspector_changed()
-    }
+    drag_float3(field_row(label), v, 0.1)
 }
 
 @(property_drawer={type=[2]f32})
 property_drawer_vec2 :: proc(ctx: ^Ctx) {
     ptr, label := ctx.ptr, ctx.label
     v := cast(^[2]f32)(ptr)
-    if drag_float2(field_row(label), v, 0.1) {
-        mark_inspector_changed()
-    }
+    drag_float2(field_row(label), v, 0.1)
 }
 
 @(property_drawer={type=[4]f32})
 property_drawer_vec4 :: proc(ctx: ^Ctx) {
     ptr, label := ctx.ptr, ctx.label
     v := cast(^[4]f32)(ptr)
-    if drag_float4(field_row(label), v, 0.1) {
-        mark_inspector_changed()
-    }
+    drag_float4(field_row(label), v, 0.1)
 }

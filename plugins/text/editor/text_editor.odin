@@ -125,7 +125,6 @@ _draw_text_area :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 		for n < len(buf) && buf[n] != 0 do n += 1
 		if !inspector.current_field_mixed do delete(str_ptr^)
 		str_ptr^ = strings.clone(string(buf[:n]))
-		inspector.mark_inspector_changed()
 	}
 }
 
@@ -151,7 +150,6 @@ _draw_font_style :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	im.NewLine()
 	if changed {
 		_style_ws = {activated = true, deactivated_after_edit = true}
-		inspector.mark_inspector_changed()
 	}
 }
 

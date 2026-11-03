@@ -94,7 +94,6 @@ _curve_editor :: proc(c: ^core.Curve) {
 		im.DrawList_AddCircleFilled(dl, sp, 4, col)
 	}
 
-	changed := false
 	hovered := im.IsItemHovered({})
 	if im.IsItemActivated() {
 		_curve_sel = hover_key
@@ -108,7 +107,6 @@ _curve_editor :: proc(c: ^core.Curve) {
 		if _curve_sel < len(c.keys) - 1 do t = min(t, c.keys[_curve_sel + 1].t - 0.001)
 		k.t = t
 		k.value = lo + (1 - clamp((mouse.y - p0.y) / (p1.y - p0.y), 0, 1)) * span
-		changed = true
 	}
 	if im.IsItemDeactivated() do _curve_dragging = false
 
@@ -120,12 +118,10 @@ _curve_editor :: proc(c: ^core.Curve) {
 		for k, i in c.keys do if k.t > t { at = i; break }
 		inject_at(&c.keys, at, core.Curve_Key{t = t, value = v})
 		_curve_sel = at
-		changed = true
 	}
 	if hovered && hover_key >= 0 && im.IsMouseClicked(.Right) {
 		ordered_remove(&c.keys, hover_key)
 		_curve_sel = -1
-		changed = true
 	}
 
 	if _curve_sel >= 0 && _curve_sel < len(c.keys) {
@@ -134,19 +130,15 @@ _curve_editor :: proc(c: ^core.Curve) {
 		if im.DragFloat("t##curve_key", &k.t, 0.005, 0, 1) {
 			if _curve_sel > 0 do k.t = max(k.t, c.keys[_curve_sel - 1].t + 0.001)
 			if _curve_sel < len(c.keys) - 1 do k.t = min(k.t, c.keys[_curve_sel + 1].t - 0.001)
-			changed = true
 		}
 		im.SameLine()
 		im.SetNextItemWidth(120)
-		if im.DragFloat("value##curve_key", &k.value, 0.01) do changed = true
+		im.DragFloat("value##curve_key", &k.value, 0.01)
 	} else {
 		im.TextDisabled("double-click adds a key, right-click deletes")
 	}
 	if im.Button("Clear (module off)") {
 		clear(&c.keys)
 		_curve_sel = -1
-		changed = true
 	}
-
-	if changed do mark_inspector_changed()
 }

@@ -71,7 +71,6 @@ property_drawer_PPtr :: proc(ctx: ^Ctx) {
 _pptr_set :: proc(ref_ptr: ^core.PPtr, value: core.PPtr) {
     if ref_ptr^ == value do return
     ref_ptr^ = value
-    mark_inspector_changed()
 }
 
 // The file name, or "Model / Clip" for a sub-asset.

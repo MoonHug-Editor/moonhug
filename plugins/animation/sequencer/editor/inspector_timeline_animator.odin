@@ -69,16 +69,14 @@ property_drawer_TimelineAnimator_inspector :: proc(ctx: ^inspector.Ctx) {
 
 @(private = "file")
 _ta_weight_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
-	if widgets.slider_float(inspector.field_row(label), cast(^f32)ptr, 0, 1) {
-		inspector.mark_inspector_changed()
-	}
+	widgets.slider_float(inspector.field_row(label), cast(^f32)ptr, 0, 1)
 }
 
 @(private = "file")
 _ta_speed_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	id := inspector.field_row(label)
 	im.SetNextItemWidth(110)
-	if im.DragFloat(id, cast(^f32)ptr, 0.01, 0, 0, "%.2f") do inspector.mark_inspector_changed()
+	im.DragFloat(id, cast(^f32)ptr, 0.01, 0, 0, "%.2f")
 	widgets.tooltip("Playback speed for this state. 0 runs at 1")
 }
 
@@ -86,7 +84,7 @@ _ta_speed_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 _ta_fade_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	id := inspector.field_row(label)
 	im.SetNextItemWidth(110)
-	if im.DragFloat(id, cast(^f32)ptr, 0.01, 0, 0, "%.2f s") do inspector.mark_inspector_changed()
+	im.DragFloat(id, cast(^f32)ptr, 0.01, 0, 0, "%.2f s")
 	widgets.tooltip("Cross-fade duration INTO this state, unless the caller passes its own")
 }
 
@@ -98,7 +96,6 @@ _ta_wrap_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	im.SetNextItemWidth(110)
 	if im.Combo(id, &cur, "Once\x00Loop\x00") && i32(w^) != cur {
 		w^ = seq.Timeline_Wrap(cur)
-		inspector.mark_inspector_changed()
 	}
 }
 

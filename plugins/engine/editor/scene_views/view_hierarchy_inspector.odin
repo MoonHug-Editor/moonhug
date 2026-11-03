@@ -2,6 +2,7 @@ package scene_views
 
 import "moonhug:editor/session"
 import "base:runtime"
+import "core:slice"
 import "core:strings"
 import "core:mem"
 import "core:c"
@@ -1268,21 +1269,22 @@ _wrap_transform_rotation :: proc(tH: engine.Transform_Handle, t: ^engine.Transfo
 
 // Draws the widget and reports whether a value landed WITHOUT a gesture the row
 // can see — a typed-in number that is applied on Enter, where nothing activates
-// or deactivates. The caller can't re-derive it: the changed flag is consumed
-// here, so reading it afterwards would miss those edits.
+// or deactivates. The value is compared around the drawer: this row draws the
+// vector off the inspector's rows, so no row edit marks the change for it.
 //
 // Drag gestures are NOT reported here. They are bracketed by the caller's
 // session (field_edit_row_started/finished), and reporting them twice would
 // record the override twice.
 @(private)
 _wrap_transform_field :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, offset: uintptr, field_tid: typeid, drawer: proc(ptr: rawptr, tid: typeid, label: cstring), drawer_tid: typeid, label: cstring) -> (committed: bool) {
-	prev_changed := inspector.consume_inspector_changed()
+	before := undo.capture_json(field_ptr, field_tid)
+	defer delete(before)
 
 	drawer(field_ptr, drawer_tid, label)
 
-	committed = inspector.is_changed_flag_set() && !im.IsItemActive()
-
-	if prev_changed do inspector.mark_inspector_changed()
+	after := undo.capture_json(field_ptr, field_tid)
+	defer delete(after)
+	committed = !slice.equal(before, after) && !im.IsItemActive()
 	return
 }
 

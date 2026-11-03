@@ -52,7 +52,6 @@ property_drawer_MinMax_Curve :: proc(ctx: ^Ctx) {
 		for name, mode in _mm_mode_names {
 			if im.Selectable(name, mm.mode == mode) {
 				mm.mode = mode
-				mark_inspector_changed()
 			}
 		}
 		im.EndPopup()
@@ -63,22 +62,16 @@ property_drawer_MinMax_Curve :: proc(ctx: ^Ctx) {
 	switch mm.mode {
 	case .Constant:
 		im.SetNextItemWidth(avail)
-		if drag_float(fmt.ctprintf("##mm_v%s", label), &mm.value_min, 0.05) {
-			mark_inspector_changed()
-		}
+		drag_float(fmt.ctprintf("##mm_v%s", label), &mm.value_min, 0.05)
 		widgets.tooltip("Value", im.HoveredFlags_ForTooltip)
 	case .Random_Two_Constants:
 		half := (avail - 4) * 0.5
 		im.SetNextItemWidth(half)
-		if drag_float(fmt.ctprintf("##mm_lo%s", label), &mm.value_min, 0.05) {
-			mark_inspector_changed()
-		}
+		drag_float(fmt.ctprintf("##mm_lo%s", label), &mm.value_min, 0.05)
 		widgets.tooltip("Min", im.HoveredFlags_ForTooltip)
 		im.SameLine(0, 4)
 		im.SetNextItemWidth(half)
-		if drag_float(fmt.ctprintf("##mm_hi%s", label), &mm.value_max, 0.05) {
-			mark_inspector_changed()
-		}
+		drag_float(fmt.ctprintf("##mm_hi%s", label), &mm.value_max, 0.05)
 		widgets.tooltip("Max", im.HoveredFlags_ForTooltip)
 	case .Curve:
 		_mm_curve_cell(&mm.curve_min, "##mm_c", avail)

@@ -86,7 +86,6 @@ _gradient_editor :: proc(g: ^core.Gradient) {
 			im.Vec2{x, p1.y}, im.Vec2{x - 5, p1.y + MARKER_H}, im.Vec2{x + 5, p1.y + MARKER_H}, col)
 	}
 
-	changed := false
 	hovered := im.IsItemHovered({})
 	if im.IsItemActivated() {
 		_grad_sel = hover_key
@@ -98,7 +97,6 @@ _gradient_editor :: proc(g: ^core.Gradient) {
 		if _grad_sel > 0 do t = max(t, g.keys[_grad_sel - 1].t + 0.001)
 		if _grad_sel < len(g.keys) - 1 do t = min(t, g.keys[_grad_sel + 1].t - 0.001)
 		k.t = t
-		changed = true
 	}
 	if im.IsItemDeactivated() do _grad_dragging = false
 
@@ -110,23 +108,20 @@ _gradient_editor :: proc(g: ^core.Gradient) {
 		for k, i in g.keys do if k.t > t { at = i; break }
 		inject_at(&g.keys, at, core.Gradient_Key{t = t, color = core.gradient_eval(g, t)})
 		_grad_sel = at
-		changed = true
 	}
 
 	if _grad_sel >= 0 && _grad_sel < len(g.keys) {
 		k := &g.keys[_grad_sel]
-		if im.ColorEdit4("color##grad_key", &k.color, {.AlphaBar}) do changed = true
+		im.ColorEdit4("color##grad_key", &k.color, {.AlphaBar})
 		im.SetNextItemWidth(120)
 		if im.DragFloat("t##grad_key", &k.t, 0.005, 0, 1) {
 			if _grad_sel > 0 do k.t = max(k.t, g.keys[_grad_sel - 1].t + 0.001)
 			if _grad_sel < len(g.keys) - 1 do k.t = min(k.t, g.keys[_grad_sel + 1].t - 0.001)
-			changed = true
 		}
 		im.SameLine()
 		if im.Button("Delete Key") {
 			ordered_remove(&g.keys, _grad_sel)
 			_grad_sel = -1
-			changed = true
 		}
 	} else {
 		im.TextDisabled("double-click adds a key")
@@ -134,8 +129,5 @@ _gradient_editor :: proc(g: ^core.Gradient) {
 	if im.Button("Clear (module off)") {
 		clear(&g.keys)
 		_grad_sel = -1
-		changed = true
 	}
-
-	if changed do mark_inspector_changed()
 }

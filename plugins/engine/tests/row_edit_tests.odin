@@ -244,3 +244,79 @@ test_row_explicit_pair_around_sub_rows_is_one_step :: proc(t: ^testing.T) {
 	testing.expect_value(t, mf_b.mesh.local_id, engine.Local_ID(2))
 	testing.expect_value(t, mf_b.mesh.guid, engine.Asset_GUID{2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2})
 }
+
+// A drawer that writes this frame's value and calls nothing else: a vector's
+// drag, an enum's combo pick.
+@(private = "file")
+_step_write_only :: proc(ctx: ^inspector.Ctx) {
+	if _row_write == nil do return
+	_row_write(ctx.ptr)
+}
+
+// The row raises the changed flag for its own value: a drag frame that moved
+// the vector leaves it set, an idle frame leaves it clear.
+@(test)
+test_row_marks_changed_when_value_moved :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+	inspector.drawers_reset()
+	defer _row_restore_drawers()
+	inspector.add_drawer(typeid_of([3]f32), _step_write_only)
+
+	a := engine.transform_new("A")
+	w := engine.ctx_world()
+	ta := engine.pool_get(&w.transforms, engine.Handle(a))
+	ta.scale = {1, 1, 1}
+	prev := inspector.multi_set_peers(nil)
+	defer inspector.multi_set_peers(prev)
+	undo.push_transform_owner(a)
+	defer undo.pop_owner()
+
+	offset := offset_of(engine.Transform, scale)
+	drag_x :: proc(p: rawptr) { (cast(^[3]f32)p)[0] = 2 }
+	_row_draw_replay(&ta.scale, typeid_of([3]f32), offset, {frame_press(), frame_drag(drag_x)})
+	testing.expect_value(t, ta.scale, [3]f32{2, 1, 1})
+	testing.expect(t, inspector.is_changed_flag_set(), "a frame that moved the value raises the flag")
+
+	_row_draw_replay(&ta.scale, typeid_of([3]f32), offset, {frame_idle()})
+	testing.expect(t, !inspector.is_changed_flag_set(), "an idle frame leaves the flag clear")
+}
+
+// Picking the value the enum already holds changes nothing: no flag, no undo
+// step. Picking another value raises the flag and records one step.
+@(test)
+test_row_enum_same_pick_leaves_flag_clear :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+	inspector.drawers_reset()
+	defer _row_restore_drawers()
+	inspector.add_drawer(typeid_of(engine.Light_Type), _step_write_only)
+
+	a := engine.transform_new("A")
+	_, raw := engine.transform_add_comp(a, .Light)
+	light := cast(^engine.Light)raw
+	light.type = .Point
+	prev := inspector.multi_set_peers(nil)
+	defer inspector.multi_set_peers(prev)
+	undo.push_component_owner(_comp_handle(a, .Light))
+	defer undo.pop_owner()
+
+	before_steps := s.top
+	offset := offset_of(engine.Light, type)
+	pick_point :: proc(p: rawptr) { (cast(^engine.Light_Type)p)^ = .Point }
+	_row_draw_replay(&light.type, typeid_of(engine.Light_Type), offset, {frame_popup_write(pick_point)})
+	testing.expect(t, !inspector.is_changed_flag_set(), "a pick of the current value raises nothing")
+	testing.expect_value(t, s.top, before_steps)
+
+	pick_spot :: proc(p: rawptr) { (cast(^engine.Light_Type)p)^ = .Spot }
+	_row_draw_replay(&light.type, typeid_of(engine.Light_Type), offset, {frame_popup_write(pick_spot)})
+	testing.expect_value(t, light.type, engine.Light_Type.Spot)
+	testing.expect(t, inspector.is_changed_flag_set(), "a pick of another value raises the flag")
+	testing.expect_value(t, s.top, before_steps + 1)
+}

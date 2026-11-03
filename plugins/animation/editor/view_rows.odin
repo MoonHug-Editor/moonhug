@@ -270,8 +270,8 @@ _pv_discrete_field :: proc(ch: ^anim.Animation_Channel, kind: anim.Prop_Kind, va
 		prev_trailing := inspector.current_field_trailing_w
 		inspector.current_field_trailing_w = max(im.GetContentRegionAvail().x - w, 0)
 		defer inspector.current_field_trailing_w = prev_trailing
-		// The picker flags the inspector as changed. The flag belongs to the
-		// inspector's own rows, so this draw leaves it as it found it.
+		// This draw is off the inspector's rows, so no row edit marks the
+		// flag for it. The flag belongs to those rows: left as it was found.
 		prev_changed := inspector.consume_inspector_changed()
 		inspector.draw_value(&picked, typeid_of(engine.PPtr), "##anim_ref")
 		inspector.consume_inspector_changed()

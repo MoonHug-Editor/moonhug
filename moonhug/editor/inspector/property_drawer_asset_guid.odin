@@ -47,12 +47,10 @@ property_drawer_Asset_GUID :: proc(ctx: ^Ctx) {
     }
     if cleared {
         guid_ptr^ = {}
-        mark_inspector_changed()
     }
     if dropped != "" && _ext_filter_matches(dropped) {
         if new_guid, ok := assets.asset_db_get_guid(dropped); ok && _ref_admits(core.Asset_GUID(new_guid)) {
             guid_ptr^ = core.Asset_GUID(new_guid)
-            mark_inspector_changed()
         }
     }
 
@@ -64,7 +62,6 @@ property_drawer_Asset_GUID :: proc(ctx: ^Ctx) {
             if im.BeginTabItem("Project") {
                 if im.Selectable("None") {
                     guid_ptr^ = {}
-                    mark_inspector_changed()
                 }
                 im.Separator()
 
@@ -76,7 +73,6 @@ property_drawer_Asset_GUID :: proc(ctx: ^Ctx) {
                 picked: core.PPtr
                 if _picker_asset_rows_of_types(keys, search, &picked) {
                     guid_ptr^ = picked.guid
-                    mark_inspector_changed()
                 }
                 im.EndTabItem()
             }
