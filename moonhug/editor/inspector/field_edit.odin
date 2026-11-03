@@ -308,12 +308,15 @@ field_edit_set_widget_state :: proc(ws: ^Widget_State) {
 // widgets draw and compared after, the change becomes one undo step and lands
 // on every selected object, and the prefab override is recorded.
 //
-// The inspector opens it for every value that can only be one row, every
-// type that is not a struct, around the value's chain. A drawer that draws
-// a STRUCT as one widget, the curve editor, a reference picker, opens it
-// itself with edit_as_one_begin and defers edit_as_one_end around its
-// widgets: the inspector cannot tell that struct from one whose fields draw
-// as rows of their own. A custom row passes its widgets to field_edit_row.
+// On a row of the inspector (Ctx._row, a field or an array element), the
+// inspector opens it around the chain of a leaf value (is_row_kind). A
+// drawer that draws a container as one widget, the curve editor, a reference
+// picker, the material's property list, opens it itself with
+// edit_as_one_begin and defers edit_as_one_end around its widgets: the
+// inspector cannot tell that container from one drawn as rows of its own.
+// Off a row, a bare draw_value from custom code, the pair does nothing: that
+// code runs its own edits or none. A custom row passes its widgets to
+// field_edit_row.
 //
 // Nested edits of one row collapse into the outer one: a custom row that
 // wraps a registered drawer with field_edit_row, or a drawer that draws
@@ -329,6 +332,7 @@ Edit :: struct {
 	// puts ctx.ptr back.
 	cur:        rawptr,
 	nested:     bool, // inside another edit of a row: this one does nothing
+	bare:       bool, // off a row (a bare draw_value): no edit at all
 	driven:     bool, // the row is driven: _driven_edit holds its value
 	grouped:    bool,
 	picker:     bool,
@@ -354,10 +358,11 @@ _edit_count: int
 _driven_edit: Driven_Value
 
 // Opens an edit of the value `ctx` draws as one row, with `ctx.offset`,
-// `ctx.name` and `ctx.path` from the field loop. For a drawer that draws
-// several fields as one widget. Redirects ctx.ptr for a driven row, so the
-// widgets read ctx.ptr AFTER this call.
+// `ctx.name` and `ctx.path` from the field loop. For a drawer that draws a
+// container as one widget. Does nothing off a row (ctx._row false). Redirects
+// ctx.ptr for a driven row, so the widgets read ctx.ptr AFTER this call.
 edit_as_one_begin :: proc(ctx: ^Ctx) -> Edit {
+	if !ctx._row do return Edit{ptr = ctx.ptr, cur = ctx.ptr, tid = ctx.tid, bare = true}
 	e := _edit_begin(ctx.ptr, ctx.tid, ctx.offset, ctx.name, ctx.label, nil)
 	e.path = ctx.path
 	if !e.nested && ctx.path != "" do e.prev_path = field_edit_set_path(ctx.path)
@@ -367,6 +372,7 @@ edit_as_one_begin :: proc(ctx: ^Ctx) -> Edit {
 
 // Closes it: compares, records, applies to the peers, records the override.
 edit_as_one_end :: proc(ctx: ^Ctx, e: ^Edit) -> (finished: bool) {
+	if e.bare do return false
 	ctx.ptr = e.ptr
 	finished = _edit_end(e)
 	if !e.nested && e.path != "" {

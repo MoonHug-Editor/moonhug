@@ -209,6 +209,9 @@ Undo_Stack :: struct {
 	// once per frame by the editor's selection tracker so selection changes
 	// caused by data operations don't also record as selection steps.
 	activity:   bool,
+	// Every stack mutation so far, never reset: a caller compares it around a
+	// draw to see whether anything was recorded meanwhile.
+	mutations:  u64,
 	// A new top-level entry landed (a push outside any group, or a group
 	// closing). `disturbed` is any other mutation: undo, redo, clear, purge.
 	// A frame that only landed is one where a selection change belongs to the
@@ -239,7 +242,7 @@ clear :: proc(s: ^Undo_Stack) {
 	}
 	builtin.clear(&s.txn_stack)
 	s.top = 0
-	s.activity = true
+	_stack_mutated(s)
 	s.disturbed = true
 }
 
@@ -270,6 +273,18 @@ set_stack_slot :: proc(fn: proc() -> ^rawptr) {
 	_stack_slot = fn
 }
 
+@(private)
+_stack_mutated :: proc(s: ^Undo_Stack) {
+	s.activity = true
+	s.mutations += 1
+}
+
+// Every mutation of the current stack so far, 0 when there is none.
+mutation_count :: proc() -> u64 {
+	s := get()
+	return s.mutations if s != nil else 0
+}
+
 get :: proc() -> ^Undo_Stack {
 	if _stack_slot == nil do return nil
 	slot := _stack_slot()
@@ -287,7 +302,7 @@ install :: proc(s: ^Undo_Stack) {
 push :: proc(s: ^Undo_Stack, cmd: Command, label := "") {
 	if s == nil do return
 	if !s.recording || s.applying do return
-	s.activity = true
+	_stack_mutated(s)
 
 	if len(s.txn_stack) > 0 {
 		top_txn := &s.txn_stack[len(s.txn_stack) - 1]
@@ -404,7 +419,7 @@ end_group_command :: proc(s: ^Undo_Stack, label := "") {
 	// labels are usually string literals.
 	append(&s.items, Entry{label = strings.clone(label), cmd = Command(grp), in_play = s.playing})
 	s.top = len(s.items)
-	s.activity = true
+	_stack_mutated(s)
 	s.landed = true
 	// Lands outside push(), so the dirty mark is made here as well.
 	_mark_scenes_dirty(&s.items[len(s.items) - 1].cmd)
@@ -456,13 +471,13 @@ play_end :: proc(s: ^Undo_Stack) {
 		ordered_remove(&s.items, i)
 		if i < s.top do s.top -= 1
 	}
-	s.activity = true
+	_stack_mutated(s)
 	s.disturbed = true
 }
 
 apply_undo :: proc(s: ^Undo_Stack) -> bool {
 	if !can_undo(s) do return false
-	s.activity = true
+	_stack_mutated(s)
 	s.disturbed = true
 	s.applying = true
 	defer s.applying = false
@@ -474,7 +489,7 @@ apply_undo :: proc(s: ^Undo_Stack) -> bool {
 
 apply_redo :: proc(s: ^Undo_Stack) -> bool {
 	if !can_redo(s) do return false
-	s.activity = true
+	_stack_mutated(s)
 	s.disturbed = true
 	s.applying = true
 	defer s.applying = false
@@ -939,7 +954,7 @@ _purge :: proc(s: ^Undo_Stack, r: core.Scene_Ref, any_scene: bool) {
 		ordered_remove(&s.items, i)
 		if i < s.top do s.top -= 1
 	}
-	s.activity = true
+	_stack_mutated(s)
 	s.disturbed = true
 }
 
@@ -977,7 +992,7 @@ purge_asset_copy :: proc(s: ^Undo_Stack, copy: u64) {
 		removed = true
 	}
 	if removed {
-		s.activity = true
+		_stack_mutated(s)
 		s.disturbed = true
 	}
 }
@@ -996,7 +1011,7 @@ purge_asset :: proc(s: ^Undo_Stack, guid: core.Asset_GUID) {
 		removed = true
 	}
 	if removed {
-		s.activity = true
+		_stack_mutated(s)
 		s.disturbed = true
 	}
 }

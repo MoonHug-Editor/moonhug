@@ -269,7 +269,7 @@ property_drawer_My_Range :: proc(ctx: ^inspector.Ctx) {
     im.DragFloatRange2("##r", &r.min, &r.max)
 }
 
-@(property_drawer={type=My_Id})                 // not a struct: the inspector opens the edit, nothing to write
+@(property_drawer={type=My_Id})                 // a leaf: the inspector opens the edit, nothing to write
 property_drawer_My_Id :: proc(ctx: ^inspector.Ctx) {
     im.InputText("##id", cast(^My_Id)ctx.ptr)
 }
@@ -278,13 +278,13 @@ property_drawer_My_Id :: proc(ctx: ^inspector.Ctx) {
 - The name is the contract, as with `type_reset_<T>`: the type's own drawing is `property_drawer_<T>`, a step around it `property_drawer_<T>_<what>`, `<T>` the type's own name without its package. An array or builtin type has no name to repeat, so its drawer is `property_drawer_<anything>`.
 - `type` is any type expression the declaring file can name, a container type included (`[dynamic]engine.Material_Property`).
 - `order` places the step, lower outside: `"outer"` for frames and banners, `"middle"` for ordinary rows around the drawing, `"inner"` for the type's own drawing, or a number. No `order` means `"inner"`.
-- Steps of one type at one order run by package and proc name.
+- Steps of one type at one order run by proc name.
 - The default drawing of a struct is the reflected field loop, each field a row of its own.
 - The default drawing of an asset's import settings is Apply / Revert, the file row and the fields.
-- The default drawing of any other value is the kind's built-in row, or its text.
-- Every value that can only be one row, every type that is not a struct, gets its edit from the inspector: the value is snapshotted before the chain, compared after, the change is one undo step applied to every selected object, and the prefab override is recorded. Its drawer writes nothing for that. A struct is fields, each a row with its own edit, unless a drawer draws it as one widget, the curve editor, a reference picker: that drawer calls `inspector.edit_as_one_begin(ctx)` and defers `inspector.edit_as_one_end(ctx, &row)` around its widgets, because the inspector cannot tell a struct drawn as one widget from a struct whose fields draw as rows. A step that only adds rows around a drawing marks nothing, and so does a drawer that lays out sub-rows that are `field_edit_row`s of their own.
+- The default drawing of any other value is the row the field loop draws for that kind without steps: an enum's combo, an array's list, a union's variant picker, a pointer's target, or the value's text. A step around any of them keeps that row.
+- On a row of the inspector, a field or an array element, a leaf value gets its edit from the inspector: a number, a string, an enum, a bit set, a fixed array of numbers (`inspector.is_row_kind`). The value is snapshotted before the chain, compared after, the change is one undo step applied to every selected object, and the prefab override is recorded. Its drawer writes nothing for that. A container, a struct, a dynamic array, a union, a pointer, is rows of its own, each with its edit, unless a drawer draws it as one widget, the curve editor, a reference picker, the material's property list: that drawer calls `inspector.edit_as_one_begin(ctx)` and defers `inspector.edit_as_one_end(ctx, &row)` around its widgets, because the inspector cannot tell a container drawn as one widget from one drawn as rows. Off a row, when custom code draws a value with `inspector.draw_value`, the pair does nothing: that code runs its own edits or none. A step that only adds rows around a drawing marks nothing, and so does a drawer that lays out sub-rows that are `field_edit_row`s of their own.
 - Edits nest into the outer one: a custom row that wraps a registered drawer with `field_edit_row`, or a drawer that draws another drawer, records once.
-- A struct drawer that forgets the pair records no undo. The inspector logs that once per type when a struct's chain changed the value with no edit open inside it.
+- A container drawer that forgets the pair records no undo. The inspector logs that once per type when a container's chain on a row changed the value and nothing was recorded, no row edit inside and no undo entry, which an array's add and remove buttons make.
 - `ctx` carries the value (`ptr`, `tid`), its `label` and `path_prefix`, and for a field the multi-edit `offset`, the field `name` and `path` the edit uses, plus `nested` and `inline`, which the default drawing of a struct field reads to fold it under its name.
 - Import settings steps are keyed by the importer's settings type: `engine.MeshSettings`, `engine.TextureSettings`, `audio.AudioSettings`, `shadergraph.Shader_Graph_Settings`. While the value is an asset's import settings, `ctx.asset.settings` is true and `ctx.asset` carries the file's `path`, its `guid` and the selected sub-asset `sub`. The value is the asset's import settings document (docs/core/Undo.md, "Import settings"): a step edits it in place and undo records the change, no undo code needed. `packages/audio/editor` is the reference (clip stats under AudioSettings).
 - The generated `register_property_drawers` (property_drawer_gen, `registration/property_drawers_generated.odin`) adds every step after `inspector.init`, in the editor and the tests bootstrap.

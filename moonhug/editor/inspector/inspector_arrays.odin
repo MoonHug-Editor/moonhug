@@ -269,15 +269,17 @@ draw_array_element :: proc(ptr: rawptr, elem_tid: typeid, label: cstring, elem_o
 	if has_drawer(elem_tid) {
 		prev_changed := inspector_changed
 		inspector_changed = false
-		// The element's chain draws it. A non-struct element is one row and
-		// gets its edit here; a struct drawer opens its own (field_edit.odin).
-		ectx := Ctx{ptr = ptr, tid = elem_tid, label = label, offset = elem_offset, name = "Element", nested = true, _chain = _chain_of(elem_tid)}
-		if reflect.is_struct(type_info_of(elem_tid)) {
-			_funnel_draw(&ectx)
-		} else {
+		// The element's chain draws it. A leaf element gets its edit here, a
+		// container's drawer opens its own (inspector_funnel.odin).
+		ectx := Ctx{ptr = ptr, tid = elem_tid, label = label, offset = elem_offset, name = "Element", nested = true, _row = true, _element = true, _chain = _chain_of(elem_tid)}
+		if is_row_kind(elem_tid) {
 			row := edit_as_one_begin(&ectx)
 			_funnel_draw(&ectx)
 			edit_as_one_end(&ectx, &row)
+		} else {
+			probe := edit_probe()
+			_funnel_draw(&ectx)
+			edit_check(&ectx, probe)
 		}
 		if prev_changed || inspector_changed do inspector_changed = true
 		if !ectx.menu_drawn do draw_field_context_menu(ptr, elem_tid)

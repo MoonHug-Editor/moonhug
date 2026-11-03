@@ -772,7 +772,32 @@ resolve_property_drawer :: proc(tid: typeid) -> proc(ptr: rawptr, tid: typeid, l
     return draw_value
 }
 
-// The chain's end for a value with no drawing of its own: its text.
+// The chain's end for a value that is not a struct: the row the field loop
+// draws for a kind without steps. An enum's combo (its edit is the row's,
+// opened around the chain), an array's list and a union's variant picker
+// (rows of their own), a pointer's target, or the value's text.
+draw_kind_default :: proc(ctx: ^Ctx) {
+    switch {
+    case is_enum_type(ctx.tid):
+        draw_inspector_enum(ctx.ptr, ctx.tid, ctx.label)
+    case is_array_type(ctx.tid):
+        draw_inspector_array_multi(ctx.ptr, ctx.tid, ctx.label, ctx.offset)
+        ctx.menu_drawn = true
+    case is_union_type(ctx.tid):
+        // A union's payload type can differ per object — see multi_suspend.
+        mprev := multi_suspend()
+        draw_inspector_union(ctx.ptr, ctx.tid, ctx.label)
+        multi_resume(mprev)
+        ctx.menu_drawn = true
+    case reflect.is_pointer(type_info_of(ctx.tid)):
+        draw_inspector(any{ctx.ptr, ctx.tid}, "", ctx.path_prefix)
+        ctx.menu_drawn = true
+    case:
+        draw_value_text(ctx.ptr, ctx.tid, ctx.label)
+    }
+}
+
+// A value's text, for a kind with no row of its own.
 draw_value_text :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     c_str := strings.clone_to_cstring(fmt.tprintf("%s: %v", label, any{ptr, tid}))
     defer delete(c_str)
@@ -1006,17 +1031,28 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
 // (`ctx.nested`, from the field loop) folds under its name unless tagged
 // inline, with the field's context menu on the header.
 draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_prefix: string, ctx: ^Ctx = nil) {
-    if ctx != nil && ctx.nested && !ctx.inline {
+    // The defers are at proc scope: inside an `if` block they would run at
+    // the end of the block, before the fields draw.
+    nested := ctx != nil && ctx.nested
+    folds := nested && !ctx.inline
+    if nested do ctx.menu_drawn = true // the header's menu, or none for inline
+    if folds {
         tree_open := im.TreeNode(label)
         draw_field_context_menu(ptr, tid, path_prefix)
-        ctx.menu_drawn = true
         if !tree_open do return
-        defer im.TreePop()
-        // Fields inside are located from the struct's start on each peer:
-        // ctx.offset is absolute, the stack takes the step from here.
-        prev_off := multi_push_offset(ctx.offset - _multi_base_offset)
-        defer multi_pop_offset(prev_off)
     }
+    defer if folds do im.TreePop()
+    // Fields inside are located from the struct's start on each peer:
+    // ctx.offset is absolute, the stack takes the step from here.
+    delta: uintptr
+    if nested do delta = ctx.offset - _multi_base_offset
+    prev_off := multi_push_offset(delta)
+    defer multi_pop_offset(prev_off)
+    // An array element's fields: inspector buttons with show_in_array=false
+    // skip them.
+    prev_in_elem := _in_array_element
+    if ctx != nil && ctx._element do _in_array_element = true
+    defer _in_array_element = prev_in_elem
     xAny := any{ptr, tid}
     names := reflect.struct_field_names(tid)
     types := reflect.struct_field_types(tid)
@@ -1128,12 +1164,11 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             defer field_tags_restore(prev_tags)
 
             if has_drawer(field_type.id) {
-                // The field's chain draws it (inspector_funnel.odin). A value
-                // that can only be one row, every non-struct type, gets its
-                // edit opened here. A struct's chain runs bare: a drawer that
-                // draws it as one widget opens the edit itself, and a struct
-                // whose steps call through folds its fields like any nested
-                // struct, each with its own row.
+                // The field's chain draws it (inspector_funnel.odin). A leaf
+                // value gets its edit opened here. A container's chain runs
+                // without one: a drawer that draws it as one widget opens the
+                // edit itself, and the default drawing lays it out as rows of
+                // its own, each with its edit.
                 // The innermost step owns this row, so its @(property_drawer)
                 // is what debug tooltips name for anything the row hovers.
                 origin_prev := widgets.ui_origin_push(drawer_origin(field_type.id))
@@ -1157,16 +1192,17 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
                     path        = full_path,
                     nested      = true,
                     inline      = tag_has(field_info.tag, TAG_INLINE),
+                    _row        = true,
                     _chain      = _chain_of(field_type.id),
                 }
-                if reflect.is_struct(field_type) {
-                    edits_before, changed_before := _edit_count, inspector_changed
-                    _funnel_draw(&fctx)
-                    edit_check(&fctx, edits_before, changed_before)
-                } else {
+                if is_row_kind(field_type.id) {
                     row := edit_as_one_begin(&fctx)
                     _funnel_draw(&fctx)
                     edit_as_one_end(&fctx, &row)
+                } else {
+                    probe := edit_probe()
+                    _funnel_draw(&fctx)
+                    edit_check(&fctx, probe)
                 }
                 im.EndGroup()
                 current_field_trailing_w = 0

@@ -1,18 +1,17 @@
 package app_editor
 
-import "core:fmt"
-import "core:strings"
-import im "moonhug:external/odin-imgui"
 import sprites "moonhug:packages/sprites"
 import log "moonhug:libs/log"
 
-//@(property_drawer={type=app.ButtonsExample, priority = 10})
-draw_A_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
-    label2 := fmt.tprintf("Hello, %s", label);
-    c_label: cstring = strings.clone_to_cstring(label2)
-    defer delete(c_label)
-    im.Text(c_label)
-}
+// A drawer example, commented out: this package cannot import the inspector,
+// which imports it back for its @(context_menu) procs. A drawer lives in a
+// package the inspector does not import. With it, every ButtonsExample draws
+// as this one line instead of its fields:
+//
+//   @(property_drawer={type=app.ButtonsExample})
+//   property_drawer_ButtonsExample :: proc(ctx: ^inspector.Ctx) {
+//       im.Text(fmt.ctprintf("Hello, %s", ctx.label))
+//   }
 
 @(context_menu={type=sprites.SpriteRenderer, menu="Log Sprite Values", order=-100})
 log_sprite_values :: proc(comp_ptr: rawptr) {

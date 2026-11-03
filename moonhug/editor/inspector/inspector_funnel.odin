@@ -22,16 +22,22 @@ package inspector
 // The default drawing depends on the value:
 // - a struct: the reflected field loop, each field a row of its own;
 // - an asset's import settings: Apply and Revert, the file row, the fields;
-// - anything else: the kind's built-in row, or its text.
+// - anything else: the kind's own row, the same the field loop draws for a
+//   type without steps (draw_kind_default): an enum combo, an array's list,
+//   a union's variant picker, a pointer's target, or the value's text.
 //
-// A value that can only be one row, every non-struct type, gets its edit
-// (field_edit.odin) opened by the inspector around its chain: one undo step,
-// applied to every selected object. A struct is fields, each a row with its
-// own edit, unless a drawer draws it as one widget, the curve editor, a
-// reference picker: that drawer calls edit_as_one_begin(ctx) and defers
-// edit_as_one_end around its widgets, since the inspector cannot tell the two
-// kinds of struct apart. A step that only adds rows around a drawing marks
-// nothing.
+// Edits (field_edit.odin). A row of the inspector, a field or an array
+// element, marks its ctx with `_row`. On a row, the inspector opens the edit
+// around the chain for a leaf value, one that is always one row (is_row_kind):
+// a number, a string, an enum, a bit set, a fixed array of numbers. One undo
+// step, applied to every selected object. A container, a struct, a dynamic
+// array, a union, a pointer, draws as rows of its own, each with its edit,
+// unless a drawer draws it as one widget, the curve editor, a reference
+// picker, the material's property list: that drawer calls
+// edit_as_one_begin(ctx) and defers edit_as_one_end around its widgets, since
+// the inspector cannot tell the two apart. Off a row (a bare draw_value from
+// custom code, which runs its own edits or none), the pair does nothing. A
+// step that only adds rows around a drawing marks nothing.
 //
 // Odin has no closures, so the ctx carries the chain and a cursor instead
 // of a captured continuation.
@@ -41,6 +47,7 @@ import "core:reflect"
 import "core:slice"
 import core "moonhug:libs/core"
 import "moonhug:libs/log"
+import undo "moonhug:editor/undo"
 
 ORDER_OUTER :: -1000 // outermost frames (headers, foldouts, banners)
 ORDER_MIDDLE :: 0 // ordinary rows around the drawing
@@ -64,6 +71,12 @@ Ctx :: struct {
 	nested:      bool,
 	inline:      bool,
 	menu_drawn:  bool,
+	// A row of the inspector drew this value: edits open (see above). Set by
+	// the field loop and the array element path, never by draw_value.
+	_row:        bool,
+	// An array element: the default drawing of a struct marks its fields as
+	// inside one, for inspector buttons with show_in_array=false.
+	_element:    bool,
 	// Set while the value is an asset's import settings: the file, its guid,
 	// the selected sub-asset. Zero for every other value.
 	asset:       Asset_Info,
@@ -118,7 +131,29 @@ _draw_end :: proc(ctx: ^Ctx) {
 		draw_inspector_default(ctx.ptr, ctx.tid, ctx.label, ctx.path_prefix, ctx)
 		return
 	}
-	draw_value_text(ctx.ptr, ctx.tid, ctx.label)
+	draw_kind_default(ctx)
+}
+
+// True for a leaf value, always drawn as one row: the inspector opens its edit
+// on a row. A number, a boolean, a string, a rune, an enum, a bit set, a type
+// id, or a fixed array of numbers (a vector, a color, a guid), which multi-edit
+// applies component by component. Everything else is a container, drawn as
+// rows of its own unless a drawer edits it as one.
+is_row_kind :: proc(tid: typeid) -> bool {
+	ti := runtime.type_info_base(type_info_of(tid))
+	#partial switch v in ti.variant {
+	case runtime.Type_Info_Integer, runtime.Type_Info_Float, runtime.Type_Info_Boolean,
+	     runtime.Type_Info_String, runtime.Type_Info_Rune, runtime.Type_Info_Enum,
+	     runtime.Type_Info_Bit_Set, runtime.Type_Info_Type_Id:
+		return true
+	case runtime.Type_Info_Array:
+		elem := runtime.type_info_base(v.elem)
+		#partial switch _ in elem.variant {
+		case runtime.Type_Info_Integer, runtime.Type_Info_Float:
+			return true
+		}
+	}
+	return false
 }
 
 // --- Registration --------------------------------------------------------------
@@ -133,6 +168,10 @@ _Step :: struct {
 
 @(private = "file")
 _steps: map[typeid][dynamic]_Step
+// Each type's steps as the chain a draw walks, rebuilt when a step is added,
+// so a draw allocates nothing.
+@(private = "file")
+_chains: map[typeid][]Drawer
 @(private = "file")
 _step_seq: int
 
@@ -153,6 +192,11 @@ add_drawer :: proc(tid: typeid, fn: Drawer, order := ORDER_INNER, origin := "") 
 	slice.sort_by(entries[:], proc(a, b: _Step) -> bool {
 		return a.order < b.order || (a.order == b.order && a.seq < b.seq)
 	})
+	if _chains == nil do _chains = make(map[typeid][]Drawer)
+	if old, has := _chains[tid]; has do delete(old)
+	chain := make([]Drawer, len(entries))
+	for e, i in entries do chain[i] = e.fn
+	_chains[tid] = chain
 }
 
 
@@ -170,39 +214,50 @@ drawer_origin :: proc(tid: typeid) -> string {
 	return entries[len(entries) - 1].origin
 }
 
-// Drops every step and value declaration (tests).
+// Drops every step (tests).
 drawers_reset :: proc() {
+	// The registry lives on the default allocator (add_drawer), whoever calls.
+	context.allocator = runtime.default_allocator()
 	for _, entries in _steps do delete(entries)
 	delete(_steps)
 	_steps = nil
+	for _, chain in _chains do delete(chain)
+	delete(_chains)
+	_chains = nil
 	delete(_unmarked)
 	_unmarked = nil
 }
 
-// Runs a leaf value's chain and reports, once per type, a step that changed
-// the value without opening an edit: such a change records no undo and
-// reaches no peer. `edits` and `changed` are _edit_count and
-// inspector_changed from before the chain ran.
-edit_check :: proc(ctx: ^Ctx, edits_before: int, changed_before: bool) {
-	if reflect.is_struct(type_info_of(ctx.tid)) do return
-	if !inspector_changed || changed_before || _edit_count != edits_before do return
+// What edit_check compares around a container's chain on a row.
+Edit_Probe :: struct {
+	edits:     int,
+	mutations: u64,
+	changed:   bool,
+}
+
+edit_probe :: proc() -> Edit_Probe {
+	return {edits = _edit_count, mutations = undo.mutation_count(), changed = inspector_changed}
+}
+
+// After a container's chain ran on a row, without an edit around it: reports,
+// once per type, a change of the value that nothing recorded. No row edit
+// opened inside, and no undo entry landed (an array's add and remove buttons
+// record their own). A drawer that draws the container as one widget without
+// edit_as_one_begin and edit_as_one_end does that, and its change records no
+// undo and reaches no other selected object.
+edit_check :: proc(ctx: ^Ctx, before: Edit_Probe) {
+	if !inspector_changed || before.changed do return
+	if _edit_count != before.edits || undo.mutation_count() != before.mutations do return
 	if ctx.tid in _unmarked do return
 	context.allocator = runtime.default_allocator()
 	_unmarked[ctx.tid] = true
-	log.errorf("inspector: a @(property_drawer) step on %v changed the value without edit_begin/edit_end, so the change records no undo and reaches no other selected object (%s)", ctx.tid, drawer_origin(ctx.tid))
+	log.errorf("inspector: a @(property_drawer) step on %v changed the value with nothing recorded: a drawer that draws it as one widget calls edit_as_one_begin(ctx) and defers edit_as_one_end around its widgets, or the change records no undo and reaches no other selected object (%s)", ctx.tid, drawer_origin(ctx.tid))
 }
 
 @(private = "file")
 _unmarked: map[typeid]bool
 
-// --- Chain build ---------------------------------------------------------------
-// Built per draw into the temp allocator — registration order stays
-// irrelevant to composition.
-
+// The type's chain, outermost step first. Read only: draws share it.
 _chain_of :: proc(tid: typeid) -> []Drawer {
-	entries, ok := _steps[tid]
-	if !ok || len(entries) == 0 do return nil
-	out := make([]Drawer, len(entries), context.temp_allocator)
-	for e, i in entries do out[i] = e.fn
-	return out
+	return _chains[tid] or_else nil
 }
