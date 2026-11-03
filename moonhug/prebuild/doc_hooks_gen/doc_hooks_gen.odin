@@ -11,7 +11,7 @@ package doc_hooks_gen
 //   doc_on_saved_<Type>    proc(guid: core.Asset_GUID, path: string)  once after the document is saved
 //   <Type> is the type's own name, without its package.
 //
-// Rows around a document's fields are an inspector wrapper on the type
+// Rows around a document's fields are an inspector step on the type
 // (inspector_funnel.odin), not a hook here.
 //
 //   generate - moonhug/registration/doc_hooks_generated.odin:

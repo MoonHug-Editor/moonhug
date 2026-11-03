@@ -13,7 +13,9 @@ import im "moonhug:external/odin-imgui"
 import "moonhug:packages/engine"
 import "moonhug:editor/inspector"
 
-draw_material_textures :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type=[dynamic]engine.Material_Texture})
+property_drawer_material_textures :: proc(ctx: ^inspector.Ctx) {
+	ptr, label := ctx.ptr, ctx.label
 	texs := cast(^[dynamic]engine.Material_Texture)ptr
 
 	sr: ^engine.Shader_Runtime
@@ -43,6 +45,6 @@ draw_material_textures :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 		name_c := strings.clone_to_cstring(st.name, context.temp_allocator)
 		im.PushID(name_c)
 		defer im.PopID()
-		inspector.draw_asset_guid_property(&row.texture, typeid_of(engine.Asset_GUID), name_c)
+		inspector.draw_value(&row.texture, typeid_of(engine.Asset_GUID), name_c)
 	}
 }

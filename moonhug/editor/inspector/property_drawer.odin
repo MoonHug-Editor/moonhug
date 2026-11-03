@@ -3,8 +3,9 @@ package inspector
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 
-@(private, property_drawer={type = int, priority = 0})
-draw_int_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type = int})
+property_drawer_int :: proc(ctx: ^Ctx) {
+    ptr, label := ctx.ptr, ctx.label
     int_ptr := cast(^int)(ptr)
     value := cast(i32)(int_ptr^)
     if drag_int(field_row(label), &value) {
@@ -13,8 +14,9 @@ draw_int_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     }
 }
 
-@(private, property_drawer={type = i32, priority = 0})
-draw_i32_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type = i32})
+property_drawer_i32 :: proc(ctx: ^Ctx) {
+    ptr, label := ctx.ptr, ctx.label
     i32_ptr := cast(^i32)(ptr)
     value := i32_ptr^
     if drag_int(field_row(label), &value) {
@@ -23,8 +25,9 @@ draw_i32_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     }
 }
 
-@(private, property_drawer={type = u32, priority = 0})
-draw_u32_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type = u32})
+property_drawer_u32 :: proc(ctx: ^Ctx) {
+    ptr, label := ctx.ptr, ctx.label
     u32_ptr := cast(^u32)(ptr)
     value := i32(min(u32_ptr^, u32(max(i32))))
     if drag_int(field_row(label), &value, 1, 0, max(i32)) {
@@ -33,8 +36,9 @@ draw_u32_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     }
 }
 
-@(private, property_drawer={type = string, priority = 0})
-draw_string_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type = string})
+property_drawer_string :: proc(ctx: ^Ctx) {
+    ptr, label := ctx.ptr, ctx.label
     str_ptr := cast(^string)(ptr)
     value := str_ptr^
     buf: [256]u8
@@ -61,8 +65,9 @@ draw_string_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     }
 }
 
-@(private, property_drawer={type = bool, priority = 0})
-draw_bool_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type = bool})
+property_drawer_bool :: proc(ctx: ^Ctx) {
+    ptr, label := ctx.ptr, ctx.label
     bool_ptr := cast(^bool)(ptr)
     value := bool_ptr^
     mixed := current_field_mixed
@@ -118,18 +123,21 @@ draw_float_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     }
 }
 
-@(private, property_drawer={type = f32, priority = 0})
-draw_f32_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type = f32})
+property_drawer_f32 :: proc(ctx: ^Ctx) {
+    ptr, tid, label := ctx.ptr, ctx.tid, ctx.label
     draw_float_property(ptr, tid, label)
 }
 
-@(private, property_drawer={type = f64, priority = 0})
-draw_f64_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type = f64})
+property_drawer_f64 :: proc(ctx: ^Ctx) {
+    ptr, tid, label := ctx.ptr, ctx.tid, ctx.label
     draw_float_property(ptr, tid, label)
 }
 
-@(private, property_drawer={type = ^[3]f32, priority = 0})
-draw_vec3_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type = ^[3]f32})
+property_drawer_vec3_ptr :: proc(ctx: ^Ctx) {
+    ptr, label := ctx.ptr, ctx.label
     v := cast(^[3]f32)(ptr)
     im.BeginGroup()
     if drag_float3(field_row(label), v, 0.1) {
@@ -138,24 +146,27 @@ draw_vec3_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     im.EndGroup()
 }
 
-@(property_drawer={type=[3]f32, priority = 0})
-draw_vec3_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type=[3]f32})
+property_drawer_vec3 :: proc(ctx: ^Ctx) {
+    ptr, label := ctx.ptr, ctx.label
     v := cast(^[3]f32)(ptr)
     if drag_float3(field_row(label), v, 0.1) {
         mark_inspector_changed()
     }
 }
 
-@(property_drawer={type=[2]f32, priority = 0})
-draw_vec2_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type=[2]f32})
+property_drawer_vec2 :: proc(ctx: ^Ctx) {
+    ptr, label := ctx.ptr, ctx.label
     v := cast(^[2]f32)(ptr)
     if drag_float2(field_row(label), v, 0.1) {
         mark_inspector_changed()
     }
 }
 
-@(property_drawer={type=[4]f32, priority = 0})
-draw_vec4_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type=[4]f32})
+property_drawer_vec4 :: proc(ctx: ^Ctx) {
+    ptr, label := ctx.ptr, ctx.label
     v := cast(^[4]f32)(ptr)
     if drag_float4(field_row(label), v, 0.1) {
         mark_inspector_changed()

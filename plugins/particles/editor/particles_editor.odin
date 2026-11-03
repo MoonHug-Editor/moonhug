@@ -19,11 +19,6 @@ import "moonhug:packages/engine/editor/drawers"
 import "moonhug:editor/undo"
 import particles "moonhug:packages/particles"
 
-@(provider_install)
-particles_inspector_install :: proc() {
-	inspector.add_component_wrapper(typeid_of(particles.ParticleSystem), _particle_system_inspector)
-}
-
 // One field through the generic row machinery (drawer + undo edit session +
 // peers + override recording), like the generic struct loop drives it.
 _ps_field :: proc(ps: ^particles.ParticleSystem, ptr: rawptr, tid: typeid, label: cstring, path: string) {
@@ -425,7 +420,8 @@ particles_effect_overlay :: proc(vertical: bool) {
 	im.EndGroup()
 }
 
-_particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
+@(property_drawer={type=particles.ParticleSystem, order="middle"})
+property_drawer_ParticleSystem_inspector :: proc(ctx: ^inspector.Ctx) {
 	ps := cast(^particles.ParticleSystem)ctx.ptr
 
 	// Edit-mode preview: tick the whole effect while inspected

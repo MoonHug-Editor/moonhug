@@ -12,7 +12,7 @@ sim advances every frame, rendering goes through the renderer seam.
 packages/particles/
   component_ParticleSystem.odin  ← component + Burst struct
   particles.odin                 ← sim (@(update)) + render collector
-  editor/particles_editor.odin   ← inspector wrapper (module groups)
+  editor/particles_editor.odin   ← inspector step (module groups)
   samples/particles_sample/      ← showcase scene (installed as symlink)
 
 engine/curve.odin                ← Curve + Gradient + MinMax_Curve
@@ -204,7 +204,7 @@ scene's camera shows the preview too.
 
 ## Inspector
 
-`particles_editor.odin` registers a full replacement wrapper shaped like
+`particles_editor.odin` declares an inspector step that replaces the drawing, shaped like
 Unity's inspector: main fields flat, then collapsing module groups with
 enable checkboxes. Every field runs through the inspector's row machinery
 (`field_edit_row`, the enum protocol), so undo, multiedit peers and prefab

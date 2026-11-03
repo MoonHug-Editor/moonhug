@@ -105,11 +105,6 @@ ui_menu_image :: proc() {
 	engine.inspector_request_select(tH)
 }
 
-@(provider_install)
-mhgui_editor_install :: proc() {
-	inspector.add_component_wrapper(typeid_of(mhgui.Image), _image_inspector)
-}
-
 // A Button node: an Image as the target graphic plus the Button. Like the
 // Image menu, under the selection when that sits in a canvas.
 @(menu_item={path="GameObject/UI/Button", order=52})
@@ -138,8 +133,8 @@ ui_menu_button :: proc() {
 // Default fields, then the Sprite row (the shared sprite picker; the field
 // itself is inspect:"-") and Set Native Size, which sizes the node's
 // RectTransform to the sprite's pixels as one undo step.
-@(private = "file")
-_image_inspector :: proc(ctx: ^inspector.Component_Ctx) {
+@(property_drawer={type=mhgui.Image, order="middle"})
+property_drawer_Image_inspector :: proc(ctx: ^inspector.Ctx) {
 	inspector.draw(ctx)
 	img := cast(^mhgui.Image)ctx.ptr
 	if drawers.sprite_ref_row("Sprite", &img.sprite) {

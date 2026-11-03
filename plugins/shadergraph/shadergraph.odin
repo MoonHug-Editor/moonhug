@@ -65,6 +65,10 @@ Graph_Link :: struct {
 	to_port:   i32,
 }
 
+// The .shadergraph importer's settings: none yet, a type of its own so the inspector can key steps by it.
+@(typ_guid={guid="b8ce42c4-ab2f-4777-953f-7f798906ebff"})
+Shader_Graph_Settings :: struct {}
+
 @(typ_guid={guid = "63d79718-e863-4004-a6e3-d8e372be9476", menu_assets_create = {menu_name = "Shader Graph", file_name = "New Shader Graph.shadergraph", order = -5}})
 Shader_Graph :: struct {
 	properties: [dynamic]Graph_Property,

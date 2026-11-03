@@ -29,7 +29,6 @@ _is_model_path :: proc(path: string) -> bool {
 
 @(provider_install)
 mesh_editor_install :: proc() {
-	inspector.add_component_wrapper(typeid_of(engine.MeshFilter), _mesh_filter_inspector)
 	for ext in _MODEL_EXTS {
 		subassets.register(ext, subassets.Provider{list = _model_sub_assets})
 	}
@@ -80,7 +79,8 @@ _mesh_display :: proc(ref: engine.PPtr) -> string {
 }
 
 // Default fields, then the Mesh object row.
-_mesh_filter_inspector :: proc(ctx: ^inspector.Component_Ctx) {
+@(property_drawer={type=engine.MeshFilter, order="middle"})
+property_drawer_MeshFilter_inspector :: proc(ctx: ^inspector.Ctx) {
 	inspector.draw(ctx)
 	mf := cast(^engine.MeshFilter)ctx.ptr
 	mesh_ref_row(&mf.mesh)

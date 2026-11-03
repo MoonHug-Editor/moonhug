@@ -25,8 +25,6 @@ _is_texture_path :: proc(path: string) -> bool {
 
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
 sprites_inspector_install :: proc() {
-	inspector.add_component_wrapper(typeid_of(sprites.SpriteRenderer), _sprite_renderer_inspector)
-	inspector.add_asset_wrapper("texture", _texture_slicer)
 	// Project-window sub-assets: sliced textures unfold to their sprites.
 	for ext in _TEXTURE_EXTS {
 		subassets.register(ext, subassets.Provider{
@@ -66,7 +64,8 @@ _open_sprite_editor_at :: proc(path: string, guid: engine.Asset_GUID, id: engine
 // Default fields, then the Sprite object row (drawers.sprite_ref_row —
 // Unity's sprite picker, shared with the particles package). The `sprite`
 // field itself is inspect:"-" — this row is its only editor.
-_sprite_renderer_inspector :: proc(ctx: ^inspector.Component_Ctx) {
+@(property_drawer={type=sprites.SpriteRenderer, order="middle"})
+property_drawer_SpriteRenderer_inspector :: proc(ctx: ^inspector.Ctx) {
 	inspector.draw(ctx)
 	sr := cast(^sprites.SpriteRenderer)ctx.ptr
 	if drawers.sprite_ref_row("Sprite", &sr.sprite) {
@@ -75,19 +74,20 @@ _sprite_renderer_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 	}
 }
 
-// --- Asset funnel: the Sprite Editor button ----------------------------------
+// --- Import settings step: the Sprite Editor button --------------------------
 // Unity's shape: the texture importer inspector carries a Sprite Editor
 // button, the slicing itself happens in the dedicated window
 // (sprite_editor_window.odin) with its own Apply/Revert.
-_texture_slicer :: proc(ctx: ^inspector.Asset_Ctx) {
+@(property_drawer={type=engine.TextureSettings, order="middle"})
+property_drawer_TextureSettings_slicer :: proc(ctx: ^inspector.Ctx) {
 	inspector.draw(ctx) // Apply + the reflected TextureSettings
 
-	if ctx.settings.id != typeid_of(engine.TextureSettings) do return
-	ts := cast(^engine.TextureSettings)ctx.settings.data
+	if !ctx.asset.settings do return
+	ts := cast(^engine.TextureSettings)ctx.ptr
 
 	im.Separator()
 	if im.Button("Sprite Editor") {
-		sprite_editor_open(ctx.path, ctx.guid)
+		sprite_editor_open(ctx.asset.path, ctx.asset.guid)
 	}
 	if ts.sprite_mode == .Multiple {
 		im.SameLine()

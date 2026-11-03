@@ -370,6 +370,7 @@ editor_init :: proc() {
     inspector.init()
     // Every doc_on_changed and doc_on_saved declaration (registration/doc_hooks_generated.odin).
     registration.register_doc_hooks()
+    registration.register_property_drawers()
     // Every @(provider_install) proc (providers_generated.odin): they fill the
     // registries inspector.init just created.
     install_providers()

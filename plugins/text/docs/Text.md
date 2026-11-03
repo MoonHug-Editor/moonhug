@@ -75,7 +75,7 @@ with the package and GameObject > UI > Text assigns it along with the
 package's Roboto Medium. With the plain unlit shader the raw distance field
 would draw as blurred blobs.
 
-The inspector wrapper (`editor/text_editor.odin`) draws the text area and the
+The inspector step (`editor/text_editor.odin`) draws the text area and the
 style toggle buttons through the inspector's row machinery, so undo,
 multiedit and prefab overrides work like generic rows. The other fields are
 generic rows.

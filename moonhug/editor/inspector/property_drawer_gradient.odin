@@ -41,8 +41,12 @@ _grad_bar :: proc(g: ^core.Gradient, p0, p1: im.Vec2) {
 	im.DrawList_AddRectFilled(dl, im.Vec2{x_at(last.t, p0, p1), p0.y}, p1, _grad_col32(last.color))
 }
 
-@(property_drawer={type = core.Gradient, priority = 0})
-draw_gradient_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type = core.Gradient})
+property_drawer_Gradient :: proc(ctx: ^Ctx) {
+	// Several fields edited as one widget: one row, one undo step.
+	row_edit := edit_as_one_begin(ctx)
+	defer edit_as_one_end(ctx, &row_edit)
+	ptr, label := ctx.ptr, ctx.label
 	g := cast(^core.Gradient)ptr
 	field_row(label)
 

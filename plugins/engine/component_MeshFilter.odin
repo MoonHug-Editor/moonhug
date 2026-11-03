@@ -10,8 +10,8 @@ package engine
 // into one blob (node world transforms applied at import), a part id = that
 // glTF mesh in node-local space, positioned by this transform. Extracted
 // scenes (scene_from_gltf) use parts so animated node transforms move real
-// geometry. Hidden from the default inspector — the mesh_editor wrapper
-// draws the part picker.
+// geometry. Hidden from the default inspector: the mesh_editor inspector
+// step draws the part picker.
 
 @(component={menu="Mesh/MeshFilter"})
 @(typ_guid={guid = "32f52908-51a9-4f3b-819b-fc9d8cbc5972"})

@@ -304,22 +304,82 @@ field_edit_set_widget_state :: proc(ws: ^Widget_State) {
 	_widget_state_override = ws
 }
 
-// Draws one value row and handles its whole edit transaction.
+// One edit of a value as one row: the value is snapshotted before the
+// widgets draw and compared after, the change becomes one undo step and lands
+// on every selected object, and the prefab override is recorded.
 //
-// THE single place the begin/apply/end dance lives. It was written twice — once
-// in the generic field loop, once for array elements — and the copies drifted:
-// the array one kept a picker handling that opened the transaction on every
-// frame the row DREW, so merely expanding a materials list copied the active
-// object's material onto every selected peer, with no user action. Two call
-// sites, one fixed, one not.
+// The inspector opens it for every value that can only be one row, every
+// type that is not a struct, around the value's chain. A drawer that draws
+// a STRUCT as one widget, the curve editor, a reference picker, opens it
+// itself with edit_as_one_begin and defers edit_as_one_end around its
+// widgets: the inspector cannot tell that struct from one whose fields draw
+// as rows of their own. A custom row passes its widgets to field_edit_row.
 //
-// Returns whether the edit finished this frame, which callers use to record
-// prefab overrides.
-// `drawer` and `draw_label` are passed rather than captured: Odin procs are not
-// closures, so the row's own values have to travel explicitly.
-// `pre_before` is the value from BEFORE a decorator already drew the row (the
-// loop captures it, since a decorator draws ahead of this call). nil means
-// the row captures its own snapshot before running `drawer`.
+// Nested edits of one row collapse into the outer one: a custom row that
+// wraps a registered drawer with field_edit_row, or a drawer that draws
+// another drawer, records once.
+Edit :: struct {
+	ptr:        rawptr, // the live value
+	tid:        typeid,
+	offset:     uintptr,
+	label:      string,
+	draw_label: cstring,
+	// The pointer the widgets draw on: the live value, or a driven row's
+	// buffer (driven.odin). edit_begin redirects ctx.ptr to it, edit_end
+	// puts ctx.ptr back.
+	cur:        rawptr,
+	nested:     bool, // inside another edit of a row: this one does nothing
+	driven:     bool, // the row is driven: _driven_edit holds its value
+	grouped:    bool,
+	picker:     bool,
+	before:     []byte,
+	owns_before: bool,
+	prev_changed: bool, // driven rows: the changed flag before the widgets
+	prev_path:  string,
+	path:       string, // the property path, for the override record
+	finished:   bool,
+}
+
+@(private = "file")
+_edit_depth: int
+// Edits opened so far: the field loop compares it around a leaf's chain to
+// catch a step that changed the value without opening one (edit_check).
+@(private)
+_edit_count: int
+
+// The driven value of the row being edited. Not a field of Edit: an Edit is
+// returned by value, and the widgets draw on a pointer into this, which has
+// to stay put. One at a time: a nested edit never queries the driver.
+@(private = "file")
+_driven_edit: Driven_Value
+
+// Opens an edit of the value `ctx` draws as one row, with `ctx.offset`,
+// `ctx.name` and `ctx.path` from the field loop. For a drawer that draws
+// several fields as one widget. Redirects ctx.ptr for a driven row, so the
+// widgets read ctx.ptr AFTER this call.
+edit_as_one_begin :: proc(ctx: ^Ctx) -> Edit {
+	e := _edit_begin(ctx.ptr, ctx.tid, ctx.offset, ctx.name, ctx.label, nil)
+	e.path = ctx.path
+	if !e.nested && ctx.path != "" do e.prev_path = field_edit_set_path(ctx.path)
+	ctx.ptr = e.cur
+	return e
+}
+
+// Closes it: compares, records, applies to the peers, records the override.
+edit_as_one_end :: proc(ctx: ^Ctx, e: ^Edit) -> (finished: bool) {
+	ctx.ptr = e.ptr
+	finished = _edit_end(e)
+	if !e.nested && e.path != "" {
+		field_edit_set_path(e.prev_path)
+		record_nested_override(e.ptr, e.tid, e.path, finished)
+	}
+	return finished
+}
+
+// Draws one field through `drawer` as one row. A nil drawer means a decorator
+// drew the row already and only the edit tracking is wanted. `pre_before`
+// hands in a snapshot taken earlier (a caller that drew before calling).
+// Returns whether an edit of the row ended this frame.
 field_edit_row :: proc(
 	field_ptr: rawptr,
 	field_tid: typeid,
@@ -329,14 +389,38 @@ field_edit_row :: proc(
 	draw_label: cstring,
 	pre_before: []byte = nil,
 ) -> (finished: bool) {
+	e := _edit_begin(field_ptr, field_tid, offset, label, draw_label, pre_before, has_drawer = drawer != nil)
+	if drawer != nil do drawer(e.cur, field_tid, draw_label)
+	return _edit_end(&e)
+}
+
+@(private = "file")
+_edit_begin :: proc(field_ptr: rawptr, field_tid: typeid, offset: uintptr, label: string, draw_label: cstring, pre_before: []byte, has_drawer := true) -> (e: Edit) {
+	e.ptr, e.cur, e.tid, e.offset, e.label, e.draw_label = field_ptr, field_ptr, field_tid, offset, label, draw_label
+	// Inside another row's edit: the outer one records.
+	if _edit_depth > 0 {
+		e.nested = true
+		_edit_depth += 1
+		return
+	}
+	_edit_depth += 1
+	_edit_count += 1
 	// A driven field (driven.odin) shows the driven value. Asked for the active
-	// object only: peers are not queried. A row drawn by a decorator (nil
+	// object only: peers are not queried. A row drawn by a decorator (no
 	// drawer) is handled by the field loop, which redirects the decorator.
-	grouped := _widget_state_override == nil
-	dv: Driven_Value
-	if drawer != nil do dv = driven_query_field(field_ptr, field_tid)
-	if dv.state != .None {
-		return _driven_row(field_ptr, field_tid, offset, label, &dv, drawer, draw_label, grouped)
+	e.grouped = _widget_state_override == nil
+	if has_drawer do _driven_edit = driven_query_field(field_ptr, field_tid)
+	if has_drawer && _driven_edit.state != .None {
+		// The widgets draw on a buffer, never on the live field, and the
+		// driven lanes reach neither the object, the scene undo stack, the
+		// prefab overrides nor the peers (see _edit_end).
+		e.driven = true
+		multi_clear_mixed()
+		e.prev_changed = consume_inspector_changed()
+		e.cur = rawptr(&_driven_edit.value)
+		if _driven_edit.state == .Editable do e.cur = driven_edit_buffer(field_ptr, &_driven_edit.value)
+		if e.grouped do driven_draw_begin(_driven_edit.state, _driven_edit.own)
+		return
 	}
 
 	// A picker writes from inside a popup: no drag, no focus, so its gesture has
@@ -346,41 +430,63 @@ field_edit_row :: proc(
 	// Opening it up front instead is a data-loss bug — the row redraws every
 	// frame, so the edit would be permanently in flight and the apply below would
 	// copy the active object's value onto every peer continuously.
-	// The value BEFORE the drawer runs, for every row.
+	// The value BEFORE the widgets run, for every row.
 	//
 	// imgui reports a widget's activation only after it has drawn, so on the
-	// frame a drag begins the drawer has ALREADY written the first frame's
+	// frame a drag begins the widgets have ALREADY written the first frame's
 	// value. Opening the session at that point captures the moved value as the
 	// "before" state, and undoing the drag leaves its first frame applied.
-	// Holding a pre-drawer snapshot lets a session opened late still record the
+	// Holding a pre-draw snapshot lets a session opened late still record the
 	// value the gesture actually started from.
 	//
 	// Pickers need it for a related reason: their value lands from a popup with
 	// no gesture at all, so this is the only "before" that exists.
-	picker := _is_picker_type(field_tid)
-	owns_before := pre_before == nil
-	before := owns_before ? undo.capture_json(field_ptr, field_tid) : pre_before
-	defer if owns_before && before != nil do delete(before)
-
-	// The drawer runs inside a group. imgui's EndGroup forwards the active
+	e.picker = _is_picker_type(field_tid)
+	e.owns_before = pre_before == nil
+	e.before = e.owns_before ? undo.capture_json(field_ptr, field_tid) : pre_before
+	// Mixed-value display for the selection, read by the widgets.
+	multi_probe_field(field_ptr, field_tid, offset)
+	// The widgets run inside a group. imgui's EndGroup forwards the active
 	// item, its deactivation and its edited flag to the group, so the item
-	// state read below describes EVERY item the drawer emitted, not the last
-	// one. A row is one gesture no matter how many items draw it: a three-
-	// component drag, a slider's track plus value box, a picker's button and
-	// clear. Without this, a gesture on any item but the last was invisible
-	// here, and each such row needed its own patch.
+	// state read in _edit_end describes EVERY item the row emitted, not the
+	// last one. A row is one gesture no matter how many items draw it: a
+	// three-component drag, a slider's track plus value box, a picker's button
+	// and clear. Without this, a gesture on any item but the last was
+	// invisible, and each such row needed its own patch.
 	//
 	// Under the widget-state override (the test harness) there is no imgui
 	// context and the override IS the row's item state, so no group.
-	//
-	// A field with a row in the shown clip gets its mark beside the group.
-	if drawer != nil {
-		if grouped do im.BeginGroup()
-		drawer(field_ptr, field_tid, draw_label)
-		if grouped {
-			im.EndGroup()
-			driven_mark_field(field_ptr, field_tid)
+	if e.grouped do im.BeginGroup()
+	return
+}
+
+@(private = "file")
+_edit_end :: proc(e: ^Edit) -> (finished: bool) {
+	_edit_depth -= 1
+	if e.nested do return false
+	if e.driven {
+		// read-only: the buffer is the driven value, reseeded every frame, and
+		// an edit of a driven lane is dropped; an edit of a lane the driver
+		// leaves to the object (dv.own) is an ordinary edit of it
+		// (driven_own_lanes_edit). editable: the buffer lives across the frames
+		// of one gesture, and when the gesture ends the edited value goes to
+		// driven_commit. The widgets' changed flag is dropped too, unless an
+		// own lane changed the object.
+		if e.grouped do driven_draw_end(_driven_edit.state, _driven_edit.keyed)
+		consume_inspector_changed()
+		defer if e.prev_changed do mark_inspector_changed()
+		if _driven_edit.state == .Editable {
+			driven_edit_finish(e.ptr, e.cur, &_driven_edit)
+			return false
 		}
+		active, ended := driven_gesture_state()
+		return driven_own_lanes_edit(e.ptr, e.cur, &_driven_edit, e.offset, e.label, active, ended)
+	}
+	defer if e.owns_before && e.before != nil do delete(e.before)
+	// A field with a row in the shown clip gets its mark beside the group.
+	if e.grouped {
+		im.EndGroup()
+		driven_mark_field(e.ptr, e.tid)
 	}
 	multi_clear_mixed()
 
@@ -396,14 +502,14 @@ field_edit_row :: proc(
 	finished = field_edit_row_finished()
 	held := field_edit_row_held()
 
-	// Opened with the pre-drawer snapshot, because the drawer has already
+	// Opened with the pre-draw snapshot, because the widgets have already
 	// written this frame's value by now.
-	if !picker && started {
-		field_edit_begin(field_ptr, field_tid, offset, label, before)
+	if !e.picker && started {
+		field_edit_begin(e.ptr, e.tid, e.offset, e.label, e.before)
 	}
-	editing := field_edit_in_flight(field_ptr)
+	editing := field_edit_in_flight(e.ptr)
 	if editing {
-		field_edit_apply_to_peers(field_ptr, field_tid, offset)
+		field_edit_apply_to_peers(e.ptr, e.tid, e.offset)
 	}
 
 	// A popup owned by the row is open (the color picker). Its writes come
@@ -411,23 +517,23 @@ field_edit_row :: proc(
 	// retroactively with the pre-draw value, and the session then rides the
 	// popup's own drag: field_edit_frame_begin ends it on the frame no item
 	// is active any more, which is the mouse release inside the popup. Each
-	// drag in the popup is one undo step, as in Unity. The blur rule below
-	// must not see these frames: the row's own widget is never active while
-	// the popup has the mouse, and it would end the session every frame.
+	// drag in the popup is one undo step. The blur rule below must not see
+	// these frames: the row's own widget is never active while the popup has
+	// the mouse, and it would end the session every frame.
 	if held {
-		if !editing && _changed_since(field_ptr, field_tid, before) {
-			field_edit_begin(field_ptr, field_tid, offset, label, before)
+		if !editing && _changed_since(e.ptr, e.tid, e.before) {
+			field_edit_begin(e.ptr, e.tid, e.offset, e.label, e.before)
 			editing = true
 		}
-		if editing do field_edit_apply_to_peers(field_ptr, field_tid, offset)
+		if editing do field_edit_apply_to_peers(e.ptr, e.tid, e.offset)
 		return false
 	}
 
 	// The picker's value changed: bracket the change that already happened,
 	// handing the session the value from before it.
-	if picker && !editing && _changed_since(field_ptr, field_tid, before) {
-		field_edit_begin(field_ptr, field_tid, offset, label, before)
-		field_edit_apply_to_peers(field_ptr, field_tid, offset)
+	if e.picker && !editing && _changed_since(e.ptr, e.tid, e.before) {
+		field_edit_begin(e.ptr, e.tid, e.offset, e.label, e.before)
+		field_edit_apply_to_peers(e.ptr, e.tid, e.offset)
 		field_edit_end()
 		return true
 	}
@@ -437,50 +543,10 @@ field_edit_row :: proc(
 		finished = true
 	}
 	if finished && editing {
-		field_edit_apply_to_peers(field_ptr, field_tid, offset)
+		field_edit_apply_to_peers(e.ptr, e.tid, e.offset)
 		field_edit_end()
 	}
 	return finished
-}
-
-// A driven row (driven.odin). The widget draws on a buffer, never on the live
-// field, and the driven lanes reach neither the object, the scene undo stack,
-// the prefab overrides nor the peers:
-//   - read-only: the buffer is the driven value, reseeded every frame, and an
-//     edit of a driven lane is dropped. An edit of a lane the driver leaves to
-//     the object (dv.own) is an ordinary edit of it (driven_own_lanes_edit)
-//   - editable: the buffer lives across the frames of one gesture, and when
-//     the gesture ends the edited value goes to driven_commit
-// The drawer's changed flag is dropped too, unless an own lane changed the
-// object. Returns whether an own-lane edit ended this frame.
-@(private = "file")
-_driven_row :: proc(
-	field_ptr: rawptr,
-	field_tid: typeid,
-	offset: uintptr,
-	label: string,
-	dv: ^Driven_Value,
-	drawer: proc(ptr: rawptr, tid: typeid, label: cstring),
-	draw_label: cstring,
-	grouped: bool,
-) -> (finished: bool) {
-	multi_clear_mixed()
-	prev_changed := consume_inspector_changed()
-	defer if prev_changed do mark_inspector_changed()
-
-	buf := rawptr(&dv.value)
-	if dv.state == .Editable do buf = driven_edit_buffer(field_ptr, &dv.value)
-	if grouped do driven_draw_begin(dv.state, dv.own)
-	drawer(buf, field_tid, draw_label)
-	if grouped do driven_draw_end(dv.state, dv.keyed)
-	consume_inspector_changed()
-
-	if dv.state == .Editable {
-		driven_edit_finish(field_ptr, buf, dv)
-		return false
-	}
-	active, ended := driven_gesture_state()
-	return driven_own_lanes_edit(field_ptr, buf, dv, offset, label, active, ended)
 }
 
 @(private = "file")

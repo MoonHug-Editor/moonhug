@@ -13,11 +13,6 @@ import "moonhug:editor/widgets"
 import core "moonhug:libs/core"
 import actions "moonhug:packages/input_actions"
 
-@(provider_install)
-_register_key_drawer :: proc() {
-	inspector.add_property_drawer(typeid_of(actions.Key_Name), draw_key_name)
-}
-
 // The open document reaches the running game every frame, saved or not,
 // as the Render Layers and Material documents do.
 @(doc_on_changed={type=actions.Input_Actions})
@@ -28,7 +23,9 @@ doc_on_changed_Input_Actions :: proc(guid: core.Asset_GUID, doc: any) {
 @(private = "file") _search: [64]u8
 @(private = "file") _listening: bool
 
-draw_key_name :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type=actions.Key_Name})
+property_drawer_Key_Name :: proc(ctx: ^inspector.Ctx) {
+	ptr := ctx.ptr
 	name := cast(^actions.Key_Name)ptr
 	shown := len(name^) > 0 ? string(name^) : "None"
 	if im.Button(strings.clone_to_cstring(shown, context.temp_allocator), {im.GetContentRegionAvail().x, 0}) {

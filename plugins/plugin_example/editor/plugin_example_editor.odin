@@ -15,15 +15,11 @@ plugin_example_menu :: proc() {
 	log.info("[plugin_example] Hello from the plugin's editor package!")
 }
 
-// Inspector-funnel demo (docs/core/Plugins.md): a wrapper around Spinner's
-// inspector — the default fields keep drawing, the package adds a row
-// under them, registered from an @(provider_install) proc.
-@(provider_install)
-plugin_example_inspector_install :: proc() {
-	inspector.add_component_wrapper(typeid_of(plugin_example.Spinner), _spinner_inspector)
-}
-
-_spinner_inspector :: proc(ctx: ^inspector.Component_Ctx) {
+// Inspector funnel demo (docs/core/Plugins.md): a step around Spinner's
+// drawing. The default fields keep drawing, the package adds a row under
+// them.
+@(property_drawer={type=plugin_example.Spinner, order="middle"})
+property_drawer_Spinner_inspector :: proc(ctx: ^inspector.Ctx) {
 	inspector.draw(ctx) // the default Spinner fields
 	spinner := cast(^plugin_example.Spinner)ctx.ptr
 	z := abs(spinner.speed.z)

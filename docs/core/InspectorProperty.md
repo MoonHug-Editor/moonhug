@@ -172,7 +172,7 @@ one, and rewriting it over `Property` would replace one walker with another.
   before/after snapshot gives correct undo. A buffered copy applied on commit
   would be a second source of truth for a value the scene view, the sequencer
   window and the preview all read continuously.
-- **No typed accessors.** `(ptr, tid)` plus the drawer registry is already the
+- **No typed accessors.** `(ptr, tid)` plus the type's drawing chain is already the
   type dispatch, and it covers types a fixed accessor list would not.
 - **No overrides by pointer.** The path stays a string because that is what
   the serialized form uses, and a pointer cannot name a field of an object

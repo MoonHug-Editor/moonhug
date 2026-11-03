@@ -9,7 +9,7 @@ SpriteRenderer :: struct {
     // Unity's guid+fileID sub-asset reference: guid = the texture,
     // local_id = the slice's persistent id from the texture's import
     // settings, 0 = the whole texture (Single mode). Hidden from the default
-    // inspector — the package's editor wrapper draws the sprite picker.
+    // inspector: the package's inspector step draws the sprite picker.
     sprite: engine.PPtr `inspect:"-"`,
     // Unity model: the material's shader/tint/properties apply, but its
     // texture slot is REPLACED by the sprite's own texture. Empty = unlit

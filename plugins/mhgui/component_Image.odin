@@ -23,7 +23,7 @@ Image :: struct {
 	using graphic:   engine.Graphic `inline:""`,
 	// guid = the texture, local_id = the slice's persistent id from the
 	// texture's import settings, 0 = the whole texture. Hidden from the default
-	// inspector — the package's editor wrapper draws the sprite picker.
+	// inspector: the package's inspector step draws the sprite picker.
 	sprite:          engine.PPtr `inspect:"-"`,
 	image_type:      Image_Type,
 	// Keep the sprite's aspect (Simple): the largest aspect-correct rect

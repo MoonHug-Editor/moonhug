@@ -218,7 +218,7 @@ ParticleSystem :: struct {
 	size_over_life:  engine.Curve,
 
 	// Renderer: billboarded quads. The sprite is PPtr{texture guid, slice id}
-	// like SpriteRenderer (the editor wrapper draws the picker), material's
+	// like SpriteRenderer (the inspector step draws the picker), material's
 	// shader/tint applies with the sprite's own texture.
 	sprite:         engine.PPtr `inspect:"-"`,
 	material:       engine.Asset_GUID `ext:"mat" expand`,

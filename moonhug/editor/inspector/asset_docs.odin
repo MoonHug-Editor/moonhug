@@ -62,7 +62,7 @@ _docs: map[Doc_Key]^Asset_Doc
 // `doc_on_changed_<Type>` with @(doc_on_changed={type=T}) on the proc, registered
 // by the generated register_doc_hooks (doc_hooks_gen); `doc_on_saved_<Type>` is
 // Doc_Saved below. Rows around the document's fields are an inspector
-// wrapper (inspector_funnel.odin), not a hook.
+// step on the type (inspector_funnel.odin), not a hook.
 Doc_Changed :: proc(guid: core.Asset_GUID, doc: any)
 
 @(private)
@@ -85,8 +85,8 @@ asset_doc_changed :: proc(doc: ^Asset_Doc) {
 }
 
 // The open document whose value lives at `ptr`, nil when none does. An
-// inspector wrapper on a document type asks for its document this way: the
-// wrapper's ctx carries the value, the document carries the path and guid.
+// inspector step on a document type asks for its document this way: the
+// step's ctx carries the value, the document carries the path and guid.
 asset_doc_of :: proc(ptr: rawptr) -> ^Asset_Doc {
     for _, doc in _docs do if doc.data.data == ptr do return doc
     return nil
@@ -197,7 +197,7 @@ asset_docs_save_dirty :: proc() -> (saved, failed: int) {
 // Undo hook: replace the document's payload with the given JSON (a full
 // capture_json of the document struct). Zero → reset → JSON → on_validate into a
 // fresh instance, so dynamic arrays never merge with stale contents. The old
-// instance is retired (doc_data_retire): a wrapper may still draw it this frame.
+// instance is retired (doc_data_retire): a step may still draw it this frame.
 asset_doc_apply_json :: proc(guid: core.Asset_GUID, kind: undo.Doc_Kind, json_bytes: []byte) -> bool {
     if kind == .Import_Settings do return _import_settings_apply_json(guid, json_bytes)
     context.allocator = doc_alloc()
@@ -314,8 +314,8 @@ doc_data_release :: proc(data: any) {
 
 // A replaced instance waits a frame before doc_data_release: the replacement
 // happens mid-frame (a Revert button, an undo from the history view, a
-// reimport) while a funnel wrapper above the button still holds the old
-// pointer in its Asset_Ctx for the rest of the draw.
+// reimport) while a funnel step above the button still holds the old
+// pointer in its Ctx for the rest of the draw.
 @(private = "file")
 _Retired :: struct {
     data:  any,

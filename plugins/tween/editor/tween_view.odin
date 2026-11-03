@@ -584,22 +584,19 @@ tween_graph_window_open :: proc() {
 
 // --- Opening the graph from the inspector -----------------------------------
 
-// Registers the Authored drawer at editor startup: every authored-tween row
-// in the inspector shows a summary and a Graph button (the graph panel is
-// the field editor). @(provider_install) runs it after inspector.init, which
-// creates the drawer map this writes into.
-@(provider_install)
-tween_view_install :: proc() {
-	inspector.mapPropertyDrawer[typeid_of(tween.Authored)] = _draw_authored_row
-}
-
 // account_tree / swap_horiz \u2014 duplicated literals, the editor root owns the
 // canonical list and this package cannot import it.
 @(private = "file")
 _ICON_GRAPH :: "\ue97a"
 
-@(private = "file")
-_draw_authored_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+// Every authored-tween row in the inspector shows a summary and a Graph
+// button (the graph panel is the field editor).
+@(property_drawer={type=tween.Authored})
+property_drawer_Authored :: proc(ctx: ^inspector.Ctx) {
+	// Several fields edited as one widget: one row, one undo step.
+	row_edit := inspector.edit_as_one_begin(ctx)
+	defer inspector.edit_as_one_end(ctx, &row_edit)
+	ptr, label := ctx.ptr, ctx.label
 	a := cast(^tween.Authored)ptr
 	if im.SmallButton(fmt.ctprintf("%s##tg_%v", _ICON_GRAPH, ptr)) {
 		_open_graph_for(a)

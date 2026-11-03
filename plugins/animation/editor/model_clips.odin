@@ -29,7 +29,6 @@ import anim "moonhug:packages/animation"
 
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
 model_clips_install :: proc() {
-	inspector.add_asset_wrapper("mesh", _model_clip_section)
 	subassets.clip_sampler = _sample_clip
 }
 
@@ -49,7 +48,7 @@ _sample_clip :: proc(root: engine.Transform_Handle, clip: engine.PPtr, t: f32) -
 // --- The selected clip's section in the Project Inspector -----------------------
 //
 // Selecting a clip under a model selects the model with that sub id, so the
-// model's import settings show. This wrapper adds, below them, the one clip's
+// model's import settings show. This step adds, below them, the one clip's
 // own settings — or, for a clip the model no longer has, a remap. Edits land in
 // the model's import settings document (engine.Mesh_Clip.settings inside it,
 // inspector/import_settings_docs.odin), which records them for undo, and the
@@ -95,15 +94,15 @@ _clip_edit_store :: proc(clip: ^engine.Mesh_Clip) {
 	clip.settings = v
 }
 
-@(private = "file")
-_model_clip_section :: proc(ctx: ^inspector.Asset_Ctx) {
+@(property_drawer={type=engine.MeshSettings, order="middle"})
+property_drawer_MeshSettings_clips :: proc(ctx: ^inspector.Ctx) {
 	inspector.draw(ctx) // Apply + the reflected MeshSettings
 
-	if ctx.settings.id != typeid_of(engine.MeshSettings) do return
-	if ctx.sub == 0 do return
-	ms := cast(^engine.MeshSettings)ctx.settings.data
+	if !ctx.asset.settings do return
+	if ctx.asset.sub == 0 do return
+	ms := cast(^engine.MeshSettings)ctx.ptr
 	idx := -1
-	for c, i in ms.clips do if c.id == ctx.sub { idx = i; break }
+	for c, i in ms.clips do if c.id == ctx.asset.sub { idx = i; break }
 	if idx < 0 do return // a mesh part
 	clip := &ms.clips[idx]
 
@@ -140,8 +139,8 @@ _model_clip_section :: proc(ctx: ^inspector.Asset_Ctx) {
 		return
 	}
 
-	if !_clip_edit.valid || _clip_edit.path != ctx.path || _clip_edit.id != clip.id || !im.IsAnyItemActive() {
-		_clip_edit_load(ctx.path, clip)
+	if !_clip_edit.valid || _clip_edit.path != ctx.asset.path || _clip_edit.id != clip.id || !im.IsAnyItemActive() {
+		_clip_edit_load(ctx.asset.path, clip)
 	}
 	// The drawer sets the shared changed flag. Read it around this draw only,
 	// and put the caller's own state back afterwards.

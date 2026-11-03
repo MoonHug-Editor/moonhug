@@ -214,7 +214,7 @@ test_reimport_reloads_a_clean_import_settings_document :: proc(t: ^testing.T) {
 
 // A .meta without a settings block (written by hand) still gets an import
 // settings document, with the importer's defaults: that document is what the
-// inspector draws, and the asset's wrappers (an Open button) run inside it.
+// inspector draws, and the settings type's steps (an Open button) run around it.
 @(test)
 test_import_settings_default_when_meta_has_none :: proc(t: ^testing.T) {
 	defer {

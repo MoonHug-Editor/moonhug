@@ -32,7 +32,6 @@ import seq "moonhug:packages/sequencer"
 
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
 timeline_animator_inspector_install :: proc() {
-	inspector.add_component_wrapper(typeid_of(anim_seq.TimelineAnimator), _timeline_animator_inspector)
 	_ta_alt_open_pending = make(map[i32]bool, 16, runtime.default_allocator())
 }
 
@@ -42,8 +41,8 @@ shutdown_timeline_animator_inspector :: proc() {
 	_ta_alt_open_pending = nil
 }
 
-@(private = "file")
-_timeline_animator_inspector :: proc(ctx: ^inspector.Component_Ctx) {
+@(property_drawer={type=anim_seq.TimelineAnimator, order="middle"})
+property_drawer_TimelineAnimator_inspector :: proc(ctx: ^inspector.Ctx) {
 	inspector.draw(ctx) // speed
 	a := cast(^anim_seq.TimelineAnimator)ctx.ptr
 	if a == nil do return
@@ -228,7 +227,7 @@ _ta_state_row :: proc(a: ^anim_seq.TimelineAnimator, li, si: int) -> bool {
 	// live.
 	prev_ref := inspector.current_field_ref_target
 	inspector.current_field_ref_target = "PlayableDirector"
-	_ta_row(a, &st.timeline, typeid_of(engine.Ref_Local), "Timeline", inspector.draw_ref_local_property, "Timeline")
+	_ta_row(a, &st.timeline, typeid_of(engine.Ref_Local), "Timeline", inspector.draw_value, "Timeline")
 	inspector.current_field_ref_target = prev_ref
 
 	_ta_row(a, &st.speed, typeid_of(f32), "State Speed", _ta_speed_drawer, "Speed")

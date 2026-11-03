@@ -17,8 +17,12 @@ import "moonhug:editor/subassets"
 import assets "moonhug:libs/assets"
 import core "moonhug:libs/core"
 
-@(property_drawer={type = core.PPtr, priority = 0})
-draw_pptr_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type = core.PPtr})
+property_drawer_PPtr :: proc(ctx: ^Ctx) {
+    // Several fields edited as one widget: one row, one undo step.
+    row_edit := edit_as_one_begin(ctx)
+    defer edit_as_one_end(ctx, &row_edit)
+    ptr, label := ctx.ptr, ctx.label
     ref_ptr := cast(^core.PPtr)ptr
     has_value := ref_ptr.guid != {}
 

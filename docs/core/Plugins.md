@@ -32,6 +32,7 @@ Every proc the generators call by name starts with the word for what it is about
 | `type_` | a value of a type in memory, no world and no file | editor and game | `type_reset_<T>` sets the defaults, `type_cleanup_<T>` frees what it owns, `type_on_validate_<T>` runs after a value is written into it, `type_before_serialize_<T>` and `type_after_deserialize_<T>` run around its JSON ([Components](../../plugins/engine/docs/Components.md) "Lifecycle procs") |
 | `doc_` | an asset open as a document in the editor | editor | `doc_on_changed_<T>` once per change by any route, `doc_on_saved_<T>` after the file is written (`@(doc_on_changed)`, `@(doc_on_saved)`) |
 | `asset_` | a file on disk and its artifact | editor | `asset_on_changed_<name>` with the change modified, removed or reimported (`@(asset_on_changed)`) |
+| `property_drawer_` | how a type draws in the inspector | editor | `property_drawer_<T>` the type's own drawing, `property_drawer_<T>_<what>` a step around it (`@(property_drawer)`, "Inspector funnel" below) |
 
 `on_` marks a proc that answers an event. `reset`, `cleanup`, `before_serialize` and `after_deserialize` are done to the value, so they carry no `on_`.
 
@@ -236,7 +237,7 @@ A package can own an asset type end to end — the audio package is the referenc
 - A guid-keyed runtime cache in the package loads the artifact (`clip_load`), mirroring the engine's texture cache. Its `asset_on_changed_<name>` proc, declared with `@(asset_on_changed)`, drops the entry when the artifact changes — the same hook the texture cache uses, so settings edits apply live.
 - An editor subpackage can register `inspector.mapAssetPreview[".ext"]` from an `@(provider_install)` proc — the drawer renders in the Preview section pinned to the bottom of the Project Inspector when a matching asset is selected.
 - A package that caches something derived from an asset file or its artifact declares `@(asset_on_changed={ext="mat"})` on `asset_on_changed_<name>`, which gets the guid, the path and the change: modified, removed or reimported. The generated registration adds it before the first scan. Hooks on one change run by `order`, lower first, default 0: a hook that imports declares a positive order, so every unload of the file runs before it. Two importers claiming one extension log a warning, and the later registration takes it. Two document procs for one type and hook get a prebuild warning, and the first by package and name is registered. A cache of a file reacts to modified and removed, a cache of an artifact to reimported, and the body is the unload. See "Hooks by subject" below.
-- An asset type edited as a document in the Project Inspector (a `@(typ_guid)` struct saved as a `.asset` file) attaches procs to its document with `@(doc_on_changed={type=T})` and `@(doc_on_saved={type=T})`. The name is the contract, as with `type_reset_<Type>`: `doc_on_changed_<Type>` runs once each time the document changed by any route, an inspector edit, an undo, a revert (`proc(guid: core.Asset_GUID, doc: any)`), and pushes its values wherever they are used live. `doc_on_saved_<Type>` runs after a save (`proc(guid: core.Asset_GUID, path: string)`). `<Type>` is the type's own name without its package, and the prebuild refuses any other name. Rows above or below the document's fields, or context the field drawers read, are an inspector wrapper on the type (`inspector.add_component_wrapper`, "Inspector funnel" below), as a custom inspector that calls the default drawer in the middle: the render pipeline's Open button and the material's shader context are wrappers. The generated `register_doc_hooks` (doc_hooks_gen, `registration/doc_hooks_generated.odin`) registers them after `inspector.init`, in the editor and the tests bootstrap. The reference page of `@(doc_on_changed)` lists them all. Materials, the layer tables, the physics materials, the Input Actions asset and the Shader Graph use it.
+- An asset type edited as a document in the Project Inspector (a `@(typ_guid)` struct saved as a `.asset` file) attaches procs to its document with `@(doc_on_changed={type=T})` and `@(doc_on_saved={type=T})`. The name is the contract, as with `type_reset_<Type>`: `doc_on_changed_<Type>` runs once each time the document changed by any route, an inspector edit, an undo, a revert (`proc(guid: core.Asset_GUID, doc: any)`), and pushes its values wherever they are used live. `doc_on_saved_<Type>` runs after a save (`proc(guid: core.Asset_GUID, path: string)`). `<Type>` is the type's own name without its package, and the prebuild refuses any other name. Rows above or below the document's fields, or context the field drawers read, are a step around the type's drawing (`@(property_drawer={type=T, order="middle"})`, "Inspector funnel" below) that calls `inspector.draw(ctx)` in the middle: the render pipeline's Open button and the material's shader context are such steps. The generated `register_doc_hooks` (doc_hooks_gen, `registration/doc_hooks_generated.odin`) registers them after `inspector.init`, in the editor and the tests bootstrap. The reference page of `@(doc_on_changed)` lists them all. Materials, the layer tables, the physics materials, the Input Actions asset and the Shader Graph use it.
 - A component references the asset through a plain `engine.Asset_GUID` field. An `ext:"mp3,wav,ogg"` field tag gives it the standard inspector picker and drag-drop, filtered to those extensions — no editor code.
 - Playback state stays in runtime-only fields (`json:"-" inspect:"-"`), released in the component's `type_cleanup_<Type>` proc.
 
@@ -244,44 +245,65 @@ The engine contributes only generated glue (type registration, pool accessors, u
 
 ## Inspector funnel
 
-Registered wrappers stack around the default drawing of a value. The chain runs outermost to innermost and ends at the default drawing:
+Every value the inspector draws goes through one chain of steps for its type: a component, a nested struct, a field, an array element, an asset document, an asset's import settings. The chain runs outermost to innermost and ends at the default drawing:
 
 ```
-inspector ──▶ wrapper A ──▶ wrapper B ──▶ default drawing
-              draw(ctx)     draw(ctx)
+inspector ──▶ step A ──▶ step B ──▶ default drawing
+              draw(ctx)  draw(ctx)
 ```
 
-`draw(ctx)` draws everything beneath the wrapper. One rule: rows drawn before the call appear above the default drawing, rows drawn after appear below it, and skipping the call replaces it entirely.
+A step is a proc declared with `@(property_drawer={type=T, order=...})` that takes `^inspector.Ctx`. `inspector.draw(ctx)` draws everything beneath the step: the rest of the chain, then the default drawing. One rule: rows drawn before the call appear above, rows drawn after appear below, and skipping the call replaces the drawing. `packages/plugin_example/editor` is the reference (a hint row under Spinner's fields).
 
-Two funnels share the mechanics:
+```odin
+@(property_drawer={type=MyComp, order="middle"})
+property_drawer_MyComp_rows :: proc(ctx: ^inspector.Ctx) {
+    inspector.draw(ctx)          // the default fields
+    im.TextDisabled("extra row") // appended below them
+}
 
-- **Component/value funnel** — keyed by typeid, wraps every struct the inspector draws. The default drawing is the type's custom drawer (`mapPropertyDrawer`) or the reflected field loop. `packages/plugin_example/editor` is the reference (a hint row under Spinner's fields).
-- **Asset funnel** — keyed by IMPORTER NAME (`""` wraps every asset), wraps the import-settings body. The default drawing is Apply / Revert + the reflected settings. `ctx.settings` is the asset's import settings document (docs/core/Undo.md, "Import settings"): a wrapper edits it in place and undo records the change, no undo code needed. `packages/audio/editor` is the reference (clip stats under AudioSettings).
+@(property_drawer={type=My_Range})            // a struct drawn as ONE widget
+property_drawer_My_Range :: proc(ctx: ^inspector.Ctx) {
+    row := inspector.edit_as_one_begin(ctx)      // its fields edit as one row:
+    defer inspector.edit_as_one_end(ctx, &row)   // one undo step, applied to every selected object
+    r := cast(^My_Range)ctx.ptr                  // read ctx.ptr AFTER the begin: a driven row draws on a buffer
+    im.DragFloatRange2("##r", &r.min, &r.max)
+}
+
+@(property_drawer={type=My_Id})                 // not a struct: the inspector opens the edit, nothing to write
+property_drawer_My_Id :: proc(ctx: ^inspector.Ctx) {
+    im.InputText("##id", cast(^My_Id)ctx.ptr)
+}
+```
+
+- The name is the contract, as with `type_reset_<T>`: the type's own drawing is `property_drawer_<T>`, a step around it `property_drawer_<T>_<what>`, `<T>` the type's own name without its package. An array or builtin type has no name to repeat, so its drawer is `property_drawer_<anything>`.
+- `type` is any type expression the declaring file can name, a container type included (`[dynamic]engine.Material_Property`).
+- `order` places the step, lower outside: `"outer"` for frames and banners, `"middle"` for ordinary rows around the drawing, `"inner"` for the type's own drawing, or a number. No `order` means `"inner"`.
+- Steps of one type at one order run by package and proc name.
+- The default drawing of a struct is the reflected field loop, each field a row of its own.
+- The default drawing of an asset's import settings is Apply / Revert, the file row and the fields.
+- The default drawing of any other value is the kind's built-in row, or its text.
+- Every value that can only be one row, every type that is not a struct, gets its edit from the inspector: the value is snapshotted before the chain, compared after, the change is one undo step applied to every selected object, and the prefab override is recorded. Its drawer writes nothing for that. A struct is fields, each a row with its own edit, unless a drawer draws it as one widget, the curve editor, a reference picker: that drawer calls `inspector.edit_as_one_begin(ctx)` and defers `inspector.edit_as_one_end(ctx, &row)` around its widgets, because the inspector cannot tell a struct drawn as one widget from a struct whose fields draw as rows. A step that only adds rows around a drawing marks nothing, and so does a drawer that lays out sub-rows that are `field_edit_row`s of their own.
+- Edits nest into the outer one: a custom row that wraps a registered drawer with `field_edit_row`, or a drawer that draws another drawer, records once.
+- A struct drawer that forgets the pair records no undo. The inspector logs that once per type when a struct's chain changed the value with no edit open inside it.
+- `ctx` carries the value (`ptr`, `tid`), its `label` and `path_prefix`, and for a field the multi-edit `offset`, the field `name` and `path` the edit uses, plus `nested` and `inline`, which the default drawing of a struct field reads to fold it under its name.
+- Import settings steps are keyed by the importer's settings type: `engine.MeshSettings`, `engine.TextureSettings`, `audio.AudioSettings`, `shadergraph.Shader_Graph_Settings`. While the value is an asset's import settings, `ctx.asset.settings` is true and `ctx.asset` carries the file's `path`, its `guid` and the selected sub-asset `sub`. The value is the asset's import settings document (docs/core/Undo.md, "Import settings"): a step edits it in place and undo records the change, no undo code needed. `packages/audio/editor` is the reference (clip stats under AudioSettings).
+- The generated `register_property_drawers` (property_drawer_gen, `registration/property_drawers_generated.odin`) adds every step after `inspector.init`, in the editor and the tests bootstrap.
+- A custom row that passes a drawer to `inspector.field_edit_row` or `inspector.property_row` passes `inspector.resolve_property_drawer(tid)` or `inspector.draw_value`, which run the value's chain from the top.
+
+Rules:
+
+- Call `draw(ctx)` at most once. Never call `draw_inspector` on the same value from inside a step: that re-enters the funnel.
+- A step that calls `draw` inherits undo, multiedit and prefab-override behavior: the default drawing owns that machinery. Skipping `draw` (replace) takes over that responsibility.
+- Declarative tags stay the front door for common cases (`inspect:`, `ext:`, `decor:button()`, `@(inspector_button)`). Steps are for structural changes those cannot express.
+
+Project-window sub-assets are a registry (`moonhug:editor/subassets`), filled at startup: the asset row folds open to the provider's list, rows drag as `PPtr{guid, id}` (ASSET_PPTR payload), double click calls `open`. The sprites package is the reference (a sliced texture unfolds to its sprites).
 
 ```odin
 @(provider_install)
 my_install :: proc() {
-    inspector.add_component_wrapper(typeid_of(MyComp), _my_wrapper)
-    inspector.add_asset_wrapper("audio", _my_asset_rows)
-    // Project-window sub-assets (moonhug:editor/subassets): the asset row
-    // folds open to the provider's list, rows drag as PPtr{guid, id}
-    // (ASSET_PPTR payload), double click calls `open`. The sprites package
-    // is the reference (a sliced texture unfolds to its sprites).
     subassets.register(".myext", subassets.Provider{list = _my_subs, open = _my_open})
 }
-
-_my_wrapper :: proc(ctx: ^inspector.Component_Ctx) {
-    inspector.draw(ctx)          // the default fields
-    im.TextDisabled("extra row") // appended below them
-}
 ```
-
-Rules:
-
-- Call `draw(ctx)` at most once. Never call `draw_inspector` on the same value from inside a wrapper — that re-enters the funnel.
-- Wrappers sort by (`order`, registration sequence), lower = outer. Use the bands so independent packages compose without coordinating numbers: `ORDER_OUTER` (outermost frames), `ORDER_MIDDLE` (ordinary rows), `ORDER_INNER` (closest to the default drawing).
-- A wrapper that calls `draw` inherits undo, multiedit and prefab-override behavior — the default drawing owns that machinery. Skipping `draw` (replace) takes over that responsibility.
-- Declarative tags stay the front door for common cases (`inspect:`, `ext:`, `decor:button()`, `@(inspector_button)`). Wrappers are for structural changes those cannot express.
 
 ## Views
 
@@ -289,9 +311,9 @@ A plugin's windows and what it adds to other views are attributes, all in [Views
 
 ## Editor startup hook
 
-An editor half installs its providers and registry entries from a no-argument proc marked `@(provider_install)`. It runs once, after the inspector registries exist (`editor_init` calls it right after `inspector.init`), in the editor and in the test binary alike, so tests see the same drawers, wrappers and providers as the editor. An install proc may only set provider fields or add registry entries: it runs before the asset scan and before any world or scene exists. `provider_install_gen` collects every marked proc into the generated `install_providers` (docs/core/PrebuildGenerator.md). The proc lives in an editor half or a shell subpackage, never in the editor root package (`moonhug/editor`): the tests' shared package does not import the editor root.
+An editor half installs its providers and registry entries from a no-argument proc marked `@(provider_install)`. It runs once, after the inspector registries exist (`editor_init` calls it right after `inspector.init`), in the editor and in the test binary alike, so tests see the same registry entries and providers as the editor. An install proc may only set provider fields or add registry entries: it runs before the asset scan and before any world or scene exists. `provider_install_gen` collects every marked proc into the generated `install_providers` (docs/core/PrebuildGenerator.md). The proc lives in an editor half or a shell subpackage, never in the editor root package (`moonhug/editor`): the tests' shared package does not import the editor root.
 
-The Tween Graph is the working example: `plugins/tween/editor/tween_view.odin` registers the `tween.Authored` drawer that frames every authored tween row with a Graph button.
+The model sub-assets are a working example: `mesh_editor_install` in `plugins/engine/editor/mesh_editor/mesh_editor.odin` registers the provider that lists a model's parts and clips.
 
 Startup work that is not an install (state that depends on the asset scan or a world) uses `@(phase={key=Phase.EditorInit, order=N, mode=Editor})` on a no-argument proc instead. The editor's own init is the order=0 subscriber of that phase, so any order above 0 runs after the asset scan and the editor's views exist. The dispatch is generated into the editor root (`editor/phases_generated.odin`).
 
@@ -308,7 +330,7 @@ Physics2D_Settings :: struct {
 }
 ```
 
-- The window draws the struct through the inspector, so `decor:` tags and @(property_drawer) overrides apply — register a drawer for the settings TYPE for a fully custom pane. Edits land in the global undo history.
+- The window draws the struct through the inspector, so `decor:` tags and `@(property_drawer)` steps apply: a step on the settings type with no `draw(ctx)` call draws a fully custom pane. Edits land in the global undo history.
 - Values persist to `ProjectSettings/<slug>.json` ("Physics 2D" → `physics_2d.json`) whenever they change while the window is open, and again at editor shutdown.
 - The OWNING system loads its own file (`engine.project_settings_load`) and consumes the var by polling, so an edit — typed, undone or redone — reaches the runtime with no editor coupling, and the game binary reads the same files. `packages/physics2d/settings.odin` is the shipped example: the fixed step syncs the var into the live box2d world.
 - Declarations land in `editor/project_settings_generated.odin` (project_settings_gen). Built-in tabs use the same attribute — Time (`engine.time_settings`, the fixed tick rate) is one.

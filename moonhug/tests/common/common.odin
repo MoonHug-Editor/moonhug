@@ -67,6 +67,7 @@ _register_once :: proc() {
 	// proc (providers_generated.odin) fills them and the providers.
 	inspector.init()
 	registration.register_doc_hooks()
+	registration.register_property_drawers()
 	install_providers()
 	// The asset each view edits (@(view_document)), as the editor registers them.
 	register_view_documents()

@@ -22,7 +22,7 @@ shadergraph_importer :: proc() -> asset_pipeline.Importer_Desc {
 		name         = "shadergraph",
 		version      = importers.shader_importer_version(), // the template is an input here too
 		extensions   = _SHADERGRAPH_EXTS,
-		settings_tid = typeid_of(engine.ShaderSettings),
+		settings_tid = typeid_of(sg.Shader_Graph_Settings),
 		run          = _import_shadergraph,
 	}
 }

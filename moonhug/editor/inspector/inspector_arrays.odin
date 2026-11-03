@@ -266,18 +266,21 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 // The peer list has already been rebased onto each peer's storage, so this
 // addresses the same element on every selected object.
 draw_array_element :: proc(ptr: rawptr, elem_tid: typeid, label: cstring, elem_offset: uintptr = 0) {
-	if drawer, ok := mapPropertyDrawer[elem_tid]; ok {
+	if has_drawer(elem_tid) {
 		prev_changed := inspector_changed
 		inspector_changed = false
-		multi_probe_field(ptr, elem_tid, elem_offset)
-
-		// One shared transaction path for every value row — see field_edit_row.
-		// Duplicating it here is what let the array copy keep a picker handling
-		// that wrote to peers on every draw.
-		field_edit_row(ptr, elem_tid, elem_offset, "Element", drawer, label)
-
+		// The element's chain draws it. A non-struct element is one row and
+		// gets its edit here; a struct drawer opens its own (field_edit.odin).
+		ectx := Ctx{ptr = ptr, tid = elem_tid, label = label, offset = elem_offset, name = "Element", nested = true, _chain = _chain_of(elem_tid)}
+		if reflect.is_struct(type_info_of(elem_tid)) {
+			_funnel_draw(&ectx)
+		} else {
+			row := edit_as_one_begin(&ectx)
+			_funnel_draw(&ectx)
+			edit_as_one_end(&ectx, &row)
+		}
 		if prev_changed || inspector_changed do inspector_changed = true
-		draw_field_context_menu(ptr, elem_tid)
+		if !ectx.menu_drawn do draw_field_context_menu(ptr, elem_tid)
 		return
 	}
 	elem_ti := type_info_of(elem_tid)

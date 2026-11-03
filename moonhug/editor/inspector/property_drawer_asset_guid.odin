@@ -9,8 +9,9 @@ import "moonhug:editor/widgets"
 import assets "moonhug:libs/assets"
 import core "moonhug:libs/core"
 
-@(property_drawer={type = core.Asset_GUID, priority = 0})
-draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type = core.Asset_GUID})
+property_drawer_Asset_GUID :: proc(ctx: ^Ctx) {
+    ptr, label := ctx.ptr, ctx.label
     guid_ptr := cast(^core.Asset_GUID)ptr
     guid_val := uuid.Identifier(guid_ptr^)
     has_value := guid_val != (uuid.Identifier{})

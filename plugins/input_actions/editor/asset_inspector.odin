@@ -17,11 +17,6 @@ import "moonhug:editor/inspector"
 import "moonhug:editor/widgets"
 import actions "moonhug:packages/input_actions"
 
-@(provider_install)
-_register_asset_inspector :: proc() {
-	inspector.add_property_drawer(typeid_of(actions.Input_Actions), draw_input_actions)
-}
-
 @(private = "file")
 _cell :: proc(ptr: rawptr, $T: typeid, id: cstring, drawer: proc(ptr: rawptr, tid: typeid, label: cstring) = nil) {
 	im.SetNextItemWidth(-1)
@@ -29,7 +24,9 @@ _cell :: proc(ptr: rawptr, $T: typeid, id: cstring, drawer: proc(ptr: rawptr, ti
 	inspector.field_edit_row(ptr, T, 0, string(id), d, id)
 }
 
-draw_input_actions :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type=actions.Input_Actions})
+property_drawer_Input_Actions :: proc(ctx: ^inspector.Ctx) {
+	ptr := ctx.ptr
 	a := cast(^actions.Input_Actions)ptr
 	remove_context := -1
 	for &m, mi in a.contexts {
@@ -115,7 +112,7 @@ _draw_actions :: proc(m: ^actions.Mapping_Context) {
 			im.TableNextRow()
 			if r == 0 do _action_cells(&ac)
 			im.TableSetColumnIndex(4)
-			_cell(&km.key, actions.Key_Name, "##key", draw_key_name)
+			_cell(&km.key, actions.Key_Name, "##key")
 			im.TableSetColumnIndex(5)
 			_cell(&km.modifier, actions.Modifier, "##modifier", inspector.draw_inspector_enum)
 			widgets.tooltip("What the key feeds: the whole value, one side of an Axis1D, one direction of an Axis2D")

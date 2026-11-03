@@ -20,7 +20,9 @@ import "moonhug:editor/inspector"
 // reach the sibling custom_shader field from inside the properties field.
 current_material: ^engine.Material
 
-draw_material_properties :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+@(property_drawer={type=[dynamic]engine.Material_Property})
+property_drawer_material_properties :: proc(ctx: ^inspector.Ctx) {
+	ptr, label := ctx.ptr, ctx.label
 	props := cast(^[dynamic]engine.Material_Property)ptr
 
 	sr: ^engine.Shader_Runtime

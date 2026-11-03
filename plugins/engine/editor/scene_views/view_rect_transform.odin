@@ -33,12 +33,6 @@ import "moonhug:editor/inspector"
 import undo "moonhug:packages/engine/editor/undo"
 import "moonhug:editor/widgets"
 
-@(provider_install)
-rect_transform_inspector_install :: proc() {
-	inspector.add_component_wrapper(typeid_of(engine.RectTransform), _rect_transform_inspector)
-}
-
-
 // One selected RectTransform with what its rows need. The first entry is
 // the active object, the rows' displayed value.
 @(private = "file")
@@ -55,8 +49,8 @@ _Rt_Target :: struct {
 @(private = "file") _rt_edit_targets: [dynamic]_Rt_Target // the session's objects and their start values
 @(private = "file") _rt_path_prefix: string
 
-@(private = "file")
-_rect_transform_inspector :: proc(ctx: ^inspector.Component_Ctx) {
+@(property_drawer={type=engine.RectTransform, order="middle"})
+property_drawer_RectTransform_inspector :: proc(ctx: ^inspector.Ctx) {
 	rt := cast(^engine.RectTransform)ctx.ptr
 	if !_rt_collect(rt) {
 		inspector.draw(ctx)

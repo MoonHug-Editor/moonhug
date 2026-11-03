@@ -273,7 +273,7 @@ _pv_discrete_field :: proc(ch: ^anim.Animation_Channel, kind: anim.Prop_Kind, va
 		// The picker flags the inspector as changed. The flag belongs to the
 		// inspector's own rows, so this draw leaves it as it found it.
 		prev_changed := inspector.consume_inspector_changed()
-		inspector.draw_pptr_property(&picked, typeid_of(engine.PPtr), "##anim_ref")
+		inspector.draw_value(&picked, typeid_of(engine.PPtr), "##anim_ref")
 		inspector.consume_inspector_changed()
 		if prev_changed do inspector.mark_inspector_changed()
 		if picked != orig do return picked, true

@@ -45,13 +45,8 @@ comp_on_draw_gizmos_MeshCollider :: proc(c: ^physics3d.MeshCollider, ctx: handle
 // MeshFilter has and, when convex, the Hulls dropdown (hull_sections.odin).
 // Empty, the Mesh row reads "None" and the collider takes the MeshFilter's
 // mesh.
-@(provider_install)
-_register_mesh_collider_inspector :: proc() {
-	inspector.add_component_wrapper(typeid_of(physics3d.MeshCollider), _mesh_collider_inspector)
-}
-
-@(private = "file")
-_mesh_collider_inspector :: proc(ctx: ^inspector.Component_Ctx) {
+@(property_drawer={type=physics3d.MeshCollider, order="middle"})
+property_drawer_MeshCollider_inspector :: proc(ctx: ^inspector.Ctx) {
 	inspector.draw(ctx)
 	c := cast(^physics3d.MeshCollider)ctx.ptr
 	mesh_editor.mesh_ref_row(&c.mesh, tooltip = "The mesh to collide as: a model or one of its parts. None takes the mesh of the MeshFilter on this object.")

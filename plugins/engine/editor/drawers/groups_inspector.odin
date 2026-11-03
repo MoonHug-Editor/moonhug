@@ -14,13 +14,8 @@ import "moonhug:editor/session"
 import "moonhug:editor/widgets"
 import engine "moonhug:packages/engine"
 
-@(provider_install)
-_register_groups_inspector :: proc() {
-	inspector.add_component_wrapper(typeid_of(engine.Groups), _groups_inspector)
-}
-
-@(private = "file")
-_groups_inspector :: proc(ctx: ^inspector.Component_Ctx) {
+@(property_drawer={type=engine.Groups, order="middle"})
+property_drawer_Groups_inspector :: proc(ctx: ^inspector.Ctx) {
 	inspector.draw(ctx)
 	c := cast(^engine.Groups)ctx.ptr
 	playing := engine.game_running()

@@ -83,16 +83,11 @@ ui_menu_text :: proc() {
 
 // --- Inspector ---------------------------------------------------------------------
 
-@(provider_install)
-text_inspector_install :: proc() {
-	inspector.add_component_wrapper(typeid_of(text.Text), _text_inspector)
-}
-
 // The text area and the style toggles first, then the generic rows. Both
 // custom rows go through the inspector's row machinery, so undo sessions,
 // multiedit peers and prefab overrides work like generic rows.
-@(private = "file")
-_text_inspector :: proc(ctx: ^inspector.Component_Ctx) {
+@(property_drawer={type=text.Text, order="middle"})
+property_drawer_Text_inspector :: proc(ctx: ^inspector.Ctx) {
 	tx := cast(^text.Text)ctx.ptr
 	_text_row(tx, &tx.text, typeid_of(string), "Text", "text", _draw_text_area, nil)
 	// Buttons have no edit gesture imgui reports, so a click stands in for a

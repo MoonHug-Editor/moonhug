@@ -37,11 +37,6 @@ comp_on_draw_gizmos_Volume :: proc(v: ^engine.Volume, ctx: handles.Gizmo_Context
 	}
 }
 
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
-volume_inspector_install :: proc() {
-	inspector.add_component_wrapper(typeid_of(engine.Volume), _volume_inspector)
-}
-
 @(phase={key=engine.Phase.EditorShutdown, order=1, mode=Editor})
 volume_inspector_shutdown :: proc() {
 	for _, &b in _buffers do delete(b.buf)
@@ -66,8 +61,8 @@ _Buffer :: struct {
 @(private = "file")
 _buffers: map[_Buffer_Key]_Buffer
 
-@(private = "file")
-_volume_inspector :: proc(ctx: ^inspector.Component_Ctx) {
+@(property_drawer={type=engine.Volume, order="middle"})
+property_drawer_Volume_inspector :: proc(ctx: ^inspector.Ctx) {
 	inspector.draw(ctx)
 	v := cast(^engine.Volume)ctx.ptr
 	owned, _ := engine.transform_get_comp(v.owner, engine.Volume)

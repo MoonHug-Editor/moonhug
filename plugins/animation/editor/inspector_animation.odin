@@ -32,7 +32,6 @@ import anim "moonhug:packages/animation"
 
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
 animation_inspector_install :: proc() {
-	inspector.add_component_wrapper(typeid_of(anim.Animation), _animation_inspector)
 	// Editor state, so it owns its memory rather than taking whatever allocator
 	// a draw happens to be running under.
 	_alt_open_pending = make(map[i32]bool, 16, runtime.default_allocator())
@@ -56,8 +55,8 @@ shutdown_animation_inspector :: proc() {
 // Keyed by entry id, which is minted per component and never reused.
 @(private = "file") _alt_open_pending: map[i32]bool
 
-@(private = "file")
-_animation_inspector :: proc(ctx: ^inspector.Component_Ctx) {
+@(property_drawer={type=anim.Animation, order="middle"})
+property_drawer_Animation_inspector :: proc(ctx: ^inspector.Ctx) {
 	inspector.draw(ctx) // clip, play_automatically, speed
 	a := cast(^anim.Animation)ctx.ptr
 	if a == nil do return
@@ -408,7 +407,7 @@ _clip_field :: proc(a: ^anim.Animation, e: ^anim.Animation_Entry, label: cstring
 	// A picker: the value lands from inside a popup with no gesture to observe,
 	// so the row is the thing that brackets it, after the fact, with the value
 	// it snapshotted before the draw.
-	_tree_row(a, &c.clip, typeid_of(engine.PPtr), "Clip", inspector.draw_pptr_property, label)
+	_tree_row(a, &c.clip, typeid_of(engine.PPtr), "Clip", inspector.draw_value, label)
 }
 
 // The axis range a blend's slider spans: its children's positions, widened to

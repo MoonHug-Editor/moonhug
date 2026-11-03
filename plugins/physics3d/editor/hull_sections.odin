@@ -22,22 +22,17 @@ import "moonhug:editor/widgets"
 import "moonhug:packages/engine/editor/mesh_editor"
 import physics3d "moonhug:packages/physics3d"
 
-@(provider_install)
-_register_hull_sections :: proc() {
-	inspector.add_asset_wrapper("mesh", _model_hull_section)
-}
-
 // --- The model's section ---------------------------------------------------------
 
-@(private = "file")
-_model_hull_section :: proc(ctx: ^inspector.Asset_Ctx) {
+@(property_drawer={type=engine.MeshSettings, order="middle"})
+property_drawer_MeshSettings_hulls :: proc(ctx: ^inspector.Ctx) {
 	inspector.draw(ctx)
-	if ctx.settings.id != typeid_of(engine.MeshSettings) do return
-	ms := cast(^engine.MeshSettings)ctx.settings.data
+	if !ctx.asset.settings do return
+	ms := cast(^engine.MeshSettings)ctx.ptr
 	// The model shows every set, a selected set only itself.
 	only := engine.Local_ID(0)
-	if ctx.sub != 0 {
-		for s in ms.hull_sets do if s.id == ctx.sub do only = s.id
+	if ctx.asset.sub != 0 {
+		for s in ms.hull_sets do if s.id == ctx.asset.sub do only = s.id
 		if only == 0 do return // a part or a clip
 	}
 
@@ -45,19 +40,19 @@ _model_hull_section :: proc(ctx: ^inspector.Asset_Ctx) {
 	im.SeparatorText("Convex Decompositions")
 	widgets.tooltip("Hull sets a convex MeshCollider can pick, so a Rigidbody carries a concave mesh. Each set is computed in the background after Apply, and only sets whose mesh or values changed are computed again.")
 
-	applied := hull_sets_applied(ctx.guid)
+	applied := hull_sets_applied(ctx.asset.guid)
 	remove := -1
 	for &s, i in ms.hull_sets {
 		if only != 0 && s.id != only do continue
 		im.PushID(strings.clone_to_cstring(fmt.tprintf("%d", s.id), context.temp_allocator))
 		defer im.PopID()
 
-		if im.BeginCombo(inspector.field_row("Mesh"), strings.clone_to_cstring(_mesh_name(ctx.guid, s.part), context.temp_allocator)) {
+		if im.BeginCombo(inspector.field_row("Mesh"), strings.clone_to_cstring(_mesh_name(ctx.asset.guid, s.part), context.temp_allocator)) {
 			if im.Selectable("Whole model", s.part == 0) && s.part != 0 {
 				s.part = 0
 				inspector.mark_inspector_changed()
 			}
-			for p in engine.mesh_parts(ctx.guid) {
+			for p in engine.mesh_parts(ctx.asset.guid) {
 				if p.id == 0 do continue
 				if im.Selectable(strings.clone_to_cstring(p.name, context.temp_allocator), s.part == p.id) && s.part != p.id {
 					s.part = p.id
@@ -80,15 +75,15 @@ _model_hull_section :: proc(ctx: ^inspector.Asset_Ctx) {
 		if !applied_same {
 			im.TextDisabled("Apply to compute")
 		} else {
-			state, detail := hull_set_state(ctx.guid, s.id)
+			state, detail := hull_set_state(ctx.asset.guid, s.id)
 			im.TextDisabled("%s", strings.clone_to_cstring(fmt.tprintf("%v: %s", state, detail), context.temp_allocator))
 			#partial switch state {
 			case .Queued, .Running:
 				im.SameLine()
-				if im.SmallButton("Cancel") do hull_set_cancel(ctx.guid, s.id)
+				if im.SmallButton("Cancel") do hull_set_cancel(ctx.asset.guid, s.id)
 			case .Failed, .Cancelled:
 				im.SameLine()
-				if im.SmallButton("Compute") do hull_set_compute(ctx.guid, s.id)
+				if im.SmallButton("Compute") do hull_set_compute(ctx.asset.guid, s.id)
 			}
 		}
 		im.SameLine()
@@ -104,7 +99,7 @@ _model_hull_section :: proc(ctx: ^inspector.Asset_Ctx) {
 		// Random, and unused by the applied sets and the unapplied ones.
 		taken := make([dynamic]engine.Local_ID, context.temp_allocator)
 		for s in ms.hull_sets do append(&taken, s.id)
-		id := engine.mesh_new_sub_id(ctx.guid, taken[:])
+		id := engine.mesh_new_sub_id(ctx.asset.guid, taken[:])
 		append(&ms.hull_sets, engine.Mesh_Hull_Set{id = id, part = 0, max_hulls = 8, concavity = 0.05, remesh_resolution = engine.MESH_HULL_REMESH_DEFAULT})
 		inspector.mark_inspector_changed()
 	}

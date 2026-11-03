@@ -11,7 +11,6 @@ import im "moonhug:external/odin-imgui"
 import "moonhug:editor/widgets"
 import assets "moonhug:libs/assets"
 import core "moonhug:libs/core"
-import asset_pipeline "moonhug:editor/assets"
 import clip "../clipboard"
 import undo "moonhug:editor/undo"
 import "moonhug:editor/icons"
@@ -22,18 +21,6 @@ InspectorMode :: enum {
     Package,
 }
 
-// Replaces how the inspector draws every field of one type.
-//
-// `type` is the field type. The proc takes the field's pointer, its typeid and
-// its label, and draws the whole row. `priority` decides which of two drawers
-// for one type is used.
-//
-// A drawer for a vector of 2 to 4 floats draws it with drag_float2/3/4, which
-// give each component its axis stripe, x red to w grey, as every vector row
-// has. A drawer with one field per component calls widgets.axis_marker_next
-// before each field instead.
-@(extension_point={attribute="property_drawer", target="proc", fields="type priority"})
-mapPropertyDrawer: MapPropertyDrawer
 // The Project Inspector instance being drawn or routed to, the first one
 // otherwise (project_inspector_window.odin).
 inspectorData: ^InspectorData = &_primary
@@ -106,22 +93,6 @@ InspectorData :: struct {
     packageManifest: Plugin_Manifest_View, // .Package mode (owned, plugin_manifest.odin)
 }
 
-MapPropertyDrawer :: map[typeid]proc(ptr: rawptr, tid: typeid, label: cstring)
-
-// Registers a drawer for a typeid the attribute parser cannot name, such as a
-// container type. Call after init, from an EditorInit phase proc at order 1
-// or later. `origin` is what debug tooltips show for the drawer.
-add_property_drawer :: proc(tid: typeid, fn: proc(ptr: rawptr, tid: typeid, label: cstring), loc := #caller_location) {
-	assert(_registries_ready, "add_property_drawer before inspector.init")
-	mapPropertyDrawer[tid] = fn
-	mapPropertyDrawerOrigin[tid] = fmt.tprintf("built-in %s:%d", loc.file_path, loc.line)
-}
-
-// The @(property_drawer) behind each entry of mapPropertyDrawer, with its file
-// and line, as rendered by the generator. A drawer owns the whole field row,
-// so debug tooltips show this while the row draws. Filled by
-// init_property_drawer_map; a hand-registered drawer has no entry.
-mapPropertyDrawerOrigin: map[typeid]string
 
 // Asset preview pane: package editor subpackages register a drawer per
 // source extension (lowercase, with dot). A matching drawer pins a Preview
@@ -129,17 +100,14 @@ mapPropertyDrawerOrigin: map[typeid]string
 // draws (the audio Play/Stop buttons are the reference).
 mapAssetPreview: map[string]proc(path: string)
 
-// The selected sub-asset of `path` (0 = none), for Asset_Ctx.sub. The editor
+// The selected sub-asset of `path` (0 = none), for Ctx.asset.sub. The editor
 // installs it: the project selection lives there.
 selected_sub: proc(path: string) -> core.Local_ID
 
 init :: proc() {
-    mapPropertyDrawer = make(MapPropertyDrawer)
-    mapPropertyDrawerOrigin = make(map[typeid]string)
     mapAssetPreview = make(map[string]proc(path: string))
     decorator_registry = make(DecoratorsMap)
     decorator_origin_registry = make(map[typeid][]string)
-    init_property_drawer_map()
     init_decorators()
     _context_menu_registry = make(map[typeid][dynamic]Context_Menu_Entry)
     init_context_menu_registry()
@@ -157,8 +125,7 @@ init :: proc() {
 shutdown_registries :: proc() {
     multi_shutdown()
     _shutdown_context_menu_registry()
-    delete(mapPropertyDrawer)
-    delete(mapPropertyDrawerOrigin)
+    drawers_reset()
     delete(mapAssetPreview)
     for _, v in decorator_registry {
         delete(v)
@@ -544,20 +511,24 @@ _draw_import_settings_inspector :: proc() {
     doc := inspectorData.settingsDoc
     if doc == nil do return
     doc.touched = true // shown this frame: import_settings_track looks at it
-    // Registered wrappers funnel the settings body (inspector_funnel.odin),
-    // keyed by the importer owning this asset's extension.
-    ext := strings.to_lower(filepath.ext(inspectorData.filePath), context.temp_allocator)
-    if chain, has := _asset_chain(asset_pipeline.importer_for_extension(ext)); has {
+    // The settings type's registered steps funnel the body
+    // (inspector_funnel.odin); the ctx carries the asset for them.
+    if has_drawer(doc.data.id) {
         guid: core.Asset_GUID
         if g, ok := assets.asset_db_get_guid(inspectorData.filePath); ok {
             guid = core.Asset_GUID(g)
         }
-        actx := Asset_Ctx{
-            path     = inspectorData.filePath,
-            guid     = guid,
-            sub      = selected_sub(inspectorData.filePath) if selected_sub != nil else 0,
-            settings = doc.data,
-            _chain   = chain,
+        actx := Ctx{
+            ptr    = doc.data.data,
+            tid    = doc.data.id,
+            label  = "Import Settings",
+            asset  = {
+                settings = true,
+                path     = inspectorData.filePath,
+                guid     = guid,
+                sub      = selected_sub(inspectorData.filePath) if selected_sub != nil else 0,
+            },
+            _chain = _chain_of(doc.data.id),
         }
         _funnel_draw(&actx)
         return
@@ -596,8 +567,9 @@ draw_default_import_settings :: proc() {
     im.Separator()
 
     if doc.data.data != nil {
-        drawer := resolve_property_drawer(doc.data.id)
-        drawer(doc.data.data, doc.data.id, "Import Settings")
+        // The settings' fields, each its own row. Not the settings type's
+        // chain: that is what called this.
+        draw_inspector_default(doc.data.data, doc.data.id, "Import Settings", "")
     }
 
 }
@@ -793,11 +765,18 @@ field_commit_state :: proc() -> Field_Commit {
     return field_commit_state_of(inspector_changed)
 }
 
+// The row drawer for a type: the funnel from the top, every registered step
+// and then the default drawing (inspector_funnel.odin). For custom rows that
+// pass a drawer to field_edit_row or property_row.
 resolve_property_drawer :: proc(tid: typeid) -> proc(ptr: rawptr, tid: typeid, label: cstring) {
-    if drawer, ok := mapPropertyDrawer[tid]; ok {
-        return drawer
-    }
-    return draw_default_inspector
+    return draw_value
+}
+
+// The chain's end for a value with no drawing of its own: its text.
+draw_value_text :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+    c_str := strings.clone_to_cstring(fmt.tprintf("%s: %v", label, any{ptr, tid}))
+    defer delete(c_str)
+    im.Text(c_str)
 }
 
 draw_default_inspector :: proc(ptr: rawptr, tid: typeid, label: cstring) {
@@ -1011,25 +990,33 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
         return
     }
 
-    // Registered wrappers funnel this type's draw (inspector_funnel.odin).
+    // The type's registered steps funnel its draw (inspector_funnel.odin).
     // No registration: straight to the default drawing.
-    if chain, has := _component_chain(tid); has {
-        cctx := Component_Ctx{ptr = ptr, tid = tid, label = label, path_prefix = path_prefix, _chain = chain}
+    if has_drawer(tid) {
+        cctx := Ctx{ptr = ptr, tid = tid, label = label, path_prefix = path_prefix, _chain = _chain_of(tid)}
         _funnel_draw(&cctx)
         return
     }
     draw_inspector_default(ptr, tid, label, path_prefix)
 }
 
-// The funnel's end of chain: the type's custom drawer, or the reflected
-// field loop. Never re-enters the funnel — that is what makes wrapping
-// non-recursive.
-draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_prefix: string) {
-    if drawer, ok := mapPropertyDrawer[tid]; ok {
-        drawer(ptr, tid, label)
-        return
+// The funnel's end of chain for a struct: the reflected field loop. Never
+// re-enters the funnel for the struct itself — that is what makes a step
+// around it non-recursive. Each field runs its own chain. A nested field
+// (`ctx.nested`, from the field loop) folds under its name unless tagged
+// inline, with the field's context menu on the header.
+draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_prefix: string, ctx: ^Ctx = nil) {
+    if ctx != nil && ctx.nested && !ctx.inline {
+        tree_open := im.TreeNode(label)
+        draw_field_context_menu(ptr, tid, path_prefix)
+        ctx.menu_drawn = true
+        if !tree_open do return
+        defer im.TreePop()
+        // Fields inside are located from the struct's start on each peer:
+        // ctx.offset is absolute, the stack takes the step from here.
+        prev_off := multi_push_offset(ctx.offset - _multi_base_offset)
+        defer multi_pop_offset(prev_off)
     }
-
     xAny := any{ptr, tid}
     names := reflect.struct_field_names(tid)
     types := reflect.struct_field_types(tid)
@@ -1140,35 +1127,50 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             prev_tags := field_tags_set(field_info.tag)
             defer field_tags_restore(prev_tags)
 
-            if drawer, ok := mapPropertyDrawer[field_type.id]; ok {
-                // The drawer owns this row, so its @(property_drawer) is what
-                // debug tooltips name for anything the row hovers.
-                origin_prev := widgets.ui_origin_push(mapPropertyDrawerOrigin[field_type.id])
+            if has_drawer(field_type.id) {
+                // The field's chain draws it (inspector_funnel.odin). A value
+                // that can only be one row, every non-struct type, gets its
+                // edit opened here. A struct's chain runs bare: a drawer that
+                // draws it as one widget opens the edit itself, and a struct
+                // whose steps call through folds its fields like any nested
+                // struct, each with its own row.
+                // The innermost step owns this row, so its @(property_drawer)
+                // is what debug tooltips name for anything the row hovers.
+                origin_prev := widgets.ui_origin_push(drawer_origin(field_type.id))
                 defer widgets.ui_origin_pop(origin_prev)
 
-                // Mixed-value display for the selection. Read by the drawer.
-                multi_offset := multi_offset_of(field_ptr, ptr)
-                multi_probe_field(field_ptr, field_type.id, multi_offset)
-
-                // Group the drawer's widgets so the field context menu below
-                // binds to the WHOLE row. A drawer can emit several items (e.g.
+                // Group the row's widgets so the field context menu below
+                // binds to the WHOLE row. A step can emit several items (e.g.
                 // Ref_Local: picker button + "X" clear) and OpenPopupOnItemClick
                 // only tests the last one — right-click would then work only on
                 // the tiny X (or only when no value meant no X).
                 expands := current_field_expand && field_type.id == typeid_of(core.Asset_GUID)
                 if expands do current_field_trailing_w = EXPAND_BTN_W
                 im.BeginGroup()
-                // The whole transaction, shared with the array-element path so
-                // the two cannot drift — see field_edit_row.
-                // Peers record their overrides against their own instances, and
-                // the path names which field — see field_edit.odin.
-                prev_path := field_edit_set_path(full_path)
-                finished := field_edit_row(field_ptr, field_type.id, multi_offset,
-                                           field_name, drawer, c_field_name)
-                field_edit_set_path(prev_path)
+                fctx := Ctx{
+                    ptr         = field_ptr,
+                    tid         = field_type.id,
+                    label       = c_field_name,
+                    path_prefix = full_path,
+                    offset      = multi_offset_of(field_ptr, ptr),
+                    name        = field_name,
+                    path        = full_path,
+                    nested      = true,
+                    inline      = tag_has(field_info.tag, TAG_INLINE),
+                    _chain      = _chain_of(field_type.id),
+                }
+                if reflect.is_struct(field_type) {
+                    edits_before, changed_before := _edit_count, inspector_changed
+                    _funnel_draw(&fctx)
+                    edit_check(&fctx, edits_before, changed_before)
+                } else {
+                    row := edit_as_one_begin(&fctx)
+                    _funnel_draw(&fctx)
+                    edit_as_one_end(&fctx, &row)
+                }
                 im.EndGroup()
                 current_field_trailing_w = 0
-                record_nested_override(field_ptr, field_type.id, full_path, finished)
+                row_popup_done = fctx.menu_drawn
                 // The arrow sits in the space the row left for it, and the
                 // document draws below, outside the row's transaction: its
                 // rows must not read as edits of this reference field.
