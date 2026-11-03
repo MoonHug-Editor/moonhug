@@ -167,6 +167,7 @@ mcp_bridge_tick :: proc() {
 	}
 
 	_mcp_poll_shots()
+	_mcp_item_rects_poll()
 
 	if !_mcp.has_client do return
 	buf: [65536]u8

@@ -230,6 +230,9 @@ main :: proc() {
         // Start ImGui frame
         im_sdlgpu.NewFrame()
         im_sdl.NewFrame()
+        // Agent input scripts queue their events after the backend's, before
+        // imgui reads the queue (mcp_input.odin).
+        mcp_bridge_input_feed()
         im.NewFrame()
         // An open dialog owns the keyboard, before anything reads a key
         // (widgets/dialog.odin).
