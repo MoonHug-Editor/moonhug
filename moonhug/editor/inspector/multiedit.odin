@@ -401,12 +401,12 @@ multi_rebase_to_dynamic_array :: proc(
 ) -> (prev: Multi_Rebase, common_len: int) {
 	prev = Multi_Rebase{peers = _multi_peers, offset = _multi_base_offset}
 	common_len = self_len
-	if len(_multi_peers) == 0 do return prev, common_len
-
 	// Offsets inside the array are measured from the ELEMENT STORAGE, so the
 	// accumulated component-base offset does not apply any more. Leaving it set
-	// would double-count and address past the peer's allocation.
+	// would double-count and address past the peer's allocation. Zeroed with no
+	// peers too, so element offsets and the base agree either way.
 	_multi_base_offset = 0
+	if len(_multi_peers) == 0 do return prev, common_len
 
 	rebased := make([dynamic]Multi_Peer, 0, len(_multi_peers), allocator)
 	for peer in prev.peers {
@@ -437,9 +437,9 @@ multi_rebase_to_dynamic_array :: proc(
 // Lengths are equal by type, so the count is the type's count.
 multi_rebase_to_fixed_array :: proc(array_offset: uintptr, allocator := context.temp_allocator) -> Multi_Rebase {
 	prev := Multi_Rebase{peers = _multi_peers, offset = _multi_base_offset}
+	_multi_base_offset = 0
 	if len(_multi_peers) == 0 do return prev
 
-	_multi_base_offset = 0
 	rebased := make([dynamic]Multi_Peer, 0, len(_multi_peers), allocator)
 	for peer in prev.peers {
 		if peer.base == nil do continue

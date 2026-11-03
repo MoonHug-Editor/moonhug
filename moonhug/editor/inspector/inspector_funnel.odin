@@ -28,7 +28,7 @@ package inspector
 //
 // Edits (field_edit.odin). A row of the inspector, a field or an array
 // element, marks its ctx with `_row`. On a row, the inspector opens the edit
-// around the chain for a leaf value, one that is always one row (is_row_kind):
+// around the chain for a leaf value, one edited as one row (is_row_kind):
 // a number, a string, an enum, a bit set, a fixed array of numbers. One undo
 // step, applied to every selected object. A container, a struct, a dynamic
 // array, a union, a pointer, draws as rows of its own, each with its edit,
@@ -134,11 +134,13 @@ _draw_end :: proc(ctx: ^Ctx) {
 	draw_kind_default(ctx)
 }
 
-// True for a leaf value, always drawn as one row: the inspector opens its edit
-// on a row. A number, a boolean, a string, a rune, an enum, a bit set, a type
-// id, or a fixed array of numbers (a vector, a color, a guid), which multi-edit
-// applies component by component. Everything else is a container, drawn as
-// rows of its own unless a drawer edits it as one.
+// True for a leaf value, edited as one row: the inspector opens its edit on a
+// row. A number, a boolean, a string, a rune, an enum, a bit set, a type id,
+// or a fixed array of numbers (a vector, a color, a guid), which multi-edit
+// applies component by component. A fixed array's drawer draws it as one
+// widget. At the chain end it is a list of element rows inside that one edit.
+// Everything else is a container, drawn as rows of its own unless a drawer
+// edits it as one.
 is_row_kind :: proc(tid: typeid) -> bool {
 	ti := runtime.type_info_base(type_info_of(tid))
 	#partial switch v in ti.variant {

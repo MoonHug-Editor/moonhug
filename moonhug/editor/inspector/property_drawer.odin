@@ -137,9 +137,7 @@ property_drawer_f64 :: proc(ctx: ^Ctx) {
 
 @(property_drawer={type = ^[3]f32})
 property_drawer_vec3_ptr :: proc(ctx: ^Ctx) {
-    // A container drawn as one widget: one row, one undo step.
-    row_edit := edit_as_one_begin(ctx)
-    defer edit_as_one_end(ctx, &row_edit)
+    // For custom transform rows: they pass the vector itself and hold their own edit.
     ptr, label := ctx.ptr, ctx.label
     v := cast(^[3]f32)(ptr)
     im.BeginGroup()
