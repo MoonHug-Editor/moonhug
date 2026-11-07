@@ -334,6 +334,7 @@ main :: proc() {
 
         // Plugin-opened windows (editor/window, docs/core/Plugins.md).
         wnd.draw_all()
+        command_palette_draw()
 
         draw_about_popup()
         // Confirmations and other modal questions (widgets/dialog.odin).

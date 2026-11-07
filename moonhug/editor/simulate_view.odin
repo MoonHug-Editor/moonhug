@@ -13,6 +13,7 @@ import "inspector"
 import sim "./simulate"
 import "moonhug:editor/icons"
 import "widgets"
+import "moonhug:editor/keymap"
 
 // Simulate's accent, on every simulate button while a run is active. The rest of
 // the toolbar is theme-neutral.
@@ -165,7 +166,7 @@ _draw_simulate_controls :: proc() {
         }
     }
     _pop_sim_button_bg()
-    widgets.tooltip(active ? "Stop (Cmd/Ctrl+P)" : "Play (Cmd/Ctrl+P)")
+    widgets.tooltip(keymap.labelled("Stop" if active else "Play", "Edit/Play"))
 
     im.SameLine(0, style.ItemSpacing.x)
     _push_sim_button_bg(active)
@@ -179,7 +180,7 @@ _draw_simulate_controls :: proc() {
         }
     }
     _pop_sim_button_bg()
-    widgets.tooltip(active && paused ? "Resume (Cmd/Ctrl+Shift+P)" : "Pause (Cmd/Ctrl+Shift+P)")
+    widgets.tooltip(keymap.labelled("Resume" if active && paused else "Pause", "Edit/Pause"))
 
     im.SameLine(0, style.ItemSpacing.x)
     _push_sim_button_bg(active)

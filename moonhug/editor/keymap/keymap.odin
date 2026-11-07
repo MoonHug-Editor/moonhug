@@ -974,6 +974,21 @@ chord_text :: proc(chord: im.KeyChord, allocator := context.temp_allocator) -> s
 	return strings.to_string(b)
 }
 
+// The first chord bound to the command `key` names, formatted, "" for
+// none: the hint a button's tooltip shows. Temp.
+hint :: proc(key: string) -> string {
+	for km in _keymaps do for &b in km.bindings do if binding_is(&b, key) do return format_chord(b.chord)
+	return ""
+}
+
+// `text` with the command's chord after it, "Move (W)", or `text` alone
+// when nothing binds it. Temp, for a tooltip.
+labelled :: proc(text: string, key: string) -> cstring {
+	h := hint(key)
+	if h == "" do return strings.clone_to_cstring(text, context.temp_allocator)
+	return strings.clone_to_cstring(fmt.tprintf("%s (%s)", text, h), context.temp_allocator)
+}
+
 // The name parse_key reads for `key`: "A", "F2", "Space", "Left".
 key_name :: proc(key: im.Key) -> string {
 	k := int(key)

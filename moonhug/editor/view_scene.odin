@@ -739,11 +739,12 @@ draw_tools_overlay :: proc(vertical: bool) {
 			viewport.gizmo_mode = mode
 		}
 	}
-	mode_button(icons.ICON_MD_ARROW_SELECTOR, "Picker (Q)", .Picker, vertical, first = true)
-	mode_button(icons.ICON_MD_OPEN_WITH, "Move (W)", .Translate, vertical)
-	mode_button(icons.ICON_MD_ROTATE_RIGHT, "Rotate (E)", .Rotate, vertical)
-	mode_button(icons.ICON_MD_OPEN_IN_FULL, "Scale (R)", .Scale, vertical)
-	mode_button(icons.ICON_MD_CROP_FREE, "Handles (T): the selection's own handles, like the rect tool", .Handles, vertical)
+	// The tooltips carry the live chord of each tool's command.
+	mode_button(icons.ICON_MD_ARROW_SELECTOR, keymap.labelled("Picker", "Scene/Picker Tool"), .Picker, vertical, first = true)
+	mode_button(icons.ICON_MD_OPEN_WITH, keymap.labelled("Move", "Scene/Translate Tool"), .Translate, vertical)
+	mode_button(icons.ICON_MD_ROTATE_RIGHT, keymap.labelled("Rotate", "Scene/Rotate Tool"), .Rotate, vertical)
+	mode_button(icons.ICON_MD_OPEN_IN_FULL, keymap.labelled("Scale", "Scene/Scale Tool"), .Scale, vertical)
+	mode_button(icons.ICON_MD_CROP_FREE, keymap.labelled("Handles: the selection's own handles, like the rect tool", "Scene/Handles Tool"), .Handles, vertical)
 }
 
 // View overlay: Unity's 2D toggle.

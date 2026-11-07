@@ -51,7 +51,7 @@ scene_flythrough_keymap :: proc(km: ^keymap.Keymap) {
 
 - `window` is the id of the `@(editor_window)` the keymap serves. It resolves only while an instance of that window is focused. Without it the keymap serves the whole editor.
 - `active` names a proc that says whether the keymap resolves this frame, on top of its window being focused.
-- `modal` makes it a tool's keymap: off until the tool pushes it with `keymap.push`, then the only one that resolves, bound chords and unbound alike, until the tool pops it. The flythrough pushes its keymap when the camera starts flying and pops it when it stops, so `W` moves the camera instead of picking the editor-wide translate tool. A modal keymap has no window and no rule, and conflicts with nothing. The page lists it under Tools.
+- `modal` makes it a tool's keymap: off until the tool pushes it with `keymap.push`, then the only one that resolves, bound chords and unbound alike, until the tool pops it. The flythrough pushes its keymap when the camera starts flying and pops it when it stops, so `W` moves the camera instead of picking the editor-wide translate tool. The gizmo pushes `Gizmo Drag` while a drag lasts: Escape cancels it, every target back where the drag found it and no undo step, and Ctrl held is the snap modifier. A modal keymap has no window and no rule, and conflicts with nothing. The page lists it under Tools.
 - `consume` ends resolution after this keymap while it is active, for every key, bound or not. For a keymap that is not a tool's but still owns the keys while a condition holds.
 - `priority` orders keymaps of one scope, highest first. Without it keymaps of equal priority resolve by name.
 - A binding names its command. The command may live in another package, or in a plugin that is off: the binding is then inert, and `keymap.dangling()` lists it for the Shortcuts window and the tests.
@@ -67,6 +67,7 @@ A chord is written as `Ctrl+S`, `Shift+Space`, `F2`, `Escape`, `LeftShift`. `Ctr
 
 - Nothing resolves while a modal popup is open.
 - A tool's keymap on top of the modal stack resolves alone.
+- A button that runs a command shows the command's live chord in its tooltip, `keymap.labelled("Move", "Scene/Translate Tool")`, so an override shows there too. The scene tool strip and the Play and Pause buttons do.
 - Every conflict is logged once at startup, after the overrides loaded, with the resolver's verdict, and a keymap registered later logs its own. The Shortcuts page shows the same.
 - The focused view's keymaps come first, by priority, then the keymaps of the view hosting it (a Workspace view), then the editor-wide ones. A view's binding beats its host's, which beats a global binding of the same chord. A number never beats the level: priority orders keymaps inside one level only.
 - One press runs one command. A chord a command took is done for the frame. A disabled command does not take its chord.
@@ -84,6 +85,10 @@ The Shortcuts tab of the settings window lists every registered command, one row
 - The bridge lists commands with their bindings (`commands`) and runs one by id or name (`run_command`), see [McpBridge](McpBridge.md).
 - The main menu shows the live bindings of its items, overrides included: the first two chords, and every chord in the item's tooltip when there are more.
 - A command is one thing wherever it is reached: a view binds the Edit menu's Copy, Delete or Frame Selected in its own keymap instead of declaring a command of its own, so the page lists it once with every context. A view's own commands are the ones only it has, such as a list's Select Down.
+
+## Command palette
+
+Window/Command Palette, Ctrl+Shift+A, opens a popup over the editor listing every command with its first two chords. Typing filters by name or id, every space-separated term must match. Up and Down move the highlight, Enter or a click runs the highlighted command and closes the palette, Escape closes it. A command that cannot run now is listed dimmed. While the palette is open its empty modal keymap sits on the stack, so no other binding fires. The palette's own keys belong to the widget, like the dialog's.
 
 ## Keys every view shares
 

@@ -604,3 +604,33 @@ test_tool_switch_mid_drag_closes_the_step :: proc(t: ^testing.T) {
 	testing.expectf(t, _close(_pos(obj), {1, 0, 0}), "got %v", _pos(obj))
 	testing.expect_value(t, s.top, steps + 1)
 }
+
+// Escape mid-drag: every target goes back where the drag found it, the
+// drag ends, and no undo step is recorded.
+@(test)
+test_tool_cancel_puts_the_drag_back :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+	saved := _tool_save()
+	defer _tool_restore(saved)
+
+	obj := engine.transform_new("Obj")
+	editor.sel_scene_only(obj)
+	viewport.gizmo_mode = .Translate
+	steps := s.top
+	v := handles_test_view()
+	handles_step(v, {0.75, 0, 0}, _tool_body, nil)
+	handles_step(v, {0.75, 0, 0}, _tool_body, nil, down = true, clicked = true)
+	handles_step(v, {1.75, 0.5, 0}, _tool_body, nil, down = true)
+	testing.expect(t, scene_tools.gizmo_is_dragging())
+	testing.expectf(t, _close(_pos(obj), {1, 0, 0}), "mid-drag the object moved, got %v", _pos(obj))
+
+	scene_tools.gizmo_cancel_drag()
+	testing.expect(t, !scene_tools.gizmo_is_dragging())
+	testing.expectf(t, _close(_pos(obj), {0, 0, 0}, 1e-4), "cancel puts it back, got %v", _pos(obj))
+	testing.expect_value(t, s.top, steps)
+	handles_step(v, {1.75, 0.5, 0}, _tool_body, nil)
+}
