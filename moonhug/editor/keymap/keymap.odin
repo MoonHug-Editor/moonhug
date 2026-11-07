@@ -36,6 +36,10 @@ package keymap
 // live for the session.
 
 import "base:runtime"
+import "core:encoding/json"
+import "core:fmt"
+import "core:os"
+import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
@@ -206,7 +210,9 @@ add :: proc(name: string, window: string, fill: proc(km: ^Keymap), active: proc(
 	km.consume = consume
 	km.priority = priority
 	km.origin = origin
+	_defaults_drop(km.name)
 	if fill != nil do fill(km)
+	_overrides_apply(km)
 	_sort()
 	return km
 }
@@ -238,16 +244,35 @@ bind :: proc(km: ^Keymap, chord: string, command: string, held := false, repeat 
 		held    = held,
 		repeat  = repeat,
 	})
+	// The declaration is the default, also for a keymap bound after it
+	// registered (the menu's). An override on file for the command replaces
+	// it at once.
+	key := _default_key(km.name, command)
+	ds, known := &_defaults[key]
+	if !known {
+		_defaults[strings.clone(key)] = {}
+		ds = &_defaults[key]
+	}
+	append(ds, _Default{text = strings.clone(chord), held = held, repeat = repeat})
+	if cmds, has := _overrides[km.name]; has {
+		if chords, over := cmds[command]; over do _override_apply(km, command, chords[:])
+	}
 }
 
 // Drops the binding of `command` in `km`, if any.
 unbind :: proc(km: ^Keymap, command: string) {
 	context.allocator = runtime.default_allocator()
-	for b, i in km.bindings do if b.command == command {
-		delete(b.text)
-		delete(b.command)
+	key := _default_key(km.name, command)
+	if ds, ok := _defaults[key]; ok {
+		_default_free(ds)
+		dk, _ := delete_key(&_defaults, key)
+		delete(dk)
+	}
+	for i := len(km.bindings) - 1; i >= 0; i -= 1 {
+		if km.bindings[i].command != command do continue
+		delete(km.bindings[i].text)
+		delete(km.bindings[i].command)
 		ordered_remove(&km.bindings, i)
-		return
 	}
 }
 
@@ -265,6 +290,7 @@ clear_bindings :: proc(km: ^Keymap) {
 remove :: proc(name: string) {
 	context.allocator = runtime.default_allocator()
 	for km, i in _keymaps do if km.name == name {
+		_defaults_drop(name)
 		_free_keymap(km)
 		ordered_remove(&_keymaps, i)
 		return
@@ -323,6 +349,7 @@ _resolve :: proc(b: ^Binding) -> ^Command {
 // the imgui frame starts and before the views draw, so a command's effect
 // shows the same frame.
 frame :: proc() {
+	if capturing do return
 	if key_source.modal != nil && key_source.modal() do return
 	path := focused_path() if focused_path != nil else nil
 	typing := key_source.text != nil && key_source.text()
@@ -355,6 +382,15 @@ frame :: proc() {
 // Frees every registration.
 shutdown :: proc() {
 	context.allocator = runtime.default_allocator()
+	for k, ds in _defaults {
+		_default_free(ds)
+		delete(k)
+	}
+	delete(_defaults)
+	_defaults = nil
+	_overrides_clear()
+	delete(_overrides)
+	_overrides = nil
 	for km in _keymaps do _free_keymap(km)
 	delete(_keymaps)
 	_keymaps = nil
@@ -485,4 +521,413 @@ parse_key :: proc(lower: string) -> (key: im.Key, ok: bool) {
 	case "rightalt":              return .RightAlt, true
 	}
 	return .None, false
+}
+
+// --- Defaults and overrides ---------------------------------------------------
+//
+// The bindings a keymap declares are its defaults, kept as a snapshot when
+// it registers. A user's override replaces the chord list of one command in
+// one keymap, and the file UserSettings/shortcuts.json holds every override
+// by keymap name and command name, with nothing else: defaults stay in code.
+// An override for a keymap that is not registered stays in the file and
+// applies the moment that keymap registers, so a plugin turned off and on,
+// or a view that registers its keymap at runtime, keeps the user's bindings.
+
+// One command's default bindings, kept for reset and for the chord list of
+// a reset binding.
+@(private = "file")
+_Default :: struct {
+	text:   string, // owned
+	held:   bool,
+	repeat: bool,
+}
+
+@(private = "file")
+_defaults: map[string][dynamic]_Default // "<keymap>\x00<command>" -> its default bindings
+
+// The override file as loaded and edited: keymap -> command -> chord texts.
+// Owned strings.
+@(private = "file")
+_overrides: map[string]map[string][dynamic]string
+
+@(private = "file")
+_default_key :: proc(km, command: string, allocator := context.temp_allocator) -> string {
+	return strings.concatenate({km, "\x00", command}, allocator)
+}
+
+// Drops the defaults recorded for a keymap: it registers again.
+@(private = "file")
+_defaults_drop :: proc(name: string) {
+	context.allocator = runtime.default_allocator()
+	for k, ds in _defaults do if strings.has_prefix(k, name) && len(k) > len(name) && k[len(name)] == 0 {
+		_default_free(ds)
+		dk, _ := delete_key(&_defaults, k)
+		delete(dk)
+	}
+}
+
+// Applies the overrides on file for `km`.
+@(private = "file")
+_overrides_apply :: proc(km: ^Keymap) {
+	if cmds, ok := _overrides[km.name]; ok {
+		for command, chords in cmds do _override_apply(km, command, chords[:])
+	}
+}
+
+@(private = "file")
+_default_free :: proc(ds: [dynamic]_Default) {
+	for d in ds do delete(d.text)
+	delete(ds)
+}
+
+// Whether `command`'s bindings in `km` are its defaults.
+is_default :: proc(km: ^Keymap, command: string) -> bool {
+	ds := _defaults[_default_key(km.name, command)] or_else nil
+	n := 0
+	for b in km.bindings do if b.command == command {
+		if n >= len(ds) || ds[n].text != b.text do return false
+		n += 1
+	}
+	return n == len(ds)
+}
+
+// The commands `km` binds by default or by override, each once, in the order
+// they first appear. Temp.
+commands_of :: proc(km: ^Keymap, allocator := context.temp_allocator) -> []string {
+	out := make([dynamic]string, allocator)
+	seen := make(map[string]bool, allocator)
+	for b in km.bindings do if b.command not_in seen {
+		seen[b.command] = true
+		append(&out, b.command)
+	}
+	for k in _defaults do if strings.has_prefix(k, km.name) && len(k) > len(km.name) && k[len(km.name)] == 0 {
+		command := k[len(km.name) + 1:]
+		if command not_in seen {
+			seen[command] = true
+			append(&out, command)
+		}
+	}
+	return out[:]
+}
+
+// Replaces the bindings of `command` in `km` with `chords`, keeps the
+// override in the file's map, and writes the file. An empty list unbinds
+// the command. The held and repeat flags come from the command's first
+// default binding.
+override_set :: proc(km: ^Keymap, command: string, chords: []string) {
+	context.allocator = runtime.default_allocator()
+	// The list may borrow the texts of the bindings about to go (the
+	// Shortcuts page builds it from them): copy it first.
+	chords := slice.clone(chords, context.temp_allocator)
+	for &c in chords do c = strings.clone(c, context.temp_allocator)
+	_override_apply(km, command, chords)
+	cmds, ok := &_overrides[km.name]
+	if !ok {
+		_overrides[strings.clone(km.name)] = {}
+		cmds = &_overrides[km.name]
+	}
+	if old, had := cmds[command]; had {
+		for c in old do delete(c)
+		delete(old)
+		ck, _ := delete_key(cmds, command)
+		delete(ck)
+	}
+	list: [dynamic]string
+	for c in chords do append(&list, strings.clone(c))
+	cmds[strings.clone(command)] = list
+	overrides_save()
+}
+
+// Puts `command`'s default bindings back in `km` and drops its override.
+override_reset :: proc(km: ^Keymap, command: string) {
+	context.allocator = runtime.default_allocator()
+	if cmds, ok := &_overrides[km.name]; ok {
+		if old, had := cmds[command]; had {
+			for c in old do delete(c)
+			delete(old)
+			ck, _ := delete_key(cmds, command)
+			delete(ck)
+		}
+		if len(cmds) == 0 {
+			delete(cmds^)
+			kk, _ := delete_key(&_overrides, km.name)
+			delete(kk)
+		}
+	}
+	ds := _defaults[_default_key(km.name, command)] or_else nil
+	texts := make([]string, len(ds), context.temp_allocator)
+	for d, i in ds do texts[i] = d.text
+	_override_apply(km, command, texts)
+	overrides_save()
+}
+
+// Resets every command of `km`.
+override_reset_keymap :: proc(km: ^Keymap) {
+	for command in commands_of(km) do override_reset(km, command)
+}
+
+// Resets every keymap.
+override_reset_all :: proc() {
+	for km in _keymaps do override_reset_keymap(km)
+}
+
+// Whether any override is in effect or on file.
+has_overrides :: proc() -> bool {
+	return len(_overrides) > 0
+}
+
+@(private = "file")
+_override_apply :: proc(km: ^Keymap, command: string, chords: []string) {
+	context.allocator = runtime.default_allocator()
+	held, repeat := false, false
+	if ds := _defaults[_default_key(km.name, command)] or_else nil; len(ds) > 0 {
+		held, repeat = ds[0].held, ds[0].repeat
+	}
+	for i := len(km.bindings) - 1; i >= 0; i -= 1 {
+		if km.bindings[i].command != command do continue
+		delete(km.bindings[i].text)
+		delete(km.bindings[i].command)
+		ordered_remove(&km.bindings, i)
+	}
+	for c in chords {
+		parsed, ok := parse_chord(c)
+		if !ok do continue
+		append(&km.bindings, Binding{chord = parsed, text = strings.clone(c), command = strings.clone(command), held = held, repeat = repeat})
+	}
+}
+
+// The file the overrides live in, set by the shell before overrides_load.
+overrides_path: string
+
+// Reads the override file and applies it to the registered keymaps. A
+// missing file is no overrides.
+overrides_load :: proc() -> bool {
+	context.allocator = runtime.default_allocator()
+	_overrides_clear()
+	if overrides_path == "" do return false
+	data, rerr := os.read_entire_file(overrides_path, context.temp_allocator)
+	if rerr != nil do return false
+	root, err := json.parse(data, allocator = context.temp_allocator)
+	if err != nil do return false
+	obj, is_obj := root.(json.Object)
+	if !is_obj do return false
+	for km_name, cmds_v in obj {
+		cmds, ok2 := cmds_v.(json.Object)
+		if !ok2 do continue
+		list: map[string][dynamic]string
+		for command, chords_v in cmds {
+			chords, ok3 := chords_v.(json.Array)
+			if !ok3 do continue
+			texts: [dynamic]string
+			for c in chords do if s, is_s := c.(json.String); is_s do append(&texts, strings.clone(s))
+			list[strings.clone(command)] = texts
+		}
+		_overrides[strings.clone(km_name)] = list
+	}
+	for km in _keymaps do _overrides_apply(km)
+	return true
+}
+
+// Writes every override, the ones of keymaps that are not registered
+// included. Keymap and command names sorted, so the file diffs well.
+overrides_save :: proc() -> bool {
+	if overrides_path == "" do return false
+	b := strings.builder_make(context.temp_allocator)
+	strings.write_string(&b, "{\n")
+	names := make([dynamic]string, context.temp_allocator)
+	for k in _overrides do append(&names, k)
+	slice.sort(names[:])
+	for name, ni in names {
+		cmds := _overrides[name]
+		fmt.sbprintf(&b, "\t%q: {{\n", name)
+		cnames := make([dynamic]string, context.temp_allocator)
+		for c in cmds do append(&cnames, c)
+		slice.sort(cnames[:])
+		for cname, ci in cnames {
+			fmt.sbprintf(&b, "\t\t%q: [", cname)
+			for chord, i in cmds[cname] {
+				if i > 0 do strings.write_string(&b, ", ")
+				fmt.sbprintf(&b, "%q", chord)
+			}
+			strings.write_string(&b, "]")
+			strings.write_string(&b, ",\n" if ci + 1 < len(cnames) else "\n")
+		}
+		strings.write_string(&b, "\t}")
+		strings.write_string(&b, ",\n" if ni + 1 < len(names) else "\n")
+	}
+	strings.write_string(&b, "}\n")
+	if dir := filepath.dir(overrides_path); dir != "" do os.make_directory_all(dir)
+	return os.write_entire_file(overrides_path, transmute([]u8)strings.to_string(b)) == nil
+}
+
+@(private = "file")
+_overrides_clear :: proc() {
+	context.allocator = runtime.default_allocator()
+	for k, cmds in _overrides {
+		for c, chords in cmds {
+			for s in chords do delete(s)
+			delete(chords)
+			delete(c)
+		}
+		delete(cmds)
+		delete(k)
+	}
+	clear(&_overrides)
+}
+
+// --- Conflicts ----------------------------------------------------------------
+
+// Two bindings one chord can reach in the same frame: the keymaps serve the
+// same window, or one of them serves the whole editor. `winner` is the one
+// the resolver runs, by the walk order (the window's keymap, then priority,
+// then name), and `why` says so in words for the Shortcuts page.
+Conflict :: struct {
+	a, b:       ^Binding,
+	km_a, km_b: ^Keymap,
+	winner:     ^Binding,
+	why:        string, // temp
+}
+
+conflicts :: proc(allocator := context.temp_allocator) -> []Conflict {
+	out := make([dynamic]Conflict, allocator)
+	for ka, i in _keymaps do for kb in _keymaps[i + 1:] {
+		if ka.window != "" && kb.window != "" && ka.window != kb.window do continue
+		for &a in ka.bindings do for &b in kb.bindings {
+			if a.chord != b.chord || a.held != b.held do continue
+			c := Conflict{a = &a, b = &b, km_a = ka, km_b = kb}
+			switch {
+			case ka.window != kb.window:
+				// The window's keymap beats the editor-wide one. Both
+				// cannot be "" here, so one serves a window.
+				if ka.window != "" { c.winner = &a } else { c.winner = &b }
+				c.why = fmt.tprintf("%s wins: a window's keymap beats an editor-wide one", (c.winner == &a ? ka : kb).name)
+			case ka.priority != kb.priority:
+				if ka.priority > kb.priority { c.winner = &a } else { c.winner = &b }
+				c.why = fmt.tprintf("%s wins by priority", (c.winner == &a ? ka : kb).name)
+			case:
+				// _keymaps is sorted: ka comes first.
+				c.winner = &a
+				c.why = fmt.tprintf("%s wins by name", ka.name)
+			}
+			append(&out, c)
+		}
+	}
+	return out[:]
+}
+
+// --- Display and capture ---------------------------------------------------------
+
+// The chord as the Shortcuts page and the menu show it: "Ctrl+Shift+T", with
+// Cmd for Ctrl on macOS, where imgui maps the physical Cmd key to Ctrl.
+// Temp.
+format_chord :: proc(chord: im.KeyChord, allocator := context.temp_allocator) -> string {
+	b := strings.builder_make(allocator)
+	mods := chord & im.KeyChord(im.Key.ImGuiMod_Mask_)
+	if mods & im.KeyChord(im.Key.ImGuiMod_Ctrl) != 0 do strings.write_string(&b, "Cmd+" when ODIN_OS == .Darwin else "Ctrl+")
+	if mods & im.KeyChord(im.Key.ImGuiMod_Super) != 0 do strings.write_string(&b, "Ctrl+" when ODIN_OS == .Darwin else "Super+")
+	if mods & im.KeyChord(im.Key.ImGuiMod_Alt) != 0 do strings.write_string(&b, "Alt+")
+	if mods & im.KeyChord(im.Key.ImGuiMod_Shift) != 0 do strings.write_string(&b, "Shift+")
+	strings.write_string(&b, key_name(im.Key(chord & ~im.KeyChord(im.Key.ImGuiMod_Mask_))))
+	return strings.to_string(b)
+}
+
+// The chord as the declaration spells it, which parse_chord reads back:
+// "Ctrl+Shift+T". Temp.
+chord_text :: proc(chord: im.KeyChord, allocator := context.temp_allocator) -> string {
+	b := strings.builder_make(allocator)
+	mods := chord & im.KeyChord(im.Key.ImGuiMod_Mask_)
+	if mods & im.KeyChord(im.Key.ImGuiMod_Ctrl) != 0 do strings.write_string(&b, "Ctrl+")
+	if mods & im.KeyChord(im.Key.ImGuiMod_Super) != 0 do strings.write_string(&b, "Super+")
+	if mods & im.KeyChord(im.Key.ImGuiMod_Alt) != 0 do strings.write_string(&b, "Alt+")
+	if mods & im.KeyChord(im.Key.ImGuiMod_Shift) != 0 do strings.write_string(&b, "Shift+")
+	strings.write_string(&b, key_name(im.Key(chord & ~im.KeyChord(im.Key.ImGuiMod_Mask_))))
+	return strings.to_string(b)
+}
+
+// The name parse_key reads for `key`: "A", "F2", "Space", "Left".
+key_name :: proc(key: im.Key) -> string {
+	k := int(key)
+	switch {
+	case key >= .A && key <= .Z: return _LETTERS[k - int(im.Key.A):][:1]
+	case key >= ._0 && key <= ._9: return _DIGITS[k - int(im.Key._0):][:1]
+	case key >= .F1 && key <= .F12: return _F_KEYS[k - int(im.Key.F1)]
+	}
+	#partial switch key {
+	case .Comma:        return ","
+	case .Period:       return "."
+	case .Minus:        return "-"
+	case .Equal:        return "="
+	case .Slash:        return "/"
+	case .LeftBracket:  return "["
+	case .RightBracket: return "]"
+	case .Semicolon:    return ";"
+	case .Apostrophe:   return "'"
+	case .Backslash:    return "\\"
+	case .GraveAccent:  return "`"
+	case .Space:        return "Space"
+	case .Escape:       return "Escape"
+	case .Enter:        return "Enter"
+	case .Tab:          return "Tab"
+	case .Backspace:    return "Backspace"
+	case .Delete:       return "Delete"
+	case .Insert:       return "Insert"
+	case .Home:         return "Home"
+	case .End:          return "End"
+	case .PageUp:       return "PageUp"
+	case .PageDown:     return "PageDown"
+	case .LeftArrow:    return "Left"
+	case .RightArrow:   return "Right"
+	case .UpArrow:      return "Up"
+	case .DownArrow:    return "Down"
+	case .LeftShift:    return "LeftShift"
+	case .RightShift:   return "RightShift"
+	case .LeftCtrl:     return "LeftCtrl"
+	case .RightCtrl:    return "RightCtrl"
+	case .LeftAlt:      return "LeftAlt"
+	case .RightAlt:     return "RightAlt"
+	}
+	return "?"
+}
+
+@(private = "file")
+_LETTERS := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+@(private = "file")
+_DIGITS := "0123456789"
+@(private = "file")
+_F_KEYS := [12]string{"F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"}
+
+// While the Shortcuts page listens for a chord, the resolver runs nothing:
+// the key being captured must not also run a command.
+capturing: bool
+
+// The chord pressed this frame, for the Shortcuts page while it listens: the
+// first named key down with the modifiers held. A modifier key alone is a
+// chord of its own (LeftShift), taken on its release so a chord that starts
+// with it can still come. `escape` is true when the capture was cancelled.
+capture_chord :: proc() -> (chord: im.KeyChord, got: bool, escape: bool) {
+	io := im.GetIO()
+	if im.IsKeyPressed(.Escape, false) do return 0, false, true
+	for k in int(im.Key.NamedKey_BEGIN) ..< int(im.Key.NamedKey_END) {
+		key := im.Key(k)
+		if key >= .MouseLeft && key <= .MouseWheelY do continue
+		if key >= .GamepadStart && key <= .GamepadRStickDown do continue
+		// imgui's stand-ins for the modifier flags read as pressed with the
+		// flag: they are no keys.
+		if key >= .ReservedForModCtrl && key <= .ReservedForModSuper do continue
+		if _is_modifier_key(key) {
+			if im.IsKeyReleased(key) && io.KeyMods == 0 do return im.KeyChord(key), true, false
+			continue
+		}
+		if key_name(key) == "?" do continue
+		if im.IsKeyPressed(key, false) do return io.KeyMods | im.KeyChord(key), true, false
+	}
+	return 0, false, false
+}
+
+@(private = "file")
+_is_modifier_key :: proc(key: im.Key) -> bool {
+	#partial switch key {
+	case .LeftShift, .RightShift, .LeftCtrl, .RightCtrl, .LeftAlt, .RightAlt, .LeftSuper, .RightSuper: return true
+	}
+	return false
 }

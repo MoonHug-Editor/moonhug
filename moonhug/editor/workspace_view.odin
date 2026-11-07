@@ -77,6 +77,15 @@ _WS_Pending :: struct {
 	parent: u32,
 }
 
+// The frame a closed tab left: its id, and its parent and rect for when
+// the tab was its last one and the frame went with it.
+@(private = "file")
+_WS_Left :: struct {
+	frame:  u32,
+	parent: u32,
+	rect:   [4]f32,
+}
+
 // One Workspace view copy's own state.
 @(private = "file")
 _WS_View :: struct {
@@ -104,7 +113,7 @@ _WS_View :: struct {
 	closing:    [dynamic]string, // owned keys
 	// The frame each closed tab left, by view key (owned), so a reopened
 	// view goes back there (_ws_reopen_hook).
-	left:       map[string]u32,
+	left:       map[string]_WS_Left,
 	// Each frame's active tab as its tab bar last showed it, by frame id, for
 	// the workspace `synced_ws`. A frame whose active tab differs (code picked
 	// it, or the workspace just loaded) has it selected in its tab bar.
@@ -841,17 +850,20 @@ _ws_reopen_hook :: proc(w: ^wnd.Window, host: string) -> bool {
 	hv := wnd.find(host)
 	if hv == nil || hv.id != WORKSPACE_VIEW do return false
 	v := _ws_state(hv)
-	fid, left := v.left[w.key]
+	l, left := v.left[w.key]
 	if !left do return false
 	k, _ := delete_key(&v.left, w.key)
 	delete(k)
 	e, ok := workspace.find(workspace.view_selection(host))
 	if !ok do return false
-	found := false
-	for f in e.ws.frames do if f.id == fid { found = true; break }
-	if !found do return false
 	if wnd.host_open(w.key, host) == nil do return false
-	_ws_edit_queue(v, {kind = .Add_Tab, frame = fid, key = w.key})
+	if workspace.frame_index(e.ws, l.frame) >= 0 {
+		_ws_edit_queue(v, {kind = .Add_Tab, frame = l.frame, key = w.key})
+	} else {
+		// The tab was the frame's last one: a frame like it comes back.
+		workspace.frame_add(e.ws, w.key, l.rect, l.parent)
+		workspace.changed(e.ws)
+	}
 	workspace_view_reveal(host, w.key)
 	return true
 }
@@ -872,11 +884,13 @@ _ws_prune_closing :: proc(v: ^_WS_View, ws: ^workspace.Workspace) {
 			continue
 		}
 		for fi := len(ws.frames) - 1; fi >= 0; fi -= 1 {
-			for t := len(ws.frames[fi].tabs) - 1; t >= 0; t -= 1 {
-				if ws.frames[fi].tabs[t] == key {
-					workspace.tab_remove(ws, fi, t)
-					if key not_in v.left do v.left[strings.clone(key)] = ws.frames[fi].id
-				}
+			f := ws.frames[fi]
+			for t := len(f.tabs) - 1; t >= 0; t -= 1 {
+				if f.tabs[t] != key do continue
+				if key not_in v.left do v.left[strings.clone(key)] = {frame = f.id, parent = f.parent, rect = f.rect}
+				// Removes the frame too when this is its last tab.
+				workspace.tab_remove(ws, fi, t)
+				break
 			}
 		}
 		delete(key)

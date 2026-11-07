@@ -438,8 +438,8 @@ rt_create :: proc(width, height: i32, format := Target_Format.Display, mips := f
 // normal pattern.
 rt_resize :: proc(rt: ^Render_Target, width, height: i32) {
 	if rt.width == width && rt.height == height do return
-	if rt.color != nil do sdl.ReleaseGPUTexture(_gfx.device, rt.color)
-	sdl.ReleaseGPUTexture(_gfx.device, rt.depth)
+	_retire(rt.color)
+	_retire(rt.depth)
 	tmp := rt_create(width, height, rt.format, rt.mips > 1)
 	rt.color = tmp.color
 	rt.depth = tmp.depth
@@ -465,8 +465,8 @@ rt_depth_texture :: proc(rt: ^Render_Target) -> Texture {
 
 rt_destroy :: proc(rt: ^Render_Target) {
 	if rt == nil do return
-	if rt.color != nil do sdl.ReleaseGPUTexture(_gfx.device, rt.color)
-	if rt.depth != nil do sdl.ReleaseGPUTexture(_gfx.device, rt.depth)
+	_retire(rt.color)
+	_retire(rt.depth)
 	free(rt, runtime.default_allocator())
 }
 

@@ -1272,10 +1272,10 @@ _hierarchy_nav_index :: proc() -> int {
 	return -1
 }
 
-// Plain arrows move the (single) selection, Shift+arrows EXTEND it: the
+// Select moves the (single) selection, Extend Selection grows it: the
 // stepped-onto row joins the selection and becomes active.
 @(private = "file")
-_hierarchy_nav_step :: proc(step: int) {
+_hierarchy_nav_step :: proc(step: int, extend: bool) {
 	nav_count := len(_hv.nav_list)
 	if nav_count == 0 do return
 	cur_idx := _hierarchy_nav_index()
@@ -1286,7 +1286,7 @@ _hierarchy_nav_step :: proc(step: int) {
 	next_idx := cur_idx + step
 	if next_idx < 0 || next_idx >= nav_count do return
 	next := _hv.nav_list[next_idx]
-	if im.GetIO().KeyShift {
+	if extend {
 		session.select_add(next)
 	} else {
 		session.select_only(next)
@@ -1308,43 +1308,56 @@ _hierarchy_nav_row :: proc() -> (cur_idx: int, t: ^engine.Transform, expanded: b
 }
 
 @(command={name="Hierarchy/Select Down"})
-hierarchy_select_down :: proc() { _hierarchy_nav_step(1) }
+hierarchy_select_down :: proc() { _hierarchy_nav_step(1, false) }
 
 @(command={name="Hierarchy/Select Up"})
-hierarchy_select_up :: proc() { _hierarchy_nav_step(-1) }
+hierarchy_select_up :: proc() { _hierarchy_nav_step(-1, false) }
 
-// Right expands a closed node, Alt+Right its whole subtree, and steps into an
-// open one.
+@(command={name="Hierarchy/Extend Selection Down"})
+hierarchy_extend_down :: proc() { _hierarchy_nav_step(1, true) }
+
+@(command={name="Hierarchy/Extend Selection Up"})
+hierarchy_extend_up :: proc() { _hierarchy_nav_step(-1, true) }
+
+// Expand opens a closed node, Expand Subtree its whole subtree, and both step
+// into an open one.
 @(command={name="Hierarchy/Expand"})
-hierarchy_expand :: proc() {
+hierarchy_expand :: proc() { _hierarchy_expand(false) }
+
+@(command={name="Hierarchy/Expand Subtree"})
+hierarchy_expand_subtree :: proc() { _hierarchy_expand(true) }
+
+@(private = "file")
+_hierarchy_expand :: proc(deep: bool) {
 	cur_idx, t, expanded, ok := _hierarchy_nav_row()
 	if !ok do return
 	if len(t.children) > 0 && !expanded {
-		_hierarchy_node_expand(_hv.nav_list[cur_idx], t, deep = im.GetIO().KeyAlt)
+		_hierarchy_node_expand(_hv.nav_list[cur_idx], t, deep)
 		return
 	}
 	if cur_idx + 1 < len(_hv.nav_list) do session.select_only(_hv.nav_list[cur_idx + 1])
 }
 
-// Left collapses an open node, Alt+Left its whole subtree, and steps to the
-// parent of a closed one.
+// Collapse closes an open node, Collapse Subtree its whole subtree, and both
+// step to the parent of a closed one.
 @(command={name="Hierarchy/Collapse"})
-hierarchy_collapse :: proc() {
+hierarchy_collapse :: proc() { _hierarchy_collapse(false) }
+
+@(command={name="Hierarchy/Collapse Subtree"})
+hierarchy_collapse_subtree :: proc() { _hierarchy_collapse(true) }
+
+@(private = "file")
+_hierarchy_collapse :: proc(deep: bool) {
 	cur_idx, t, expanded, ok := _hierarchy_nav_row()
 	if !ok do return
 	if len(t.children) > 0 && expanded {
-		_hierarchy_node_collapse(_hv.nav_list[cur_idx], t, deep = im.GetIO().KeyAlt)
+		_hierarchy_node_collapse(_hv.nav_list[cur_idx], t, deep)
 		return
 	}
 	w := engine.ctx_world()
 	parent_tH := engine.Transform_Handle(t.parent.handle)
 	if engine.pool_valid(&w.transforms, engine.Handle(parent_tH)) do session.select_only(parent_tH)
 }
-
-// F frames the selection in the scene view from here too, so the hierarchy
-// needs no mouse trip to the scene panel.
-@(command={name="Hierarchy/Frame Selected"})
-hierarchy_frame_selected :: proc() { session.frame_selected() }
 
 @(command={name="Hierarchy/Rename", enabled=hierarchy_can_rename})
 hierarchy_rename :: proc() { _begin_rename(session.active()) }
@@ -1364,14 +1377,16 @@ hierarchy_keys_active :: proc() -> bool {
 @(keymap={name="Hierarchy", window="Hierarchy", active=hierarchy_keys_active})
 hierarchy_keymap :: proc(km: ^keymap.Keymap) {
 	keymap.bind(km, "Down", "Hierarchy/Select Down", repeat = true)
-	keymap.bind(km, "Shift+Down", "Hierarchy/Select Down", repeat = true)
+	keymap.bind(km, "Shift+Down", "Hierarchy/Extend Selection Down", repeat = true)
 	keymap.bind(km, "Up", "Hierarchy/Select Up", repeat = true)
-	keymap.bind(km, "Shift+Up", "Hierarchy/Select Up", repeat = true)
+	keymap.bind(km, "Shift+Up", "Hierarchy/Extend Selection Up", repeat = true)
 	keymap.bind(km, "Right", "Hierarchy/Expand", repeat = true)
-	keymap.bind(km, "Alt+Right", "Hierarchy/Expand")
+	keymap.bind(km, "Alt+Right", "Hierarchy/Expand Subtree")
 	keymap.bind(km, "Left", "Hierarchy/Collapse", repeat = true)
-	keymap.bind(km, "Alt+Left", "Hierarchy/Collapse")
-	keymap.bind(km, "F", "Hierarchy/Frame Selected")
+	keymap.bind(km, "Alt+Left", "Hierarchy/Collapse Subtree")
+	// The Edit menu's Frame Selected, from here too, so the hierarchy needs
+	// no mouse trip to the scene panel.
+	keymap.bind(km, "F", "Edit/Frame Selected")
 	keymap.bind(km, "Enter", "Hierarchy/Rename")
 	keymap.bind(km, "F2", "Hierarchy/Rename")
 	keymap.bind(km, "Escape", "Hierarchy/Clear Filter")

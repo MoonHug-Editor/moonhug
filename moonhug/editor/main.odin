@@ -110,6 +110,10 @@ main :: proc() {
         return path[:]
     }
     _register_editor_keymaps()
+    // The developer's overrides, applied over the declared bindings, and to
+    // any keymap registered later (editor/keymap).
+    keymap.overrides_path = strings.clone(core.user_settings_file("Shortcuts"))
+    keymap.overrides_load()
     migrate_imgui_ini()
     defer im.DestroyContext(ctx)
 
@@ -503,7 +507,9 @@ editor_shutdown :: proc() {
     clip.shutdown()
     _save_user_settings()
     menu.shutdown_menu()
+    shortcuts_shutdown()
     keymap.shutdown()
+    delete(keymap.overrides_path)
     view_chrome_shutdown()
     view_locks_shutdown()
     maximize_shutdown()

@@ -249,10 +249,12 @@ _gfx: struct {
 	// SDL 3.4.14's Metal backend answers QueryGPUFence with the fence's BUSY
 	// state (3.4.16 answers signaled). Probed once at init, see _fence_probe.
 	fence_query_inverted: bool,
-	// Textures destroyed this frame, released at the next frame's start:
-	// imgui's draw data holds a texture drawn this frame until the frame
-	// renders, and a texture released in between (an asset reimported from a
-	// dialog after the views drew) crashes the GPU backend.
+	// Textures and render target textures destroyed or resized this frame,
+	// released at the next frame's start: imgui's draw data holds a texture
+	// drawn this frame until the frame renders, and a texture released in
+	// between (an asset reimported from a dialog after the views drew, a
+	// shared preview target resized by a second inspector) crashes the GPU
+	// backend.
 	retired: [dynamic]^sdl.GPUTexture,
 }
 
@@ -658,8 +660,17 @@ texture_download_cancel :: proc(d: ^Texture_Download) {
 texture_destroy :: proc(tex: ^Texture) {
 	if tex == nil do return
 	context.allocator = runtime.default_allocator()
-	if tex.gpu != nil do append(&_gfx.retired, tex.gpu)
+	_retire(tex.gpu)
 	free(tex, context.allocator)
+}
+
+// Queues a GPU texture for release at the next frame's start. Every texture
+// imgui may have drawn this frame goes through here: its draw data holds the
+// raw pointer until the frame is submitted.
+_retire :: proc(gpu: ^sdl.GPUTexture) {
+	if gpu == nil do return
+	if _gfx.retired == nil do _gfx.retired = make([dynamic]^sdl.GPUTexture, runtime.default_allocator())
+	append(&_gfx.retired, gpu)
 }
 
 @(private = "file")

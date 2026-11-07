@@ -231,10 +231,12 @@ _CLOSED_MAX :: 16
 
 // Records a closing instance. Its imgui window is still in its node's tab
 // bar this frame: it was submitted the frame it closed, and imgui drops it
-// at the next frame's start.
+// at the next frame's start. A hosted instance that closes with its host is
+// not recorded: reopening the host brings it back.
 @(private = "file")
 _remember_closed :: proc(w: ^Window) {
 	context.allocator = runtime.default_allocator()
+	if w.host != "" && find(w.host) == nil do return
 	for c, i in _closed do if c.key == w.key {
 		_closed_free(c)
 		ordered_remove(&_closed, i)

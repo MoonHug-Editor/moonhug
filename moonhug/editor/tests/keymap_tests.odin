@@ -7,6 +7,7 @@ package editor_tests
 // source, so no imgui context is needed.
 
 import "core:testing"
+import "core:os"
 import "moonhug:editor/keymap"
 import im "moonhug:external/odin-imgui"
 
@@ -242,4 +243,126 @@ test_keymap_dangling_binding :: proc(t: ^testing.T) {
 	found := false
 	for b in keymap.dangling() do if b.command == "T/Missing" do found = true
 	testing.expect(t, found, "the dangling report lists the binding")
+}
+
+// An override replaces a command's chords in one keymap, survives the keymap
+// being removed and registered again, round-trips through the file, and
+// resets to the declared bindings.
+@(test)
+test_keymap_override_roundtrip :: proc(t: ^testing.T) {
+	_km_setup()
+	defer _km_teardown()
+	_km_commands()
+	path := "/tmp/mh_keymap_test_overrides.json"
+	prev_path := keymap.overrides_path
+	keymap.overrides_path = path
+	defer {
+		keymap.override_reset_all()
+		keymap.overrides_path = prev_path
+		os.remove(path)
+	}
+	fill := proc(km: ^keymap.Keymap) { keymap.bind(km, "W", "T/A") }
+	km := keymap.add("T Scene", "Scene", fill)
+	testing.expect(t, keymap.is_default(km, "T/A"))
+
+	keymap.override_set(km, "T/A", {"Q", "Ctrl+Q"})
+	testing.expect(t, !keymap.is_default(km, "T/A"))
+	testing.expect_value(t, len(km.bindings), 2)
+	testing.expect_value(t, km.bindings[0].text, "Q")
+	testing.expect_value(t, km.bindings[1].text, "Ctrl+Q")
+	testing.expect(t, keymap.has_overrides())
+
+	// Registered again: the override applies to the fresh keymap.
+	keymap.remove("T Scene")
+	km = keymap.add("T Scene", "Scene", fill)
+	testing.expect_value(t, len(km.bindings), 2)
+	testing.expect_value(t, km.bindings[0].text, "Q")
+
+	// From the file.
+	testing.expect(t, keymap.overrides_load())
+	testing.expect_value(t, len(km.bindings), 2)
+	testing.expect_value(t, km.bindings[1].text, "Ctrl+Q")
+
+	// Reset: the declared binding is back and the file holds nothing.
+	keymap.override_reset(km, "T/A")
+	testing.expect(t, keymap.is_default(km, "T/A"))
+	testing.expect_value(t, len(km.bindings), 1)
+	testing.expect_value(t, km.bindings[0].text, "W")
+	testing.expect(t, !keymap.has_overrides())
+}
+
+// A chord bound in a window's keymap and in an editor-wide one is a
+// conflict the window wins. Two editor-wide keymaps settle by name.
+@(test)
+test_keymap_conflicts :: proc(t: ^testing.T) {
+	_km_setup()
+	defer _km_teardown()
+	_km_commands()
+	keymap.add("T Global", "", proc(km: ^keymap.Keymap) { keymap.bind(km, "W", "T/C") })
+	keymap.add("T Scene", "Scene", proc(km: ^keymap.Keymap) { keymap.bind(km, "W", "T/A") })
+	keymap.add("T Low", "", proc(km: ^keymap.Keymap) { keymap.bind(km, "W", "T/B") })
+	found := 0
+	for cf in keymap.conflicts() {
+		found += 1
+		if cf.km_a.name == "T Scene" || cf.km_b.name == "T Scene" {
+			testing.expect_value(t, cf.winner.command, "T/A")
+		} else {
+			testing.expect_value(t, cf.winner.command, "T/C")
+		}
+	}
+	testing.expect_value(t, found, 3)
+}
+
+// The chord text round-trips through parse and back.
+@(test)
+test_keymap_chord_text :: proc(t: ^testing.T) {
+	for text in ([]string{"Ctrl+Shift+T", "F2", "Space", "Left", "LeftShift", "Alt+["}) {
+		chord, ok := keymap.parse_chord(text)
+		testing.expect(t, ok, text)
+		testing.expect_value(t, keymap.chord_text(chord), text)
+	}
+}
+
+// A binding added after the keymap registered is a default too, as the
+// menu's are, so it shows no reset and resets to itself.
+@(test)
+test_keymap_late_bind_is_default :: proc(t: ^testing.T) {
+	_km_setup()
+	defer _km_teardown()
+	_km_commands()
+	km := keymap.add("T Global", "", nil)
+	keymap.bind(km, "Ctrl+K", "T/A")
+	testing.expect(t, keymap.is_default(km, "T/A"))
+	testing.expect(t, !keymap.has_overrides())
+	keymap.unbind(km, "T/A")
+	testing.expect(t, keymap.is_default(km, "T/A"), "unbound and no default left: nothing differs")
+	testing.expect_value(t, len(keymap.commands_of(km)), 0)
+}
+
+// The chord list of an override may borrow the texts of the bindings it
+// replaces, as the Shortcuts page's does when it adds a chord: both survive.
+@(test)
+test_keymap_override_keeps_borrowed_chords :: proc(t: ^testing.T) {
+	_km_setup()
+	defer _km_teardown()
+	_km_commands()
+	prev_path := keymap.overrides_path
+	keymap.overrides_path = ""
+	defer {
+		keymap.override_reset_all()
+		keymap.overrides_path = prev_path
+	}
+	km := keymap.add("T Scene", "Scene", proc(km: ^keymap.Keymap) { keymap.bind(km, "W", "T/A") })
+	chords := []string{km.bindings[0].text, "Q"}
+	keymap.override_set(km, "T/A", chords)
+	testing.expect_value(t, len(km.bindings), 2)
+	testing.expect_value(t, km.bindings[0].text, "W")
+	testing.expect_value(t, km.bindings[1].text, "Q")
+	// The override kept for the file is sound too: a fresh registration
+	// gets the same two.
+	keymap.remove("T Scene")
+	km = keymap.add("T Scene", "Scene", proc(km: ^keymap.Keymap) { keymap.bind(km, "W", "T/A") })
+	testing.expect_value(t, len(km.bindings), 2)
+	testing.expect_value(t, km.bindings[0].text, "W")
+	testing.expect_value(t, km.bindings[1].text, "Q")
 }

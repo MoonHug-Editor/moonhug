@@ -1165,14 +1165,6 @@ scene_tool_scale :: proc() { _scene_tool(.Scale) }
 @(command={name="Scene/Handles Tool"})
 scene_tool_handles :: proc() { _scene_tool(.Handles) }
 
-@(command={name="Scene/Frame Selected"})
-scene_frame_selected_command :: proc() {
-	prev := _sv
-	_sv = _scene_focused()
-	defer _sv = prev
-	scene_frame_selected()
-}
-
 // Escape drops the selection. During a band it cancels the band and restores
 // the pre-band selection instead. Not mid-drag: the drag teardown in
 // gizmo_tool_frame would leave its undo step open.
@@ -1208,7 +1200,7 @@ scene_tools_keymap :: proc(km: ^keymap.Keymap) {
 
 @(keymap={name="Scene View", window="Scene"})
 scene_view_keymap :: proc(km: ^keymap.Keymap) {
-	keymap.bind(km, "F", "Scene/Frame Selected")
+	keymap.bind(km, "F", "Edit/Frame Selected")
 	keymap.bind(km, "Escape", "Scene/Clear Selection")
 }
 

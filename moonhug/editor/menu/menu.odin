@@ -43,6 +43,10 @@ MenuNode :: struct {
 	name_cstr:     cstring,
 	shortcut:      string,
 	shortcut_cstr: cstring,
+	// The main menu item's command name (its path): the shortcut it shows is
+	// the "Menu" keymap's live binding, overrides included. "" for a view
+	// menu's item.
+	command:       string,
 	kind:          MenuEntryKind,
 	action:        proc(),
 	value:         ^bool,
@@ -464,7 +468,7 @@ _menu_keymap: ^keymap.Keymap
 
 @(private = "file")
 _menu_command :: proc(node: ^MenuNode, path: string) {
-	keymap.command_add_data(path, _menu_command_run, node, _menu_command_enabled, node.origin)
+	node.command = keymap.command_add_data(path, _menu_command_run, node, _menu_command_enabled, node.origin).name
 	if node.shortcut == "" do return
 	if _menu_keymap == nil {
 		_menu_keymap = keymap.add("Menu", "", nil, origin = "menu/menu.odin")
@@ -472,6 +476,42 @@ _menu_command :: proc(node: ^MenuNode, path: string) {
 	// A re-registered item binds once: drop its earlier binding.
 	keymap.unbind(_menu_keymap, path)
 	keymap.bind(_menu_keymap, node.shortcut, path)
+}
+
+// The chords of the item's command in the "Menu" keymap, as shown. Temp.
+@(private = "file")
+_menu_chords :: proc(node: ^MenuNode) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	if node.command == "" do return out[:]
+	if km := keymap.find("Menu"); km != nil {
+		for b in km.bindings do if b.command == node.command do append(&out, keymap.format_chord(b.chord))
+	}
+	return out[:]
+}
+
+// How many of an item's chords the menu shows. The rest go to its tooltip.
+@(private = "file")
+_MENU_CHORDS_SHOWN :: 2
+
+// The shortcut an item shows: the "Menu" keymap's bindings for its command,
+// so an override shows in the menu, the first _MENU_CHORDS_SHOWN of them.
+// An item without a command (a view menu's) shows the declared one.
+@(private = "file")
+_menu_shortcut_label :: proc(node: ^MenuNode) -> cstring {
+	if node.command != "" {
+		chords := _menu_chords(node)
+		if len(chords) == 0 do return ""
+		return strings.clone_to_cstring(strings.join(chords[:min(len(chords), _MENU_CHORDS_SHOWN)], ", ", context.temp_allocator), context.temp_allocator)
+	}
+	return node.shortcut_cstr if node.shortcut_cstr != nil else ""
+}
+
+// The item's tooltip: every chord when the item shows only some.
+@(private = "file")
+_menu_shortcut_tip :: proc(node: ^MenuNode) -> cstring {
+	chords := _menu_chords(node)
+	if len(chords) <= _MENU_CHORDS_SHOWN do return ""
+	return strings.clone_to_cstring(strings.join(chords, ", ", context.temp_allocator), context.temp_allocator)
 }
 
 @(private = "file")
@@ -514,7 +554,6 @@ _draw_menu_children :: proc(node: ^MenuNode, view := session.View{}) {
 		_draw_menu_child(child, view)
 	}
 }
-
 _draw_menu_child :: proc(child: ^MenuNode, view := session.View{}) {
 	switch child.kind {
 	case .Separator:
@@ -545,16 +584,16 @@ _draw_menu_child :: proc(child: ^MenuNode, view := session.View{}) {
 			defer widgets.ui_origin_pop(prev)
 			#partial switch child.kind {
 			case .Action:
-				shortcut_label := child.shortcut_cstr if child.shortcut_cstr != nil else ""
+				shortcut_label := _menu_shortcut_label(child)
 				ticked := _node_ticked(child, view)
 				if im.MenuItem(child.name_cstr, shortcut_label, ticked, _node_enabled(child, view)) {
 					_node_run(child, view)
 				}
-				widgets.tooltip("", im.HoveredFlags_AllowWhenDisabled)
+				widgets.tooltip(_menu_shortcut_tip(child), im.HoveredFlags_AllowWhenDisabled)
 			case .Toggle:
 				if child.value != nil {
-					im.MenuItemBoolPtr(child.name_cstr, child.shortcut_cstr, child.value, _node_enabled(child, view))
-					widgets.tooltip("", im.HoveredFlags_AllowWhenDisabled)
+					im.MenuItemBoolPtr(child.name_cstr, _menu_shortcut_label(child), child.value, _node_enabled(child, view))
+					widgets.tooltip(_menu_shortcut_tip(child), im.HoveredFlags_AllowWhenDisabled)
 				}
 			}
 		}

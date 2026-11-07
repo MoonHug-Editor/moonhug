@@ -22,6 +22,7 @@ scene_clear_selection :: proc() { ... }
 
 - `name` is `Group/Title`, the group being the window or feature it belongs to, in spaced words.
 - `enabled` names a proc in the same package that says whether the command can run now. A disabled command leaves its key to the next binding.
+- A command never reads a modifier key to decide what it does: the chord carries the modifier, and a different action is a different command. Collapse and Collapse Subtree are two commands, bound to Left and Alt+Left, so each can be rebound on its own.
 - Every item and toggle of the main menu is a command named by its path (`Edit/Undo`), registered by the menu with the item. Its `shortcut=` is a binding in the `Menu` keymap.
 
 ## Keymaps
@@ -66,6 +67,17 @@ A chord is written as `Ctrl+S`, `Shift+Space`, `F2`, `Escape`, `LeftShift`. `Ctr
 - One press runs one command. A chord a command took is done for the frame. A disabled command does not take its chord.
 - A press goes through imgui's shortcut routing with global scope, so a text field being typed in, an open dialog or any other key owner wins, as it does for a menu shortcut.
 - Keys go to the clicked view. The focused window is the open instance whose imgui window, or a child window of it, has focus (`window.focused()`), which a view in a Workspace frame has as a frame of its own. Any mouse button's click on a view's content focuses it, so the right-button flythrough starts in a focused Scene view. There is no hover focus. Maximize keeps acting on the view under the mouse.
+
+## Preferences
+
+The Shortcuts tab of the settings window lists every registered command, one row each, grouped by the command's group, with its bindings in every context. A context is a keymap: the window it serves and its rule, named by the keymap, with the scope in the chip's tooltip. A binding is a line: a remove button, the context, the chord as a button. Click the chord and press the new one, Escape cancels, Backspace removes the binding as the remove button does. The plus on a row adds a binding: pick the context it applies in, then press the chord. That is how one command is reached from several views, and a command may be bound in a context its plugin never declared. The search box filters by command name, by chord, or by context.
+
+- A command whose bindings differ from the defaults in any context shows Reset to default beside its plus, which puts every context back. Reset All does it for every command.
+- Two bindings one chord can reach in the same frame are a conflict: same window, or one editor-wide. The binding shows a warning with the resolver's verdict, which one runs and why. Nothing is blocked.
+- A binding whose command is not loaded is listed under Not loaded and kept.
+- Overrides live in `UserSettings/shortcuts.json`, per developer, never committed, as keymap name, command name and the chord list. Defaults stay in code. An override for a keymap that is not registered stays in the file and applies when that keymap registers, so a plugin turned off and on, or a view that registers its keymap at runtime, keeps the user's bindings.
+- The main menu shows the live bindings of its items, overrides included: the first two chords, and every chord in the item's tooltip when there are more.
+- A command is one thing wherever it is reached: a view binds the Edit menu's Copy, Delete or Frame Selected in its own keymap instead of declaring a command of its own, so the page lists it once with every context. A view's own commands are the ones only it has, such as a list's Select Down.
 
 ## Keys every view shares
 

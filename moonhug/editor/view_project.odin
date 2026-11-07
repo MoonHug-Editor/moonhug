@@ -1600,7 +1600,7 @@ _project_list_select :: proc(idx: int, extend: bool) {
 // Up and Down step through the active pane's rows. With nothing selected
 // both land on the first row.
 @(private = "file")
-_project_nav_step :: proc(step: int) {
+_project_nav_step :: proc(step: int, extend: bool) {
     switch _pv.active_pane {
     case .Tree:
         n := len(_pv.tree_rows)
@@ -1618,16 +1618,23 @@ _project_nav_step :: proc(step: int) {
         if cur == -1 {
             _project_list_select(0, false)
         } else if cur + step >= 0 && cur + step < n {
-            _project_list_select(cur + step, im.GetIO().KeyShift)
+            _project_list_select(cur + step, extend)
         }
     }
 }
 
 @(command={name="Project/Select Down"})
-project_select_down :: proc() { _project_nav_step(1) }
+project_select_down :: proc() { _project_nav_step(1, false) }
 
 @(command={name="Project/Select Up"})
-project_select_up :: proc() { _project_nav_step(-1) }
+project_select_up :: proc() { _project_nav_step(-1, false) }
+
+// Extend grows the list's selection by the stepped-onto row.
+@(command={name="Project/Extend Selection Down"})
+project_extend_down :: proc() { _project_nav_step(1, true) }
+
+@(command={name="Project/Extend Selection Up"})
+project_extend_up :: proc() { _project_nav_step(-1, true) }
 
 // Right opens a closed folder and steps into an open one.
 @(command={name="Project/Expand", enabled=project_tree_active})
@@ -1686,21 +1693,6 @@ project_open :: proc() { _project_open_selected() }
 @(command={name="Project/Up Level", enabled=project_list_active})
 project_up_level :: proc() { _project_go_up() }
 
-@(command={name="Project/Copy", enabled=project_list_active})
-project_copy :: proc() { project_ops_copy() }
-
-@(command={name="Project/Cut", enabled=project_list_active})
-project_cut :: proc() { project_ops_cut() }
-
-@(command={name="Project/Paste", enabled=project_list_active})
-project_paste :: proc() { project_ops_paste() }
-
-@(command={name="Project/Duplicate", enabled=project_list_active})
-project_duplicate :: proc() { project_ops_duplicate() }
-
-@(command={name="Project/Delete", enabled=project_list_active})
-project_delete :: proc() { project_ops_delete() }
-
 // Escape ends a search from either pane, and opens the selected hit's
 // folder (_project_cancel_search). Escape in the search box reverts its text
 // first.
@@ -1727,9 +1719,9 @@ project_keys_active :: proc() -> bool {
 @(keymap={name="Project", window="Project", active=project_keys_active})
 project_keymap :: proc(km: ^keymap.Keymap) {
     keymap.bind(km, "Down", "Project/Select Down", repeat = true)
-    keymap.bind(km, "Shift+Down", "Project/Select Down", repeat = true)
+    keymap.bind(km, "Shift+Down", "Project/Extend Selection Down", repeat = true)
     keymap.bind(km, "Up", "Project/Select Up", repeat = true)
-    keymap.bind(km, "Shift+Up", "Project/Select Up", repeat = true)
+    keymap.bind(km, "Shift+Up", "Project/Extend Selection Up", repeat = true)
     keymap.bind(km, "Right", "Project/Expand", repeat = true)
     keymap.bind(km, "Left", "Project/Collapse", repeat = true)
     keymap.bind(km, "Tab", "Project/Switch Pane")
@@ -1742,11 +1734,13 @@ project_keymap :: proc(km: ^keymap.Keymap) {
         keymap.bind(km, "Enter", "Project/Open")
         keymap.bind(km, "Backspace", "Project/Up Level")
     }
-    keymap.bind(km, "Ctrl+C", "Project/Copy")
-    keymap.bind(km, "Ctrl+X", "Project/Cut")
-    keymap.bind(km, "Ctrl+V", "Project/Paste")
-    keymap.bind(km, "Ctrl+D", "Project/Duplicate")
-    keymap.bind(km, "Ctrl+Backspace", "Project/Delete")
-    keymap.bind(km, "Ctrl+Delete", "Project/Delete")
+    // The Edit menu's commands act on the project selection when it is the
+    // active one (edit_menu.odin), so the view binds them instead of its own.
+    keymap.bind(km, "Ctrl+C", "Edit/Copy")
+    keymap.bind(km, "Ctrl+X", "Edit/Cut")
+    keymap.bind(km, "Ctrl+V", "Edit/Paste")
+    keymap.bind(km, "Ctrl+D", "Edit/Duplicate")
+    keymap.bind(km, "Ctrl+Backspace", "Edit/Delete")
+    keymap.bind(km, "Ctrl+Delete", "Edit/Delete")
     keymap.bind(km, "Escape", "Project/Cancel Search")
 }
