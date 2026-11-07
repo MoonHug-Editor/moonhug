@@ -1725,15 +1725,10 @@ project_keymap :: proc(km: ^keymap.Keymap) {
     keymap.bind(km, "Right", "Project/Expand", repeat = true)
     keymap.bind(km, "Left", "Project/Collapse", repeat = true)
     keymap.bind(km, "Tab", "Project/Switch Pane")
-    when ODIN_OS == .Darwin {
-        keymap.bind(km, "Enter", "Project/Rename")
-        keymap.bind(km, "Ctrl+Down", "Project/Open")
-        keymap.bind(km, "Ctrl+Up", "Project/Up Level")
-    } else {
-        keymap.bind(km, "F2", "Project/Rename")
-        keymap.bind(km, "Enter", "Project/Open")
-        keymap.bind(km, "Backspace", "Project/Up Level")
-    }
+    // macOS renames on Enter and opens on Cmd+Down, as its file browser does.
+    keymap.bind(km, "F2", "Project/Rename", mac = "Enter")
+    keymap.bind(km, "Enter", "Project/Open", mac = "Ctrl+Down")
+    keymap.bind(km, "Backspace", "Project/Up Level", mac = "Ctrl+Up")
     // The Edit menu's commands act on the project selection when it is the
     // active one (edit_menu.odin), so the view binds them instead of its own.
     keymap.bind(km, "Ctrl+C", "Edit/Copy")

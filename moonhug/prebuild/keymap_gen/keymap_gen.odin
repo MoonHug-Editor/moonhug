@@ -2,10 +2,10 @@ package keymap_gen
 
 // keymap_gen: declared editor commands and keymaps (docs/core/Keymaps.md).
 //
-//   @(command={name="Scene/Translate Tool", enabled=scene_can_clear_selection})
+//   @(command={name="Scene/Translate Tool", enabled=scene_can_clear_selection, id="scene.translate"})
 //   scene_tool_translate :: proc() { ... }
 //
-//   @(keymap={name="Scene Flythrough", window="Scene", active=scene_is_flying, consume=true, priority=10})
+//   @(keymap={name="Scene Flythrough", modal=true})
 //   scene_flythrough_keymap :: proc(km: ^keymap.Keymap) { ... }
 //
 //   generate - moonhug/editor/editor_keymaps_generated.odin:
@@ -25,6 +25,7 @@ _PKG_NAME :: "editor"
 
 CommandEntry :: struct {
 	name:        string, // command name
+	id:          string, // the attribute's id, "" for the proc's qualified name
 	proc_name:   string, // the run proc
 	enabled:     string, // the enabled proc, "" for always enabled
 	source_pkg:  string,
@@ -38,6 +39,7 @@ KeymapEntry :: struct {
 	proc_name:   string, // the fill proc
 	active:      string, // the active proc, "" for none
 	consume:     bool,
+	modal:       bool,
 	priority:    int,
 	source_pkg:  string,
 	source_path: string,
@@ -79,6 +81,7 @@ provide :: proc(w: ^db.World) -> bool {
 				}
 				append(&commands, CommandEntry{
 					name        = name,
+					id          = args.fields["id"],
 					proc_name   = decl.name,
 					enabled     = args.fields["enabled"],
 					source_pkg  = decl.pkg.name,
@@ -97,6 +100,7 @@ provide :: proc(w: ^db.World) -> bool {
 					proc_name   = decl.name,
 					active      = args.fields["active"],
 					consume     = args.fields["consume"] == "true",
+					modal       = args.fields["modal"] == "true",
 					priority    = gen_facts.attr_int(args, "priority"),
 					source_pkg  = decl.pkg.name,
 					source_path = decl.pkg_path,
@@ -201,12 +205,15 @@ generate :: proc(w: ^db.World) -> bool {
 	for e in commands {
 		fmt.sbprintf(&b, "\t__km.command_add(%q, %s", e.name, _qualified_name(e.source_pkg, e.proc_name))
 		if e.enabled != "" do fmt.sbprintf(&b, ", enabled = %s", _qualified_name(e.source_pkg, e.enabled))
+		id := e.id if e.id != "" else fmt.tprintf("%s.%s", e.source_pkg, e.proc_name)
+		fmt.sbprintf(&b, ", id = %q", id)
 		fmt.sbprintf(&b, ", origin = %q)\n", e.origin)
 	}
 	for e in keymaps {
 		fmt.sbprintf(&b, "\t__km.add(%q, %q, %s", e.name, e.window, _qualified_name(e.source_pkg, e.proc_name))
 		if e.active != "" do fmt.sbprintf(&b, ", active = %s", _qualified_name(e.source_pkg, e.active))
 		if e.consume do strings.write_string(&b, ", consume = true")
+		if e.modal do strings.write_string(&b, ", modal = true")
 		if e.priority != 0 do fmt.sbprintf(&b, ", priority = %d", e.priority)
 		fmt.sbprintf(&b, ", origin = %q)\n", e.origin)
 	}

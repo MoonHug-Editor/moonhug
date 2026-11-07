@@ -114,6 +114,7 @@ main :: proc() {
     // any keymap registered later (editor/keymap).
     keymap.overrides_path = strings.clone(core.user_settings_file("Shortcuts"))
     keymap.overrides_load()
+    keymap.log_conflicts()
     migrate_imgui_ini()
     defer im.DestroyContext(ctx)
 
@@ -272,7 +273,6 @@ main :: proc() {
         // Every key binding resolves here, before the views draw
         // (editor/keymap): menu shortcuts, the scene tools, the flythrough.
         keymap.frame()
-        maximize_shortcut()
 
         // A Play requested LAST frame starts here: the frame in between let
         // every editor preview restore the world it had posed, so the

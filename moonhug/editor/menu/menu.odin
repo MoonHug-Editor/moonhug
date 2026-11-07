@@ -43,8 +43,8 @@ MenuNode :: struct {
 	name_cstr:     cstring,
 	shortcut:      string,
 	shortcut_cstr: cstring,
-	// The main menu item's command name (its path): the shortcut it shows is
-	// the "Menu" keymap's live binding, overrides included. "" for a view
+	// The main menu item's command id (editor/keymap): the shortcut it shows
+	// is the "Menu" keymap's live binding, overrides included. "" for a view
 	// menu's item.
 	command:       string,
 	kind:          MenuEntryKind,
@@ -220,10 +220,13 @@ draw_menu_sections :: proc(sections: []Menu_Section) {
 // checked (optional) is polled the same way and draws the item with a tick —
 // for a toggle whose state is computed, and for radio groups, where each option
 // is an action that sets the state and reports whether it is the current one.
-@(extension_point={attribute="menu_item", target="proc var", fields="path order shortcut enabled checked"})
-add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil, checked: proc() -> bool = nil, origin := "") {
+// `id` is the item's command id (editor/keymap), the declaring proc's
+// qualified name from the generator, which keeps the user's bindings when the
+// item moves in the menu. The path when empty.
+@(extension_point={attribute="menu_item", target="proc var", fields="path order shortcut enabled checked id"})
+add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil, checked: proc() -> bool = nil, origin := "", id := "") {
 	tree_add_item(_menu_root, path, shortcut, action, order, enabled, checked, origin)
-	_menu_command(_get_or_create_path(_menu_root, path), path)
+	_menu_command(_get_or_create_path(_menu_root, path), path, id)
 }
 
 tree_add_item :: proc(root: ^MenuNode, path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil, checked: proc() -> bool = nil, origin := "") {
@@ -259,9 +262,9 @@ tree_add_view_item :: proc(root: ^MenuNode, path: string, action: proc(view: ses
 // Declared as @(menu_item) on a bool variable — the same attribute an action
 // uses on a proc, since what it is attached to already says which it is.
 // A shortcut ("Ctrl+1" — Ctrl renders as Cmd on macOS) toggles it globally.
-add_menu_toggle :: proc(path: string, value: ^bool, order: int = ORDER_DEFAULT, shortcut := "", enabled: proc() -> bool = nil, origin := "") {
+add_menu_toggle :: proc(path: string, value: ^bool, order: int = ORDER_DEFAULT, shortcut := "", enabled: proc() -> bool = nil, origin := "", id := "") {
 	tree_add_toggle(_menu_root, path, value, order, shortcut, enabled, origin)
-	_menu_command(_get_or_create_path(_menu_root, path), path)
+	_menu_command(_get_or_create_path(_menu_root, path), path, id)
 }
 
 tree_add_toggle :: proc(root: ^MenuNode, path: string, value: ^bool, order: int = ORDER_DEFAULT, shortcut := "", enabled: proc() -> bool = nil, origin := "") {
@@ -467,15 +470,15 @@ _find_child :: proc(node: ^MenuNode, name: string) -> ^MenuNode {
 _menu_keymap: ^keymap.Keymap
 
 @(private = "file")
-_menu_command :: proc(node: ^MenuNode, path: string) {
-	node.command = keymap.command_add_data(path, _menu_command_run, node, _menu_command_enabled, node.origin).name
+_menu_command :: proc(node: ^MenuNode, path: string, id: string) {
+	node.command = keymap.command_add_data(path, _menu_command_run, node, _menu_command_enabled, node.origin, id).id
 	if node.shortcut == "" do return
 	if _menu_keymap == nil {
 		_menu_keymap = keymap.add("Menu", "", nil, origin = "menu/menu.odin")
 	}
 	// A re-registered item binds once: drop its earlier binding.
-	keymap.unbind(_menu_keymap, path)
-	keymap.bind(_menu_keymap, node.shortcut, path)
+	keymap.unbind(_menu_keymap, node.command)
+	keymap.bind(_menu_keymap, node.shortcut, node.command)
 }
 
 // The chords of the item's command in the "Menu" keymap, as shown. Temp.
@@ -484,7 +487,7 @@ _menu_chords :: proc(node: ^MenuNode) -> []string {
 	out := make([dynamic]string, context.temp_allocator)
 	if node.command == "" do return out[:]
 	if km := keymap.find("Menu"); km != nil {
-		for b in km.bindings do if b.command == node.command do append(&out, keymap.format_chord(b.chord))
+		for &b in km.bindings do if keymap.binding_is(&b, node.command) do append(&out, keymap.format_chord(b.chord))
 	}
 	return out[:]
 }

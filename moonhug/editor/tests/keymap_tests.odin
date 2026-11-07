@@ -43,7 +43,7 @@ _km_setup :: proc() {
 
 @(private = "file")
 _km_teardown :: proc() {
-	for name in ([]string{"T Scene", "T Fly", "T Global", "T Low", "T Host"}) do keymap.remove(name)
+	for name in ([]string{"T Scene", "T Fly", "T Global", "T Low", "T Host", "T Modal"}) do keymap.remove(name)
 	for name in ([]string{"T/A", "T/B", "T/C", "T/Held"}) do keymap.command_remove(name)
 	delete(_km_log)
 	_km_log = nil
@@ -365,4 +365,103 @@ test_keymap_override_keeps_borrowed_chords :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(km.bindings), 2)
 	testing.expect_value(t, km.bindings[0].text, "W")
 	testing.expect_value(t, km.bindings[1].text, "Q")
+}
+
+
+// A command keeps its slot and its overrides through a rename when it has a
+// stable id: the override keys by the id, and the renamed command answers
+// to the new name.
+@(test)
+test_keymap_stable_id_survives_rename :: proc(t: ^testing.T) {
+	_km_setup()
+	defer _km_teardown()
+	prev_path := keymap.overrides_path
+	keymap.overrides_path = ""
+	defer {
+		keymap.override_reset_all()
+		keymap.overrides_path = prev_path
+		keymap.command_remove("t.a")
+	}
+	keymap.command_add("T/A", proc() { append(&_km_log, "A") }, id = "t.a")
+	km := keymap.add("T Scene", "Scene", proc(km: ^keymap.Keymap) { keymap.bind(km, "W", "T/A") })
+	keymap.override_set(km, "T/A", {"Q"})
+	testing.expect(t, !keymap.is_default(km, "T/A"))
+
+	// Renamed: same id, new name. The binding and the override follow.
+	c := keymap.command_add("T/Renamed", proc() { append(&_km_log, "A") }, id = "t.a")
+	testing.expect_value(t, c.name, "T/Renamed")
+	testing.expect(t, keymap.command("T/A") == nil, "the old name is gone")
+	testing.expect(t, keymap.command("T/Renamed") == c)
+	testing.expect(t, !keymap.is_default(km, "T/Renamed"))
+	testing.expect_value(t, len(keymap.commands_of(km)), 1)
+	testing.expect_value(t, keymap.commands_of(km)[0], "t.a")
+	append(&_km_path, "Scene")
+	_km_press("Q")
+	keymap.frame()
+	testing.expect_value(t, len(_km_log), 1)
+}
+
+// A held plain key is text while a field is typed in, like a press.
+@(test)
+test_keymap_typing_keeps_held_keys :: proc(t: ^testing.T) {
+	_km_setup()
+	defer _km_teardown()
+	_km_commands()
+	keymap.add("T Global", "", proc(km: ^keymap.Keymap) { keymap.bind(km, "W", "T/Held", held = true) })
+	_km_hold("W")
+	_km_typing = true
+	keymap.frame()
+	testing.expect_value(t, len(_km_log), 0)
+	_km_typing = false
+	keymap.frame()
+	testing.expect_value(t, len(_km_log), 1)
+}
+
+// A binding's `mac` chord is the one on macOS, the plain chord elsewhere.
+@(test)
+test_keymap_mac_chord :: proc(t: ^testing.T) {
+	_km_setup()
+	defer _km_teardown()
+	_km_commands()
+	km := keymap.add("T Global", "", proc(km: ^keymap.Keymap) { keymap.bind(km, "F2", "T/A", mac = "Enter") })
+	when ODIN_OS == .Darwin {
+		testing.expect_value(t, km.bindings[0].text, "Enter")
+	} else {
+		testing.expect_value(t, km.bindings[0].text, "F2")
+	}
+}
+
+// A modal keymap is off until pushed, then resolves alone: the global
+// binding of the same chord stays quiet, an unbound chord does nothing, and
+// pop gives the keys back.
+@(test)
+test_keymap_modal_stack :: proc(t: ^testing.T) {
+	_km_setup()
+	defer _km_teardown()
+	_km_commands()
+	keymap.add("T Global", "", proc(km: ^keymap.Keymap) {
+		keymap.bind(km, "W", "T/A")
+		keymap.bind(km, "F", "T/C")
+	})
+	modal := keymap.add("T Modal", "", proc(km: ^keymap.Keymap) { keymap.bind(km, "W", "T/Held", held = true) }, modal = true)
+	_km_press("W")
+	_km_hold("W")
+	_km_press("F")
+
+	keymap.frame()
+	testing.expect_value(t, len(_km_log), 2)
+	testing.expect_value(t, _km_log[0], "A")
+	testing.expect_value(t, _km_log[1], "C")
+
+	clear(&_km_log)
+	keymap.push(modal)
+	keymap.frame()
+	testing.expect_value(t, len(_km_log), 1)
+	testing.expect_value(t, _km_log[0], "H")
+
+	clear(&_km_log)
+	keymap.pop(modal)
+	keymap.frame()
+	testing.expect_value(t, len(_km_log), 2)
+	testing.expect_value(t, len(keymap.conflicts()), 0)
 }

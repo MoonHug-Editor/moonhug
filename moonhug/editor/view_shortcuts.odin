@@ -70,7 +70,7 @@ _pick_stop :: proc() {
 @(private = "file")
 _chords_of :: proc(km: ^keymap.Keymap, command: string) -> []string {
 	out := make([dynamic]string, context.temp_allocator)
-	for b in km.bindings do if b.command == command do append(&out, b.text)
+	for &b in km.bindings do if keymap.binding_is(&b, command) do append(&out, b.text)
 	return out[:]
 }
 
@@ -85,6 +85,7 @@ _window_title :: proc(id: string) -> string {
 @(private = "file")
 _keymap_scope :: proc(km: ^keymap.Keymap) -> string {
 	b := strings.builder_make(context.temp_allocator)
+	if km.modal do return "while its tool runs, alone"
 	if km.window == "" {
 		strings.write_string(&b, "editor-wide")
 	} else {
@@ -97,14 +98,15 @@ _keymap_scope :: proc(km: ^keymap.Keymap) -> string {
 }
 
 // Whether a command's row shows under the filter: its name, one of its
-// chords, or the name of a context it is bound in matches.
+// chords, or the name of a context it is bound in matches. `key` is the
+// command's id, `name` what the row shows.
 @(private = "file")
-_matches_filter :: proc(command: string, filter: string) -> bool {
+_matches_filter :: proc(key, name: string, filter: string) -> bool {
 	if filter == "" do return true
-	if strings.contains(strings.to_lower(command, context.temp_allocator), filter) do return true
+	if strings.contains(strings.to_lower(name, context.temp_allocator), filter) do return true
 	for km in keymap.keymaps() {
-		for b in km.bindings {
-			if b.command != command do continue
+		for &b in km.bindings {
+			if !keymap.binding_is(&b, key) do continue
 			if strings.contains(strings.to_lower(km.name, context.temp_allocator), filter) do return true
 			if strings.contains(strings.to_lower(b.text, context.temp_allocator), filter) do return true
 			if strings.contains(strings.to_lower(keymap.format_chord(b.chord), context.temp_allocator), filter) do return true
@@ -137,7 +139,7 @@ _draw_bindings :: proc(command: string, conflicts: []keymap.Conflict, by_binding
 		idx := 0
 		im.PushIDPtr(km)
 		for &b in km.bindings {
-			if b.command != command do continue
+			if !keymap.binding_is(&b, command) do continue
 			im.PushIDInt(i32(idx))
 			if im.SmallButton(icons.ICON_MD_CLOSE) {
 				_listen_stop()
@@ -222,7 +224,7 @@ _draw_plus :: proc(command: string) {
 		// Editor-wide keymaps in one submenu, the views' keymaps under their
 		// window in another.
 		if im.BeginMenu("Editor-wide") {
-			for km in keymap.keymaps() do if km.window == "" do _pick_item(km, command)
+			for km in keymap.keymaps() do if km.window == "" && !km.modal do _pick_item(km, command)
 			im.EndMenu()
 		}
 		if im.BeginMenu("Views") {
@@ -246,6 +248,10 @@ _draw_plus :: proc(command: string) {
 					im.EndMenu()
 				}
 			}
+			im.EndMenu()
+		}
+		if im.BeginMenu("Tools") {
+			for km in keymap.keymaps() do if km.modal do _pick_item(km, command)
 			im.EndMenu()
 		}
 		im.EndPopup()
@@ -303,11 +309,13 @@ shortcuts_draw :: proc() {
 	// Every registered command, by group then title. A group is a header,
 	// open by default when one of its commands is bound: the menu's groups
 	// hold many commands nobody binds. A search opens every group it shows.
+	// Rows by name, each name resolving to its command for the id the
+	// bindings refer to.
 	names := make([dynamic]string, context.temp_allocator)
-	for cmd in keymap.commands() do if _matches_filter(cmd.name, filter) do append(&names, cmd.name)
+	for cmd in keymap.commands() do if _matches_filter(cmd.id, cmd.name, filter) do append(&names, cmd.name)
 	slice.sort(names[:])
 	bound := make(map[string]bool, context.temp_allocator)
-	for km in keymap.keymaps() do for b in km.bindings do bound[b.command] = true
+	for km in keymap.keymaps() do for &b in km.bindings do if c := keymap.command(b.command); c != nil do bound[c.name] = true
 
 	i := 0
 	for i < len(names) {
@@ -327,15 +335,17 @@ shortcuts_draw :: proc() {
 			im.TableSetupColumn("Command", {.WidthFixed}, 240)
 			im.TableSetupColumn("Bindings", {.WidthStretch})
 			for name in names[i:j] {
+				c := keymap.command(name)
+				if c == nil do continue
 				_, title := _split_name(name)
-				im.PushID(strings.clone_to_cstring(name, context.temp_allocator))
+				im.PushID(strings.clone_to_cstring(c.id, context.temp_allocator))
 				im.TableNextRow()
 				im.TableNextColumn()
 				im.TextUnformatted(strings.clone_to_cstring(title, context.temp_allocator))
-				if c := keymap.command(name); c != nil && c.origin != "" do widgets.tooltip(strings.clone_to_cstring(c.origin, context.temp_allocator))
-				_draw_plus(name)
+				widgets.tooltip(fmt.ctprintf("%s\n%s", c.id, c.origin))
+				_draw_plus(c.id)
 				im.TableNextColumn()
-				_draw_bindings(name, conflicts, by_binding, true)
+				_draw_bindings(c.id, conflicts, by_binding, true)
 				im.PopID()
 			}
 			im.EndTable()
@@ -348,7 +358,7 @@ shortcuts_draw :: proc() {
 	missing := make([dynamic]string, context.temp_allocator)
 	for km in keymap.keymaps() do for b in km.bindings {
 		if keymap.command(b.command) != nil do continue
-		if !slice.contains(missing[:], b.command) && _matches_filter(b.command, filter) do append(&missing, b.command)
+		if !slice.contains(missing[:], b.command) && _matches_filter(b.command, b.command, filter) do append(&missing, b.command)
 	}
 	slice.sort(missing[:])
 	if len(missing) > 0 && im.CollapsingHeader("Not loaded", {.DefaultOpen}) && im.BeginTable("##missing", 2, im.TableFlags_SizingStretchProp | im.TableFlags_BordersInnerH | im.TableFlags_PadOuterX) {

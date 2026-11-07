@@ -246,6 +246,7 @@ view_reopen_can :: proc() -> bool {
 views_keymap :: proc(km: ^keymap.Keymap) {
 	keymap.bind(km, "Ctrl+W", "View/Close")
 	keymap.bind(km, "Ctrl+Shift+T", "View/Reopen Closed")
+	keymap.bind(km, "Shift+Space", "View/Maximize")
 }
 
 @(private = "file")

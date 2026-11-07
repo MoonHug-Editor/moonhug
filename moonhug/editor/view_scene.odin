@@ -940,10 +940,14 @@ handle_scene_input :: proc() {
 	if _sv.flythrough_active && (!rmb_down || alt_down) {
 		_sv.flythrough_active = false
 		input.set_mouse_relative(false)
+		if km := keymap.find("Scene Flythrough"); km != nil do keymap.pop(km)
 	}
 	if !_sv.flythrough_active && rmb_down && !alt_down && !cmd && _sv.hovered && !_sv.mode_2d {
 		_sv.flythrough_active = true
 		input.set_mouse_relative(true)
+		// The flythrough's keymap on top: its keys alone resolve while the
+		// camera flies (editor/keymap).
+		if km := keymap.find("Scene Flythrough"); km != nil do keymap.push(km)
 		// Smoothing state starts at rest so entry doesn't inherit stale lag.
 		_sv.fly_yaw_target = _sv.cam_yaw
 		_sv.fly_pitch_target = _sv.cam_pitch
@@ -1205,8 +1209,8 @@ scene_view_keymap :: proc(km: ^keymap.Keymap) {
 }
 
 // The flythrough's keys, held: each adds to the frame's movement, which the
-// fly step in handle_scene_input turns into velocity. The keymap consumes
-// every key while the camera flies, so the tool keys above stay quiet.
+// fly step in handle_scene_input turns into velocity. The keymap is modal,
+// so the tool keys above stay quiet while the camera flies.
 Fly_Dir :: enum { Forward, Back, Right, Left, Up, Down }
 
 @(private = "file")
@@ -1240,11 +1244,9 @@ scene_fly_down :: proc() { _scene_fly(.Down) }
 @(command={name="Scene/Fly Fast"})
 scene_fly_fast :: proc() { _scene_focused().fly_fast = true }
 
-scene_is_flying :: proc() -> bool {
-	return _scene_focused().flythrough_active
-}
-
-@(keymap={name="Scene Flythrough", window="Scene", active=scene_is_flying, consume=true, priority=10})
+// A modal keymap: the flythrough pushes it when the camera starts flying
+// and pops it when it stops (handle_scene_input).
+@(keymap={name="Scene Flythrough", modal=true})
 scene_flythrough_keymap :: proc(km: ^keymap.Keymap) {
 	keymap.bind(km, "W", "Scene/Fly Forward", held = true)
 	keymap.bind(km, "S", "Scene/Fly Back", held = true)

@@ -52,10 +52,10 @@ _max: struct {
 @(private = "file")
 _MAX_GAME :: "Game"
 
-// Shift+Space, every frame from the main loop: puts the maximized view back,
-// or maximizes the view under the mouse.
-maximize_shortcut :: proc() {
-	if !im.Shortcut(im.KeyChord(im.Key.ImGuiMod_Shift) | im.KeyChord(im.Key.Space), {.RouteGlobal}) do return
+// Puts the maximized view back, or maximizes the view under the mouse. The
+// Views keymap binds it to Shift+Space (dock_tab_menu.odin).
+@(command={name="View/Maximize"})
+view_maximize :: proc() {
 	if _max.state == .On {
 		_max.state = .Leave
 		return
