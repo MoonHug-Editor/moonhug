@@ -249,6 +249,11 @@ _gfx: struct {
 	// SDL 3.4.14's Metal backend answers QueryGPUFence with the fence's BUSY
 	// state (3.4.16 answers signaled). Probed once at init, see _fence_probe.
 	fence_query_inverted: bool,
+	// Textures destroyed this frame, released at the next frame's start:
+	// imgui's draw data holds a texture drawn this frame until the frame
+	// renders, and a texture released in between (an asset reimported from a
+	// dialog after the views drew) crashes the GPU backend.
+	retired: [dynamic]^sdl.GPUTexture,
 }
 
 // Window + GPU device + pipelines. show=false lets the caller apply saved
@@ -340,6 +345,8 @@ shutdown :: proc() {
 		if _gfx.white_tex != nil do texture_destroy(_gfx.white_tex)
 		if _gfx.black_tex != nil do texture_destroy(_gfx.black_tex)
 		if _gfx.clear_tex != nil do texture_destroy(_gfx.clear_tex)
+		_release_retired()
+		delete(_gfx.retired)
 		if _gfx.window_depth != nil do sdl.ReleaseGPUTexture(_gfx.device, _gfx.window_depth)
 		_cubemap_shutdown()
 	_pipelines_shutdown()
@@ -401,6 +408,7 @@ frame_index: u64
 
 frame_begin :: proc() -> bool {
 	frame_index += 1
+	_release_retired()
 	_platform_frame_tick()
 	_stats_frame_begin()
 	acquire := time.tick_now()
@@ -645,10 +653,19 @@ texture_download_cancel :: proc(d: ^Texture_Download) {
 	free(d, runtime.default_allocator())
 }
 
+// Frees the texture. Its GPU texture goes at the next frame's start
+// (_gfx.retired), so what was drawn with it this frame still renders.
 texture_destroy :: proc(tex: ^Texture) {
 	if tex == nil do return
-	if tex.gpu != nil do sdl.ReleaseGPUTexture(_gfx.device, tex.gpu)
-	free(tex, runtime.default_allocator())
+	context.allocator = runtime.default_allocator()
+	if tex.gpu != nil do append(&_gfx.retired, tex.gpu)
+	free(tex, context.allocator)
+}
+
+@(private = "file")
+_release_retired :: proc() {
+	for gpu in _gfx.retired do sdl.ReleaseGPUTexture(_gfx.device, gpu)
+	clear(&_gfx.retired)
 }
 
 // For imgui: since imgui 1.92.2 the SDLGPU3 backend's ImTextureID is the raw

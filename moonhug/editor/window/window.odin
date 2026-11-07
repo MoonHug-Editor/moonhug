@@ -57,6 +57,11 @@ Window :: struct {
 	// its content (draw_content) where it places it. Owned.
 	host:    string,
 	claimed: u64, // the draw pass its host last claimed it in (host_open)
+	// A reopened instance's tab place to restore (_restore_tab_place):
+	// the node, the index, -1 when none is pending, and the frames tried.
+	reorder_node:  im.ID,
+	reorder_tab:   int,
+	reorder_tries: int,
 }
 
 Draw_Proc  :: proc(w: ^Window)
@@ -205,6 +210,120 @@ open_saved :: proc(keys: []string) {
 	}
 }
 
+// The instances closed this session, oldest first, the last _CLOSED_MAX of
+// them: reopen_closed brings the newest back, to the tab place it left.
+@(private = "file")
+_Closed :: struct {
+	key:  string, // owned
+	host: string, // the view that hosted it, "" for a window of its own. Owned
+	node: im.ID,  // the dock node it was in, 0 when floating or hosted
+	tab:  int,    // its place in that node's tab bar, -1 for none
+}
+
+// Puts a reopened instance back into the view that hosted it when it closed
+// (a Workspace view's frame), true when it did. The shell installs it. A
+// reopened instance it refuses gets a window of its own.
+reopen_hook: proc(w: ^Window, host: string) -> bool
+@(private = "file")
+_closed: [dynamic]_Closed
+@(private = "file")
+_CLOSED_MAX :: 16
+
+// Records a closing instance. Its imgui window is still in its node's tab
+// bar this frame: it was submitted the frame it closed, and imgui drops it
+// at the next frame's start.
+@(private = "file")
+_remember_closed :: proc(w: ^Window) {
+	context.allocator = runtime.default_allocator()
+	for c, i in _closed do if c.key == w.key {
+		_closed_free(c)
+		ordered_remove(&_closed, i)
+		break
+	}
+	if len(_closed) == _CLOSED_MAX {
+		_closed_free(_closed[0])
+		ordered_remove(&_closed, 0)
+	}
+	c := _Closed{key = strings.clone(w.key), host = strings.clone(w.host), node = w.dock, tab = -1}
+	if w.host == "" && w.dock != 0 {
+		if node := im.DockBuilderGetNode(w.dock); node != nil do c.tab = _tab_index(node, session.view_title(_title(w)))
+	}
+	append(&_closed, c)
+}
+
+@(private = "file")
+_closed_free :: proc(c: _Closed) {
+	delete(c.key)
+	delete(c.host)
+}
+
+// The place of the window `name`'s tab in the tab bar of `node`, -1 for none.
+@(private = "file")
+_tab_index :: proc(node: ^im.DockNode, name: cstring) -> int {
+	if node.TabBar == nil do return -1
+	win := im.FindWindowByName(name)
+	if win == nil do return -1
+	tabs := ([^]im.TabItem)(node.TabBar.Tabs.Data)
+	for i in 0 ..< int(node.TabBar.Tabs.Size) do if tabs[i].Window_ == win do return i
+	return -1
+}
+
+// A reopened instance comes back to its node as its last tab: imgui adds a
+// window to a tab bar at the end. Once its tab is in the bar, it moves to the
+// place it left. Gives up when the window docked elsewhere or the node is
+// gone.
+@(private = "file")
+_restore_tab_place :: proc(w: ^Window) {
+	if w.reorder_tab < 0 do return
+	w.reorder_tries += 1
+	if w.reorder_tries > 8 || (w.dock != 0 && w.dock != w.reorder_node) {
+		w.reorder_tab = -1
+		return
+	}
+	node := im.DockBuilderGetNode(w.reorder_node)
+	if node == nil {
+		w.reorder_tab = -1
+		return
+	}
+	cur := _tab_index(node, session.view_title(_title(w)))
+	if cur < 0 do return
+	if cur != w.reorder_tab {
+		tabs := ([^]im.TabItem)(node.TabBar.Tabs.Data)
+		im.TabBarQueueReorder(node.TabBar, &tabs[cur], i32(min(w.reorder_tab, int(node.TabBar.Tabs.Size) - 1) - cur))
+	}
+	w.reorder_tab = -1
+}
+
+// Whether reopen_closed has an instance to bring back.
+has_closed :: proc() -> bool {
+	return len(_closed) > 0
+}
+
+// Reopens the instance closed last, as a window of its own, and focuses it.
+// Skips keys that cannot open anymore: an asset that is gone, a window that
+// is open again already. Returns it, nil when nothing reopened.
+reopen_closed :: proc() -> ^Window {
+	context.allocator = runtime.default_allocator()
+	for len(_closed) > 0 {
+		c := pop(&_closed)
+		defer _closed_free(c)
+		id, asset, ok := _parse_key(c.key)
+		if !ok do continue
+		ri := _registered_index(id)
+		if ri < 0 || find(c.key) != nil do continue
+		if asset != {} {
+			if _, known := assets.asset_db_get_path(uuid.Identifier(asset)); !known do continue
+		}
+		w := _create(ri, asset, c.key)
+		if c.host != "" && reopen_hook != nil && reopen_hook(w, c.host) do return w
+		w.reorder_node = c.node
+		w.reorder_tab = c.tab if c.node != 0 else -1
+		focus(w)
+		return w
+	}
+	return nil
+}
+
 // Shows the instance of the window declared under `id` for `asset`, or its
 // plain instance without one, and focuses it. Returns it, nil for an unknown
 // id.
@@ -336,6 +455,7 @@ draw_all :: proc() {
 			w.open = true
 			continue
 		}
+		_remember_closed(w)
 		_destroy(i)
 	}
 	for i := 0; i < len(_windows); i += 1 {
@@ -558,9 +678,14 @@ _draw_instance :: proc(w: ^Window) {
 	w.dock = im.GetWindowDockID()
 	w.pos = im.GetWindowPos()
 	im.End()
+	_restore_tab_place(w)
 }
 
 shutdown :: proc() {
+	context.allocator = runtime.default_allocator()
+	for c in _closed do _closed_free(c)
+	delete(_closed)
+	_closed = nil
 	for len(_windows) > 0 do _destroy(len(_windows) - 1)
 	delete(_windows)
 	_windows = nil
@@ -590,6 +715,7 @@ _create :: proc(ri: int, asset: core.Asset_GUID, key := "") -> ^Window {
 	context.allocator = runtime.default_allocator()
 	r := &_registry[ri]
 	w := new(Window)
+	w.reorder_tab = -1
 	w^ = {id = r.id, reg = ri, asset = asset, open = true}
 	switch {
 	case key != "":   w.key = strings.clone(key)

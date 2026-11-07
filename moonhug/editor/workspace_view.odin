@@ -102,6 +102,9 @@ _WS_View :: struct {
 	// Tabs closed from their frames: they leave the frame once their view is
 	// gone, and stay when the close was held (unapplied edits, Cancel).
 	closing:    [dynamic]string, // owned keys
+	// The frame each closed tab left, by view key (owned), so a reopened
+	// view goes back there (_ws_reopen_hook).
+	left:       map[string]u32,
 	// Each frame's active tab as its tab bar last showed it, by frame id, for
 	// the workspace `synced_ws`. A frame whose active tab differs (code picked
 	// it, or the workspace just loaded) has it selected in its tab bar.
@@ -306,6 +309,8 @@ workspace_view_closed :: proc(w: ^wnd.Window) {
 	for key in _ws_hosted_keys(w.key) do wnd.close(key)
 	for k in v.closing do delete(k, runtime.default_allocator())
 	delete(v.closing)
+	for k in v.left do delete(k, runtime.default_allocator())
+	delete(v.left)
 	for id in v.loaded do delete(id, runtime.default_allocator())
 	delete(v.loaded)
 	delete(v.synced)
@@ -827,6 +832,30 @@ _ws_host_hook :: proc(opener, w: ^wnd.Window, created: bool) {
 	workspace_view_add(hv.key, w.key, e.ws.frames[fi].id)
 }
 
+// The window registry's reopen hook (window.reopen_hook): a reopened view
+// goes back to the frame it was closed from, when its Workspace view and
+// that frame are still there.
+@(private = "file")
+_ws_reopen_hook :: proc(w: ^wnd.Window, host: string) -> bool {
+	context.allocator = runtime.default_allocator()
+	hv := wnd.find(host)
+	if hv == nil || hv.id != WORKSPACE_VIEW do return false
+	v := _ws_state(hv)
+	fid, left := v.left[w.key]
+	if !left do return false
+	k, _ := delete_key(&v.left, w.key)
+	delete(k)
+	e, ok := workspace.find(workspace.view_selection(host))
+	if !ok do return false
+	found := false
+	for f in e.ws.frames do if f.id == fid { found = true; break }
+	if !found do return false
+	if wnd.host_open(w.key, host) == nil do return false
+	_ws_edit_queue(v, {kind = .Add_Tab, frame = fid, key = w.key})
+	workspace_view_reveal(host, w.key)
+	return true
+}
+
 // Tabs closed earlier whose views are gone now leave their frames. A view
 // still open with no question up had its close held and cancelled
 // (view_close_prompt.odin): it is no longer closing, so its tab closes again.
@@ -844,7 +873,10 @@ _ws_prune_closing :: proc(v: ^_WS_View, ws: ^workspace.Workspace) {
 		}
 		for fi := len(ws.frames) - 1; fi >= 0; fi -= 1 {
 			for t := len(ws.frames[fi].tabs) - 1; t >= 0; t -= 1 {
-				if ws.frames[fi].tabs[t] == key do workspace.tab_remove(ws, fi, t)
+				if ws.frames[fi].tabs[t] == key {
+					workspace.tab_remove(ws, fi, t)
+					if key not_in v.left do v.left[strings.clone(key)] = ws.frames[fi].id
+				}
 			}
 		}
 		delete(key)
@@ -1424,6 +1456,7 @@ workspace_view_install :: proc() {
 	view_menu_add_dynamic(WORKSPACE_VIEW, "Mini-map", _ws_minimap_menu, order = 10)
 	view_menu_add_dynamic(WORKSPACE_VIEW, "Save In", _ws_save_in_menu, order = 5)
 	wnd.host_hook = _ws_host_hook
+	wnd.reopen_hook = _ws_reopen_hook
 }
 
 // The view menu's Save In submenu: the providers the shown workspace can

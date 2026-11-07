@@ -69,7 +69,7 @@ A chord is written as `Ctrl+S`, `Shift+Space`, `F2`, `Escape`, `LeftShift`. `Ctr
 
 ## Keys every view shares
 
-The `Views` keymap is editor-wide: Ctrl+W closes the focused view, as its tab's Close Tab does. A view holding unapplied edits still asks first.
+The `Views` keymap is editor-wide: Ctrl+W closes the focused view, as its tab's Close Tab does, and Ctrl+Shift+T brings back the view closed last. A view holding unapplied edits still asks before it closes. A reopened view returns to the dock node and tab place it left, or to the Workspace frame it was closed from while that frame is still there. Otherwise it gets a window of its own.
 
 ## What is still read directly
 

@@ -74,6 +74,9 @@ main :: proc() {
         fmt.eprintln("gfx init failed (is SDL3 installed? brew install sdl3)")
         return
     }
+    // SDL's macOS menu bar exists once the window does: its Cmd+W must go
+    // before the first key press (dock_icon_darwin.odin).
+    drop_window_close_key()
     defer gfx.shutdown()
 
     if has_saved_settings && win_x >= 0 && win_y >= 0 {
@@ -215,6 +218,7 @@ main :: proc() {
                 dock_icon_pending = false
                 set_dock_icon("../EditorIcon.png") // cwd was normalized to moonhug/ at startup
                 set_app_menu_title(window_title())
+                drop_window_close_key()
             }
         }
 

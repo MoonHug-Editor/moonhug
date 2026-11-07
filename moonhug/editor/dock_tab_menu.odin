@@ -231,10 +231,21 @@ view_close_can :: proc() -> bool {
 	return wnd.focused() != nil
 }
 
+// Brings back the view closed last, as a window of its own.
+@(command={name="View/Reopen Closed", enabled=view_reopen_can})
+view_reopen_closed :: proc() {
+	wnd.reopen_closed()
+}
+
+view_reopen_can :: proc() -> bool {
+	return wnd.has_closed()
+}
+
 // Keys every view shares.
 @(keymap={name="Views"})
 views_keymap :: proc(km: ^keymap.Keymap) {
 	keymap.bind(km, "Ctrl+W", "View/Close")
+	keymap.bind(km, "Ctrl+Shift+T", "View/Reopen Closed")
 }
 
 @(private = "file")

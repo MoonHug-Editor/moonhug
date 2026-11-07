@@ -41,3 +41,32 @@ set_app_menu_title :: proc(title: string) {
     msgSend(nil, app_menu, "setTitle:", ns_title)
     msgSend(nil, app, "setMainMenu:", main_menu)
 }
+
+// SDL's default menu bar has a Window menu whose Close item carries Cmd+W,
+// and the key equivalent fires performClose on the window before any key
+// event reaches imgui: Cmd+W would quit the editor. The editor's Views
+// keymap uses Ctrl+W (Cmd+W here) to close the focused view, so the item
+// loses its key. Quit stays Cmd+Q, and the window's close button works.
+drop_window_close_key :: proc() {
+    app := NS.Application_sharedApplication()
+    if app == nil do return
+    main_menu := msgSend(^NS.Menu, app, "mainMenu")
+    if main_menu == nil do return
+    empty := NS.String_initWithOdinString(NS.String_alloc(), "")
+    count := msgSend(NS.Integer, main_menu, "numberOfItems")
+    for i in 0 ..< count {
+        top := msgSend(^NS.MenuItem, main_menu, "itemAtIndex:", i)
+        if top == nil do continue
+        sub := msgSend(^NS.Menu, top, "submenu")
+        if sub == nil do continue
+        n := msgSend(NS.Integer, sub, "numberOfItems")
+        for j in 0 ..< n {
+            item := msgSend(^NS.MenuItem, sub, "itemAtIndex:", j)
+            if item == nil do continue
+            key := msgSend(^NS.String, item, "keyEquivalent")
+            if key != nil && NS.String_odinString(key) == "w" {
+                msgSend(nil, item, "setKeyEquivalent:", empty)
+            }
+        }
+    }
+}
