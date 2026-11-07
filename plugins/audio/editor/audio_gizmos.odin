@@ -2,7 +2,8 @@ package audio_editor
 
 // AudioSource gizmos and handles, for sources in the selection
 // (docs/core/Handles.md): the min and max distance as wire spheres around the
-// source, each with a radius handle on the world axes, in every tool. Every
+// source in every tool, each with a radius handle on the world axes in the
+// Handles tool (T), so the transform gizmo keeps the other tools. Every
 // source also gets a scene icon, a speaker.
 // Dragging the min distance past the max pushes the max out with it, and the
 // max below the min pulls the min in.
@@ -50,6 +51,7 @@ comp_on_draw_gizmos_AudioSource :: proc(a: ^audio.AudioSource, ctx: handles.Gizm
 
 @(comp_on_scene_handles={component=AudioSource})
 comp_on_scene_handles_AudioSource :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) {
+	if ctx.tool != .Handles do return
 	h, ok := engine.comp_handle_of(&a.base)
 	if !ok do return
 	pos := engine.transform_world_position(a.owner)

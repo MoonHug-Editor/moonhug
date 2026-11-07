@@ -13,7 +13,9 @@ import common "moonhug:tests/common"
 
 @(private = "file")
 _body :: proc(user: rawptr) {
-	audio_editor.comp_on_scene_handles_AudioSource(cast(^audio.AudioSource)user, handles.Gizmo_Context{state = {.Selected}, tool = .Translate})
+	// The distance handles are the Handles tool's (T): in another tool the
+	// proc draws nothing.
+	audio_editor.comp_on_scene_handles_AudioSource(cast(^audio.AudioSource)user, handles.Gizmo_Context{state = {.Selected}, tool = .Handles})
 }
 
 @(test)
@@ -44,4 +46,34 @@ test_audio_distance_handles :: proc(t: ^testing.T) {
 	testing.expect_value(t, s.top, steps + 1)
 	undo.apply_undo(s)
 	testing.expect(t, a.min_distance == 1 && a.max_distance == 2, "one step takes both back")
+}
+
+// In the Move tool the source has no handles: a drag over the min distance
+// dot changes nothing and records nothing.
+@(test)
+test_audio_handles_only_in_the_handles_tool :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	s := new(undo.Undo_Stack)
+	undo.init(s)
+	undo.install(s)
+	defer free(s)
+	defer undo.destroy(s)
+
+	tH := engine.transform_new("Source")
+	_, raw := engine.transform_add_comp(tH, .AudioSource)
+	a := cast(^audio.AudioSource)raw
+	a.enabled = true
+	a.min_distance = 1
+	a.max_distance = 2
+	v := common.handles_test_view()
+	steps := s.top
+	common.handles_drag(v, {1, 0, 0}, {3, 0, 0}, proc(user: rawptr) {
+		audio_editor.comp_on_scene_handles_AudioSource(cast(^audio.AudioSource)user, handles.Gizmo_Context{state = {.Selected}, tool = .Translate})
+	}, a)
+	testing.expectf(t, abs(a.min_distance - 1) < 1e-3 && abs(a.max_distance - 2) < 1e-3, "untouched: %v %v", a.min_distance, a.max_distance)
+	testing.expect_value(t, s.top, steps)
 }

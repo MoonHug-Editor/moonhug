@@ -1,6 +1,7 @@
 package scene_tools
 
-// Light gizmos and handles, for lights in the selection (docs/core/Handles.md). Every
+// Light gizmos and handles, for lights in the selection (docs/core/Handles.md). The
+// gizmos draw in every tool, the handles in the Handles tool (T) only. Every
 // light also gets a scene icon, a bulb in its color.
 //
 // - Point: the range as a wire sphere, with a radius handle on the world
@@ -84,6 +85,9 @@ comp_on_draw_gizmos_Light :: proc(l: ^engine.Light, ctx: handles.Gizmo_Context) 
 
 @(comp_on_scene_handles={component=Light})
 comp_on_scene_handles_Light :: proc(l: ^engine.Light, ctx: handles.Gizmo_Context) {
+	// The range and cone handles are the Handles tool's (T): the transform
+	// gizmo keeps the other tools.
+	if ctx.tool != .Handles do return
 	if l.type == .Directional do return
 	h, ok := engine.comp_handle_of(&l.base)
 	if !ok do return

@@ -118,8 +118,8 @@ The physics colliders use them: box, sphere and capsule in physics3d, box, circl
 
 Other users, each one undo step per drag:
 
-- Lights (`plugins/engine/editor/scene_tools/light_gizmos.odin`), in every tool: a point light's range with a radius handle on the world axes, a spot light's range and spot angle with a cone handle along its forward (-Z). The gizmo draws the range sphere, the spot cone out to the range, or a directional light's ring of rays. The cone angle is `max(spot_angle, inner_spot_angle)`, the one the renderer uses.
-- Audio sources (the audio plugin's `audio_gizmos.odin`), in every tool: the min and max distance, each a wire sphere with a radius handle on the world axes. The min distance past the max pushes the max out, and the max below the min pulls the min in.
+- Lights (`plugins/engine/editor/scene_tools/light_gizmos.odin`), handles in the Handles tool (T) only: a point light's range with a radius handle on the world axes, a spot light's range and spot angle with a cone handle along its forward (-Z). The gizmo, in every tool, draws the range sphere, the spot cone out to the range, or a directional light's ring of rays. The cone angle is `max(spot_angle, inner_spot_angle)`, the one the renderer uses.
+- Audio sources (the audio plugin's `audio_gizmos.odin`): the min and max distance, each a wire sphere in every tool with a radius handle on the world axes in the Handles tool (T) only, so the transform gizmo keeps the other tools. The min distance past the max pushes the max out, and the max below the min pulls the min in.
 - Particle shapes (the particles plugin's `particles_gizmos.odin`), in the Handles tool (T) only, like the colliders: a cone's base radius and angle with a frustum handle, a sphere's, hemisphere's, circle's or edge's radius, a box's size around its center.
 
 ## Transform handles
