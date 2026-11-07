@@ -352,15 +352,14 @@ _draw_anchor_guides :: proc(rt: ^engine.RectTransform, parent: engine.Rect, m: m
 	}
 }
 
-// A pivot drag: the pivot follows the mouse inside the rect (Ctrl snaps to
-// the corners, edges and center); the rect keeps its place unless raw edit
+// A pivot drag: the pivot follows the mouse inside the rect (the snap
+// modifier snaps to the corners, edges and center); the rect keeps its place unless raw edit
 // mode is on.
 @(private = "file")
 _apply_pivot_drag :: proc(rt: ^engine.RectTransform, d: handles.Drag, rect: engine.Rect, xform: matrix[4, 4]f32, parent: engine.Rect) {
 	rt^ = _drag_start
 	f := _rect_fraction(rect, xform, d.point)
-	io := im.GetIO()
-	if io.KeyCtrl || io.KeySuper do f = _snap_fraction(f)
+	if handles.snap_held() do f = _snap_fraction(f)
 	before := engine.rect_resolve(parent, rt)
 	rt.pivot = f
 	if !handles.rect_raw_edit do engine.rect_transform_keep_rect(rt, parent, before)

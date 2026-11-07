@@ -21,7 +21,6 @@ import "base:runtime"
 import "core:math"
 import "core:math/linalg"
 import "moonhug:editor/handles"
-import "moonhug:editor/keymap"
 import "moonhug:editor/inspector"
 import "moonhug:packages/engine"
 import "moonhug:editor/viewport"
@@ -200,9 +199,6 @@ _gizmo_begin :: proc(origin: [3]f32) {
 	if !_gizmo_collect_targets() do return
 	_gizmo_dragging = true
 	_gizmo_start_world = origin
-	// The drag's keys, Escape to cancel and the snap modifier, resolve alone
-	// while it lasts (the "Gizmo Drag" modal keymap, editor/gizmo_pass.odin).
-	if km := keymap.find("Gizmo Drag"); km != nil do keymap.push(km)
 }
 
 @(private)
@@ -356,33 +352,12 @@ _gizmo_end_drag :: proc() {
 gizmo_end_drag_if_any :: proc() {
 	if !_gizmo_dragging do return
 	_gizmo_dragging = false
-	if km := keymap.find("Gizmo Drag"); km != nil do keymap.pop(km)
 	_gizmo_end_drag()
 	// The drag's handle is the tool's own (one drag at a time): it holds the
 	// pointer no longer.
 	handles.end_drag()
 }
 
-// Puts every target back where the drag found it and ends the drag: the
-// session then records nothing, since nothing changed. Escape while
-// dragging (the "Gizmo Drag" keymap).
-@(command={name="Gizmo/Cancel Drag", enabled=gizmo_is_dragging})
-gizmo_cancel_drag :: proc() {
-	if !_gizmo_dragging do return
-	w := engine.ctx_world()
-	for &tgt in _gizmo_targets {
-		t := engine.pool_get(&w.transforms, engine.Handle(tgt.tH))
-		if t == nil do continue
-		engine.transform_set_world_position(tgt.tH, tgt.start_pos)
-		engine.transform_set_world_rotation(tgt.tH, tgt.start_rot)
-		t.scale = tgt.start_scale
-	}
-	gizmo_end_drag_if_any()
-}
-
-gizmo_is_dragging :: proc() -> bool {
-	return _gizmo_dragging
-}
 
 gizmo_shutdown :: proc() {
 	delete(_gizmo_targets)

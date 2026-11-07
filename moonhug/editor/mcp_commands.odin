@@ -26,7 +26,7 @@ mcp_tool_commands :: proc(id: i64, params: json.Object) -> (string, mcp.Tool_Err
 	for c in keymap.commands() {
 		if filter != "" && !strings.contains(strings.to_lower(c.id, context.temp_allocator), filter) && !strings.contains(strings.to_lower(c.name, context.temp_allocator), filter) do continue
 		bound := make([dynamic]Bound, context.temp_allocator)
-		for km in keymap.keymaps() do for &b in km.bindings do if keymap.binding_is(&b, c.id) {
+		for km in keymap.keymaps() do for &b in km.bindings do if keymap.binding_command(&b) == c {
 			append(&bound, Bound{keymap = km.name, chord = b.text})
 		}
 		append(&out, Entry{id = c.id, name = c.name, enabled = keymap.command_enabled(c), bindings = bound[:]})

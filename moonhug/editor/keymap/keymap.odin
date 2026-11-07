@@ -26,8 +26,9 @@ package keymap
 // - a modal keymap, pushed by the tool that runs it (push, pop), is the only
 //   one that resolves while it is on top: the flythrough's keys while the
 //   camera flies. It takes every key, bound or not.
-// - while a text field is being typed in, only chords with Ctrl, Alt or
-//   Super resolve: a plain key or a Shift chord is text
+// - while a text field is being typed in, or the game runs in a focused
+//   Game view, only chords with Ctrl, Alt or Super resolve: a plain key or
+//   a Shift chord is the field's or the game's
 //
 // The focused branch comes through `focused_path`, which the shell installs
 // from the window registry: the focused view, then the view hosting it (a
@@ -91,11 +92,31 @@ Keymap :: struct {
 	modal:    bool,
 	priority: int, // higher resolves first among keymaps of the same scope
 	bindings: [dynamic]Binding,
+	// The bindings as declared, for reset and for whether a command's
+	// bindings differ (is_default). Kept as the declaration named the
+	// command, by name or id, and matched by the command it resolves to, so
+	// a binding declared before its command registered still counts.
+	defaults: [dynamic]Default,
 	origin:   string,
+}
+
+// One declared binding, as bind recorded it.
+Default :: struct {
+	command: string, // as declared, a name or an id. Owned
+	text:    string, // owned
+	held:    bool,
+	repeat:  bool,
+	cmd:     ^Command, // resolved on use, nil until the command exists
 }
 
 @(private = "file")
 _commands: [dynamic]^Command
+// The commands by id and by name, so a lookup is one hash, not a scan: the
+// Shortcuts page and the palette resolve thousands of bindings a frame.
+@(private = "file")
+_by_id: map[string]^Command
+@(private = "file")
+_by_name: map[string]^Command
 @(private = "file")
 _keymaps: [dynamic]^Keymap
 
@@ -110,7 +131,9 @@ Key_Source :: struct {
 	down:    proc(chord: im.KeyChord) -> bool,
 	// Whether a modal popup owns the frame: nothing resolves then.
 	modal:   proc() -> bool,
-	// Whether a text field is being typed in: plain chords are text then.
+	// Whether plain keys belong to something else this frame, a text field
+	// being typed in or the game running in a focused Game view: only chords
+	// with Ctrl, Alt or Super resolve then.
 	text:    proc() -> bool,
 }
 
@@ -135,7 +158,7 @@ _COMMAND_MODS :: im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.ImGuiMod
 // one to keep the user's bindings through a rename of the proc.
 @(extension_point={attribute="command", target="proc", fields="name enabled id"})
 command_add :: proc(name: string, run: proc(), enabled: proc() -> bool = nil, origin := "", id := "") -> ^Command {
-	c := _command_slot(name, id)
+	c := _command_slot(name, id, origin)
 	c.run = run
 	c.enabled = enabled
 	c.run_data = nil
@@ -147,7 +170,7 @@ command_add :: proc(name: string, run: proc(), enabled: proc() -> bool = nil, or
 
 // A command that closes over data (a menu item's node).
 command_add_data :: proc(name: string, run: proc(data: rawptr), data: rawptr, enabled: proc(data: rawptr) -> bool = nil, origin := "", id := "") -> ^Command {
-	c := _command_slot(name, id)
+	c := _command_slot(name, id, origin)
 	c.run = nil
 	c.enabled = nil
 	c.run_data = run
@@ -158,41 +181,44 @@ command_add_data :: proc(name: string, run: proc(data: rawptr), data: rawptr, en
 }
 
 // The slot for a command: the one with its id, which keeps the slot through
-// a rename, else the one with its name, else a new one. An empty id is the
-// name.
+// a rename, else a new one. An empty id is the name. Another command with
+// the same name is a declaration error: two commands would share one row,
+// one menu label and one binding, so it panics with both origins.
 @(private = "file")
-_command_slot :: proc(name: string, id: string) -> ^Command {
+_command_slot :: proc(name: string, id: string, origin: string) -> ^Command {
 	context.allocator = runtime.default_allocator()
 	id := id if id != "" else name
-	c: ^Command
-	for e in _commands do if e.id == id {
-		c = e
-		break
-	}
-	if c == nil do for e in _commands do if e.name == name {
-		c = e
-		break
+	c := _by_id[id] or_else nil
+	if other, taken := _by_name[name]; taken && other != c {
+		panic(strings.concatenate({"keymap: command \"", name, "\" is declared twice, as ", other.id, " at ", other.origin, " and as ", id, " at ", origin}, context.temp_allocator))
 	}
 	if c == nil {
 		c = new(Command)
 		append(&_commands, c)
 	}
 	if c.name != name {
+		if c.name != "" do delete_key(&_by_name, c.name)
 		delete(c.name)
 		c.name = strings.clone(name)
+		_by_name[c.name] = c
 	}
 	if c.id != id {
+		if c.id != "" do delete_key(&_by_id, c.id)
 		delete(c.id)
 		c.id = strings.clone(id)
+		_by_id[c.id] = c
 	}
 	return c
 }
 
+// command, for the procs whose parameter is named `command`.
+@(private = "file")
+_lookup :: proc(key: string) -> ^Command { return command(key) }
+
 // The command with the id `key`, else the one named `key`, nil when none.
 command :: proc(key: string) -> ^Command {
-	for c in _commands do if c.id == key do return c
-	for c in _commands do if c.name == key do return c
-	return nil
+	if c, ok := _by_id[key]; ok do return c
+	return _by_name[key] or_else nil
 }
 
 // The stable key for `key`, a command's id or name: its id when the command
@@ -203,9 +229,23 @@ _canonical :: proc(key: string) -> string {
 	return key
 }
 
+// The command a binding runs, nil while it is not registered. Cached on the
+// binding.
+binding_command :: proc(b: ^Binding) -> ^Command {
+	return _resolve(b)
+}
+
+// Whether `b` binds `c`, the command `key` names: a pointer compare once
+// both resolve, the declared text while `c` is not registered. Hot loops
+// resolve `c` once (command) and call this.
+bound :: proc(b: ^Binding, c: ^Command, key: string) -> bool {
+	if c != nil do return _resolve(b) == c
+	return b.command == key
+}
+
 // Whether `b` binds the command `key` names, by id or by name.
 binding_is :: proc(b: ^Binding, key: string) -> bool {
-	return b.command == key || _canonical(b.command) == _canonical(key)
+	return bound(b, command(key), key)
 }
 
 // Every command, in registration order.
@@ -255,6 +295,7 @@ add :: proc(name: string, window: string, fill: proc(km: ^Keymap), active: proc(
 	} else {
 		delete(km.window)
 		clear_bindings(km)
+		_defaults_clear(km)
 	}
 	km.window = strings.clone(window)
 	km.active = active
@@ -262,7 +303,6 @@ add :: proc(name: string, window: string, fill: proc(km: ^Keymap), active: proc(
 	km.modal = modal
 	km.priority = priority
 	km.origin = origin
-	_defaults_drop(km.name)
 	if fill != nil do fill(km)
 	_overrides_apply(km)
 	_sort()
@@ -322,14 +362,8 @@ bind :: proc(km: ^Keymap, chord: string, command: string, held := false, repeat 
 	// The declaration is the default, also for a keymap bound after it
 	// registered (the menu's). An override on file for the command replaces
 	// it at once.
+	append(&km.defaults, Default{command = strings.clone(command), text = strings.clone(chord), held = held, repeat = repeat})
 	ckey := _canonical(command)
-	key := _default_key(km.name, ckey)
-	ds, known := &_defaults[key]
-	if !known {
-		_defaults[strings.clone(key)] = {}
-		ds = &_defaults[key]
-	}
-	append(ds, _Default{text = strings.clone(chord), held = held, repeat = repeat})
 	if cmds, has := _overrides[km.name]; has {
 		if chords, over := cmds[ckey]; over do _override_apply(km, ckey, chords[:])
 		else if chords, over2 := cmds[command]; over2 do _override_apply(km, ckey, chords[:])
@@ -339,14 +373,15 @@ bind :: proc(km: ^Keymap, chord: string, command: string, held := false, repeat 
 // Drops the binding of `command` in `km`, if any.
 unbind :: proc(km: ^Keymap, command: string) {
 	context.allocator = runtime.default_allocator()
-	key := _default_key(km.name, _canonical(command))
-	if ds, ok := _defaults[key]; ok {
-		_default_free(ds)
-		dk, _ := delete_key(&_defaults, key)
-		delete(dk)
+	c := _lookup(command)
+	for i := len(km.defaults) - 1; i >= 0; i -= 1 {
+		if !_default_is(&km.defaults[i], c, command) do continue
+		delete(km.defaults[i].command)
+		delete(km.defaults[i].text)
+		ordered_remove(&km.defaults, i)
 	}
 	for i := len(km.bindings) - 1; i >= 0; i -= 1 {
-		if !binding_is(&km.bindings[i], command) do continue
+		if !bound(&km.bindings[i], c, command) do continue
 		delete(km.bindings[i].text)
 		delete(km.bindings[i].command)
 		ordered_remove(&km.bindings, i)
@@ -368,7 +403,6 @@ remove :: proc(name: string) {
 	context.allocator = runtime.default_allocator()
 	for km, i in _keymaps do if km.name == name {
 		pop(km)
-		_defaults_drop(name)
 		_free_keymap(km)
 		ordered_remove(&_keymaps, i)
 		return
@@ -380,6 +414,8 @@ _free_keymap :: proc(km: ^Keymap) {
 	context.allocator = runtime.default_allocator()
 	clear_bindings(km)
 	delete(km.bindings)
+	_defaults_clear(km)
+	delete(km.defaults)
 	delete(km.name)
 	delete(km.window)
 	free(km)
@@ -389,7 +425,12 @@ _free_keymap :: proc(km: ^Keymap) {
 command_remove :: proc(name: string) {
 	context.allocator = runtime.default_allocator()
 	for c, i in _commands do if c.name == name || c.id == name {
-		for km in _keymaps do for &b in km.bindings do if b.cmd == c do b.cmd = nil
+		for km in _keymaps {
+			for &b in km.bindings do if b.cmd == c do b.cmd = nil
+			for &d in km.defaults do if d.cmd == c do d.cmd = nil
+		}
+		delete_key(&_by_name, c.name)
+		delete_key(&_by_id, c.id)
 		delete(c.name)
 		delete(c.id)
 		free(c)
@@ -428,7 +469,8 @@ _resolve :: proc(b: ^Binding) -> ^Command {
 // the imgui frame starts and before the views draw, so a command's effect
 // shows the same frame.
 frame :: proc() {
-	if capturing do return
+	_frame += 1
+	if _capture_frame != 0 && _capture_frame + 1 >= _frame do return
 	if key_source.modal != nil && key_source.modal() do return
 	path := focused_path() if focused_path != nil else nil
 	typing := key_source.text != nil && key_source.text()
@@ -501,12 +543,6 @@ modal_top :: proc() -> ^Keymap {
 // Frees every registration.
 shutdown :: proc() {
 	context.allocator = runtime.default_allocator()
-	for k, ds in _defaults {
-		_default_free(ds)
-		delete(k)
-	}
-	delete(_defaults)
-	_defaults = nil
 	_overrides_clear()
 	delete(_overrides)
 	_overrides = nil
@@ -522,6 +558,10 @@ shutdown :: proc() {
 	}
 	delete(_commands)
 	_commands = nil
+	delete(_by_id)
+	_by_id = nil
+	delete(_by_name)
+	_by_name = nil
 }
 
 // --- imgui key source -------------------------------------------------------
@@ -657,37 +697,27 @@ parse_key :: proc(lower: string) -> (key: im.Key, ok: bool) {
 // and on, or a view that registers its keymap at runtime, keeps the user's
 // bindings.
 
-// One command's default bindings, kept for reset and for the chord list of
-// a reset binding.
-@(private = "file")
-_Default :: struct {
-	text:   string, // owned
-	held:   bool,
-	repeat: bool,
-}
-
-@(private = "file")
-_defaults: map[string][dynamic]_Default // "<keymap>\x00<command>" -> its default bindings
-
 // The override file as loaded and edited: keymap -> command -> chord texts.
 // Owned strings.
 @(private = "file")
 _overrides: map[string]map[string][dynamic]string
 
 @(private = "file")
-_default_key :: proc(km, command: string, allocator := context.temp_allocator) -> string {
-	return strings.concatenate({km, "\x00", command}, allocator)
+_defaults_clear :: proc(km: ^Keymap) {
+	context.allocator = runtime.default_allocator()
+	for d in km.defaults {
+		delete(d.command)
+		delete(d.text)
+	}
+	clear(&km.defaults)
 }
 
-// Drops the defaults recorded for a keymap: it registers again.
+// Whether the declared binding `d` is of `c`, the command `key` names.
 @(private = "file")
-_defaults_drop :: proc(name: string) {
-	context.allocator = runtime.default_allocator()
-	for k, ds in _defaults do if strings.has_prefix(k, name) && len(k) > len(name) && k[len(name)] == 0 {
-		_default_free(ds)
-		dk, _ := delete_key(&_defaults, k)
-		delete(dk)
-	}
+_default_is :: proc(d: ^Default, c: ^Command, key: string) -> bool {
+	if c == nil do return d.command == key
+	if d.cmd == nil do d.cmd = command(d.command)
+	return d.cmd == c
 }
 
 // Applies the overrides on file for `km`.
@@ -698,21 +728,21 @@ _overrides_apply :: proc(km: ^Keymap) {
 	}
 }
 
-@(private = "file")
-_default_free :: proc(ds: [dynamic]_Default) {
-	for d in ds do delete(d.text)
-	delete(ds)
-}
-
 // Whether `command`'s bindings in `km` are its defaults.
 is_default :: proc(km: ^Keymap, command: string) -> bool {
-	ds := _defaults[_default_key(km.name, _canonical(command))] or_else nil
-	n := 0
-	for &b in km.bindings do if binding_is(&b, command) {
-		if n >= len(ds) || ds[n].text != b.text do return false
-		n += 1
+	c := _lookup(command)
+	di := 0
+	for &b in km.bindings {
+		if !bound(&b, c, command) do continue
+		for di < len(km.defaults) && !_default_is(&km.defaults[di], c, command) do di += 1
+		if di >= len(km.defaults) || km.defaults[di].text != b.text do return false
+		di += 1
 	}
-	return n == len(ds)
+	for di < len(km.defaults) {
+		if _default_is(&km.defaults[di], c, command) do return false
+		di += 1
+	}
+	return true
 }
 
 // The commands `km` binds by default or by override, each once by its
@@ -720,18 +750,20 @@ is_default :: proc(km: ^Keymap, command: string) -> bool {
 commands_of :: proc(km: ^Keymap, allocator := context.temp_allocator) -> []string {
 	out := make([dynamic]string, allocator)
 	seen := make(map[string]bool, allocator)
-	for b in km.bindings {
-		key := _canonical(b.command)
+	for &b in km.bindings {
+		key := b.command
+		if c := _resolve(&b); c != nil do key = c.id
 		if key in seen do continue
 		seen[key] = true
 		append(&out, key)
 	}
-	for k in _defaults do if strings.has_prefix(k, km.name) && len(k) > len(km.name) && k[len(km.name)] == 0 {
-		command := k[len(km.name) + 1:]
-		if command not_in seen {
-			seen[command] = true
-			append(&out, command)
-		}
+	for &d in km.defaults {
+		key := d.command
+		if d.cmd == nil do d.cmd = command(d.command)
+		if d.cmd != nil do key = d.cmd.id
+		if key in seen do continue
+		seen[key] = true
+		append(&out, key)
 	}
 	return out[:]
 }
@@ -782,10 +814,10 @@ override_reset :: proc(km: ^Keymap, command: string) {
 			delete(kk)
 		}
 	}
-	ds := _defaults[_default_key(km.name, command)] or_else nil
-	texts := make([]string, len(ds), context.temp_allocator)
-	for d, i in ds do texts[i] = d.text
-	_override_apply(km, command, texts)
+	c := _lookup(command)
+	texts := make([dynamic]string, context.temp_allocator)
+	for &d in km.defaults do if _default_is(&d, c, command) do append(&texts, d.text)
+	_override_apply(km, command, texts[:])
 	overrides_save()
 }
 
@@ -807,12 +839,14 @@ has_overrides :: proc() -> bool {
 @(private = "file")
 _override_apply :: proc(km: ^Keymap, command: string, chords: []string) {
 	context.allocator = runtime.default_allocator()
+	c := _lookup(command)
 	held, repeat := false, false
-	if ds := _defaults[_default_key(km.name, command)] or_else nil; len(ds) > 0 {
-		held, repeat = ds[0].held, ds[0].repeat
+	for &d in km.defaults do if _default_is(&d, c, command) {
+		held, repeat = d.held, d.repeat
+		break
 	}
 	for i := len(km.bindings) - 1; i >= 0; i -= 1 {
-		if !binding_is(&km.bindings[i], command) do continue
+		if !bound(&km.bindings[i], c, command) do continue
 		delete(km.bindings[i].text)
 		delete(km.bindings[i].command)
 		ordered_remove(&km.bindings, i)
@@ -977,7 +1011,8 @@ chord_text :: proc(chord: im.KeyChord, allocator := context.temp_allocator) -> s
 // The first chord bound to the command `key` names, formatted, "" for
 // none: the hint a button's tooltip shows. Temp.
 hint :: proc(key: string) -> string {
-	for km in _keymaps do for &b in km.bindings do if binding_is(&b, key) do return format_chord(b.chord)
+	c := command(key)
+	for km in _keymaps do for &b in km.bindings do if bound(&b, c, key) do return format_chord(b.chord)
 	return ""
 }
 
@@ -1042,8 +1077,23 @@ _DIGITS := "0123456789"
 _F_KEYS := [12]string{"F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"}
 
 // While the Shortcuts page listens for a chord, the resolver runs nothing:
-// the key being captured must not also run a command.
-capturing: bool
+// the key being captured must not also run a command. The page holds the
+// capture every frame it draws listening, so a page that is closed or shows
+// another tab gives the keys back the next frame.
+capture_hold :: proc() {
+	_capture_frame = _frame
+}
+
+@(private = "file")
+_capture_frame: u64
+@(private = "file")
+_frame: u64
+
+// The resolver's frame count, one per frame call: a held command marks the
+// frame it ran in, and a reader after the resolver compares.
+frame_count :: proc() -> u64 {
+	return _frame
+}
 
 // The chord pressed this frame, for the Shortcuts page while it listens: the
 // first named key down with the modifiers held. A modifier key alone is a

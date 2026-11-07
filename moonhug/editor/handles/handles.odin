@@ -26,6 +26,7 @@ import "core:math/linalg"
 import "core:mem"
 import core "moonhug:libs/core"
 import "moonhug:libs/gizmos"
+import "moonhug:editor/keymap"
 
 // The scene view's tool: Q W E R T. viewport.gizmo_mode holds it, and
 // gizmo and handles hooks read it from their context.
@@ -80,9 +81,9 @@ Input :: struct {
 	clicked: bool,   // the left button went down this frame
 	alt:     bool,
 	shift:   bool,
-	// While snapping is on (the Snap popup's toggle, flipped by holding Ctrl
-	// or Cmd): the move step in world units and the rotate step in radians.
-	// Both are 0 while it is off.
+	// While snapping is on (the Snap popup's toggle, flipped while the snap
+	// modifier is held, snap_held): the move step in world units and the
+	// rotate step in radians. Both are 0 while it is off.
 	snap:       f32,
 	snap_angle: f32,
 }
@@ -820,4 +821,31 @@ pick_register :: proc(p: Pick_Provider) {
 
 pick_providers :: proc() -> []Pick_Provider {
 	return _pick_providers[:]
+}
+
+// --- Snap modifier -------------------------------------------------------------
+
+// The frame the snap modifier was last held in (keymap.frame_count).
+@(private = "file")
+_snap_frame: u64
+
+// Holds the snap modifier for this frame. One command for every handle: the
+// transform gizmo, a component's handles, the rect tool's pivot. Bound held
+// on Ctrl (Cmd on macOS) in the editor-wide "Snap" keymap, its one binding,
+// so a rebinding moves it everywhere.
+@(command={name="Handles/Snap"})
+handles_snap_hold :: proc() {
+	_snap_frame = keymap.frame_count()
+}
+
+// Whether the snap modifier is held this frame. Read after the keymap
+// resolved, by the views as they draw.
+snap_held :: proc() -> bool {
+	return _snap_frame != 0 && _snap_frame == keymap.frame_count()
+}
+
+@(keymap={name="Snap"})
+handles_snap_keymap :: proc(km: ^keymap.Keymap) {
+	keymap.bind(km, "LeftCtrl", "Handles/Snap", held = true)
+	keymap.bind(km, "RightCtrl", "Handles/Snap", held = true)
 }

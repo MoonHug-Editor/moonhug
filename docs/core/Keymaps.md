@@ -51,7 +51,7 @@ scene_flythrough_keymap :: proc(km: ^keymap.Keymap) {
 
 - `window` is the id of the `@(editor_window)` the keymap serves. It resolves only while an instance of that window is focused. Without it the keymap serves the whole editor.
 - `active` names a proc that says whether the keymap resolves this frame, on top of its window being focused.
-- `modal` makes it a tool's keymap: off until the tool pushes it with `keymap.push`, then the only one that resolves, bound chords and unbound alike, until the tool pops it. The flythrough pushes its keymap when the camera starts flying and pops it when it stops, so `W` moves the camera instead of picking the editor-wide translate tool. The gizmo pushes `Gizmo Drag` while a drag lasts: Escape cancels it, every target back where the drag found it and no undo step, and Ctrl held is the snap modifier. A modal keymap has no window and no rule, and conflicts with nothing. The page lists it under Tools.
+- `modal` makes it a tool's keymap: off until the tool pushes it with `keymap.push`, then the only one that resolves, bound chords and unbound alike, until the tool pops it. The flythrough pushes its keymap when the camera starts flying and pops it when it stops, so `W` moves the camera instead of picking the editor-wide translate tool. A modal keymap has no window and no rule, and conflicts with nothing. The page lists it under Tools.
 - `consume` ends resolution after this keymap while it is active, for every key, bound or not. For a keymap that is not a tool's but still owns the keys while a condition holds.
 - `priority` orders keymaps of one scope, highest first. Without it keymaps of equal priority resolve by name.
 - A binding names its command. The command may live in another package, or in a plugin that is off: the binding is then inert, and `keymap.dangling()` lists it for the Shortcuts window and the tests.
@@ -94,6 +94,10 @@ Window/Command Palette, Ctrl+Shift+A, opens a popup over the editor listing ever
 
 The `Views` keymap is editor-wide: Ctrl+W closes the focused view, as its tab's Close Tab does, Ctrl+Shift+T brings back the view closed last, and Shift+Space maximizes the view under the mouse or puts the maximized one back. A view holding unapplied edits still asks before it closes. A reopened view returns to the dock node and tab place it left, or to the Workspace frame it was closed from while that frame is still there. Otherwise it gets a window of its own.
 
+## Snap
+
+The snap modifier is one command, `Handles/Snap`, held on Ctrl (Cmd on macOS) in the editor-wide `Snap` keymap. Every handle reads it: the transform gizmo, a component's handles and the rect tool's pivot. While it is held, snapping flips from the Snap popup's toggle, so it snaps when the toggle is off and drags freely when it is on. It is the only binding of the command, so one rebinding moves snap everywhere.
+
 ## Ctrl and Cmd
 
 A chord is written with `Ctrl` meaning the platform's primary modifier, which imgui maps to Cmd on macOS, and `Super` the other one. The page and the menu show the platform's name, so `Ctrl+S` reads Cmd+S on a Mac. A platform that wants a different key altogether declares it with `mac` on the binding.
@@ -105,4 +109,4 @@ Every view's keys and the main menu's shortcuts are commands in keymaps.
 A few reads stay direct:
 - the dialog's Enter and Escape and the text input's Escape hook
 - The add component popup's keys (a popup with its own search field)
-- a modifier held during a mouse action, such as Shift+click extending a selection, Ctrl during a gizmo drag toggling snap, or Alt on the toolbar's Play. The mouse is the input there and the modifier a flag on it, so no chord resolves and the Shortcuts page cannot rebind them, as in every editor.
+- a modifier held during a mouse action, such as Shift+click extending a selection or Alt on the toolbar's Play. The mouse is the input there and the modifier a flag on it, so no chord resolves and the Shortcuts page cannot rebind them, as in every editor.

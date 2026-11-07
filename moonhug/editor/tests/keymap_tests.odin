@@ -8,6 +8,7 @@ package editor_tests
 
 import "core:testing"
 import "core:os"
+import "moonhug:editor/handles"
 import "moonhug:editor/keymap"
 import im "moonhug:external/odin-imgui"
 
@@ -43,7 +44,7 @@ _km_setup :: proc() {
 
 @(private = "file")
 _km_teardown :: proc() {
-	for name in ([]string{"T Scene", "T Fly", "T Global", "T Low", "T Host", "T Modal"}) do keymap.remove(name)
+	for name in ([]string{"T Scene", "T Fly", "T Global", "T Low", "T Host", "T Modal", "T Early"}) do keymap.remove(name)
 	for name in ([]string{"T/A", "T/B", "T/C", "T/Held"}) do keymap.command_remove(name)
 	delete(_km_log)
 	_km_log = nil
@@ -464,4 +465,60 @@ test_keymap_modal_stack :: proc(t: ^testing.T) {
 	keymap.frame()
 	testing.expect_value(t, len(_km_log), 2)
 	testing.expect_value(t, len(keymap.conflicts()), 0)
+}
+
+// A keymap that names a command before the command registers: its binding
+// still counts as the default once the command exists, by its name or its
+// id, and a reset keeps it.
+@(test)
+test_keymap_default_declared_before_its_command :: proc(t: ^testing.T) {
+	_km_setup()
+	defer _km_teardown()
+	prev := keymap.overrides_path
+	keymap.overrides_path = ""
+	defer keymap.overrides_path = prev
+	km := keymap.add("T Early", "", proc(km: ^keymap.Keymap) { keymap.bind(km, "Ctrl+Y", "T/Redo") })
+	keymap.command_add("T/Redo", proc() {}, id = "t.redo")
+	defer keymap.command_remove("t.redo")
+	testing.expect_value(t, keymap.commands_of(km)[0], "t.redo")
+	testing.expect(t, keymap.is_default(km, "t.redo"))
+	testing.expect(t, keymap.is_default(km, "T/Redo"))
+	keymap.override_reset(km, "t.redo")
+	testing.expect_value(t, len(km.bindings), 1)
+	testing.expect_value(t, km.bindings[0].text, "Ctrl+Y")
+	keymap.override_set(km, "t.redo", {"Ctrl+K"})
+	testing.expect(t, !keymap.is_default(km, "T/Redo"))
+	keymap.override_reset(km, "T/Redo")
+	testing.expect(t, keymap.is_default(km, "t.redo"))
+}
+
+// The Shortcuts page holds the capture every frame it listens: a page that
+// stops drawing gives the keys back the frame after.
+@(test)
+test_keymap_capture_is_held_per_frame :: proc(t: ^testing.T) {
+	_km_setup()
+	defer _km_teardown()
+	_km_commands()
+	keymap.add("T Global", "", proc(km: ^keymap.Keymap) { keymap.bind(km, "W", "T/A") })
+	_km_press("W")
+	keymap.frame()
+	keymap.capture_hold()
+	keymap.frame()
+	testing.expect_value(t, len(_km_log), 1)
+	keymap.frame()
+	testing.expect_value(t, len(_km_log), 2)
+}
+
+// The snap modifier is one command for every handle: held this frame after
+// it ran, released the frame it did not.
+@(test)
+test_keymap_snap_is_held_per_frame :: proc(t: ^testing.T) {
+	_km_setup()
+	defer _km_teardown()
+	keymap.frame()
+	testing.expect(t, !handles.snap_held())
+	handles.handles_snap_hold()
+	testing.expect(t, handles.snap_held())
+	keymap.frame()
+	testing.expect(t, !handles.snap_held())
 }

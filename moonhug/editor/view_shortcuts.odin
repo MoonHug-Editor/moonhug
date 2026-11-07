@@ -31,6 +31,8 @@ _sc: struct {
 	listen_idx: int,
 	// The command whose context picker is open.
 	pick_cmd:   string, // owned
+	// The imgui frame the page last drew in.
+	drawn_frame: i32,
 }
 
 @(phase={key=core.Phase.EditorInit, order=1, mode=Editor})
@@ -49,7 +51,7 @@ _listen_start :: proc(km: ^keymap.Keymap, command: string, idx: int) {
 	_sc.listen_km = km
 	_sc.listen_cmd = strings.clone(command, runtime.default_allocator())
 	_sc.listen_idx = idx
-	keymap.capturing = true
+	keymap.capture_hold()
 }
 
 @(private = "file")
@@ -57,7 +59,6 @@ _listen_stop :: proc() {
 	if _sc.listen_cmd != "" do delete(_sc.listen_cmd, runtime.default_allocator())
 	_sc.listen_cmd = ""
 	_sc.listen_km = nil
-	keymap.capturing = false
 }
 
 @(private = "file")
@@ -70,7 +71,8 @@ _pick_stop :: proc() {
 @(private = "file")
 _chords_of :: proc(km: ^keymap.Keymap, command: string) -> []string {
 	out := make([dynamic]string, context.temp_allocator)
-	for &b in km.bindings do if keymap.binding_is(&b, command) do append(&out, b.text)
+	c := keymap.command(command)
+	for &b in km.bindings do if keymap.bound(&b, c, command) do append(&out, b.text)
 	return out[:]
 }
 
@@ -104,9 +106,10 @@ _keymap_scope :: proc(km: ^keymap.Keymap) -> string {
 _matches_filter :: proc(key, name: string, filter: string) -> bool {
 	if filter == "" do return true
 	if strings.contains(strings.to_lower(name, context.temp_allocator), filter) do return true
+	c := keymap.command(key)
 	for km in keymap.keymaps() {
 		for &b in km.bindings {
-			if !keymap.binding_is(&b, key) do continue
+			if !keymap.bound(&b, c, key) do continue
 			if strings.contains(strings.to_lower(km.name, context.temp_allocator), filter) do return true
 			if strings.contains(strings.to_lower(b.text, context.temp_allocator), filter) do return true
 			if strings.contains(strings.to_lower(keymap.format_chord(b.chord), context.temp_allocator), filter) do return true
@@ -135,11 +138,12 @@ _remove_binding :: proc(km: ^keymap.Keymap, command: string, idx: int) {
 // `loaded` is false for a binding whose command is not registered.
 @(private = "file")
 _draw_bindings :: proc(command: string, conflicts: []keymap.Conflict, by_binding: map[^keymap.Binding]int, loaded: bool) {
+	c := keymap.command(command)
 	for km in keymap.keymaps() {
 		idx := 0
 		im.PushIDPtr(km)
 		for &b in km.bindings {
-			if !keymap.binding_is(&b, command) do continue
+			if !keymap.bound(&b, c, command) do continue
 			im.PushIDInt(i32(idx))
 			if im.SmallButton(icons.ICON_MD_CLOSE) {
 				_listen_stop()
@@ -274,6 +278,13 @@ _pick_item :: proc(km: ^keymap.Keymap, command: string, label: cstring = nil) {
 }
 
 shortcuts_draw :: proc() {
+	// A listen the page was away for (another tab, the window closed) is
+	// over: the keys went back to the resolver meanwhile. Otherwise the page
+	// holds the capture for this frame and the next.
+	frame := im.GetFrameCount()
+	if _sc.listen_km != nil && _sc.drawn_frame + 1 < frame do _listen_stop()
+	_sc.drawn_frame = frame
+	if _sc.listen_km != nil do keymap.capture_hold()
 	filter_raw := string(cstring(raw_data(_sc.filter[:])))
 	filter := strings.to_lower(strings.trim_space(filter_raw), context.temp_allocator)
 

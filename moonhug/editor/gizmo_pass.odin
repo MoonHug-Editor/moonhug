@@ -23,9 +23,7 @@ import "base:runtime"
 import "core:math"
 import "menu"
 import core "moonhug:libs/core"
-import gfx "moonhug:libs/gfx"
 import im "moonhug:external/odin-imgui"
-import "moonhug:editor/keymap"
 import "moonhug:editor/handles"
 import "moonhug:editor/viewport"
 import "moonhug:editor/session"
@@ -113,30 +111,11 @@ _game_gizmo_view :: proc() -> (core.Render_View, bool) {
 
 // Snap is the Snap popup's Enabled XOR the snap modifier: it temporarily
 // snaps when the toggle is off and frees the drag when it's on. The modifier
-// is the Gizmo/Snap command, held, from the "Gizmo Drag" keymap: Ctrl, which
-// is Cmd on macOS. The gizmo pass turns this into the handles' snap steps.
+// is handles.snap_held, Ctrl (Cmd on macOS) by default. The gizmo pass turns
+// this into the handles' snap steps, for every handle.
 @(private = "file")
 _gizmo_snap_active :: proc() -> bool {
-	return snap_settings.enabled != (_gizmo_snap_frame == gfx.frame_index)
-}
-
-// The frame the snap modifier was last held in: the command runs every
-// frame the key is down, before this pass.
-@(private = "file")
-_gizmo_snap_frame: u64
-
-@(command={name="Gizmo/Snap"})
-gizmo_snap_hold :: proc() {
-	_gizmo_snap_frame = gfx.frame_index
-}
-
-// The drag's keys. The gizmo pushes it when a drag starts and pops it when
-// the drag ends (scene_tools/gizmo.odin), so these resolve alone meanwhile.
-@(keymap={name="Gizmo Drag", modal=true})
-gizmo_drag_keymap :: proc(km: ^keymap.Keymap) {
-	keymap.bind(km, "Escape", "Gizmo/Cancel Drag")
-	keymap.bind(km, "LeftCtrl", "Gizmo/Snap", held = true)
-	keymap.bind(km, "RightCtrl", "Gizmo/Snap", held = true)
+	return snap_settings.enabled != handles.snap_held()
 }
 
 @(private = "file")

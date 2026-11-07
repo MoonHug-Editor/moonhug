@@ -157,7 +157,7 @@ _palette_chords :: proc(cmd: ^keymap.Command) -> string {
 	out := make([dynamic]string, context.temp_allocator)
 	for km in keymap.keymaps() do for &b in km.bindings {
 		if len(out) == 2 do break
-		if keymap.binding_is(&b, cmd.id) do append(&out, keymap.format_chord(b.chord))
+		if keymap.binding_command(&b) == cmd do append(&out, keymap.format_chord(b.chord))
 	}
 	return strings.join(out[:], ", ", context.temp_allocator)
 }

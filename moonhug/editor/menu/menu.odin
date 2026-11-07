@@ -487,7 +487,8 @@ _menu_chords :: proc(node: ^MenuNode) -> []string {
 	out := make([dynamic]string, context.temp_allocator)
 	if node.command == "" do return out[:]
 	if km := keymap.find("Menu"); km != nil {
-		for &b in km.bindings do if keymap.binding_is(&b, node.command) do append(&out, keymap.format_chord(b.chord))
+		c := keymap.command(node.command)
+		for &b in km.bindings do if keymap.bound(&b, c, node.command) do append(&out, keymap.format_chord(b.chord))
 	}
 	return out[:]
 }

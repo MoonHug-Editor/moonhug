@@ -109,14 +109,11 @@ main :: proc() {
         if h := wnd.find(w.host); h != nil do append(&path, h.id)
         return path[:]
     }
-    _register_editor_keymaps()
-    // The developer's overrides, applied over the declared bindings, and to
-    // any keymap registered later (editor/keymap).
-    // Machine-wide, in the OS user's config folder: shortcuts are the
-    // developer's, not the project's.
-    keymap.overrides_path = strings.clone(core.system_settings_file("Shortcuts"))
-    keymap.overrides_load()
-    keymap.log_conflicts()
+    // While the game runs in a focused Game view, plain keys are the game's,
+    // as they are a text field's while it is typed in.
+    keymap.key_source.text = proc() -> bool {
+        return im.GetIO().WantTextInput || (sim_is_active() && game_view_focused)
+    }
     migrate_imgui_ini()
     defer im.DestroyContext(ctx)
 
@@ -169,6 +166,15 @@ main :: proc() {
     progress.begin("Starting MoonHug")
     phase_editor_run(.EditorInit)
     progress.end()
+    // The keymaps after EditorInit registered the menu items, so every
+    // command a keymap names exists when it binds, and the conflict log sees
+    // the menu's shortcuts. Then the developer's overrides, machine-wide in
+    // the OS user's config folder, applied over the declared bindings and to
+    // any keymap registered later (editor/keymap).
+    _register_editor_keymaps()
+    keymap.overrides_path = strings.clone(core.system_settings_file("Shortcuts"))
+    keymap.overrides_load()
+    keymap.log_conflicts()
     defer phase_editor_run(.EditorShutdown)
     queue_scenes_from_settings()
     frames_presented := 0
