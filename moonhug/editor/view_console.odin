@@ -10,6 +10,7 @@ import "moonhug:libs/log"
 import "moonhug:editor/icons"
 import wnd "moonhug:editor/window"
 import core "moonhug:libs/core"
+import "moonhug:editor/keymap"
 
 // Editor-wide: every Console copy shows and sets the same choice.
 _console_clear_on_play: bool = true
@@ -183,22 +184,12 @@ console_view_draw :: proc(w: ^wnd.Window) {
 
 	filter_terms := widgets.search_terms(string(cstring(raw_data(_cv.filter[:]))))
 
-	// Ids of rows drawn this frame, in draw order — the up/down keys walk
-	// this list so navigation follows the active level/text filters.
+	// Ids of rows drawn this frame, in draw order.
 	visible_ids := make([dynamic]u64, 0, len(log.entries), context.temp_allocator)
 
 	visible_row := 0
 	for entry in log.entries {
-		switch entry.level {
-		case .Info:
-			if !_cv.show_info do continue
-		case .Warning:
-			if !_cv.show_warning do continue
-		case .Error:
-			if !_cv.show_error do continue
-		}
-
-		if !widgets.search_match(entry.message, filter_terms) do continue
+		if !_console_entry_shown(_cv, entry, filter_terms) do continue
 
 		// Unity-style row: a large level icon spanning both text rows in a
 		// left column, then "[hh:mm:ss] message" and a dimmed source line.
@@ -300,36 +291,7 @@ console_view_draw :: proc(w: ^wnd.Window) {
 		_cv.split_ratio = scroll_h / split_total
 	}
 
-	// Up/Down select the previous/next visible row (nothing selected: both
-	// start at the newest). Not while a text input owns the keyboard.
-	if im.IsWindowFocused({.ChildWindows}) && !im.IsAnyItemActive() && len(visible_ids) > 0 {
-		if im.IsKeyPressed(im.Key.Escape) {
-			_cv.selected_id = 0
-		}
-		cur := -1
-		for id, i in visible_ids {
-			if id == _cv.selected_id {
-				cur = i
-				break
-			}
-		}
-		if im.IsKeyPressed(im.Key.DownArrow) {
-			if cur == -1 {
-				_cv.selected_id = visible_ids[len(visible_ids) - 1]
-			} else if cur + 1 < len(visible_ids) {
-				_cv.selected_id = visible_ids[cur + 1]
-			}
-			_cv.scroll_to_sel = true
-		}
-		if im.IsKeyPressed(im.Key.UpArrow) {
-			if cur == -1 {
-				_cv.selected_id = visible_ids[len(visible_ids) - 1]
-			} else if cur - 1 >= 0 {
-				_cv.selected_id = visible_ids[cur - 1]
-			}
-			_cv.scroll_to_sel = true
-		}
-	}
+	// The keys are the "Console" keymap's commands (the end of this file).
 
 	// Bottom detail pane: full message + source + call stack of the
 	// selected entry. No border and no child padding — the splitter gap
@@ -407,3 +369,78 @@ _console_count_label :: proc(icon: cstring, n: int) -> cstring {
 	return fmt.ctprintf("%s %d###%s", icon, n, icon)
 }
 
+// Whether the copy's level toggles and text filter show the entry.
+@(private = "file")
+_console_entry_shown :: proc(cv: ^_Console_View, entry: log.Entry, filter_terms: []string) -> bool {
+	switch entry.level {
+	case .Info:
+		if !cv.show_info do return false
+	case .Warning:
+		if !cv.show_warning do return false
+	case .Error:
+		if !cv.show_error do return false
+	}
+	return widgets.search_match(entry.message, filter_terms)
+}
+
+// --- Commands and keymap -------------------------------------------------------
+//
+// The keymap resolver runs these before the views draw (editor/keymap). They
+// act on the last clicked Console copy, which is the focused one while its
+// keymap resolves. The rows are the ones its filters show.
+
+// The last clicked copy's state, nil before its first draw.
+@(private = "file")
+_console_keys_view :: proc() -> ^_Console_View {
+	w := wnd.last("Console")
+	if w == nil do return nil
+	return (^_Console_View)(w.data)
+}
+
+// Up and Down select the previous or next shown row. With nothing selected
+// both start at the newest.
+@(private = "file")
+_console_nav_step :: proc(step: int) {
+	cv := _console_keys_view()
+	if cv == nil do return
+	filter_terms := widgets.search_terms(string(cstring(raw_data(cv.filter[:]))))
+	visible_ids := make([dynamic]u64, 0, len(log.entries), context.temp_allocator)
+	for entry in log.entries do if _console_entry_shown(cv, entry, filter_terms) do append(&visible_ids, entry.id)
+	if len(visible_ids) == 0 do return
+	cur := -1
+	for id, i in visible_ids {
+		if id == cv.selected_id {
+			cur = i
+			break
+		}
+	}
+	next := cur + step
+	if cur == -1 {
+		cv.selected_id = visible_ids[len(visible_ids) - 1]
+	} else if next >= 0 && next < len(visible_ids) {
+		cv.selected_id = visible_ids[next]
+	}
+	cv.scroll_to_sel = true
+}
+
+@(command={name="Console/Select Down"})
+console_select_down :: proc() { _console_nav_step(1) }
+
+@(command={name="Console/Select Up"})
+console_select_up :: proc() { _console_nav_step(-1) }
+
+// Escape clears the selection, so the rows follow new entries again.
+@(command={name="Console/Clear Selection", enabled=console_can_clear_selection})
+console_clear_selection :: proc() { _console_keys_view().selected_id = 0 }
+
+console_can_clear_selection :: proc() -> bool {
+	cv := _console_keys_view()
+	return cv != nil && cv.selected_id != 0
+}
+
+@(keymap={name="Console", window="Console"})
+console_keymap :: proc(km: ^keymap.Keymap) {
+	keymap.bind(km, "Down", "Console/Select Down", repeat = true)
+	keymap.bind(km, "Up", "Console/Select Up", repeat = true)
+	keymap.bind(km, "Escape", "Console/Clear Selection")
+}

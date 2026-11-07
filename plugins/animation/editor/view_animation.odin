@@ -39,6 +39,7 @@ import "moonhug:editor/undo"
 import "moonhug:editor/preview"
 import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/keymap"
 import "moonhug:editor/icons"
 
 @(private) _ANIM_ROW_H :: f32(20)
@@ -557,13 +558,7 @@ animation_view_draw :: proc(w: ^wnd.Window) {
 	im.EndChild()
 	_pv_draw_mode_tabs()
 
-	// Delete on the selected key. Text input (a drag field being typed into)
-	// owns Backspace.
-	if _pv_sel_valid(clip) && !im.GetIO().WantTextInput &&
-	   im.IsWindowFocused({.ChildWindows}) &&
-	   (im.IsKeyPressed(.Delete) || im.IsKeyPressed(.Backspace)) {
-		_pv_delete_key(doc, clip)
-	}
+	// The keys are the "Animation" keymap's commands (the end of this file).
 
 	if footer && _pv_sel_valid(clip) {
 		_pv_draw_key_footer(doc, clip)
@@ -916,3 +911,29 @@ animation_view_target :: proc() -> engine.Transform_Handle {
 	return owner
 }
 
+// --- Commands and keymap -------------------------------------------------------
+//
+// The keymap resolver runs these before the views draw (editor/keymap). The
+// clip and its document are the preview's (_pv_doc), shared by every copy.
+// The selection is _av's, which is the last clicked copy outside a draw.
+
+@(command={name="Animation/Delete Key", enabled=animation_can_delete_key})
+animation_delete_key :: proc() {
+	doc, clip := _pv_doc()
+	if doc == nil || clip == nil do return
+	_pv_sheet(doc, clip)
+	_pv_delete_key(doc, clip)
+}
+
+// A key is selected in an editable clip. A clip inside a model has no
+// document and is read-only.
+animation_can_delete_key :: proc() -> bool {
+	doc, clip := _pv_doc()
+	return doc != nil && clip != nil && _pv_sel_valid(clip)
+}
+
+@(keymap={name="Animation", window="Animation"})
+animation_keymap :: proc(km: ^keymap.Keymap) {
+	keymap.bind(km, "Delete", "Animation/Delete Key")
+	keymap.bind(km, "Backspace", "Animation/Delete Key")
+}

@@ -1053,6 +1053,14 @@ _ws_close_tab :: proc(v: ^_WS_View, key: string) {
 	wnd.close(key)
 }
 
+// Closes a hosted view as its frame's Close Tab does, from outside the
+// workspace's draw (the View/Close command).
+workspace_close_hosted :: proc(w: ^wnd.Window) {
+	host := wnd.find(w.host)
+	if host == nil do return
+	_ws_close_tab(_ws_state(host), w.key)
+}
+
 // The frame's ⋮ menu: the active view's own items (tab_menu_view_items),
 // Move to Dock, Add Tab, and the tree: Add Child (a view in a new child
 // frame), Set Parent (a menu of the trees, _ws_parent_menu), Unparent. Its

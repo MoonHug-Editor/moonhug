@@ -49,6 +49,7 @@ import "moonhug:editor/session"
 import "moonhug:editor/undo"
 import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/keymap"
 import "moonhug:libs/log"
 import "moonhug:packages/engine"
 
@@ -291,20 +292,60 @@ render_pipeline_window_draw :: proc(w: ^wnd.Window) {
 
 	_rp_popups()
 
-	io := im.GetIO()
-	if im.IsWindowFocused({.ChildWindows}) && !io.WantTextInput && !im.IsAnyItemActive() {
-		if im.IsKeyPressed(.Delete, false) || im.IsKeyPressed(.Backspace, false) do _rp_delete_step(_rp.sel)
-		if im.IsKeyPressed(.Escape, false) {
-			_rp.sel = 0
-			_rp_set_string(&_rp.sel_res, "")
-		}
-	}
+	// The keys are the "Render Pipeline" keymap's commands (the end of this
+	// file). Their edits record here, with the draw's own.
 
 	if _rp.touched && !im.IsAnyItemActive() do _rp_record(caller)
 	if _rp.changed {
 		_rp.changed = false
 		_rp_preview()
 	}
+}
+
+// --- Commands and keymap -------------------------------------------------------
+//
+// The keymap resolver runs these before the views draw (editor/keymap). They
+// act on the last clicked instance, which is the focused one while its keymap
+// resolves, the same way the slot removal dialog's action does. An edit marks
+// the instance touched, and its next draw records the undo step.
+
+// Points _rp at the last clicked instance and looks up its document. False
+// when there is none or it shows no pipeline.
+@(private = "file")
+_rp_keys_target :: proc() -> bool {
+	w := wnd.last("render_pipeline")
+	if w == nil || w.data == nil do return false
+	_rp = (^_RP_State)(w.data)
+	return _rp_fetch()
+}
+
+@(command={name="Render Pipeline/Delete Step", enabled=render_pipeline_can_delete_step})
+render_pipeline_delete_step :: proc() {
+	if !_rp_keys_target() do return
+	context.allocator = inspector.doc_alloc()
+	_rp_delete_step(_rp.sel)
+}
+
+render_pipeline_can_delete_step :: proc() -> bool {
+	return _rp_keys_target() && engine.pipeline_find_step(_rp.doc, _rp.sel) != nil
+}
+
+@(command={name="Render Pipeline/Clear Selection", enabled=render_pipeline_can_clear_selection})
+render_pipeline_clear_selection :: proc() {
+	if !_rp_keys_target() do return
+	_rp.sel = 0
+	_rp_set_string(&_rp.sel_res, "")
+}
+
+render_pipeline_can_clear_selection :: proc() -> bool {
+	return _rp_keys_target() && (_rp.sel != 0 || _rp.sel_res != "")
+}
+
+@(keymap={name="Render Pipeline", window="render_pipeline"})
+render_pipeline_keymap :: proc(km: ^keymap.Keymap) {
+	keymap.bind(km, "Delete", "Render Pipeline/Delete Step")
+	keymap.bind(km, "Backspace", "Render Pipeline/Delete Step")
+	keymap.bind(km, "Escape", "Render Pipeline/Clear Selection")
 }
 
 // --- Toolbar and tabs -------------------------------------------------------------

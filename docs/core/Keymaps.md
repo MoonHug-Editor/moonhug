@@ -67,6 +67,10 @@ A chord is written as `Ctrl+S`, `Shift+Space`, `F2`, `Escape`, `LeftShift`. `Ctr
 - A press goes through imgui's shortcut routing with global scope, so a text field being typed in, an open dialog or any other key owner wins, as it does for a menu shortcut.
 - Keys go to the clicked view. The focused window is the open instance whose imgui window, or a child window of it, has focus (`window.focused()`), which a view in a Workspace frame has as a frame of its own. Any mouse button's click on a view's content focuses it, so the right-button flythrough starts in a focused Scene view. There is no hover focus. Maximize keeps acting on the view under the mouse.
 
+## Keys every view shares
+
+The `Views` keymap is editor-wide: Ctrl+W closes the focused view, as its tab's Close Tab does. A view holding unapplied edits still asks first.
+
 ## What is still read directly
 
-The hierarchy, project, console and other views still read their keys with `im.IsKeyPressed` behind an imgui focus check. They move to commands and keymaps view by view. User overrides and a Shortcuts window come after that.
+Every view's keys are commands in its keymap. A few reads stay direct, because they are not view shortcuts: the add component popup's keys (it is a popup with its own search field), the maximize shortcut (it acts on the view under the mouse, not the focused one), the dialog's and the text input's hooks (they belong to the widget that owns the keyboard), and modifier reads at a click, such as Shift or Ctrl held while a row is clicked. User overrides and a Shortcuts window come next.

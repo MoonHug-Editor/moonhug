@@ -23,6 +23,8 @@ package keymap
 // - a disabled command does not take its chord: the next binding may
 // - a keymap with `consume` ends the walk after itself, even for chords it
 //   does not bind (the flythrough owns every key while it flies)
+// - while a text field is being typed in, only chords with Ctrl, Alt or
+//   Super resolve: a plain key or a Shift chord is text
 //
 // The focused branch comes through `focused_path`, which the shell installs
 // from the window registry: the focused view, then the view hosting it (a
@@ -92,13 +94,20 @@ Key_Source :: struct {
 	down:    proc(chord: im.KeyChord) -> bool,
 	// Whether a modal popup owns the frame: nothing resolves then.
 	modal:   proc() -> bool,
+	// Whether a text field is being typed in: plain chords are text then.
+	text:    proc() -> bool,
 }
 
 key_source := Key_Source{
 	pressed = _imgui_pressed,
 	down    = _imgui_down,
 	modal   = _imgui_modal,
+	text    = _imgui_text,
 }
+
+// The modifiers that make a chord a shortcut while typing.
+@(private = "file")
+_COMMAND_MODS :: im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.ImGuiMod_Alt) | im.KeyChord(im.Key.ImGuiMod_Super)
 
 // Registers a command, replacing one of the same name. A command declared
 // with `@(command)` on a proc that takes nothing registers here through the
@@ -231,8 +240,20 @@ bind :: proc(km: ^Keymap, chord: string, command: string, held := false, repeat 
 	})
 }
 
+// Drops the binding of `command` in `km`, if any.
+unbind :: proc(km: ^Keymap, command: string) {
+	context.allocator = runtime.default_allocator()
+	for b, i in km.bindings do if b.command == command {
+		delete(b.text)
+		delete(b.command)
+		ordered_remove(&km.bindings, i)
+		return
+	}
+}
+
 // Drops every binding of `km`.
 clear_bindings :: proc(km: ^Keymap) {
+	context.allocator = runtime.default_allocator()
 	for b in km.bindings {
 		delete(b.text)
 		delete(b.command)
@@ -242,6 +263,7 @@ clear_bindings :: proc(km: ^Keymap) {
 
 // Removes a keymap. For tests.
 remove :: proc(name: string) {
+	context.allocator = runtime.default_allocator()
 	for km, i in _keymaps do if km.name == name {
 		_free_keymap(km)
 		ordered_remove(&_keymaps, i)
@@ -251,6 +273,7 @@ remove :: proc(name: string) {
 
 @(private = "file")
 _free_keymap :: proc(km: ^Keymap) {
+	context.allocator = runtime.default_allocator()
 	clear_bindings(km)
 	delete(km.bindings)
 	delete(km.name)
@@ -260,6 +283,7 @@ _free_keymap :: proc(km: ^Keymap) {
 
 // Removes a command. For tests.
 command_remove :: proc(name: string) {
+	context.allocator = runtime.default_allocator()
 	for c, i in _commands do if c.name == name {
 		for km in _keymaps do for &b in km.bindings do if b.cmd == c do b.cmd = nil
 		delete(c.name)
@@ -301,6 +325,7 @@ _resolve :: proc(b: ^Binding) -> ^Command {
 frame :: proc() {
 	if key_source.modal != nil && key_source.modal() do return
 	path := focused_path() if focused_path != nil else nil
+	typing := key_source.text != nil && key_source.text()
 	taken := make(map[im.KeyChord]bool, context.temp_allocator)
 	// Innermost level first, the editor-wide keymaps last: a view's binding
 	// beats its host's, which beats a global one, for the same chord.
@@ -310,6 +335,7 @@ frame :: proc() {
 			if km.window != id do continue
 			if km.active != nil && !km.active() do continue
 			for &b in km.bindings {
+				if typing && b.chord & _COMMAND_MODS == 0 do continue
 				if b.held {
 					if !key_source.down(b.chord) do continue
 				} else {
@@ -328,6 +354,7 @@ frame :: proc() {
 
 // Frees every registration.
 shutdown :: proc() {
+	context.allocator = runtime.default_allocator()
 	for km in _keymaps do _free_keymap(km)
 	delete(_keymaps)
 	_keymaps = nil
@@ -361,6 +388,11 @@ _imgui_down :: proc(chord: im.KeyChord) -> bool {
 @(private = "file")
 _imgui_modal :: proc() -> bool {
 	return im.GetTopMostPopupModal() != nil
+}
+
+@(private = "file")
+_imgui_text :: proc() -> bool {
+	return im.GetIO().WantTextInput
 }
 
 // --- chords -----------------------------------------------------------------

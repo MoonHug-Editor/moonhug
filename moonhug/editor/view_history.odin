@@ -6,13 +6,15 @@ import im "moonhug:external/odin-imgui"
 import "undo"
 import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/keymap"
 
 // One History copy's own state.
 @(private = "file")
 _History_View :: struct {
-	selected:    int, // the entry shown in the details pane: 0 the initial state, -1 none
-	last_count:  int, // entries last frame: more means a new step to scroll to
-	split_ratio: f32, // the list's share of the list/details split
+	selected:      int, // the entry shown in the details pane: 0 the initial state, -1 none
+	last_count:    int, // entries last frame: more means a new step to scroll to
+	split_ratio:   f32, // the list's share of the list/details split
+	scroll_to_sel: bool, // scroll the selected row into view next frame
 }
 
 @(private = "file")
@@ -56,24 +58,14 @@ history_view_draw :: proc(w: ^wnd.Window) {
 
 	im.BeginChild("HistoryList", im.Vec2{0, list_h}, {.Borders})
 	{
-		max_index := len(items)
-
-		if im.IsWindowFocused() {
-			if im.IsKeyPressed(.UpArrow) {
-				if _hv.selected > 0 do _hv.selected -= 1
-				im.SetScrollHereY(0)
-			}
-			if im.IsKeyPressed(.DownArrow) {
-				if _hv.selected < max_index do _hv.selected += 1
-				im.SetScrollHereY(1)
-			}
-			if im.IsKeyPressed(.Enter) {
-				undo.jump_to(s, _hv.selected)
-			}
-		}
+		// The keys are the "History" keymap's commands (the end of this file).
 
 		if im.Selectable("<initial>", _hv.selected == 0, {.SpanAllColumns}) {
 			_hv.selected = 0
+		}
+		if _hv.selected == 0 && _hv.scroll_to_sel {
+			im.SetScrollHereY()
+			_hv.scroll_to_sel = false
 		}
 		if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
 			undo.jump_to(s, 0)
@@ -109,6 +101,10 @@ history_view_draw :: proc(w: ^wnd.Window) {
 				_hv.selected = step_index
 			}
 			im.PopStyleColor()
+			if _hv.selected == step_index && _hv.scroll_to_sel {
+				im.SetScrollHereY()
+				_hv.scroll_to_sel = false
+			}
 
 			if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
 				undo.jump_to(s, step_index)
@@ -166,4 +162,49 @@ _draw_history_entry_details :: proc(entry: ^undo.Entry) {
 @(private="file")
 cstr :: proc(s: string) -> cstring {
 	return strings.clone_to_cstring(s, context.temp_allocator)
+}
+
+// --- Commands and keymap -------------------------------------------------------
+//
+// The keymap resolver runs these before the views draw (editor/keymap). They
+// act on the last clicked History copy, which is the focused one while its
+// keymap resolves.
+
+// The last clicked copy's state, nil before its first draw.
+@(private = "file")
+_history_keys_view :: proc() -> ^_History_View {
+	w := wnd.last("History")
+	if w == nil do return nil
+	return (^_History_View)(w.data)
+}
+
+// Up and Down select the previous or next step. Row 0 is the initial state.
+@(private = "file")
+_history_nav_step :: proc(step: int) {
+	hv := _history_keys_view()
+	s := undo.get()
+	if hv == nil || s == nil do return
+	hv.selected = clamp(hv.selected + step, 0, len(undo.entries(s)))
+	hv.scroll_to_sel = true
+}
+
+@(command={name="History/Select Down"})
+history_select_down :: proc() { _history_nav_step(1) }
+
+@(command={name="History/Select Up"})
+history_select_up :: proc() { _history_nav_step(-1) }
+
+@(command={name="History/Jump To Selected", enabled=history_can_jump})
+history_jump_to_selected :: proc() { undo.jump_to(undo.get(), _history_keys_view().selected) }
+
+history_can_jump :: proc() -> bool {
+	hv := _history_keys_view()
+	return hv != nil && hv.selected >= 0 && undo.get() != nil
+}
+
+@(keymap={name="History", window="History"})
+history_keymap :: proc(km: ^keymap.Keymap) {
+	keymap.bind(km, "Down", "History/Select Down", repeat = true)
+	keymap.bind(km, "Up", "History/Select Up", repeat = true)
+	keymap.bind(km, "Enter", "History/Jump To Selected")
 }

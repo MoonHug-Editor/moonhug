@@ -30,6 +30,7 @@ import seq "moonhug:packages/sequencer"
 import "moonhug:editor/inspector"
 import undo "moonhug:packages/engine/editor/undo"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/keymap"
 import "moonhug:editor/widgets"
 import "moonhug:editor/preview"
 
@@ -747,16 +748,7 @@ sequencer_window_draw :: proc(w: ^wnd.Window) {
 	}
 	} // ##sq_rows — its EndChild is deferred above
 
-	// Keyboard: Delete/Backspace removes the selected clip — unless a text
-	// field owns the keyboard.
-	if im.IsWindowFocused({.ChildWindows}) && !im.GetIO().WantTextInput {
-		if (im.IsKeyPressed(.Delete) || im.IsKeyPressed(.Backspace)) &&
-		   _sq.sel_track >= 0 && _sq.sel_track < len(tracks) {
-			if _sq.sel_clip >= 0 && _sq.sel_clip < len(tracks[_sq.sel_track].clips) {
-				_sq_delete_clip(&tracks[_sq.sel_track].clips[_sq.sel_clip])
-			}
-		}
-	}
+	// The keys are the "Sequencer" keymap's commands (the end of this file).
 
 	// --- Inspector pane: the selected clip's fields, one per row -----------------
 	im.SameLine(0, 0)
@@ -935,4 +927,36 @@ _sq_preview_end :: proc() {
 	if !engine.pool_valid(&w.transforms, engine.Handle(_sq.dir_owner)) do return
 	_, d := engine.transform_get_comp(_sq.dir_owner, seq.PlayableDirector)
 	if d != nil do seq.director_preview_end(d)
+}
+
+// --- Commands and keymap -------------------------------------------------------
+//
+// The keymap resolver runs these before the views draw (editor/keymap). They
+// act on _sq and on the director the window shows, found the way the draw
+// finds it.
+
+// The selected clip, nil when the selection is out of range or belongs to a
+// director the window no longer shows.
+@(private = "file")
+_sq_selected_clip :: proc() -> ^seq.Clip_View {
+	owner, d := _sq_target()
+	if d == nil || owner != _sq.dir_owner do return nil
+	tracks := seq.director_tracks(d)
+	if _sq.sel_track < 0 || _sq.sel_track >= len(tracks) do return nil
+	clips := tracks[_sq.sel_track].clips
+	if _sq.sel_clip < 0 || _sq.sel_clip >= len(clips) do return nil
+	return &clips[_sq.sel_clip]
+}
+
+@(command={name="Sequencer/Delete Clip", enabled=sequencer_can_delete_clip})
+sequencer_delete_clip :: proc() {
+	if c := _sq_selected_clip(); c != nil do _sq_delete_clip(c)
+}
+
+sequencer_can_delete_clip :: proc() -> bool { return _sq_selected_clip() != nil }
+
+@(keymap={name="Sequencer", window="sequencer"})
+sequencer_keymap :: proc(km: ^keymap.Keymap) {
+	keymap.bind(km, "Delete", "Sequencer/Delete Clip")
+	keymap.bind(km, "Backspace", "Sequencer/Delete Clip")
 }

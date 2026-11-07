@@ -130,27 +130,6 @@ simulate_menu_pause :: proc() {
     sim.toggle_pause()
 }
 
-// Cmd/Ctrl+P toggles Simulate, Cmd/Ctrl+Shift+P pauses. Routed globally so they
-// work regardless of which view has focus.
-_process_simulate_shortcuts :: proc() {
-    toggle := im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.P)
-    pause := im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.ImGuiMod_Shift) | im.KeyChord(im.Key.P)
-
-    // Shift variant first: the plain chord is a prefix of it.
-    if im.Shortcut(pause, {.RouteGlobal}) {
-        sim.toggle_pause()
-        return
-    }
-    if im.Shortcut(toggle, {.RouteGlobal}) {
-        if sim.is_active() {
-            sim.stop()
-        } else {
-            _leave_edit_mode_previews()
-            sim.request_start()
-        }
-    }
-}
-
 // Simulate / Pause / Step, all three always visible and enabled. Pressing Pause
 // or Step while stopped enters a held run. The centre of the toolbar, first.
 @(toolbar={zone="center", order=0})

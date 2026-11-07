@@ -470,12 +470,7 @@ _menu_command :: proc(node: ^MenuNode, path: string) {
 		_menu_keymap = keymap.add("Menu", "", nil, origin = "menu/menu.odin")
 	}
 	// A re-registered item binds once: drop its earlier binding.
-	for b, i in _menu_keymap.bindings do if b.command == path {
-		delete(b.text)
-		delete(b.command)
-		ordered_remove(&_menu_keymap.bindings, i)
-		break
-	}
+	keymap.unbind(_menu_keymap, path)
 	keymap.bind(_menu_keymap, node.shortcut, path)
 }
 

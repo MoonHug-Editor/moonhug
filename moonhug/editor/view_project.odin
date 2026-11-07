@@ -5,6 +5,7 @@ import "base:runtime"
 import "core:c"
 import "core:fmt"
 import "core:mem"
+import "core:mem/virtual"
 import "core:os"
 import "core:slice"
 import "core:strings"
@@ -24,6 +25,7 @@ import assets "moonhug:libs/assets"
 import core "moonhug:libs/core"
 import "moonhug:editor/session"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/keymap"
 
 // What every Project copy shares: the selection's active path (the
 // selection is editor-wide, selection.odin) and the assets root.
@@ -41,16 +43,19 @@ PROJECT :: "Project"
 // wnd.Window.
 Project_View :: struct {
     current_path: string, // the folder the list shows, owned (_project_set_current)
-    // Keyboard navigation works like the hierarchy's: rows visible this frame
-    // are collected in draw order, then keys are handled after drawing (so
-    // index math matches what's on screen). Each pane only reacts while its
-    // child window has focus.
+    // Keyboard navigation works like the hierarchy's: the draw collects the
+    // visible rows in draw order, and the keymap's commands walk them before
+    // the next draw, so index math matches what is on screen.
     tree_rows: [dynamic]Project_Tree_Row,
     // Folder open state, keyed by full path (persistent, owned clones).
     // Written after each TreeNodeEx, read next frame to pick the open/closed
     // folder icon.
     tree_open_state: map[string]bool,
     list_rows: [dynamic]Project_Row,
+    // The rows' strings. Each arena resets when its list is rebuilt, so the
+    // rows stay valid between draws, where the keymap's commands read them.
+    tree_arena: virtual.Arena,
+    list_arena: virtual.Arena,
     // One-shot fold command for a tree node (applied next frame via SetNextItemOpen).
     tree_set_open_path: string, // owned clone; "" = no pending command
     tree_set_open_val: bool,
@@ -141,6 +146,8 @@ _project_view_free :: proc(pv: ^Project_View) {
     delete(pv.current_path, runtime.default_allocator())
     delete(pv.tree_rows)
     delete(pv.list_rows)
+    virtual.arena_destroy(&pv.tree_arena)
+    virtual.arena_destroy(&pv.list_arena)
     for k in pv.tree_open_state do delete(k)
     delete(pv.tree_open_state)
     for k in pv.expanded do delete(k)
@@ -165,24 +172,23 @@ project_view_closed :: proc(w: ^wnd.Window) {
     w.data = nil
 }
 
-// Keyboard navigation works like the hierarchy's: rows visible this frame are
-// collected in draw order, then keys are handled after drawing (so index math
-// matches what's on screen). Each pane only reacts while its child window has
-// focus.
+// The rows each draw collects for keyboard navigation (Project_View.tree_rows
+// and list_rows). Their strings live in the view's row arenas until the next
+// draw rebuilds them.
 Project_Tree_Row :: struct {
-    path: string, // full path, temp-allocated, rebuilt each frame
-    open: bool,   // imgui tree node open state this frame
+    path: string, // full path
+    open: bool,   // imgui tree node open state at the last draw
 }
 Project_Row :: struct {
-    name:   string, // display text, temp-allocated, rebuilt each frame
+    name:   string, // display text
     path:   string, // full path; drives selection/rename/activation (display
                     // names collide across folders in search results)
     is_dir: bool,
 }
 
-// Which pane keyboard input routes to. Tracked ourselves rather than via imgui
-// child focus (SetWindowFocus/IsWindowFocused are unreliable for child windows).
-// Set when a pane is clicked/hovered; toggled by Tab.
+// Which pane the keymap's commands act on. Tracked here rather than through
+// imgui child focus (SetWindowFocus/IsWindowFocused are unreliable for child
+// windows). Set when a pane is clicked, toggled by Tab.
 Project_Pane :: enum { Tree, List }
 
 _PROJECT_PING_NS :: i64(800_000_000)
@@ -203,43 +209,6 @@ shutdown_project_view :: proc() {
         delete(projectViewData.selectedFile, runtime.default_allocator()) // see _project_set_active
     }
     _project_view_free(&_pv_plain)
-}
-
-// Platform file-manager conventions: macOS renames on Enter, opens with
-// Cmd+Down and goes up with Cmd+Up (Finder); elsewhere F2 renames, Enter
-// opens, Backspace goes up (Explorer).
-// imgui swaps Cmd<>Ctrl on macOS at AddKeyEvent time (ConfigMacOSXBehaviors is
-// on by default for __APPLE__), so the physical Cmd key reads as io.KeyCtrl.
-_project_cmd_down :: proc() -> bool {
-    when ODIN_OS == .Darwin {
-        return im.GetIO().KeyCtrl
-    } else {
-        return im.GetIO().KeySuper
-    }
-}
-
-_project_key_rename :: proc() -> bool {
-    when ODIN_OS == .Darwin {
-        return im.IsKeyPressed(im.Key.Enter) && !_project_cmd_down()
-    } else {
-        return im.IsKeyPressed(im.Key.F2)
-    }
-}
-
-_project_key_open :: proc() -> bool {
-    when ODIN_OS == .Darwin {
-        return _project_cmd_down() && im.IsKeyPressed(im.Key.DownArrow)
-    } else {
-        return im.IsKeyPressed(im.Key.Enter)
-    }
-}
-
-_project_key_up_level :: proc() -> bool {
-    when ODIN_OS == .Darwin {
-        return _project_cmd_down() && im.IsKeyPressed(im.Key.UpArrow)
-    } else {
-        return im.IsKeyPressed(im.Key.Backspace)
-    }
 }
 
 _project_set_current :: proc(path: string) {
@@ -615,7 +584,7 @@ _project_draw_tree_node :: proc(full_path: string, name: string, is_link := fals
     // the nav list so keyboard indices stay consistent; children are hidden for
     // the duration of the edit.
     if _pv.rename_active && _pv.rename_in_tree && _pv.rename_path == full_path {
-        append(&_pv.tree_rows, Project_Tree_Row{path = full_path, open = false})
+        _project_tree_row_add(full_path, false)
         im.Indent(im.GetTreeNodeToLabelSpacing())
         _project_draw_rename_row(full_path)
         im.Unindent(im.GetTreeNodeToLabelSpacing())
@@ -667,7 +636,7 @@ _project_draw_tree_node :: proc(full_path: string, name: string, is_link := fals
     // A leaf reports open==true but can't be collapsed; record it as closed so
     // Left-arrow skips straight to the parent.
     open := node_open && !is_leaf
-    append(&_pv.tree_rows, Project_Tree_Row{path = full_path, open = open})
+    _project_tree_row_add(full_path, open)
     // Remember open state for next frame's folder icon. Keys are cloned once and
     // overwritten in place (freed on shutdown); the map is bounded by the number
     // of folders ever drawn.
@@ -755,88 +724,6 @@ _project_dir_has_subdir :: proc(dir: string) -> bool {
     return false
 }
 
-_project_handle_tree_keys :: proc() {
-    // The frame a rename closes, its Enter/Escape press is still down — swallow
-    // it so it doesn't immediately re-trigger a rename or navigation.
-    if _pv.rename_just_finished {
-        _pv.rename_just_finished = false
-        return
-    }
-    if _pv.rename_active do return
-
-    if im.IsKeyPressed(im.Key.Tab) {
-        _pv.active_pane = .List
-        _project_list_ensure_selection()
-        return
-    }
-    if _project_key_rename() {
-        _project_begin_rename(_pv.current_path, true)
-        return
-    }
-    n := len(_pv.tree_rows)
-    if n == 0 do return
-    if _project_cmd_down() do return // cmd+arrows belong to the file list pane
-
-    cur := -1
-    for r, i in _pv.tree_rows {
-        if r.path == _pv.current_path {
-            cur = i
-            break
-        }
-    }
-
-    _tree_select :: proc(idx: int) {
-        _project_set_current(_pv.tree_rows[idx].path)
-        _project_set_selected(_pv.tree_rows[idx].path)
-        _project_inspectors_refresh()
-        _pv.scroll_to_tree_sel = true
-    }
-
-    if im.IsKeyPressed(im.Key.DownArrow) {
-        if cur == -1 {
-            _tree_select(0)
-        } else if cur + 1 < n {
-            _tree_select(cur + 1)
-        }
-        return
-    }
-    if im.IsKeyPressed(im.Key.UpArrow) {
-        if cur == -1 {
-            _tree_select(0)
-        } else if cur - 1 >= 0 {
-            _tree_select(cur - 1)
-        }
-        return
-    }
-
-    if cur == -1 do return
-    sel := _pv.tree_rows[cur].path
-    open := _pv.tree_rows[cur].open
-    has_child_rows := cur + 1 < n && _project_path_is_ancestor(sel, _pv.tree_rows[cur+1].path)
-
-    if im.IsKeyPressed(im.Key.RightArrow) {
-        if open && has_child_rows {
-            _tree_select(cur + 1) // step into first child
-        } else {
-            _project_tree_request_open(sel, true)
-        }
-        return
-    }
-    if im.IsKeyPressed(im.Key.LeftArrow) {
-        // An open folder collapses first — even one that shows no subfolders
-        // (imgui still tracks its open state). Only when already collapsed does
-        // Left jump to the parent (package roots jump to the Packages node,
-        // roots themselves stay put — _project_parent_dir knows the shape).
-        if open {
-            _project_tree_request_open(sel, false)
-        } else if parent, pok := _project_parent_dir(sel); pok {
-            _project_set_current(parent)
-            _pv.scroll_to_tree_sel = true
-        }
-        return
-    }
-}
-
 // A fresh Tab into the list pane with no valid selection lands on the first
 // row (rows persist from the last draw — same folder). Only called on the Tab
 // transition: running it every frame auto-selected the first file whenever a
@@ -849,86 +736,6 @@ _project_list_ensure_selection :: proc() {
     }
     _project_set_selected(_pv.list_rows[0].path)
     _pv.scroll_to_list_sel = true
-}
-
-_project_handle_list_keys :: proc() {
-    // The frame a rename closes, its Enter/Escape press is still down — don't
-    // let it immediately re-trigger navigation or another rename.
-    if _pv.rename_just_finished {
-        _pv.rename_just_finished = false
-        return
-    }
-    if _pv.rename_active do return
-
-    if im.IsKeyPressed(im.Key.Tab) {
-        _pv.active_pane = .Tree
-        return
-    }
-
-    if _project_key_up_level() {
-        _project_go_up()
-        return
-    }
-    if _project_key_open() {
-        _project_open_selected()
-        return
-    }
-    if _project_key_rename() {
-        _project_begin_rename_selected()
-        return
-    }
-
-    if _project_cmd_down() {
-        if im.IsKeyPressed(im.Key.C) do project_ops_copy()
-        if im.IsKeyPressed(im.Key.X) do project_ops_cut()
-        if im.IsKeyPressed(im.Key.V) do project_ops_paste()
-        if im.IsKeyPressed(im.Key.D) do project_ops_duplicate()
-        if im.IsKeyPressed(im.Key.Backspace) || im.IsKeyPressed(im.Key.Delete) do project_ops_delete()
-        return
-    }
-    n := len(_pv.list_rows)
-    if n == 0 do return
-
-    cur := -1
-    for r, i in _pv.list_rows {
-        if r.path == projectViewData.selectedFile {
-            cur = i
-            break
-        }
-    }
-
-    // Plain arrows move the (single) selection; shift+arrows EXTEND it — the
-    // stepped-onto row joins the selection and becomes active.
-    shift := im.GetIO().KeyShift
-
-    _list_select :: proc(idx: int, extend: bool) {
-        path := _pv.list_rows[idx].path
-        if extend {
-            sel_proj_add(path)
-            _project_set_active(path)
-        } else {
-            _project_set_selected(path)
-        }
-        _project_inspectors_refresh()
-        _pv.scroll_to_list_sel = true
-    }
-
-    if im.IsKeyPressed(im.Key.DownArrow) {
-        if cur == -1 {
-            _list_select(0, false)
-        } else if cur + 1 < n {
-            _list_select(cur + 1, shift)
-        }
-        return
-    }
-    if im.IsKeyPressed(im.Key.UpArrow) {
-        if cur == -1 {
-            _list_select(0, false)
-        } else if cur - 1 >= 0 {
-            _list_select(cur - 1, shift)
-        }
-        return
-    }
 }
 
 is_known_extension :: proc(filename: string) -> bool {
@@ -1062,7 +869,7 @@ _project_draw_grid_sub_cell :: proc(parent_path: string, guid: core.Asset_GUID, 
 }
 
 _project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool, cell: f32, is_link := false) {
-    append(&_pv.list_rows, Project_Row{name = display, path = full_path, is_dir = is_dir})
+    _project_list_row_add(display, full_path, is_dir)
 
     label_h := im.GetTextLineHeightWithSpacing()
     im.PushIDStr(strings.clone_to_cstring(full_path, context.temp_allocator), nil)
@@ -1192,7 +999,7 @@ _project_dirty_star :: proc(path: string) -> string {
 // One list row. `listed`: the caller already put it in list_rows, the
 // keyboard navigation list (_project_draw_rows).
 _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool, is_link := false, listed := false) {
-    if !listed do append(&_pv.list_rows, Project_Row{name = display, path = full_path, is_dir = is_dir})
+    if !listed do _project_list_row_add(display, full_path, is_dir)
     if !_pv.rename_in_tree && _project_draw_rename_row(full_path) do return
 
     icon := _project_dir_icon(is_link) if is_dir else _project_file_icon(full_path)
@@ -1472,7 +1279,7 @@ _Project_List_Item :: struct {
 // one being renamed) all draw.
 @(private = "file")
 _project_draw_rows :: proc(items: []_Project_List_Item) {
-    for it in items do append(&_pv.list_rows, Project_Row{name = it.display, path = it.path, is_dir = it.is_dir})
+    for it in items do _project_list_row_add(it.display, it.path, it.is_dir)
     uneven := _pv.rename_active && !_pv.rename_in_tree
     if !uneven {
         for it in items do if _pv.expanded[it.path] {
@@ -1599,13 +1406,14 @@ project_view_draw :: proc(w: ^wnd.Window) {
         last := wnd.last(PROJECT)
         _pv = _project_view(last) if last != nil else &_pv_plain
     }
+    if _pv.rename_just_finished do _pv.rename_just_finished = false
     // Search toolbar across the whole window, above both panes. While the
-    // box has keyboard focus, list/tree key handling below is skipped
-    // (IsAnyItemActive guard). A non-empty query shows an "x" beside it.
+    // box has keyboard focus, the keymap's plain keys do not resolve. A
+    // non-empty query shows an "x" beside it.
     query := strings.trim_space(string(cstring(raw_data(_pv.search_buf[:]))))
     clear_btn_w := im.GetFrameHeight()
     im.SetNextItemWidth(-(clear_btn_w + im.GetStyle().ItemSpacing.x) if query != "" else -1)
-    // NoTabStop: Tab must switch panes (handled below), never tab-focus the
+    // NoTabStop: Tab must switch panes (the keymap), never tab-focus the
     // search box. Clicking into it still works.
     im.PushItemFlag({.NoTabStop}, true)
     im.InputTextWithHint("##prj_search", "Search", cstring(raw_data(_pv.search_buf[:])), c.size_t(len(_pv.search_buf)), {})
@@ -1626,9 +1434,6 @@ project_view_draw :: proc(w: ^wnd.Window) {
     if tree_w > split_total - _PROJECT_MIN_PANE do tree_w = split_total - _PROJECT_MIN_PANE
     list_w := split_total - tree_w
 
-    // Keyboard routes to a pane we track ourselves (imgui child focus is
-    // unreliable), but only while the Project window as a whole is focused.
-    window_focused := im.IsWindowFocused({.ChildWindows})
 
     // Left pane: Tree view
     im.BeginChild("TreeView", im.Vec2{tree_w, 0}, {.Borders})
@@ -1638,6 +1443,7 @@ project_view_draw :: proc(w: ^wnd.Window) {
     }
 
     clear(&_pv.tree_rows)
+    virtual.arena_free_all(&_pv.tree_arena)
 
     // The real assets root folder is the top node (it recurses into its own
     // contents). It's a genuine on-disk folder, but renaming it is blocked in
@@ -1665,6 +1471,7 @@ project_view_draw :: proc(w: ^wnd.Window) {
     }
 
     clear(&_pv.list_rows)
+    virtual.arena_free_all(&_pv.list_arena)
 
     // Where the list is, or what the selection is: above the rows, where
     // the search box used to sit. Text height, not frame height — nothing
@@ -1728,19 +1535,218 @@ project_view_draw :: proc(w: ^wnd.Window) {
 
     im.EndChild()
 
-    // Esc cancels an active search from EITHER pane (a rename's Esc wins;
-    // Esc in the search box itself reverts the input first, then this clears).
-    if window_focused && query != "" && !_pv.rename_active && im.IsKeyPressed(im.Key.Escape) {
-        _project_cancel_search()
-    }
+    // The keys are the "Project" keymap's commands (the end of this file).
+    // The frame a rename closes, its Enter or Escape press is still down: the
+    // keymap is off that frame (project_keys_active), and the flag clears in
+    // the next draw.
+}
 
-    // Handle keys once, after both panes are drawn (nav lists are populated),
-    // routing to the active pane. Not while a text input (search, rename) is
-    // active — those own the keyboard.
-    if window_focused && !im.IsAnyItemActive() {
-        switch _pv.active_pane {
-        case .Tree: _project_handle_tree_keys()
-        case .List: _project_handle_list_keys()
+// --- Commands and keymap -------------------------------------------------------
+//
+// The keymap resolver runs these before the views draw (editor/keymap). They
+// act on _pv, which is the last clicked copy outside a draw, and on its active
+// pane (Tree or List). The row lists are the ones the last draw built.
+
+// Adds a navigation row, its strings in the view's row arena.
+@(private = "file")
+_project_tree_row_add :: proc(path: string, open: bool) {
+    a := virtual.arena_allocator(&_pv.tree_arena)
+    append(&_pv.tree_rows, Project_Tree_Row{path = strings.clone(path, a), open = open})
+}
+
+@(private = "file")
+_project_list_row_add :: proc(name, path: string, is_dir: bool) {
+    a := virtual.arena_allocator(&_pv.list_arena)
+    append(&_pv.list_rows, Project_Row{name = strings.clone(name, a), path = strings.clone(path, a), is_dir = is_dir})
+}
+
+// The row index of the shown folder in the tree, -1 for none.
+@(private = "file")
+_project_tree_index :: proc() -> int {
+    for r, i in _pv.tree_rows do if r.path == _pv.current_path do return i
+    return -1
+}
+
+// The row index of the active selection in the list, -1 for none.
+@(private = "file")
+_project_list_index :: proc() -> int {
+    for r, i in _pv.list_rows do if r.path == projectViewData.selectedFile do return i
+    return -1
+}
+
+@(private = "file")
+_project_tree_select :: proc(idx: int) {
+    _project_set_current(_pv.tree_rows[idx].path)
+    _project_set_selected(_pv.tree_rows[idx].path)
+    _project_inspectors_refresh()
+    _pv.scroll_to_tree_sel = true
+}
+
+// Plain arrows move the (single) selection, Shift+arrows EXTEND it: the
+// stepped-onto row joins the selection and becomes active.
+@(private = "file")
+_project_list_select :: proc(idx: int, extend: bool) {
+    path := _pv.list_rows[idx].path
+    if extend {
+        sel_proj_add(path)
+        _project_set_active(path)
+    } else {
+        _project_set_selected(path)
+    }
+    _project_inspectors_refresh()
+    _pv.scroll_to_list_sel = true
+}
+
+// Up and Down step through the active pane's rows. With nothing selected
+// both land on the first row.
+@(private = "file")
+_project_nav_step :: proc(step: int) {
+    switch _pv.active_pane {
+    case .Tree:
+        n := len(_pv.tree_rows)
+        if n == 0 do return
+        cur := _project_tree_index()
+        if cur == -1 {
+            _project_tree_select(0)
+        } else if cur + step >= 0 && cur + step < n {
+            _project_tree_select(cur + step)
+        }
+    case .List:
+        n := len(_pv.list_rows)
+        if n == 0 do return
+        cur := _project_list_index()
+        if cur == -1 {
+            _project_list_select(0, false)
+        } else if cur + step >= 0 && cur + step < n {
+            _project_list_select(cur + step, im.GetIO().KeyShift)
         }
     }
+}
+
+@(command={name="Project/Select Down"})
+project_select_down :: proc() { _project_nav_step(1) }
+
+@(command={name="Project/Select Up"})
+project_select_up :: proc() { _project_nav_step(-1) }
+
+// Right opens a closed folder and steps into an open one.
+@(command={name="Project/Expand", enabled=project_tree_active})
+project_expand :: proc() {
+    cur := _project_tree_index()
+    if cur == -1 do return
+    row := _pv.tree_rows[cur]
+    has_child_rows := cur + 1 < len(_pv.tree_rows) && _project_path_is_ancestor(row.path, _pv.tree_rows[cur + 1].path)
+    if row.open && has_child_rows {
+        _project_tree_select(cur + 1)
+    } else {
+        _project_tree_request_open(row.path, true)
+    }
+}
+
+// Left collapses an open folder first, even one that shows no subfolders
+// (imgui still tracks its open state). A closed folder steps to its parent:
+// package roots go to the Packages node, roots stay (_project_parent_dir).
+@(command={name="Project/Collapse", enabled=project_tree_active})
+project_collapse :: proc() {
+    cur := _project_tree_index()
+    if cur == -1 do return
+    row := _pv.tree_rows[cur]
+    if row.open {
+        _project_tree_request_open(row.path, false)
+    } else if parent, ok := _project_parent_dir(row.path); ok {
+        _project_set_current(parent)
+        _pv.scroll_to_tree_sel = true
+    }
+}
+
+// Tab into the list selects its first row when nothing there is selected.
+@(command={name="Project/Switch Pane"})
+project_switch_pane :: proc() {
+    switch _pv.active_pane {
+    case .Tree:
+        _pv.active_pane = .List
+        _project_list_ensure_selection()
+    case .List:
+        _pv.active_pane = .Tree
+    }
+}
+
+// The tree renames the shown folder, the list the selected row.
+@(command={name="Project/Rename"})
+project_rename :: proc() {
+    switch _pv.active_pane {
+    case .Tree: _project_begin_rename(_pv.current_path, true)
+    case .List: _project_begin_rename_selected()
+    }
+}
+
+@(command={name="Project/Open", enabled=project_list_active})
+project_open :: proc() { _project_open_selected() }
+
+@(command={name="Project/Up Level", enabled=project_list_active})
+project_up_level :: proc() { _project_go_up() }
+
+@(command={name="Project/Copy", enabled=project_list_active})
+project_copy :: proc() { project_ops_copy() }
+
+@(command={name="Project/Cut", enabled=project_list_active})
+project_cut :: proc() { project_ops_cut() }
+
+@(command={name="Project/Paste", enabled=project_list_active})
+project_paste :: proc() { project_ops_paste() }
+
+@(command={name="Project/Duplicate", enabled=project_list_active})
+project_duplicate :: proc() { project_ops_duplicate() }
+
+@(command={name="Project/Delete", enabled=project_list_active})
+project_delete :: proc() { project_ops_delete() }
+
+// Escape ends a search from either pane, and opens the selected hit's
+// folder (_project_cancel_search). Escape in the search box reverts its text
+// first.
+@(command={name="Project/Cancel Search", enabled=project_has_search})
+project_cancel_search :: proc() { _project_cancel_search() }
+
+project_has_search :: proc() -> bool {
+    return strings.trim_space(string(cstring(raw_data(_pv.search_buf[:])))) != ""
+}
+
+project_tree_active :: proc() -> bool { return _pv.active_pane == .Tree }
+
+project_list_active :: proc() -> bool { return _pv.active_pane == .List }
+
+// Not while a row is being renamed, nor the frame the rename closed.
+project_keys_active :: proc() -> bool {
+    return !_pv.rename_active && !_pv.rename_just_finished
+}
+
+// Platform file-manager conventions: macOS renames on Enter, opens with
+// Cmd+Down and goes up with Cmd+Up, elsewhere F2 renames, Enter opens and
+// Backspace goes up. imgui reads the physical Cmd key as Ctrl on macOS, so
+// Ctrl in a chord is Cmd there.
+@(keymap={name="Project", window="Project", active=project_keys_active})
+project_keymap :: proc(km: ^keymap.Keymap) {
+    keymap.bind(km, "Down", "Project/Select Down", repeat = true)
+    keymap.bind(km, "Shift+Down", "Project/Select Down", repeat = true)
+    keymap.bind(km, "Up", "Project/Select Up", repeat = true)
+    keymap.bind(km, "Shift+Up", "Project/Select Up", repeat = true)
+    keymap.bind(km, "Right", "Project/Expand", repeat = true)
+    keymap.bind(km, "Left", "Project/Collapse", repeat = true)
+    keymap.bind(km, "Tab", "Project/Switch Pane")
+    when ODIN_OS == .Darwin {
+        keymap.bind(km, "Enter", "Project/Rename")
+        keymap.bind(km, "Ctrl+Down", "Project/Open")
+        keymap.bind(km, "Ctrl+Up", "Project/Up Level")
+    } else {
+        keymap.bind(km, "F2", "Project/Rename")
+        keymap.bind(km, "Enter", "Project/Open")
+        keymap.bind(km, "Backspace", "Project/Up Level")
+    }
+    keymap.bind(km, "Ctrl+C", "Project/Copy")
+    keymap.bind(km, "Ctrl+X", "Project/Cut")
+    keymap.bind(km, "Ctrl+V", "Project/Paste")
+    keymap.bind(km, "Ctrl+D", "Project/Duplicate")
+    keymap.bind(km, "Ctrl+Backspace", "Project/Delete")
+    keymap.bind(km, "Ctrl+Delete", "Project/Delete")
+    keymap.bind(km, "Escape", "Project/Cancel Search")
 }

@@ -17,6 +17,7 @@ import "moonhug:editor/simulate"
 import "moonhug:editor/widgets"
 import "moonhug:editor/icons"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/keymap"
 
 HIERARCHY_DRAG_TYPE :: "HIERARCHY_TRANSFORM"
 
@@ -374,24 +375,10 @@ hierarchy_view_draw :: proc(w: ^wnd.Window) {
 		}
 	}
 
-	if _hv.rename_just_finished {
-		_hv.rename_just_finished = false
-	} else {
-		is_not_renaming := _hv.rename_target == _HANDLE_NONE
-		active_sel := session.active()
-		// Not while a text input (filter box) owns the keyboard.
-		if is_not_renaming && im.IsWindowFocused({}) && !im.IsAnyItemActive() {
-			if len(filter) > 0 && im.IsKeyPressed(im.Key.Escape) {
-				mem.zero(&_hv.filter_buf, len(_hv.filter_buf))
-			}
-			if active_sel != _HANDLE_NONE {
-				if im.IsKeyPressed(im.Key.Enter) || im.IsKeyPressed(im.Key.F2) {
-					_begin_rename(active_sel)
-				}
-			}
-			_handle_hierarchy_keyboard_nav(sm)
-		}
-	}
+	// The keys are the "Hierarchy" keymap's commands (the end of this file).
+	// The frame a rename closes, its Enter press is still down: the keymap is
+	// off that frame (_hierarchy_keys_active), and the flag clears here.
+	if _hv.rename_just_finished do _hv.rename_just_finished = false
 }
 
 @(private)
@@ -1270,107 +1257,124 @@ _hierarchy_node_collapse :: proc(tH: engine.Transform_Handle, t: ^engine.Transfo
 	}
 }
 
-@(private)
-_handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
-	w := engine.ctx_world()
+// --- Commands and keymap -------------------------------------------------------
+//
+// The keymap resolver runs these before the views draw (editor/keymap). They
+// act on _hv, which is the last clicked instance outside a draw. The nav list
+// is the one the last draw built.
 
+// The row index of the active selection in the nav list, -1 for none.
+@(private = "file")
+_hierarchy_nav_index :: proc() -> int {
+	active := session.active()
+	if active == _HANDLE_NONE do return -1
+	for h, i in _hv.nav_list do if h == active do return i
+	return -1
+}
+
+// Plain arrows move the (single) selection, Shift+arrows EXTEND it: the
+// stepped-onto row joins the selection and becomes active.
+@(private = "file")
+_hierarchy_nav_step :: proc(step: int) {
 	nav_count := len(_hv.nav_list)
 	if nav_count == 0 do return
-
-	active := session.active()
-	cur_idx := -1
-	if active != _HANDLE_NONE {
-		for i in 0..<nav_count {
-			if _hv.nav_list[i] == active {
-				cur_idx = i
-				break
-			}
-		}
-	}
-
-	_nav_select_first :: proc(nav_count: int) {
-		if nav_count > 0 {
-			session.select_only(_hv.nav_list[0])
-		}
-	}
-
-	// Plain arrows move the (single) selection; shift+arrows EXTEND it — the
-	// stepped-onto row joins the selection and becomes active.
-	shift := im.GetIO().KeyShift
-
-	if im.IsKeyPressed(im.Key.DownArrow) {
-		if cur_idx == -1 {
-			_nav_select_first(nav_count)
-		} else if cur_idx + 1 < nav_count {
-			next := _hv.nav_list[cur_idx + 1]
-			if shift {
-				session.select_add(next)
-			} else {
-				session.select_only(next)
-			}
-		}
+	cur_idx := _hierarchy_nav_index()
+	if cur_idx == -1 {
+		session.select_only(_hv.nav_list[0])
 		return
 	}
-
-	if im.IsKeyPressed(im.Key.UpArrow) {
-		if cur_idx == -1 {
-			_nav_select_first(nav_count)
-		} else if cur_idx - 1 >= 0 {
-			prev := _hv.nav_list[cur_idx - 1]
-			if shift {
-				session.select_add(prev)
-			} else {
-				session.select_only(prev)
-			}
-		}
-		return
+	next_idx := cur_idx + step
+	if next_idx < 0 || next_idx >= nav_count do return
+	next := _hv.nav_list[next_idx]
+	if im.GetIO().KeyShift {
+		session.select_add(next)
+	} else {
+		session.select_only(next)
 	}
+}
 
-	// F frames the selection in the scene view (Unity), from here too so the
-	// hierarchy doesn't need a mouse trip to the scene panel.
-	if im.IsKeyPressed(im.Key.F) {
-		session.frame_selected()
-		return
-	}
-
+// The selected row's transform and whether its children show, for the
+// expand and collapse commands.
+@(private = "file")
+_hierarchy_nav_row :: proc() -> (cur_idx: int, t: ^engine.Transform, expanded: bool, ok: bool) {
+	w := engine.ctx_world()
+	cur_idx = _hierarchy_nav_index()
 	if cur_idx == -1 do return
-
-	selected_tH := _hv.nav_list[cur_idx]
-	t := engine.pool_get(&w.transforms, engine.Handle(selected_tH))
+	tH := _hv.nav_list[cur_idx]
+	t = engine.pool_get(&w.transforms, engine.Handle(tH))
 	if t == nil do return
+	expanded = cur_idx + 1 < len(_hv.nav_list) && _is_ancestor(tH, _hv.nav_list[cur_idx + 1])
+	return cur_idx, t, expanded, true
+}
 
-	alt := im.GetIO().KeyAlt
+@(command={name="Hierarchy/Select Down"})
+hierarchy_select_down :: proc() { _hierarchy_nav_step(1) }
 
-	if im.IsKeyPressed(im.Key.RightArrow) {
-		has_children := len(t.children) > 0
-		if has_children {
-			is_expanded := cur_idx + 1 < nav_count && _is_ancestor(selected_tH, _hv.nav_list[cur_idx + 1])
-			if !is_expanded {
-				_hierarchy_node_expand(selected_tH, t, deep = alt)
-				return
-			}
-		}
-		if cur_idx + 1 < nav_count {
-			session.select_only(_hv.nav_list[cur_idx + 1])
-		}
+@(command={name="Hierarchy/Select Up"})
+hierarchy_select_up :: proc() { _hierarchy_nav_step(-1) }
+
+// Right expands a closed node, Alt+Right its whole subtree, and steps into an
+// open one.
+@(command={name="Hierarchy/Expand"})
+hierarchy_expand :: proc() {
+	cur_idx, t, expanded, ok := _hierarchy_nav_row()
+	if !ok do return
+	if len(t.children) > 0 && !expanded {
+		_hierarchy_node_expand(_hv.nav_list[cur_idx], t, deep = im.GetIO().KeyAlt)
 		return
 	}
+	if cur_idx + 1 < len(_hv.nav_list) do session.select_only(_hv.nav_list[cur_idx + 1])
+}
 
-	if im.IsKeyPressed(im.Key.LeftArrow) {
-		has_children := len(t.children) > 0
-		if has_children {
-			is_expanded := cur_idx + 1 < nav_count && _is_ancestor(selected_tH, _hv.nav_list[cur_idx + 1])
-			if is_expanded {
-				_hierarchy_node_collapse(selected_tH, t, deep = alt)
-				return
-			}
-		}
-		parent_tH := engine.Transform_Handle(t.parent.handle)
-		if engine.pool_valid(&w.transforms, engine.Handle(parent_tH)) {
-			session.select_only(parent_tH)
-		}
+// Left collapses an open node, Alt+Left its whole subtree, and steps to the
+// parent of a closed one.
+@(command={name="Hierarchy/Collapse"})
+hierarchy_collapse :: proc() {
+	cur_idx, t, expanded, ok := _hierarchy_nav_row()
+	if !ok do return
+	if len(t.children) > 0 && expanded {
+		_hierarchy_node_collapse(_hv.nav_list[cur_idx], t, deep = im.GetIO().KeyAlt)
 		return
 	}
+	w := engine.ctx_world()
+	parent_tH := engine.Transform_Handle(t.parent.handle)
+	if engine.pool_valid(&w.transforms, engine.Handle(parent_tH)) do session.select_only(parent_tH)
+}
+
+// F frames the selection in the scene view from here too, so the hierarchy
+// needs no mouse trip to the scene panel.
+@(command={name="Hierarchy/Frame Selected"})
+hierarchy_frame_selected :: proc() { session.frame_selected() }
+
+@(command={name="Hierarchy/Rename", enabled=hierarchy_can_rename})
+hierarchy_rename :: proc() { _begin_rename(session.active()) }
+
+hierarchy_can_rename :: proc() -> bool { return session.active() != _HANDLE_NONE }
+
+@(command={name="Hierarchy/Clear Filter", enabled=hierarchy_has_filter})
+hierarchy_clear_filter :: proc() { mem.zero(&_hv.filter_buf, len(_hv.filter_buf)) }
+
+hierarchy_has_filter :: proc() -> bool { return _hv.filter_buf[0] != 0 }
+
+// Not while a row is being renamed, nor the frame the rename closed.
+hierarchy_keys_active :: proc() -> bool {
+	return _hv.rename_target == _HANDLE_NONE && !_hv.rename_just_finished
+}
+
+@(keymap={name="Hierarchy", window="Hierarchy", active=hierarchy_keys_active})
+hierarchy_keymap :: proc(km: ^keymap.Keymap) {
+	keymap.bind(km, "Down", "Hierarchy/Select Down", repeat = true)
+	keymap.bind(km, "Shift+Down", "Hierarchy/Select Down", repeat = true)
+	keymap.bind(km, "Up", "Hierarchy/Select Up", repeat = true)
+	keymap.bind(km, "Shift+Up", "Hierarchy/Select Up", repeat = true)
+	keymap.bind(km, "Right", "Hierarchy/Expand", repeat = true)
+	keymap.bind(km, "Alt+Right", "Hierarchy/Expand")
+	keymap.bind(km, "Left", "Hierarchy/Collapse", repeat = true)
+	keymap.bind(km, "Alt+Left", "Hierarchy/Collapse")
+	keymap.bind(km, "F", "Hierarchy/Frame Selected")
+	keymap.bind(km, "Enter", "Hierarchy/Rename")
+	keymap.bind(km, "F2", "Hierarchy/Rename")
+	keymap.bind(km, "Escape", "Hierarchy/Clear Filter")
 }
 
 // The ACTIVE selected object (inspector target, gizmo target). With a

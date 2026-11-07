@@ -37,6 +37,7 @@ import "moonhug:editor/icons"
 import "moonhug:editor/inspector"
 import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/keymap"
 
 _SE_Mode :: enum {
 	Automatic,
@@ -464,9 +465,7 @@ _se_list :: proc(tex: ^engine.Texture2D, width: f32) {
 	}
 	if remove >= 0 do sprite_editor_remove_slice(remove)
 
-	if im.IsWindowHovered() && !im.GetIO().WantTextInput && (im.IsKeyPressed(.Delete) || im.IsKeyPressed(.Backspace)) {
-		_se_delete_selected()
-	}
+	// The keys are the "Sprite Editor" keymap's commands (the end of this file).
 }
 
 // Apply and Revert, the texture, the Scale slider (as the Game view's: 1 is
@@ -891,9 +890,6 @@ _se_canvas :: proc(tex: ^engine.Texture2D, size: im.Vec2) {
 			_sv.zoom = clamp(_sv.zoom * math.pow(f32(1.15), wheel), _sv.zoom_floor, _sv.zoom_top)
 			_sv.pan = (mouse - origin) / _sv.zoom - world
 		}
-		if im.IsKeyPressed(.Delete) || im.IsKeyPressed(.Backspace) {
-			_se_delete_selected()
-		}
 	}
 
 	im.EndChild()
@@ -1051,4 +1047,23 @@ _se_panel :: proc(tex: ^engine.Texture2D) {
 	inspector.drag_float("Pivot X", &s.pivot.x, 0.01, 0, 1)
 	inspector.drag_float("Pivot Y", &s.pivot.y, 0.01, 0, 1)
 	_se_border_fields(&s.border, {s.rect.z, s.rect.w})
+}
+
+// --- Commands and keymap -------------------------------------------------------
+//
+// The keymap resolver runs these before the views draw (editor/keymap). They
+// act on _se, the working copy every Sprite Editor tab shares.
+
+@(command={name="Sprite Editor/Delete Slice", enabled=sprite_editor_can_delete_slice})
+sprite_editor_delete_slice :: proc() { _se_delete_selected() }
+
+sprite_editor_can_delete_slice :: proc() -> bool {
+	if _se.path == "" || !_se_resolve() do return false
+	return _se.sel >= 0 && _se.sel < len(_se.ts.sprites)
+}
+
+@(keymap={name="Sprite Editor", window="sprite_editor"})
+sprite_editor_keymap :: proc(km: ^keymap.Keymap) {
+	keymap.bind(km, "Delete", "Sprite Editor/Delete Slice")
+	keymap.bind(km, "Backspace", "Sprite Editor/Delete Slice")
 }

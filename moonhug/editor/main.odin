@@ -265,7 +265,6 @@ main :: proc() {
         // (editor/keymap): menu shortcuts, the scene tools, the flythrough.
         keymap.frame()
         maximize_shortcut()
-        _process_simulate_shortcuts()
 
         // A Play requested LAST frame starts here: the frame in between let
         // every editor preview restore the world it had posed, so the

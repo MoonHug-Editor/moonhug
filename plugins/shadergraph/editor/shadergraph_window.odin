@@ -26,6 +26,7 @@ import nc "moonhug:editor/node_canvas"
 import "moonhug:editor/undo"
 import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/keymap"
 import "moonhug:libs/log"
 import "moonhug:packages/engine"
 import sg "moonhug:packages/shadergraph"
@@ -245,10 +246,8 @@ shader_graph_window_draw :: proc(w: ^wnd.Window) {
 		im.EndPopup()
 	}
 
-	io := im.GetIO()
-	if im.IsWindowFocused({.ChildWindows}) && !io.WantTextInput && !im.IsAnyItemActive() {
-		if im.IsKeyPressed(.Delete, false) || im.IsKeyPressed(.Backspace, false) do _sg_delete_selection()
-	}
+	// The keys are the "Shader Graph" keymap's commands (the end of this
+	// file). Their edits record here, with the draw's own.
 
 	if _sg.touched && !im.IsAnyItemActive() do _sg_record(caller)
 }
@@ -702,4 +701,43 @@ _sg_record :: proc(undo_allocator: runtime.Allocator) {
 	_sg.baseline = recorded
 	inspector.asset_doc_mark_edited(_sg.asset)
 	_sg_regen()
+}
+
+// --- Commands and keymap -------------------------------------------------------
+//
+// The keymap resolver runs these before the views draw (editor/keymap). They
+// act on the last clicked instance, which is the focused one while its keymap
+// resolves. An edit marks the instance touched, and its next draw records the
+// undo step.
+
+// Points _sg at the last clicked instance and looks up its document. False
+// when there is none or it shows no shader graph.
+@(private = "file")
+_sg_keys_target :: proc() -> bool {
+	w := wnd.last("shader_graph")
+	if w == nil || w.data == nil do return false
+	_sg = (^_SG_State)(w.data)
+	return _sg_fetch()
+}
+
+// Delete removes the selected link, else the selected node. The surface node
+// stays.
+@(command={name="Shader Graph/Delete Selection", enabled=shader_graph_can_delete})
+shader_graph_delete_selection :: proc() {
+	if !_sg_keys_target() do return
+	context.allocator = inspector.doc_alloc()
+	_sg_delete_selection()
+}
+
+shader_graph_can_delete :: proc() -> bool {
+	if !_sg_keys_target() do return false
+	if _sg.cv.sel_link >= 0 && _sg.cv.sel_link < len(_sg.graph.links) do return true
+	n := sg.graph_find_node(_sg.graph, i32(_sg.cv.sel))
+	return n != nil && n.kind != sg.SURFACE_KIND
+}
+
+@(keymap={name="Shader Graph", window="shader_graph"})
+shader_graph_keymap :: proc(km: ^keymap.Keymap) {
+	keymap.bind(km, "Delete", "Shader Graph/Delete Selection")
+	keymap.bind(km, "Backspace", "Shader Graph/Delete Selection")
 }

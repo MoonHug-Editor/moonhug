@@ -20,6 +20,8 @@ _km_pressed: map[im.KeyChord]bool
 _km_down: map[im.KeyChord]bool
 @(private = "file")
 _km_enabled := true
+@(private = "file")
+_km_typing: bool
 
 @(private = "file")
 _km_setup :: proc() {
@@ -28,11 +30,13 @@ _km_setup :: proc() {
 	clear(&_km_down)
 	clear(&_km_path)
 	_km_enabled = true
+	_km_typing = false
 	keymap.focused_path = proc() -> []string { return _km_path[:] }
 	keymap.key_source = {
 		pressed = proc(chord: im.KeyChord, repeat: bool) -> bool { return _km_pressed[chord] },
 		down    = proc(chord: im.KeyChord) -> bool { return _km_down[chord] },
 		modal   = nil,
+		text    = proc() -> bool { return _km_typing },
 	}
 }
 
@@ -202,6 +206,27 @@ test_keymap_priority_consume_held :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(_km_log), 2)
 	testing.expect_value(t, _km_log[0], "H")
 	testing.expect_value(t, _km_log[1], "H")
+}
+
+// While a text field is typed in, a plain key is text and a Ctrl chord is
+// still a shortcut.
+@(test)
+test_keymap_typing_keeps_plain_keys :: proc(t: ^testing.T) {
+	_km_setup()
+	defer _km_teardown()
+	_km_commands()
+	keymap.add("T Global", "", proc(km: ^keymap.Keymap) {
+		keymap.bind(km, "W", "T/A")
+		keymap.bind(km, "Shift+W", "T/B")
+		keymap.bind(km, "Ctrl+W", "T/C")
+	})
+	_km_press("W")
+	_km_press("Shift+W")
+	_km_press("Ctrl+W")
+	_km_typing = true
+	keymap.frame()
+	testing.expect_value(t, len(_km_log), 1)
+	testing.expect_value(t, _km_log[0], "C")
 }
 
 // A binding to a command that does not exist is inert and reported.

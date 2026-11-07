@@ -14,6 +14,7 @@ package editor
 import im "moonhug:external/odin-imgui"
 import "menu"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/keymap"
 import "moonhug:editor/icons"
 import "moonhug:editor/session"
 import "moonhug:editor/widgets"
@@ -211,6 +212,29 @@ _close_view :: proc(title: cstring) {
 	if idx := strings.last_index(s, "###"); idx >= 0 {
 		wnd.close(s[idx + 3:])
 	}
+}
+
+// Closes the focused view, as its tab's Close Tab does: a hosted view
+// through its workspace, any other through the registry. The close guard
+// still asks about unapplied edits.
+@(command={name="View/Close", enabled=view_close_can})
+view_close_focused :: proc() {
+	w := wnd.focused()
+	if w.host != "" {
+		workspace_close_hosted(w)
+	} else {
+		wnd.close(w.key)
+	}
+}
+
+view_close_can :: proc() -> bool {
+	return wnd.focused() != nil
+}
+
+// Keys every view shares.
+@(keymap={name="Views"})
+views_keymap :: proc(km: ^keymap.Keymap) {
+	keymap.bind(km, "Ctrl+W", "View/Close")
 }
 
 @(private = "file")
