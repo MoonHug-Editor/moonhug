@@ -9,6 +9,7 @@ package editor
 
 import "moonhug:editor/session"
 import undo "moonhug:editor/undo"
+import "moonhug:editor/keymap"
 
 // --- Edit: Undo / Redo -------------------------------------------------------
 // Enabled during Play too: undo.can_undo/can_redo limit a run to its own steps.
@@ -28,6 +29,13 @@ _edit_can_redo :: proc() -> bool {
 @(menu_item={path="Edit/Undo", order=-100, shortcut="Ctrl+Z", enabled=_edit_can_undo})
 edit_undo_menu :: proc() {
 	if s := undo.get(); s != nil do undo.apply_undo(s)
+}
+
+// Ctrl+Y is the second redo chord. The menu shows one shortcut, so this one
+// is a keymap binding of its own.
+@(keymap={name="Edit"})
+_edit_keymap :: proc(km: ^keymap.Keymap) {
+	keymap.bind(km, "Ctrl+Y", "Edit/Redo")
 }
 
 @(menu_item={path="Edit/Redo", order=-99, shortcut="Ctrl+Shift+Z", enabled=_edit_can_redo})

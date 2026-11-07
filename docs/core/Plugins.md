@@ -314,6 +314,8 @@ my_install :: proc() {
 
 A plugin's windows and what it adds to other views are attributes, all in [Views](Views.md): `@(editor_window)` for a window, `@(view_menu)` and `@(view_tab_bar)` for a view's menu and tab bar, `@(view_document)` for the asset a view edits, `@(scene_overlay)` for the scene view's overlays and `@(toolbar)` for the editor toolbar.
 
+A plugin's shortcuts are `@(command)` and `@(keymap)`, in [Keymaps](Keymaps.md): commands are named procs, keymaps bind chords to them for one window or the whole editor, and the resolver runs them once per frame. A view reads no keys itself.
+
 ## Editor startup hook
 
 An editor half installs its providers and registry entries from a no-argument proc marked `@(provider_install)`. It runs once, after the inspector registries exist (`editor_init` calls it right after `inspector.init`), in the editor and in the test binary alike, so tests see the same registry entries and providers as the editor. An install proc may only set provider fields or add registry entries: it runs before the asset scan and before any world or scene exists. `provider_install_gen` collects every marked proc into the generated `install_providers` (docs/core/PrebuildGenerator.md). The proc lives in an editor half or a shell subpackage, never in the editor root package (`moonhug/editor`): the tests' shared package does not import the editor root.

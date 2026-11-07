@@ -17,6 +17,7 @@ import "menu"
 import clip "clipboard"
 import "undo"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/keymap"
 import "moonhug:editor/workspace"
 import "moonhug:editor/widgets"
 import "moonhug:editor/preview"
@@ -95,6 +96,17 @@ main :: proc() {
     // frames during startup): the plugin window declarations, then the saved
     // window placement renamed onto the windows' current ids.
     _register_editor_windows()
+    // Keys go to the clicked view (window/window.odin focused), never the
+    // hovered one, then to the view hosting it.
+    keymap.focused_path = proc() -> []string {
+        w := wnd.focused()
+        if w == nil do return nil
+        path := make([dynamic]string, context.temp_allocator)
+        append(&path, w.id)
+        if h := wnd.find(w.host); h != nil do append(&path, h.id)
+        return path[:]
+    }
+    _register_editor_keymaps()
     migrate_imgui_ini()
     defer im.DestroyContext(ctx)
 
@@ -249,7 +261,9 @@ main :: proc() {
         // Begin() calls (dock.odin — builds the default layout on first run).
         draw_dockspace()
 
-        _process_undo_shortcuts()
+        // Every key binding resolves here, before the views draw
+        // (editor/keymap): menu shortcuts, the scene tools, the flythrough.
+        keymap.frame()
         maximize_shortcut()
         _process_simulate_shortcuts()
 
@@ -486,6 +500,7 @@ editor_shutdown :: proc() {
     clip.shutdown()
     _save_user_settings()
     menu.shutdown_menu()
+    keymap.shutdown()
     view_chrome_shutdown()
     view_locks_shutdown()
     maximize_shutdown()
@@ -531,14 +546,3 @@ _frame_may_finish_edit :: proc() -> bool {
 	return false
 }
 
-// Ctrl+Z / Ctrl+Shift+Z live on the Edit/Undo and Edit/Redo menu items
-// (edit_menu.odin) — only the Ctrl+Y redo alias is handled here.
-_process_undo_shortcuts :: proc() {
-	s := undo.get()
-	if s == nil do return
-
-	redo_chord_y := im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.Y)
-	if im.Shortcut(redo_chord_y, {.RouteGlobal}) {
-		undo.apply_redo(s)
-	}
-}

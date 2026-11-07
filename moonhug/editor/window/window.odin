@@ -106,6 +106,13 @@ _hovered: ^Window
 @(private = "file")
 _hovered_frame: i32
 
+// The instance whose window, or a child of it, had imgui's focus, and the
+// frame it had it.
+@(private = "file")
+_focused: ^Window
+@(private = "file")
+_focused_frame: i32
+
 // Declares a dockable editor window whose content the proc draws.
 //
 // `id` identifies it, and its instances, in imgui.ini. `title` and `icon` (a
@@ -225,6 +232,16 @@ open :: proc(id: string, asset := core.Asset_GUID{}) -> ^Window {
 hovered :: proc() -> ^Window {
 	if _hovered == nil || _hovered_frame < im.GetFrameCount() - 1 do return nil
 	for w in _windows do if w == _hovered && w.open do return w
+	return nil
+}
+
+// The open instance whose window or a child window has imgui's focus this
+// frame or the last, nil for none (a popup, the menu bar, a dialog, the
+// background). The keymap resolver asks it for the view a key goes to: the
+// clicked view, never the hovered one.
+focused :: proc() -> ^Window {
+	if _focused == nil || _focused_frame < im.GetFrameCount() - 1 do return nil
+	for w in _windows do if w == _focused && w.open do return w
 	return nil
 }
 
@@ -415,6 +432,10 @@ draw_content :: proc(w: ^Window) {
 	_drawing = w
 	_registry[w.reg].draw(w)
 	_drawing = prev
+	if im.IsWindowFocused({.ChildWindows}) {
+		_focused = w
+		_focused_frame = im.GetFrameCount()
+	}
 	// Over its host, which counted as hovered when it began: the hosted
 	// instance is the one under the mouse.
 	if im.IsWindowHovered(im.HoveredFlags_ChildWindows) {
@@ -424,7 +445,17 @@ draw_content :: proc(w: ^Window) {
 	if im.IsWindowHovered(im.HoveredFlags_ChildWindows) && (im.IsMouseClicked(.Left) || im.IsMouseClicked(.Right) || im.IsMouseClicked(.Middle)) {
 		_use_count += 1
 		w.used = _use_count
+		_focus_on_click()
 	}
+}
+
+// Any click on a view's content focuses it, so the keys go there next. imgui
+// focuses on a left click only, a right click just closes popups: the Scene
+// view's right-button flythrough would start in an unfocused view. A click
+// in a child window that already has the focus is left alone.
+@(private = "file")
+_focus_on_click :: proc() {
+	if !im.IsWindowFocused({.ChildWindows}) do im.SetWindowFocus()
 }
 
 // The drag-and-drop type of a view's tab dragged out of its tab bar. The
@@ -513,10 +544,15 @@ _draw_instance :: proc(w: ^Window) {
 			_hovered_frame = im.GetFrameCount()
 		}
 		w.ran = _pass + 1
+		if im.IsWindowFocused({.ChildWindows}) {
+			_focused = w
+			_focused_frame = im.GetFrameCount()
+		}
 		r.draw(w)
 		if im.IsWindowHovered(im.HoveredFlags_RootAndChildWindows) && (im.IsMouseClicked(.Left) || im.IsMouseClicked(.Right) || im.IsMouseClicked(.Middle)) {
 			_use_count += 1
 			w.used = _use_count
+			_focus_on_click()
 		}
 	}
 	w.dock = im.GetWindowDockID()

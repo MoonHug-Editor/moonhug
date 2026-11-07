@@ -15,6 +15,7 @@ import "core:strings"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/keymap"
 
 SCENE :: "Scene"
 
@@ -53,6 +54,10 @@ Scene_View :: struct {
 
 	hovered:           bool,
 	flythrough_active: bool,
+	// What the flythrough keymap's held commands asked for this frame
+	// (scene_fly_* below): the fly step reads and clears them.
+	fly_move: [3]f32,
+	fly_fast: bool,
 
 	// Projection and the 2D view. Orthographic keeps the framing of the
 	// perspective view: the ortho height derives from the orbit distance and
@@ -983,14 +988,12 @@ handle_scene_input :: proc() {
 			_sv.fly_speed_cur = min(_sv.fly_speed_cur, _sv.fly_speed * FLYTHROUGH_RAMP_MULT)
 		}
 
-		fwd, right, _ := _scene_cam_basis()
-		move := [3]f32{0, 0, 0}
-		if input.key_down(.W) do move += fwd
-		if input.key_down(.S) do move -= fwd
-		if input.key_down(.D) do move += right
-		if input.key_down(.A) do move -= right
-		if input.key_down(.E) do move += [3]f32{0, 1, 0}
-		if input.key_down(.Q) do move -= [3]f32{0, 1, 0}
+		// The movement keys came through the "Scene Flythrough" keymap
+		// before this draw (scene_fly_* commands).
+		move := _sv.fly_move
+		fast := _sv.fly_fast
+		_sv.fly_move = {}
+		_sv.fly_fast = false
 		if move != {} do _sv.ctx_click_pending = false
 
 		// Target velocity from the keys; the smoothed velocity chases it so
@@ -1005,7 +1008,7 @@ handle_scene_input :: proc() {
 				_sv.fly_speed * FLYTHROUGH_RAMP_MULT,
 			)
 			speed := _sv.fly_speed_cur
-			if input.key_down(.LSHIFT) || input.key_down(.RSHIFT) do speed *= FLYTHROUGH_SHIFT_MULT
+			if fast do speed *= FLYTHROUGH_SHIFT_MULT
 			target_vel = move / len * speed
 		} else {
 			_sv.fly_speed_cur = _sv.fly_speed
@@ -1019,30 +1022,8 @@ handle_scene_input :: proc() {
 	}
 	_sv.fly_speed_cur = _sv.fly_speed
 
-	// Gizmo mode shortcuts (Unity's Q/W/E/R/T) — not during flythrough, whose
-	// WASDQE movement owns these keys.
-	if !rmb_down {
-		if im.IsKeyPressed(.Q) do viewport.gizmo_mode = .Picker
-		if im.IsKeyPressed(.W) do viewport.gizmo_mode = .Translate
-		if im.IsKeyPressed(.E) do viewport.gizmo_mode = .Rotate
-		if im.IsKeyPressed(.R) do viewport.gizmo_mode = .Scale
-		if im.IsKeyPressed(.T) do viewport.gizmo_mode = .Handles
-		if im.IsKeyPressed(.F) do scene_frame_selected()
-	}
-
-	// Escape drops the selection (not mid-drag: the drag teardown in
-	// gizmo_tool_frame would leave its undo step open). During a
-	// band it cancels the band and restores the pre-band selection instead.
-	if im.IsKeyPressed(.Escape) && !viewport.tools_dragging() {
-		if _sv.band_active {
-			_sv.band_active = false
-			sel_scene_clear()
-			for h in _sv.band_base do sel_scene_add(h)
-		} else {
-			sel_scene_clear()
-		}
-		_sv.click_pending = false
-	}
+	// The tool keys and Escape are the "Scene Tools" keymap's commands
+	// (scene_tool_* and scene_clear_selection below).
 
 	// Click-to-pick: LMB press + release within a few pixels (and no Alt —
 	// Alt+LMB orbits; not on the gizmo — grabs must not select-through; and
@@ -1154,4 +1135,131 @@ handle_scene_input :: proc() {
 		_sv.cam_pos = anchor - fwd * _sv.cam_dist
 		update_scene_camera()
 	}
+}
+
+// --- Commands and keymaps ----------------------------------------------------
+//
+// The keymap resolver runs these before the views draw (editor/keymap). They
+// act on the focused Scene instance: the keymaps serve the "Scene" window, so
+// the focused window is one of its instances.
+
+@(private = "file")
+_scene_focused :: proc() -> ^Scene_View {
+	if w := wnd.focused(); w != nil && w.id == SCENE do return _scene_view(w)
+	return _sv
+}
+
+@(private = "file")
+_scene_tool :: proc(mode: viewport.Gizmo_Mode) {
+	viewport.gizmo_mode = mode
+}
+
+@(command={name="Scene/Picker Tool"})
+scene_tool_picker :: proc() { _scene_tool(.Picker) }
+@(command={name="Scene/Translate Tool"})
+scene_tool_translate :: proc() { _scene_tool(.Translate) }
+@(command={name="Scene/Rotate Tool"})
+scene_tool_rotate :: proc() { _scene_tool(.Rotate) }
+@(command={name="Scene/Scale Tool"})
+scene_tool_scale :: proc() { _scene_tool(.Scale) }
+@(command={name="Scene/Handles Tool"})
+scene_tool_handles :: proc() { _scene_tool(.Handles) }
+
+@(command={name="Scene/Frame Selected"})
+scene_frame_selected_command :: proc() {
+	prev := _sv
+	_sv = _scene_focused()
+	defer _sv = prev
+	scene_frame_selected()
+}
+
+// Escape drops the selection. During a band it cancels the band and restores
+// the pre-band selection instead. Not mid-drag: the drag teardown in
+// gizmo_tool_frame would leave its undo step open.
+@(command={name="Scene/Clear Selection", enabled=scene_can_clear_selection})
+scene_clear_selection :: proc() {
+	sv := _scene_focused()
+	if sv.band_active {
+		sv.band_active = false
+		sel_scene_clear()
+		for h in sv.band_base do sel_scene_add(h)
+	} else {
+		sel_scene_clear()
+	}
+	sv.click_pending = false
+}
+
+scene_can_clear_selection :: proc() -> bool {
+	return !viewport.tools_dragging()
+}
+
+// The tool keys are editor-wide: the tool is one for every Scene view, so
+// the keys work from the hierarchy or the inspector as well. The flythrough
+// keymap below sits on the Scene level and consumes, so it takes them first
+// while the camera flies.
+@(keymap={name="Scene Tools"})
+scene_tools_keymap :: proc(km: ^keymap.Keymap) {
+	keymap.bind(km, "Q", "Scene/Picker Tool")
+	keymap.bind(km, "W", "Scene/Translate Tool")
+	keymap.bind(km, "E", "Scene/Rotate Tool")
+	keymap.bind(km, "R", "Scene/Scale Tool")
+	keymap.bind(km, "T", "Scene/Handles Tool")
+}
+
+@(keymap={name="Scene View", window="Scene"})
+scene_view_keymap :: proc(km: ^keymap.Keymap) {
+	keymap.bind(km, "F", "Scene/Frame Selected")
+	keymap.bind(km, "Escape", "Scene/Clear Selection")
+}
+
+// The flythrough's keys, held: each adds to the frame's movement, which the
+// fly step in handle_scene_input turns into velocity. The keymap consumes
+// every key while the camera flies, so the tool keys above stay quiet.
+Fly_Dir :: enum { Forward, Back, Right, Left, Up, Down }
+
+@(private = "file")
+_scene_fly :: proc(dir: Fly_Dir) {
+	prev := _sv
+	_sv = _scene_focused()
+	defer _sv = prev
+	fwd, right, _ := _scene_cam_basis()
+	switch dir {
+	case .Forward: _sv.fly_move += fwd
+	case .Back:    _sv.fly_move -= fwd
+	case .Right:   _sv.fly_move += right
+	case .Left:    _sv.fly_move -= right
+	case .Up:      _sv.fly_move += {0, 1, 0}
+	case .Down:    _sv.fly_move -= {0, 1, 0}
+	}
+}
+
+@(command={name="Scene/Fly Forward"})
+scene_fly_forward :: proc() { _scene_fly(.Forward) }
+@(command={name="Scene/Fly Back"})
+scene_fly_back :: proc() { _scene_fly(.Back) }
+@(command={name="Scene/Fly Right"})
+scene_fly_right :: proc() { _scene_fly(.Right) }
+@(command={name="Scene/Fly Left"})
+scene_fly_left :: proc() { _scene_fly(.Left) }
+@(command={name="Scene/Fly Up"})
+scene_fly_up :: proc() { _scene_fly(.Up) }
+@(command={name="Scene/Fly Down"})
+scene_fly_down :: proc() { _scene_fly(.Down) }
+@(command={name="Scene/Fly Fast"})
+scene_fly_fast :: proc() { _scene_focused().fly_fast = true }
+
+scene_is_flying :: proc() -> bool {
+	return _scene_focused().flythrough_active
+}
+
+@(keymap={name="Scene Flythrough", window="Scene", active=scene_is_flying, consume=true, priority=10})
+scene_flythrough_keymap :: proc(km: ^keymap.Keymap) {
+	keymap.bind(km, "W", "Scene/Fly Forward", held = true)
+	keymap.bind(km, "S", "Scene/Fly Back", held = true)
+	keymap.bind(km, "D", "Scene/Fly Right", held = true)
+	keymap.bind(km, "A", "Scene/Fly Left", held = true)
+	keymap.bind(km, "E", "Scene/Fly Up", held = true)
+	keymap.bind(km, "Q", "Scene/Fly Down", held = true)
+	keymap.bind(km, "LeftShift", "Scene/Fly Fast", held = true)
+	keymap.bind(km, "RightShift", "Scene/Fly Fast", held = true)
 }

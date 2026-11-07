@@ -5,6 +5,7 @@ import "core:mem"
 import "core:slice"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/keymap"
 import "moonhug:editor/session"
 import "moonhug:editor/widgets"
 
@@ -218,6 +219,7 @@ draw_menu_sections :: proc(sections: []Menu_Section) {
 @(extension_point={attribute="menu_item", target="proc var", fields="path order shortcut enabled checked"})
 add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil, checked: proc() -> bool = nil, origin := "") {
 	tree_add_item(_menu_root, path, shortcut, action, order, enabled, checked, origin)
+	_menu_command(_get_or_create_path(_menu_root, path), path)
 }
 
 tree_add_item :: proc(root: ^MenuNode, path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil, checked: proc() -> bool = nil, origin := "") {
@@ -255,6 +257,7 @@ tree_add_view_item :: proc(root: ^MenuNode, path: string, action: proc(view: ses
 // A shortcut ("Ctrl+1" — Ctrl renders as Cmd on macOS) toggles it globally.
 add_menu_toggle :: proc(path: string, value: ^bool, order: int = ORDER_DEFAULT, shortcut := "", enabled: proc() -> bool = nil, origin := "") {
 	tree_add_toggle(_menu_root, path, value, order, shortcut, enabled, origin)
+	_menu_command(_get_or_create_path(_menu_root, path), path)
 }
 
 tree_add_toggle :: proc(root: ^MenuNode, path: string, value: ^bool, order: int = ORDER_DEFAULT, shortcut := "", enabled: proc() -> bool = nil, origin := "") {
@@ -449,99 +452,48 @@ _find_child :: proc(node: ^MenuNode, name: string) -> ^MenuNode {
 	return nil
 }
 
-// _parse_shortcut converts strings like "Ctrl+S", "Alt+F4" into ImGui KeyChord for SetNextItemShortcut.
-_parse_shortcut :: proc(shortcut: string) -> (chord: im.KeyChord, ok: bool) {
-    s := strings.trim_space(shortcut)
-    if s == "" do return 0, false
-    
-    parts := strings.split(s, "+")
-    defer delete(parts)
-    
-    mods: im.KeyChord = 0
-    key: im.Key = .None
+// --- Commands -------------------------------------------------------------
+//
+// Every item and toggle of the main menu is a command named by its path
+// ("Edit/Undo"), and its shortcut is a binding in the "Menu" keymap, so the
+// keymap resolver (editor/keymap) runs it whether the menu is open or not.
+// The node is the command's data: the predicates it carries answer for it.
 
-    for p in parts {
-        tok := strings.trim_space(p)
-        if len(tok) == 0 do continue
-        lower := strings.to_lower(tok, context.temp_allocator)
+@(private = "file")
+_menu_keymap: ^keymap.Keymap
 
-        switch lower {
-        case "ctrl", "control": mods |= im.KeyChord(im.Key.ImGuiMod_Ctrl)
-        case "alt":            mods |= im.KeyChord(im.Key.ImGuiMod_Alt)
-        case "shift":          mods |= im.KeyChord(im.Key.ImGuiMod_Shift)
-        case "super", "cmd":    mods |= im.KeyChord(im.Key.ImGuiMod_Super)
-        case:
-            // Handle Single Characters (A-Z, 0-9)
-            if len(tok) == 1 {
-                r := tok[0]
-                if r >= 'a' && r <= 'z' {
-                    key = im.Key(cast(int)im.Key.A + int(r - 'a'))
-                } else if r >= 'A' && r <= 'Z' {
-                    key = im.Key(cast(int)im.Key.A + int(r - 'A'))
-                } else if r >= '0' && r <= '9' {
-                    key = im.Key(cast(int)im.Key._0 + int(r - '0'))
-                } else {
-                    // Punctuation keys, spelled as the character itself.
-                    switch r {
-                    case ',': key = .Comma
-                    case '.': key = .Period
-                    case '-': key = .Minus
-                    case '=': key = .Equal
-                    case '/': key = .Slash
-                    }
-                }
-            } // Handle F-Keys
-            else if (tok[0] == 'F' || tok[0] == 'f') && len(tok) > 1 {
-                n := 0
-                for i in 1..<len(tok) {
-                    if tok[i] >= '0' && tok[i] <= '9' {
-                        n = n * 10 + int(tok[i] - '0')
-                    }
-                }
-                if n >= 1 && n <= 12 {
-                    key = im.Key(cast(int)im.Key.F1 + (n - 1))
-                }
-            }
-            else if lower == "space" {
-                key = .Space
-            }
-            // Add specific cases here like "Enter", "Escape", "Delete" if needed
-        }
-    }
-
-    if key == .None do return 0, false
-    return mods | im.KeyChord(key), true
+@(private = "file")
+_menu_command :: proc(node: ^MenuNode, path: string) {
+	keymap.command_add_data(path, _menu_command_run, node, _menu_command_enabled, node.origin)
+	if node.shortcut == "" do return
+	if _menu_keymap == nil {
+		_menu_keymap = keymap.add("Menu", "", nil, origin = "menu/menu.odin")
+	}
+	// A re-registered item binds once: drop its earlier binding.
+	for b, i in _menu_keymap.bindings do if b.command == path {
+		delete(b.text)
+		delete(b.command)
+		ordered_remove(&_menu_keymap.bindings, i)
+		break
+	}
+	keymap.bind(_menu_keymap, node.shortcut, path)
 }
 
-// _process_menu_shortcuts walks the menu tree and triggers actions for any shortcut pressed (global, so works when menu is closed).
-_process_menu_shortcuts :: proc(node: ^MenuNode) {
-	for child in node.children {
-		switch child.kind {
-		case .Separator, .Dynamic:
-			// nothing to bind: a dynamic submenu's items are not in the tree
-		case .Submenu:
-			_process_menu_shortcuts(child)
-		case .Action:
-			if child.shortcut != "" && child.action != nil {
-				if chord, ok := _parse_shortcut(child.shortcut); ok {
-					if im.Shortcut(chord, {.RouteGlobal}) && _node_enabled(child) {
-						child.action()
-					}
-				}
-			}
-			// recurse in case this node has children (shouldn't for Action, but safe)
-			_process_menu_shortcuts(child)
-		case .Toggle:
-			if child.shortcut != "" && child.value != nil {
-				if chord, ok := _parse_shortcut(child.shortcut); ok {
-					if im.Shortcut(chord, {.RouteGlobal}) && _node_enabled(child) {
-						child.value^ = !child.value^
-					}
-				}
-			}
-			_process_menu_shortcuts(child)
-		}
+@(private = "file")
+_menu_command_run :: proc(data: rawptr) {
+	node := (^MenuNode)(data)
+	switch node.kind {
+	case .Action:
+		if node.action != nil do node.action()
+	case .Toggle:
+		if node.value != nil do node.value^ = !node.value^
+	case .Separator, .Dynamic, .Submenu:
 	}
+}
+
+@(private = "file")
+_menu_command_enabled :: proc(data: rawptr) -> bool {
+	return _node_enabled((^MenuNode)(data))
 }
 
 _node_enabled :: proc(node: ^MenuNode, view := session.View{}) -> bool {
@@ -617,9 +569,6 @@ _draw_menu_child :: proc(child: ^MenuNode, view := session.View{}) {
 // draw_menu_bar builds and draws the ImGui main menu bar from the path tree.
 // Top-level menu shortcuts are processed every frame so they work when the menu is not open.
 draw_menu_bar :: proc() -> bool {
-	// A modal (a confirmation dialog) owns the keyboard: a global shortcut
-	// behind it (Delete, Undo, Save) would act on what the modal asks about.
-	if im.GetTopMostPopupModal() == nil do _process_menu_shortcuts(_menu_root)
 	if !im.BeginMainMenuBar() do return false
 	defer im.EndMainMenuBar()
 	_draw_menu_children(_menu_root)
