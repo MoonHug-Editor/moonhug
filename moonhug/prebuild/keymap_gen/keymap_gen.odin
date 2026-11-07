@@ -19,6 +19,7 @@ import "core:fmt"
 import "core:slice"
 import "core:strings"
 import "core:os"
+import "../gen_core"
 import db "../gen_db"
 import "../gen_facts"
 import "../menu_gen"
@@ -265,7 +266,7 @@ _write_reference :: proc(w: ^db.World, commands: []CommandEntry, keymaps: []Keym
 			pkg = r.pkg
 			fmt.sbprintf(&b, "\n### %s\n\n| Id | Name | Declared |\n|---|---|---|\n", pkg)
 		}
-		fmt.sbprintf(&b, "| `%s` | %s | %s |\n", r.id, r.name, r.place)
+		fmt.sbprintf(&b, "| `%s` | %s | %s |\n", r.id, r.name, gen_core.SourceLinkAt(r.place))
 	}
 	strings.write_string(&b, "\n## Keymaps\n\n| Name | Scope | Declared |\n|---|---|---|\n")
 	for e in keymaps {
@@ -275,7 +276,7 @@ _write_reference :: proc(w: ^db.World, commands: []CommandEntry, keymaps: []Keym
 		case e.window != "": scope = fmt.tprintf("%s window", e.window)
 		}
 		if e.active != "" do scope = fmt.tprintf("%s, when `%s` allows", scope, e.active)
-		fmt.sbprintf(&b, "| %s | %s | %s |\n", e.name, scope, _origin_place(e.origin))
+		fmt.sbprintf(&b, "| %s | %s | %s |\n", e.name, scope, gen_core.SourceLinkAt(_origin_place(e.origin)))
 	}
 	os.make_directory_all("docs/reference/commands")
 	db.emit(w, "docs/reference/commands/_index.md", strings.to_string(b))
