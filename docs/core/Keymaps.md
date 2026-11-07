@@ -21,7 +21,7 @@ scene_clear_selection :: proc() { ... }
 ```
 
 - `name` is `Group/Title`, the group being the window or feature it belongs to, in spaced words.
-- `id` is the command's stable identity, which bindings and the override file refer to. It defaults to the declaring proc's qualified name, `editor.scene_tool_translate`, so a renamed title or a moved menu item keeps the user's bindings. Give one when the proc itself is renamed. A menu item's id is its proc's qualified name the same way, or its `@(menu_item)` `id`.
+- `id` is the command's stable identity, which bindings and the override files refer to. The Commands reference page, written by `mh docs`, lists every id. It defaults to the declaring proc's qualified name, `editor.scene_tool_translate`, so a renamed title or a moved menu item keeps the user's bindings. Give one when the proc itself is renamed. A menu item's id is its proc's qualified name the same way, or its `@(menu_item)` `id`.
 - `enabled` names a proc in the same package that says whether the command can run now. A disabled command leaves its key to the next binding.
 - A command never reads a modifier key to decide what it does: the chord carries the modifier, and a different action is a different command. Collapse and Collapse Subtree are two commands, bound to Left and Alt+Left, so each can be rebound on its own.
 - Every item and toggle of the main menu is a command named by its path (`Edit/Undo`), registered by the menu with the item. Its `shortcut=` is a binding in the `Menu` keymap.
@@ -80,7 +80,7 @@ The Shortcuts tab of the settings window lists every registered command, one row
 - A command whose bindings differ from the defaults in any context shows Reset to default beside its plus, which puts every context back. Reset All does it for every command.
 - Two bindings one chord can reach in the same frame are a conflict: same window, or one editor-wide. The binding shows a warning with the resolver's verdict, which one runs and why. Nothing is blocked.
 - A binding whose command is not loaded is listed under Not loaded and kept.
-- Overrides live in `UserSettings/shortcuts.json`, per developer, never committed, as keymap name, command id and the chord list. Defaults stay in code. An override for a keymap that is not registered stays in the file and applies when that keymap registers, so a plugin turned off and on, or a view that registers its keymap at runtime, keeps the user's bindings.
+- Overrides live in one file, `shortcuts.json` under the OS user's config folder, Application Support on macOS, as keymap name, command id and the chord list, defaults stay in code. It is the developer's, machine-wide, the same for every project, and never in the project's folder. An override for a keymap that is not registered stays in the file and applies when that keymap registers, so a plugin turned off and on, or a view that registers its keymap at runtime, keeps the user's bindings.
 - The bridge lists commands with their bindings (`commands`) and runs one by id or name (`run_command`), see [McpBridge](McpBridge.md).
 - The main menu shows the live bindings of its items, overrides included: the first two chords, and every chord in the item's tooltip when there are more.
 - A command is one thing wherever it is reached: a view binds the Edit menu's Copy, Delete or Frame Selected in its own keymap instead of declaring a command of its own, so the page lists it once with every context. A view's own commands are the ones only it has, such as a list's Select Down.
@@ -95,4 +95,9 @@ A chord is written with `Ctrl` meaning the platform's primary modifier, which im
 
 ## What is still read directly
 
-Every view's keys are commands in its keymap. A few reads stay direct, because they are not view shortcuts: the add component popup's keys (it is a popup with its own search field), the maximize shortcut (it acts on the view under the mouse, not the focused one), the dialog's and the text input's hooks (they belong to the widget that owns the keyboard), and modifier reads at a click, such as Shift or Ctrl held while a row is clicked. User overrides and a Shortcuts window come next.
+Every view's keys and the main menu's shortcuts are commands in keymaps.
+
+A few reads stay direct:
+- the dialog's Enter and Escape and the text input's Escape hook
+- The add component popup's keys (a popup with its own search field)
+- a modifier held during a mouse action, such as Shift+click extending a selection, Ctrl during a gizmo drag toggling snap, or Alt on the toolbar's Play. The mouse is the input there and the modifier a flag on it, so no chord resolves and the Shortcuts page cannot rebind them, as in every editor.

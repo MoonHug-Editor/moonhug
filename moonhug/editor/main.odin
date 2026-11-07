@@ -112,7 +112,9 @@ main :: proc() {
     _register_editor_keymaps()
     // The developer's overrides, applied over the declared bindings, and to
     // any keymap registered later (editor/keymap).
-    keymap.overrides_path = strings.clone(core.user_settings_file("Shortcuts"))
+    // Machine-wide, in the OS user's config folder: shortcuts are the
+    // developer's, not the project's.
+    keymap.overrides_path = strings.clone(core.system_settings_file("Shortcuts"))
     keymap.overrides_load()
     keymap.log_conflicts()
     migrate_imgui_ini()

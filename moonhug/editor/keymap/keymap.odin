@@ -647,13 +647,15 @@ parse_key :: proc(lower: string) -> (key: im.Key, ok: bool) {
 
 // --- Defaults and overrides ---------------------------------------------------
 //
-// The bindings a keymap declares are its defaults, kept as a snapshot when
-// it registers. A user's override replaces the chord list of one command in
-// one keymap, and the file UserSettings/shortcuts.json holds every override
-// by keymap name and command name, with nothing else: defaults stay in code.
-// An override for a keymap that is not registered stays in the file and
-// applies the moment that keymap registers, so a plugin turned off and on,
-// or a view that registers its keymap at runtime, keeps the user's bindings.
+// The bindings a keymap declares are its defaults, recorded as they bind.
+// A user's override replaces the chord list of one command in one keymap,
+// and one file holds every override by keymap name and command id, with
+// nothing else, defaults stay in code: shortcuts.json under the OS user's
+// config folder, machine-wide, since shortcuts are the developer's, not the
+// project's. An override for a keymap that is not registered stays in the
+// file and applies the moment that keymap registers, so a plugin turned off
+// and on, or a view that registers its keymap at runtime, keeps the user's
+// bindings.
 
 // One command's default bindings, kept for reset and for the chord list of
 // a reset binding.

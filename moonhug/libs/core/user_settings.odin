@@ -37,6 +37,22 @@ import "core:strings"
 // another project directory keeps its own.
 USER_SETTINGS_DIR :: "UserSettings"
 
+// The machine-wide settings folder, under the user's config directory
+// (Application Support on macOS, .config on Linux, AppData on Windows): one
+// place for every project on the machine, where a system setting lives.
+// Temp.
+system_settings_dir :: proc() -> string {
+    base, err := os.user_config_dir(context.temp_allocator)
+    if err != nil do return "MoonHugSettings"
+    return strings.concatenate({base, "/MoonHug"}, context.temp_allocator)
+}
+
+// "Shortcuts" -> "<config dir>/MoonHug/shortcuts.json". Temp.
+system_settings_file :: proc(name: string) -> string {
+    slug, _ := strings.replace_all(strings.to_lower(name, context.temp_allocator), " ", "_", context.temp_allocator)
+    return strings.concatenate({system_settings_dir(), "/", slug, ".json"}, context.temp_allocator)
+}
+
 // "Animation" -> "UserSettings/animation.json". Temp-allocated.
 user_settings_file :: proc(name: string) -> string {
     slug, _ := strings.replace_all(strings.to_lower(name, context.temp_allocator), " ", "_", context.temp_allocator)
