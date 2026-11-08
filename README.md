@@ -8,14 +8,14 @@ An extensible editor for Odin projects, inspired by Unity Editor.
 > Frequent API changes, bugs, non-implemented features.
 Good moment to add contribution and influence how Editor shapes up.
 
-Main parts:
-- libs (moonhug/libs) — core packages that editor and engine plugin depend on
-- editor (moonhug/editor) — a generic editor that can be extended via attributes. Every feature, the engine included, hooks into the editor through attributes.
-- plugins (plugins/*) — packages that extend editor via attributes and can use other plugins
-  - engine (plugins/engine) — plugin with scene tree and most functionality
-  - app (plugins/app) — example of application that uses engine
+Currently supported platforms:
+- macOS
 
-For more details see [Architecture](docs/core/Architecture.md)
+> Project needs at least 1 active user per platform who is ready to contribute platform specific fixes, so that others get best user experience on each platform.
+
+Seeking support:
+- Windows
+- Linux
 
 ## Installation
 To build and run the editor, see [Install, Build and Run](docs/general/InstallBuildAndRun.md).
@@ -69,6 +69,15 @@ Contributions are accepted under the same license.
 - vendored C libraries Odin ships as source (stb, cgltf, box2d, box3d), all built by `mh setup`
 
 Full list and what needs them: [Install, Build and Run](docs/general/InstallBuildAndRun.md#dependencies).
+
+## Main parts
+- libs (moonhug/libs) — core packages that editor and engine plugin depend on
+- editor (moonhug/editor) — a generic editor that can be extended via attributes. Every feature, the engine included, hooks into the editor through attributes.
+- plugins (plugins/*) — packages that extend editor via attributes and can use other plugins
+  - engine (plugins/engine) — plugin with scene tree and most functionality
+  - app (plugins/app) — example of application that uses engine
+
+For more details see [Architecture](docs/core/Architecture.md)
 
 ## Features
 - menu bar - customizable via @(menu_item=...). Attribute on a proc it is an action, on a bool variable it is a toggle. `checked=<proc>` draws a tick from computed state, can be used for a radio group. `enabled=<proc>` greys an item out
@@ -141,6 +150,10 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
   - first consumer: a sequencer track that drives a transform along a spline
 
 - project file ops: Windows trash/reveal (darwin-only today, see project_os_stub.odin)
+
+- docs
+  - components group in left pane for engine and plugins
+    - should be similar structure across all comp docs. Description, example, some technical info, etc
 
 - physics2d follow-ups:
   - joints
