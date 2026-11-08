@@ -315,12 +315,15 @@ DOCS_SOURCE_IGNORE :: []string{
 	`/(docs|moonhug|plugins|tools/mh)/.*\.(meta|scene|prefab|mat|anim|asset|json|renderpipeline|shadergraph|spriteatlas)$`,
 	`/(docs|moonhug|plugins|tools/mh)/.*\.(glsl|spv|msl|hlsl|metal)$`,
 	`/(docs|moonhug|plugins|tools/mh)/.*\.(png|jpe?g|hdr|ttf|otf|glb|gltf|bin|mp3|wav|ogg)$`,
-	// The folders and files tests create and delete under the roots, named
-	// `_tmp_<name>` or `_<name>_tmp`. The server copies a new folder after
-	// the event, and a folder the test removed first leaves the served site
-	// on an error page until a restart. A test writing elsewhere in the
-	// roots uses one of these names.
-	`/(moonhug|plugins)/.*/_(tmp_[^/]*|[^/]*_tmp[^/]*)(/.*)?$`,
+	// The folders and files tests create and delete under the roots: any
+	// path under moonhug/, plugins/ or tools/mh with a name that starts with
+	// `_`, except a `.md` file (the `_index.md` pages). Each event is a
+	// rebuild, and a folder the test removed before the server copied it
+	// leaves the served site on an error page until a restart. RE2 has no
+	// lookahead, so "not .md" is three cases: the name ends in a character
+	// other than `d`, in `d` after a character other than `m`, or in `md`
+	// after a character other than `.`.
+	`/(moonhug|plugins|tools/mh)/(.*/)?_(([^/]*[^d/])?|([^/]*[^m/])?d|([^/]*[^./])?md)(/.*)?$`,
 }
 
 // The URL template every source location in the reference pages links to,
