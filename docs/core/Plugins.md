@@ -352,7 +352,8 @@ A setting about the person instead of the project is one of two more levels, dec
 
 - A user or system setting loads at editor start, writes its file with the defaults when there is none, and saves at exit. The editor only: the game never reads them.
 - `tab` makes it a section of the same settings window, saved to its own level's file whenever it changes. Without `tab`, a view or a page edits it and saves it itself, with `core.user_settings_save` or `core.system_settings_save`.
-- The quick help switches, `editor.quick_help_settings`, are a system setting drawn by the Shortcuts section.
+- An edit of any field records an undo step, whatever the field's type: the pointer types undo needs are generated from every settings struct, as from every `@(typ_guid)` type.
+- A settings struct with `decor:` tags is imported by the inspector's generated decorators, so its package cannot import the inspector: a `@(property_drawer)` for one of its types goes in another package. `keymap.quick_help_settings`, the Quick Help tab, has its tool list's drawer in `editor/quick_help`.
 - Declarations land in `editor/user_settings_generated.odin` (user_settings_gen), one load and one save proc per level.
 
 ## Assets

@@ -6,9 +6,7 @@ package editor
 // frame, the console window may be hidden, so it is also where the play
 // pipe's log entries are published and the tasks are polled.
 
-import "base:runtime"
 import "core:fmt"
-import "core:slice"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/icons"
@@ -16,38 +14,7 @@ import "moonhug:editor/keymap"
 import "menu"
 import "moonhug:editor/tasks"
 import "moonhug:editor/widgets"
-import core "moonhug:libs/core"
 import "moonhug:libs/log"
-
-// Which tools' quick help the status bar shows, for the person on this
-// machine. Edited at the top of the Shortcuts section of the settings window.
-Quick_Help_Settings :: struct {
-	show:   bool,            // any tool's quick help, the log line stays when off
-	hidden: [dynamic]string, // the names of the tool keymaps whose quick help stays hidden
-}
-
-@(system_settings={name="Quick Help"})
-quick_help_settings := Quick_Help_Settings{show = true}
-
-// Whether the status bar shows the quick help of the tool keymap `name`.
-quick_help_shown :: proc(name: string) -> bool {
-	return quick_help_settings.show && !slice.contains(quick_help_settings.hidden[:], name)
-}
-
-// Shows or hides the quick help of the tool keymap `name`, and saves.
-quick_help_set_shown :: proc(name: string, shown: bool) {
-	context.allocator = runtime.default_allocator()
-	hidden := &quick_help_settings.hidden
-	at, found := slice.linear_search(hidden[:], name)
-	switch {
-	case shown && found:
-		delete(hidden[at])
-		ordered_remove(hidden, at)
-	case !shown && !found:
-		append(hidden, strings.clone(name))
-	}
-	core.system_settings_save("Quick Help", &quick_help_settings, Quick_Help_Settings)
-}
 
 draw_status_bar :: proc() {
 	// Publish app-process log entries queued by the play pipe reader.
@@ -64,9 +31,9 @@ draw_status_bar :: proc() {
 	tasks_x := _draw_status_bar_tasks()
 
 	// A tool's keymap on top of the modal stack: its keys take the log
-	// line's place while it runs, unless the settings hide them. One without
-	// any, the palette's, leaves it.
-	if km := keymap.modal_top(); km != nil && quick_help_shown(km.name) {
+	// line's place while it runs, unless the Quick Help settings hide them.
+	// One without any, the palette's, leaves it.
+	if km := keymap.modal_top(); km != nil && keymap.quick_help_shown(km.name) {
 		if help := keymap.quick_help(km); len(help) > 0 {
 			_draw_status_bar_quick_help(km.name, help, tasks_x)
 			return

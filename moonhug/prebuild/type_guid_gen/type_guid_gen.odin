@@ -306,6 +306,8 @@ generate :: proc(w: ^db.World) -> bool {
 
 	if !_generate_type_key(entries[:], w) do return false
 	if !_generate_type_procs(entries[:], cleanup_bindings[:], w) do return false
+	// Settings structs are edited field by field with undo too.
+	append(&roots, ..gen_facts.settings_roots(w))
 	ptypes := gen_facts.pointer_types(w, roots[:])
 	defer delete(ptypes)
 	if !_generate_type_registration(entries[:], cleanup_bindings[:], ptypes, w) do return false
@@ -408,6 +410,9 @@ _write_registration :: proc(entries: []_TypeGuidRow, cleanup_bindings: []_Cleanu
 	for p in ptypes {
 		if p.pkg_name == "" || p.pkg_name == "core" || p.pkg_name == host_name do continue
 		if !included_pkg(p.pkg_name, host_name, runnables) do continue
+		// A game never imports the editor: an editor type is the shared
+		// registration's alone.
+		if host_name != "" && p.editor do continue
 		found := false
 		for q in pkg_imports do if q.name == p.pkg_name { found = true; break }
 		if !found do append(&pkg_imports, _Pkg_Import{name = p.pkg_name, path = p.pkg_path})
@@ -446,6 +451,7 @@ _write_registration :: proc(entries: []_TypeGuidRow, cleanup_bindings: []_Cleanu
 	// so undo, the clipboard and overrides can write any field back from JSON.
 	for p in ptypes {
 		if !included_pkg(p.pkg_name, host_name, runnables) do continue
+		if host_name != "" && p.editor do continue
 		fmt.sbprintf(&b, "\t\tcore.register_pointer_type(%s)\n", p.expr)
 	}
 	// The lifecycle tables: core's types from core's generated table, every

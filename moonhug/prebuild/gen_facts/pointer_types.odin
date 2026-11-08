@@ -7,6 +7,7 @@ package gen_facts
 // The type guid generator registers every type found here, so no package
 // keeps a hand-written list.
 
+import "core:odin/ast"
 import "core:slice"
 import "core:strings"
 import db "moonhug:prebuild/gen_db"
@@ -20,6 +21,9 @@ Pointer_Type :: struct {
 	expr:     string,
 	pkg_name: string,
 	pkg_path: string,
+	// The named type lives in an editor package: only the editor's
+	// registration names it, a game never imports the editor.
+	editor:   bool,
 }
 
 // Every type a value of one of the root declarations can hold, transitively
@@ -114,15 +118,16 @@ pointer_types :: proc(w: ^db.World, roots: []^db.DeclInfo) -> []Pointer_Type {
 				}
 			}
 
+			editor := _is_editor_path(pkg_path)
 			if !seen[qualified] {
 				seen[qualified] = true
-				append(&out, Pointer_Type{expr = qualified, pkg_name = pkg_name, pkg_path = pkg_path})
+				append(&out, Pointer_Type{expr = qualified, pkg_name = pkg_name, pkg_path = pkg_path, editor = editor})
 			}
 			if layers != "" && !_covered_layers(layers) {
 				layered := strings.concatenate({layers, qualified})
 				if !seen[layered] {
 					seen[layered] = true
-					append(&out, Pointer_Type{expr = layered, pkg_name = pkg_name, pkg_path = pkg_path})
+					append(&out, Pointer_Type{expr = layered, pkg_name = pkg_name, pkg_path = pkg_path, editor = editor})
 				}
 			}
 			if has_next do append(&queue, db.get(decls, next))
@@ -130,6 +135,54 @@ pointer_types :: proc(w: ^db.World, roots: []^db.DeclInfo) -> []Pointer_Type {
 	}
 
 	slice.sort_by(out[:], proc(a, b: Pointer_Type) -> bool { return a.expr < b.expr })
+	return out[:]
+}
+
+// The struct types of every settings var, as roots for pointer_types: the
+// settings window records an edit of each field, and undo writes the field
+// back from JSON, which needs its type registered. A var names its type
+// explicitly (`x: T`) or through its initializer (`x := T{...}`), in its own
+// package or through an import. Temp.
+settings_roots :: proc(w: ^db.World) -> []^db.DeclInfo {
+	out := make([dynamic]^db.DeclInfo, context.temp_allocator)
+	decls := db.get_comps_DeclInfo()
+	attrs := db.get_comps(w, Attrs_GenComp)
+	// Type declarations by package path and name.
+	types := make(map[string]^db.DeclInfo, context.temp_allocator)
+	for &d in decls.rows[:db.comps_len(decls)] {
+		if d.name != "" do types[strings.concatenate({d.pkg_path, ".", d.name}, context.temp_allocator)] = &d
+	}
+	m := db.all_of(db.r(decls), db.r(attrs)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		d := db.get(decls, entity)
+		is_settings := false
+		for a in db.get(attrs, entity).attrs {
+			switch a.key {
+			case "project_settings", "user_settings", "system_settings": is_settings = true
+			}
+		}
+		if !is_settings || d.decl == nil do continue
+		expr := d.decl.type
+		if expr == nil && len(d.decl.values) > 0 {
+			if lit, is_lit := d.decl.values[0].derived.(^ast.Comp_Lit); is_lit do expr = lit.type
+		}
+		if expr == nil do continue
+		pkg_path, name := d.pkg_path, ""
+		#partial switch t in expr.derived {
+		case ^ast.Ident:
+			name = t.name
+		case ^ast.Selector_Expr:
+			alias, is_ident := t.expr.derived.(^ast.Ident)
+			if !is_ident || t.field == nil do continue
+			path, found := file_import(d, alias.name)
+			if !found do continue
+			pkg_path = path
+			if strings.has_prefix(path, "moonhug:") do pkg_path = strings.concatenate({"moonhug/", path[len("moonhug:"):]}, context.temp_allocator)
+			name = t.field.name
+		}
+		if name == "" do continue
+		if root, ok := types[strings.concatenate({pkg_path, ".", name}, context.temp_allocator)]; ok do append(&out, root)
+	}
 	return out[:]
 }
 
@@ -179,6 +232,13 @@ _covered_layers :: proc(layers: string) -> bool {
 		return true
 	}
 	return false
+}
+
+// The editor, moonhug/editor and its subpackages, and a plugin's editor
+// package and the packages under it.
+@(private = "file")
+_is_editor_path :: proc(path: string) -> bool {
+	return path == "moonhug/editor" || strings.has_prefix(path, "moonhug/editor/") || strings.has_suffix(path, "/editor") || strings.contains(path, "/editor/")
 }
 
 @(private = "file")
