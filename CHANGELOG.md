@@ -1,3 +1,9 @@
+## [0.158.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.158.0...v0.158.1) (2026-11-08)
+
+### Bug Fixes
+
+* clip settings use the import settings document's allocator (bad free after long undo/redo in a debug build), the preview world keeps one instance between frames so a clip rig or scene no longer draws into another preview ([546aed4](https://github.com/MoonHug-Editor/moonhug/commit/546aed438b72569b2a572c5798f4f3ec678dce71))
+
 ## [0.158.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.157.0...v0.158.0) (2026-11-08)
 
 ### Features
