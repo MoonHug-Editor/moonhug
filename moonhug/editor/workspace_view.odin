@@ -887,7 +887,7 @@ _ws_prune_closing :: proc(v: ^_WS_View, ws: ^workspace.Workspace) {
 			f := ws.frames[fi]
 			for t := len(f.tabs) - 1; t >= 0; t -= 1 {
 				if f.tabs[t] != key do continue
-				if key not_in v.left do v.left[strings.clone(key)] = {frame = f.id, parent = f.parent, rect = f.rect}
+				_ws_left_record(v, key, {frame = f.id, parent = f.parent, rect = f.rect})
 				// Removes the frame too when this is its last tab.
 				workspace.tab_remove(ws, fi, t)
 				break
@@ -896,6 +896,25 @@ _ws_prune_closing :: proc(v: ^_WS_View, ws: ^workspace.Workspace) {
 		delete(key)
 		ordered_remove(&v.closing, i)
 		workspace.changed(ws)
+	}
+}
+
+// Records the frame a closed tab left: the latest close of a view wins. A
+// view the window registry no longer remembers as closed cannot be reopened,
+// so its entry goes, which keeps the map as small as that list.
+@(private = "file")
+_ws_left_record :: proc(v: ^_WS_View, key: string, l: _WS_Left) {
+	context.allocator = runtime.default_allocator()
+	if _, had := v.left[key]; had {
+		v.left[key] = l
+	} else {
+		v.left[strings.clone(key)] = l
+	}
+	stale := make([dynamic]string, context.temp_allocator)
+	for k in v.left do if !wnd.is_closed_remembered(k) do append(&stale, k)
+	for k in stale {
+		dk, _ := delete_key(&v.left, k)
+		delete(dk)
 	}
 }
 

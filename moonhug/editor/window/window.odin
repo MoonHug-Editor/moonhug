@@ -296,6 +296,13 @@ _restore_tab_place :: proc(w: ^Window) {
 	w.reorder_tab = -1
 }
 
+// Whether the instance `key` is among the closed ones reopen_closed can
+// bring back.
+is_closed_remembered :: proc(key: string) -> bool {
+	for c in _closed do if c.key == key do return true
+	return false
+}
+
 // Whether reopen_closed has an instance to bring back.
 has_closed :: proc() -> bool {
 	return len(_closed) > 0
@@ -717,8 +724,7 @@ _create :: proc(ri: int, asset: core.Asset_GUID, key := "") -> ^Window {
 	context.allocator = runtime.default_allocator()
 	r := &_registry[ri]
 	w := new(Window)
-	w.reorder_tab = -1
-	w^ = {id = r.id, reg = ri, asset = asset, open = true}
+	w^ = {id = r.id, reg = ri, asset = asset, open = true, reorder_tab = -1}
 	switch {
 	case key != "":   w.key = strings.clone(key)
 	case asset == {}: w.key = strings.clone(r.id)
