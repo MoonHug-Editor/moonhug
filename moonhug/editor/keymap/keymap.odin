@@ -65,6 +65,9 @@ Command :: struct {
 	enabled_data: proc(data: rawptr) -> bool,
 	data:         rawptr,
 	origin:       string, // where it was declared, for the Shortcuts window and Debug Tooltips
+	// Listed by the command palette. A step of a focused list's navigation
+	// (Select Down, Expand) says false: it does nothing useful from there.
+	palette:      bool,
 }
 
 // One chord bound to a command name.
@@ -155,10 +158,13 @@ _COMMAND_MODS :: im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.ImGuiMod
 // says whether the command can run now: a disabled command leaves its key to
 // the next binding.
 // `id` is the stable identity, the proc's qualified name by default: give
-// one to keep the user's bindings through a rename of the proc.
-@(extension_point={attribute="command", target="proc", fields="name enabled id"})
-command_add :: proc(name: string, run: proc(), enabled: proc() -> bool = nil, origin := "", id := "") -> ^Command {
+// one to keep the user's bindings through a rename of the proc. `palette`
+// false keeps it out of the command palette, for a step of a focused list's
+// navigation that only makes sense as a key.
+@(extension_point={attribute="command", target="proc", fields="name enabled id palette"})
+command_add :: proc(name: string, run: proc(), enabled: proc() -> bool = nil, origin := "", id := "", palette := true) -> ^Command {
 	c := _command_slot(name, id, origin)
+	c.palette = palette
 	c.run = run
 	c.enabled = enabled
 	c.run_data = nil
@@ -169,8 +175,9 @@ command_add :: proc(name: string, run: proc(), enabled: proc() -> bool = nil, or
 }
 
 // A command that closes over data (a menu item's node).
-command_add_data :: proc(name: string, run: proc(data: rawptr), data: rawptr, enabled: proc(data: rawptr) -> bool = nil, origin := "", id := "") -> ^Command {
+command_add_data :: proc(name: string, run: proc(data: rawptr), data: rawptr, enabled: proc(data: rawptr) -> bool = nil, origin := "", id := "", palette := true) -> ^Command {
 	c := _command_slot(name, id, origin)
+	c.palette = palette
 	c.run = nil
 	c.enabled = nil
 	c.run_data = run
@@ -246,6 +253,19 @@ bound :: proc(b: ^Binding, c: ^Command, key: string) -> bool {
 // Whether `b` binds the command `key` names, by id or by name.
 binding_is :: proc(b: ^Binding, key: string) -> bool {
 	return bound(b, command(key), key)
+}
+
+// Whether the command palette lists `c`: it allows it, and it is no held
+// modifier, a command every binding of which is held (Fly Forward, Snap),
+// which only acts while its key is down.
+in_palette :: proc(c: ^Command) -> bool {
+	if !c.palette do return false
+	any_bound, all_held := false, true
+	for km in _keymaps do for &b in km.bindings do if _resolve(&b) == c {
+		any_bound = true
+		if !b.held do all_held = false
+	}
+	return !(any_bound && all_held)
 }
 
 // Every command, in registration order.

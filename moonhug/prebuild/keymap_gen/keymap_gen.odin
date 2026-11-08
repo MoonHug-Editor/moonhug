@@ -8,11 +8,16 @@ package keymap_gen
 //   @(keymap={name="Scene Flythrough", modal=true})
 //   scene_flythrough_keymap :: proc(km: ^keymap.Keymap) { ... }
 //
+//   @(command_palette_mode={name="Assets", prefix="#", run=command_palette_assets_run, shortcut="Ctrl+Shift+A"})
+//   command_palette_assets :: proc(query: string, rows: ^[dynamic]command_palette.Row) { ... }
+//
 //   generate - moonhug/editor/editor_keymaps_generated.odin:
 //              _register_editor_keymaps(), one keymap.command_add call per
-//              command, then one keymap.add call per keymap.
+//              command, one command_palette.mode_add call per palette mode,
+//              then one
+//              keymap.add call per keymap.
 //
-// `enabled` and `active` name procs in the package of the declaration.
+// `enabled`, `active` and `run` name procs in the package of the declaration.
 // Optional fields are left out of the call when empty, false or zero.
 
 import "core:fmt"
@@ -29,6 +34,7 @@ _PKG_NAME :: "editor"
 CommandEntry :: struct {
 	name:        string, // command name
 	id:          string, // the attribute's id, "" for the proc's qualified name
+	palette:     bool,   // listed by the command palette, false when the attribute says palette=false
 	proc_name:   string, // the run proc
 	enabled:     string, // the enabled proc, "" for always enabled
 	source_pkg:  string,
@@ -49,9 +55,22 @@ KeymapEntry :: struct {
 	origin:      string,
 }
 
+ModeEntry :: struct {
+	name:        string, // mode name, its command is Command Palette/<name>
+	prefix:      string,
+	proc_name:   string, // the list proc
+	run:         string, // the run proc
+	shortcut:    string, // the chord of its command, "" for none
+	id:          string, // its command's id, "" for the list proc's qualified name
+	source_pkg:  string,
+	source_path: string,
+	origin:      string,
+}
+
 Keymap_GenComp :: struct {
 	commands: [dynamic]CommandEntry,
 	keymaps:  [dynamic]KeymapEntry,
+	modes:    [dynamic]ModeEntry,
 }
 
 @(init)
@@ -74,6 +93,7 @@ provide :: proc(w: ^db.World) -> bool {
 
 		commands: [dynamic]CommandEntry
 		keymaps: [dynamic]KeymapEntry
+		modes: [dynamic]ModeEntry
 		for args in attr_set.attrs {
 			switch args.key {
 			case "command":
@@ -85,6 +105,7 @@ provide :: proc(w: ^db.World) -> bool {
 				append(&commands, CommandEntry{
 					name        = name,
 					id          = args.fields["id"],
+					palette     = args.fields["palette"] != "false",
 					proc_name   = decl.name,
 					enabled     = args.fields["enabled"],
 					source_pkg  = decl.pkg.name,
@@ -109,14 +130,32 @@ provide :: proc(w: ^db.World) -> bool {
 					source_path = decl.pkg_path,
 					origin      = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, decl.name),
 				})
+			case "command_palette_mode":
+				name, prefix, run := args.fields["name"], args.fields["prefix"], args.fields["run"]
+				if name == "" || prefix == "" || run == "" {
+					fmt.eprintf("command_palette_mode: %s.%s needs name=\"...\", prefix=\"...\" and run=...\n", decl.pkg.name, decl.name)
+					continue
+				}
+				append(&modes, ModeEntry{
+					name        = name,
+					prefix      = prefix,
+					proc_name   = decl.name,
+					run         = run,
+					shortcut    = args.fields["shortcut"],
+					id          = args.fields["id"],
+					source_pkg  = decl.pkg.name,
+					source_path = decl.pkg_path,
+					origin      = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, decl.name),
+				})
 			}
 		}
 
-		if len(commands) > 0 || len(keymaps) > 0 {
-			db.set(_keymaps, entity, Keymap_GenComp{commands = commands, keymaps = keymaps})
+		if len(commands) > 0 || len(keymaps) > 0 || len(modes) > 0 {
+			db.set(_keymaps, entity, Keymap_GenComp{commands = commands, keymaps = keymaps, modes = modes})
 		} else {
 			delete(commands)
 			delete(keymaps)
+			delete(modes)
 		}
 	}
 	return true
@@ -160,6 +199,8 @@ generate :: proc(w: ^db.World) -> bool {
 	defer delete(commands)
 	keymaps: [dynamic]KeymapEntry
 	defer delete(keymaps)
+	modes: [dynamic]ModeEntry
+	defer delete(modes)
 
 	decls := db.get_comps_DeclInfo()
 	_keymaps := db.get_comps(w, Keymap_GenComp)
@@ -168,6 +209,7 @@ generate :: proc(w: ^db.World) -> bool {
 		tb := db.get(_keymaps, entity)
 		for e in tb.commands do append(&commands, e)
 		for e in tb.keymaps do append(&keymaps, e)
+		for e in tb.modes do append(&modes, e)
 	}
 
 	slice.sort_by(commands[:], proc(a, b: CommandEntry) -> bool {
@@ -175,6 +217,10 @@ generate :: proc(w: ^db.World) -> bool {
 		return a.proc_name < b.proc_name
 	})
 	slice.sort_by(keymaps[:], proc(a, b: KeymapEntry) -> bool {
+		if a.name != b.name do return a.name < b.name
+		return a.proc_name < b.proc_name
+	})
+	slice.sort_by(modes[:], proc(a, b: ModeEntry) -> bool {
 		if a.name != b.name do return a.name < b.name
 		return a.proc_name < b.proc_name
 	})
@@ -191,6 +237,7 @@ generate :: proc(w: ^db.World) -> bool {
 	}
 	for e in commands do add_pkg(&packages_used, out_dir, e.source_pkg, e.source_path)
 	for e in keymaps do add_pkg(&packages_used, out_dir, e.source_pkg, e.source_path)
+	for e in modes do add_pkg(&packages_used, out_dir, e.source_pkg, e.source_path)
 	import_pkgs: [dynamic]string
 	defer delete(import_pkgs)
 	for pkg in packages_used {
@@ -200,6 +247,7 @@ generate :: proc(w: ^db.World) -> bool {
 
 	strings.write_string(&b, "package editor\n\n")
 	strings.write_string(&b, "import __km \"moonhug:editor/keymap\"\n")
+	if len(modes) > 0 do strings.write_string(&b, "import __cp \"moonhug:editor/command_palette\"\n")
 	for pkg in import_pkgs {
 		fmt.sbprintf(&b, "import %s \"%s\"\n", pkg, packages_used[pkg])
 	}
@@ -210,6 +258,13 @@ generate :: proc(w: ^db.World) -> bool {
 		if e.enabled != "" do fmt.sbprintf(&b, ", enabled = %s", _qualified_name(e.source_pkg, e.enabled))
 		id := e.id if e.id != "" else fmt.tprintf("%s.%s", e.source_pkg, e.proc_name)
 		fmt.sbprintf(&b, ", id = %q", id)
+		if !e.palette do strings.write_string(&b, ", palette = false")
+		fmt.sbprintf(&b, ", origin = %q)\n", e.origin)
+	}
+	for e in modes {
+		fmt.sbprintf(&b, "\t__cp.mode_add(%q, %q, %s, %s", e.name, e.prefix, _qualified_name(e.source_pkg, e.proc_name), _qualified_name(e.source_pkg, e.run))
+		if e.shortcut != "" do fmt.sbprintf(&b, ", shortcut = %q", e.shortcut)
+		fmt.sbprintf(&b, ", id = %q", _mode_command_id(e))
 		fmt.sbprintf(&b, ", origin = %q)\n", e.origin)
 	}
 	for e in keymaps {
@@ -223,8 +278,15 @@ generate :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "}\n")
 
 	db.emit(w, "moonhug/editor/editor_keymaps_generated.odin", strings.to_string(b))
-	if gen_facts.write_reference_pages do _write_reference(w, commands[:], keymaps[:])
+	if gen_facts.write_reference_pages do _write_reference(w, commands[:], keymaps[:], modes[:])
 	return true
+}
+
+// The id of the command that opens the palette on a mode: the attribute's
+// id, else the list proc's qualified name.
+@(private = "file")
+_mode_command_id :: proc(e: ModeEntry) -> string {
+	return e.id if e.id != "" else fmt.tprintf("%s.%s", e.source_pkg, e.proc_name)
 }
 
 // The reference page docs/reference/commands/_index.md: every command id
@@ -232,7 +294,7 @@ generate :: proc(w: ^db.World) -> bool {
 // every keymap with its scope. Written by `mh docs`, like the attribute
 // pages (attributes_gen), so the override file's ids can be looked up.
 @(private = "file")
-_write_reference :: proc(w: ^db.World, commands: []CommandEntry, keymaps: []KeymapEntry) {
+_write_reference :: proc(w: ^db.World, commands: []CommandEntry, keymaps: []KeymapEntry, modes: []ModeEntry) {
 	Row :: struct {
 		id, name, pkg, place: string,
 	}
@@ -240,6 +302,9 @@ _write_reference :: proc(w: ^db.World, commands: []CommandEntry, keymaps: []Keym
 	for e in commands {
 		id := e.id if e.id != "" else fmt.tprintf("%s.%s", e.source_pkg, e.proc_name)
 		append(&rows, Row{id, e.name, e.source_pkg, _origin_place(e.origin)})
+	}
+	for e in modes {
+		append(&rows, Row{_mode_command_id(e), fmt.tprintf("Command Palette/%s", e.name), e.source_pkg, _origin_place(e.origin)})
 	}
 	decls := db.get_comps_DeclInfo()
 	menus := db.get_comps(w, menu_gen.Menu_GenComp)

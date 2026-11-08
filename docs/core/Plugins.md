@@ -314,7 +314,7 @@ my_install :: proc() {
 
 A plugin's windows and what it adds to other views are attributes, all in [Views](Views.md): `@(editor_window)` for a window, `@(view_menu)` and `@(view_tab_bar)` for a view's menu and tab bar, `@(view_document)` for the asset a view edits, `@(scene_overlay)` for the scene view's overlays and `@(toolbar)` for the editor toolbar.
 
-A plugin's shortcuts are `@(command)` and `@(keymap)`, in [Keymaps](Keymaps.md): commands are named procs, keymaps bind chords to them for one window or the whole editor, and the resolver runs them once per frame. A view reads no keys itself.
+A plugin's shortcuts are `@(command)` and `@(keymap)`, in [Keymaps](Keymaps.md): commands are named procs, keymaps bind chords to them for one window or the whole editor, and the resolver runs them once per frame. A view reads no keys itself. A plugin adds a mode to the command palette with `@(command_palette_mode)`, as the engine adds scene objects.
 
 ## Editor startup hook
 

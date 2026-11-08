@@ -522,3 +522,22 @@ test_keymap_snap_is_held_per_frame :: proc(t: ^testing.T) {
 	keymap.frame()
 	testing.expect(t, !handles.snap_held())
 }
+
+// The command palette leaves out a held modifier and a command declared out of it,
+// and lists the rest, bound or not.
+@(test)
+test_keymap_palette_listing :: proc(t: ^testing.T) {
+	_km_setup()
+	defer _km_teardown()
+	_km_commands()
+	keymap.command_add("T/Nav", proc() {}, id = "t.nav", palette = false)
+	defer keymap.command_remove("t.nav")
+	keymap.add("T Global", "", proc(km: ^keymap.Keymap) {
+		keymap.bind(km, "W", "T/A")
+		keymap.bind(km, "Q", "T/Held", held = true)
+	})
+	testing.expect(t, keymap.in_palette(keymap.command("T/A")))
+	testing.expect(t, keymap.in_palette(keymap.command("T/C")), "an unbound command is listed")
+	testing.expect(t, !keymap.in_palette(keymap.command("T/Held")), "a held modifier is not")
+	testing.expect(t, !keymap.in_palette(keymap.command("t.nav")), "palette=false is not")
+}

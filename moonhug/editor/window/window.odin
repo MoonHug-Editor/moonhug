@@ -373,6 +373,15 @@ focused :: proc() -> ^Window {
 	return nil
 }
 
+// Marks `w` as the focused instance for the rest of this frame, while a
+// widget over the views acts for the view below it: the command palette
+// lists and runs commands for the view focused when it opened.
+focused_hold :: proc(w: ^Window) {
+	if w == nil do return
+	_focused = w
+	_focused_frame = im.GetFrameCount()
+}
+
 // Focuses an open instance next frame, as open does.
 focus :: proc(w: ^Window) {
 	_focus_request = w
@@ -614,6 +623,17 @@ is_canvas :: proc(w: ^Window) -> bool {
 // asset has unsaved changes, for a host's tab bar.
 title :: proc(w: ^Window) -> cstring {
 	return session.view_title(_title(w))
+}
+
+// The instance's label without icon or key: the window's title for the
+// plain instance, the asset's file name without its extension for an
+// asset's instance.
+label :: proc(w: ^Window) -> string {
+	r := &_registry[w.reg]
+	if w.asset != {} {
+		if path, ok := assets.asset_db_get_path(uuid.Identifier(w.asset)); ok do return filepath.stem(path)
+	}
+	return r.plain_title
 }
 
 // The instance's state, made from `init` on first use. It lives on the

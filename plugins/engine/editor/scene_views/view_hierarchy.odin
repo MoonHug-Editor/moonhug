@@ -1307,24 +1307,24 @@ _hierarchy_nav_row :: proc() -> (cur_idx: int, t: ^engine.Transform, expanded: b
 	return cur_idx, t, expanded, true
 }
 
-@(command={name="Hierarchy/Select Down"})
+@(command={name="Hierarchy/Select Down", palette=false})
 hierarchy_select_down :: proc() { _hierarchy_nav_step(1, false) }
 
-@(command={name="Hierarchy/Select Up"})
+@(command={name="Hierarchy/Select Up", palette=false})
 hierarchy_select_up :: proc() { _hierarchy_nav_step(-1, false) }
 
-@(command={name="Hierarchy/Extend Selection Down"})
+@(command={name="Hierarchy/Extend Selection Down", palette=false})
 hierarchy_extend_down :: proc() { _hierarchy_nav_step(1, true) }
 
-@(command={name="Hierarchy/Extend Selection Up"})
+@(command={name="Hierarchy/Extend Selection Up", palette=false})
 hierarchy_extend_up :: proc() { _hierarchy_nav_step(-1, true) }
 
 // Expand opens a closed node, Expand Subtree its whole subtree, and both step
 // into an open one.
-@(command={name="Hierarchy/Expand"})
+@(command={name="Hierarchy/Expand", palette=false})
 hierarchy_expand :: proc() { _hierarchy_expand(false) }
 
-@(command={name="Hierarchy/Expand Subtree"})
+@(command={name="Hierarchy/Expand Subtree", palette=false})
 hierarchy_expand_subtree :: proc() { _hierarchy_expand(true) }
 
 @(private = "file")
@@ -1340,10 +1340,10 @@ _hierarchy_expand :: proc(deep: bool) {
 
 // Collapse closes an open node, Collapse Subtree its whole subtree, and both
 // step to the parent of a closed one.
-@(command={name="Hierarchy/Collapse"})
+@(command={name="Hierarchy/Collapse", palette=false})
 hierarchy_collapse :: proc() { _hierarchy_collapse(false) }
 
-@(command={name="Hierarchy/Collapse Subtree"})
+@(command={name="Hierarchy/Collapse Subtree", palette=false})
 hierarchy_collapse_subtree :: proc() { _hierarchy_collapse(true) }
 
 @(private = "file")
@@ -1364,7 +1364,7 @@ hierarchy_rename :: proc() { _begin_rename(session.active()) }
 
 hierarchy_can_rename :: proc() -> bool { return session.active() != _HANDLE_NONE }
 
-@(command={name="Hierarchy/Clear Filter", enabled=hierarchy_has_filter})
+@(command={name="Hierarchy/Clear Filter", enabled=hierarchy_has_filter, palette=false})
 hierarchy_clear_filter :: proc() { mem.zero(&_hv.filter_buf, len(_hv.filter_buf)) }
 
 hierarchy_has_filter :: proc() -> bool { return _hv.filter_buf[0] != 0 }

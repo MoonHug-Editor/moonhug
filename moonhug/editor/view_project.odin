@@ -1623,21 +1623,21 @@ _project_nav_step :: proc(step: int, extend: bool) {
     }
 }
 
-@(command={name="Project/Select Down"})
+@(command={name="Project/Select Down", palette=false})
 project_select_down :: proc() { _project_nav_step(1, false) }
 
-@(command={name="Project/Select Up"})
+@(command={name="Project/Select Up", palette=false})
 project_select_up :: proc() { _project_nav_step(-1, false) }
 
 // Extend grows the list's selection by the stepped-onto row.
-@(command={name="Project/Extend Selection Down"})
+@(command={name="Project/Extend Selection Down", palette=false})
 project_extend_down :: proc() { _project_nav_step(1, true) }
 
-@(command={name="Project/Extend Selection Up"})
+@(command={name="Project/Extend Selection Up", palette=false})
 project_extend_up :: proc() { _project_nav_step(-1, true) }
 
 // Right opens a closed folder and steps into an open one.
-@(command={name="Project/Expand", enabled=project_tree_active})
+@(command={name="Project/Expand", enabled=project_tree_active, palette=false})
 project_expand :: proc() {
     cur := _project_tree_index()
     if cur == -1 do return
@@ -1653,7 +1653,7 @@ project_expand :: proc() {
 // Left collapses an open folder first, even one that shows no subfolders
 // (imgui still tracks its open state). A closed folder steps to its parent:
 // package roots go to the Packages node, roots stay (_project_parent_dir).
-@(command={name="Project/Collapse", enabled=project_tree_active})
+@(command={name="Project/Collapse", enabled=project_tree_active, palette=false})
 project_collapse :: proc() {
     cur := _project_tree_index()
     if cur == -1 do return
@@ -1667,7 +1667,7 @@ project_collapse :: proc() {
 }
 
 // Tab into the list selects its first row when nothing there is selected.
-@(command={name="Project/Switch Pane"})
+@(command={name="Project/Switch Pane", palette=false})
 project_switch_pane :: proc() {
     switch _pv.active_pane {
     case .Tree:
@@ -1696,7 +1696,7 @@ project_up_level :: proc() { _project_go_up() }
 // Escape ends a search from either pane, and opens the selected hit's
 // folder (_project_cancel_search). Escape in the search box reverts its text
 // first.
-@(command={name="Project/Cancel Search", enabled=project_has_search})
+@(command={name="Project/Cancel Search", enabled=project_has_search, palette=false})
 project_cancel_search :: proc() { _project_cancel_search() }
 
 project_has_search :: proc() -> bool {

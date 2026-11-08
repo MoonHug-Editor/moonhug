@@ -188,10 +188,10 @@ _history_nav_step :: proc(step: int) {
 	hv.scroll_to_sel = true
 }
 
-@(command={name="History/Select Down"})
+@(command={name="History/Select Down", palette=false})
 history_select_down :: proc() { _history_nav_step(1) }
 
-@(command={name="History/Select Up"})
+@(command={name="History/Select Up", palette=false})
 history_select_up :: proc() { _history_nav_step(-1) }
 
 @(command={name="History/Jump To Selected", enabled=history_can_jump})

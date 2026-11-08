@@ -423,10 +423,10 @@ _console_nav_step :: proc(step: int) {
 	cv.scroll_to_sel = true
 }
 
-@(command={name="Console/Select Down"})
+@(command={name="Console/Select Down", palette=false})
 console_select_down :: proc() { _console_nav_step(1) }
 
-@(command={name="Console/Select Up"})
+@(command={name="Console/Select Up", palette=false})
 console_select_up :: proc() { _console_nav_step(-1) }
 
 // Escape clears the selection, so the rows follow new entries again.

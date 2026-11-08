@@ -23,6 +23,7 @@ scene_clear_selection :: proc() { ... }
 - `name` is `Group/Title`, the group being the window or feature it belongs to, in spaced words.
 - `id` is the command's stable identity, which bindings and the override files refer to. The Commands reference page, written by `mh docs`, lists every id. It defaults to the declaring proc's qualified name, `editor.scene_tool_translate`, so a renamed title or a moved menu item keeps the user's bindings. Give one when the proc itself is renamed. A menu item's id is its proc's qualified name the same way, or its `@(menu_item)` `id`.
 - `enabled` names a proc in the same package that says whether the command can run now. A disabled command leaves its key to the next binding.
+- `palette=false` keeps it out of the command palette, for a step of a focused list's navigation that only makes sense as a key.
 - A command never reads a modifier key to decide what it does: the chord carries the modifier, and a different action is a different command. Collapse and Collapse Subtree are two commands, bound to Left and Alt+Left, so each can be rebound on its own.
 - Every item and toggle of the main menu is a command named by its path (`Edit/Undo`), registered by the menu with the item. Its `shortcut=` is a binding in the `Menu` keymap.
 
@@ -88,7 +89,37 @@ The Shortcuts tab of the settings window lists every registered command, one row
 
 ## Command palette
 
-Window/Command Palette, Ctrl+Shift+A, opens a popup over the editor listing every command with its first two chords. Typing filters by name or id, every space-separated term must match. Up and Down move the highlight, Enter or a click runs the highlighted command and closes the palette, Escape closes it. A command that cannot run now is listed dimmed. While the palette is open its empty modal keymap sits on the stack, so no other binding fires. The palette's own keys belong to the widget, like the dialog's.
+Window/Command Palette, Ctrl+T, opens a popup over the editor that searches one mode's rows: commands by default, or the mode whose prefix the text starts with. The mode's name shows beside the search field.
+
+| Mode | Prefix | Opens with | Lists | Enter |
+|---|---|---|---|---|
+| Commands | none | Ctrl+T | the commands with their first two chords | runs the command |
+| Assets | `#` | Ctrl+Shift+A | every asset file by name, its folder beside it | selects it and opens it, as a double-click in the Project view does |
+| Scene Objects | `@` | Ctrl+Shift+O | every object of the open scenes in hierarchy order, its scene and parents beside it | selects it, reveals it in the Hierarchy and frames it |
+| Views | `:` | no default | every view, the open ones marked | brings an open view forward, in its Workspace frame when it is in one, or opens a closed one |
+
+- Each mode has a command, Command Palette/<name>, that opens the palette with its prefix typed, so its chord is rebound on the Shortcuts page like any other.
+- Typing filters by name: every space-separated term must match, case ignored. A term with a dot matches a command's id too, `editor.edit_undo_menu`, and a term with a slash matches an asset's path, `#ui/`.
+- Commands leave out a held modifier, a command every binding of which is held such as Fly Forward or Snap, and a command declared with `palette=false`, which a step of a focused list's navigation is (Select Down, Expand, Clear Filter). A command that cannot run now is listed dimmed.
+- `?` typed alone shows the help: every mode with its prefix and its live chord, then the palette's keys. The field's hint says so. Enter or a click on a mode switches to it. Typing leaves the help.
+- Up and Down move the highlight, Enter or a click runs the highlighted row and closes the palette, Escape closes it.
+- The view focused when the palette opened stays the focused one while it is open, so a command's enabled state and its run are for that view: View/Close closes it.
+- While the palette is open its empty modal keymap sits on the stack, so no other binding fires. The palette's own keys belong to the widget, like the dialog's.
+
+A mode is declared with `@(command_palette_mode)` on a proc that lists its rows:
+
+```odin
+@(command_palette_mode={name="Assets", prefix="#", run=command_palette_assets_run, shortcut="Ctrl+Shift+A"})
+command_palette_assets :: proc(query: string, rows: ^[dynamic]command_palette.Row) { ... }
+
+command_palette_assets_run :: proc(row: command_palette.Row) { ... }
+```
+
+- The list proc runs every frame the mode is shown. It gets the text after the prefix with spaces trimmed and appends the matching rows in the order they show. `command_palette.terms` splits the query and `command_palette.matches` tests a name against it without allocating.
+- A row has a label, a dimmed detail on the right, a disabled flag, and a key or a pointer that identifies it for `run`. Its strings live until the frame ends.
+- `run` acts on the picked row in the frame it was listed.
+- `shortcut` binds the mode's command in the editor-wide Command Palette Modes keymap. `id` is that command's stable id, the list proc's qualified name by default.
+- An empty prefix, one starting with `?`, or another mode's prefix panics at registration with both origins.
 
 ## Keys every view shares
 

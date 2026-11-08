@@ -18,6 +18,7 @@ import clip "clipboard"
 import "undo"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/keymap"
+import "moonhug:editor/command_palette"
 import "moonhug:editor/workspace"
 import "moonhug:editor/widgets"
 import "moonhug:editor/preview"
@@ -340,7 +341,7 @@ main :: proc() {
 
         // Plugin-opened windows (editor/window, docs/core/Plugins.md).
         wnd.draw_all()
-        command_palette_draw()
+        command_palette.draw()
 
         draw_about_popup()
         // Confirmations and other modal questions (widgets/dialog.odin).
@@ -517,6 +518,7 @@ editor_shutdown :: proc() {
     _save_user_settings()
     menu.shutdown_menu()
     shortcuts_shutdown()
+    command_palette.shutdown()
     keymap.shutdown()
     delete(keymap.overrides_path)
     view_chrome_shutdown()
