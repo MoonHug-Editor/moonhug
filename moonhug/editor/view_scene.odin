@@ -317,7 +317,7 @@ update_scene_camera :: proc() {
 SCENE_FRAME_TWEEN_SEC :: f32(0.2)
 
 // Unity's Edit > Frame Selected (F in the scene view).
-@(menu_item={path="Edit/Frame Selected", order=-44, shortcut=""})
+@(menu_item={path="Edit/Frame Selected", order=-44, shortcut="", help="Moves the Scene view's camera to show the selection"})
 edit_frame_selected_menu :: proc() {
 	scene_frame_selected()
 }
@@ -1159,21 +1159,21 @@ _scene_tool :: proc(mode: viewport.Gizmo_Mode) {
 	viewport.gizmo_mode = mode
 }
 
-@(command={name="Scene/Picker Tool"})
+@(command={name="Scene/Picker Tool", help="Selects objects, with no gizmo"})
 scene_tool_picker :: proc() { _scene_tool(.Picker) }
-@(command={name="Scene/Translate Tool"})
+@(command={name="Scene/Translate Tool", help="Moves the selection with the gizmo"})
 scene_tool_translate :: proc() { _scene_tool(.Translate) }
-@(command={name="Scene/Rotate Tool"})
+@(command={name="Scene/Rotate Tool", help="Rotates the selection with the gizmo"})
 scene_tool_rotate :: proc() { _scene_tool(.Rotate) }
-@(command={name="Scene/Scale Tool"})
+@(command={name="Scene/Scale Tool", help="Scales the selection with the gizmo"})
 scene_tool_scale :: proc() { _scene_tool(.Scale) }
-@(command={name="Scene/Handles Tool"})
+@(command={name="Scene/Handles Tool", help="Shows the selected components' own handles in place of the gizmo"})
 scene_tool_handles :: proc() { _scene_tool(.Handles) }
 
 // Escape drops the selection. During a band it cancels the band and restores
 // the pre-band selection instead. Not mid-drag: the drag teardown in
 // gizmo_tool_frame would leave its undo step open.
-@(command={name="Scene/Clear Selection", enabled=scene_can_clear_selection})
+@(command={name="Scene/Clear Selection", enabled=scene_can_clear_selection, help="Deselects everything, or cancels a box selection and restores the one before it"})
 scene_clear_selection :: proc() {
 	sv := _scene_focused()
 	if sv.band_active {
@@ -1187,7 +1187,7 @@ scene_clear_selection :: proc() {
 }
 
 scene_can_clear_selection :: proc() -> bool {
-	return !viewport.tools_dragging()
+	return !viewport.tools_dragging() || keymap.disabled("A handle is being dragged")
 }
 
 // The tool keys are editor-wide: the tool is one for every Scene view, so
@@ -1230,19 +1230,19 @@ _scene_fly :: proc(dir: Fly_Dir) {
 	}
 }
 
-@(command={name="Scene/Fly Forward"})
+@(command={name="Scene/Fly Forward", help="Moves the flying camera forward while held"})
 scene_fly_forward :: proc() { _scene_fly(.Forward) }
-@(command={name="Scene/Fly Back"})
+@(command={name="Scene/Fly Back", help="Moves the flying camera back while held"})
 scene_fly_back :: proc() { _scene_fly(.Back) }
-@(command={name="Scene/Fly Right"})
+@(command={name="Scene/Fly Right", help="Moves the flying camera right while held"})
 scene_fly_right :: proc() { _scene_fly(.Right) }
-@(command={name="Scene/Fly Left"})
+@(command={name="Scene/Fly Left", help="Moves the flying camera left while held"})
 scene_fly_left :: proc() { _scene_fly(.Left) }
-@(command={name="Scene/Fly Up"})
+@(command={name="Scene/Fly Up", help="Moves the flying camera up while held"})
 scene_fly_up :: proc() { _scene_fly(.Up) }
-@(command={name="Scene/Fly Down"})
+@(command={name="Scene/Fly Down", help="Moves the flying camera down while held"})
 scene_fly_down :: proc() { _scene_fly(.Down) }
-@(command={name="Scene/Fly Fast"})
+@(command={name="Scene/Fly Fast", help="Makes the flying camera faster while held"})
 scene_fly_fast :: proc() { _scene_focused().fly_fast = true }
 
 // A modal keymap: the flythrough pushes it when the camera starts flying

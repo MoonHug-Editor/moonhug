@@ -8,14 +8,14 @@ import "moonhug:editor/session"
 import "moonhug:packages/engine"
 
 // Saves the active scene to its file (the hierarchy header menu's Save).
-@(menu_item={path="File/Save Scene", order=1, shortcut=""})
+@(menu_item={path="File/Save Scene", order=1, shortcut="", help="Saves the active scene"})
 scene_save_menu :: proc() {
 	scene := engine.sm_scene_get_active()
 	if scene == nil || len(scene.path) == 0 do return
 	engine.scene_save(scene, scene.path)
 }
 
-@(menu_item={path="Assets/Create/Scene", order=0, shortcut=""})
+@(menu_item={path="Assets/Create/Scene", order=0, shortcut="", help="Creates a scene in the Project view's open folder"})
 scene_create_menu :: proc() {
 	scene := engine.scene_new()
 	save_path, _ := filepath.join({session.project_dir(), "Scene.scene"}, context.temp_allocator)

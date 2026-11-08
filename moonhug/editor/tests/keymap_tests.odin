@@ -8,8 +8,10 @@ package editor_tests
 
 import "core:testing"
 import "core:os"
+import "moonhug:editor"
 import "moonhug:editor/handles"
 import "moonhug:editor/keymap"
+import "moonhug:editor/widgets"
 import im "moonhug:external/odin-imgui"
 
 @(private = "file")
@@ -249,6 +251,59 @@ test_keymap_dangling_binding :: proc(t: ^testing.T) {
 // An override replaces a command's chords in one keymap, survives the keymap
 // being removed and registered again, round-trips through the file, and
 // resets to the declared bindings.
+// A shortcut lists its chords separated by a comma and a space. The comma
+// key stays a chord.
+@(test)
+test_keymap_split_chords :: proc(t: ^testing.T) {
+	cases := [?]struct {
+		text: string,
+		want: []string,
+	}{
+		{"Ctrl+S", {"Ctrl+S"}},
+		{"Ctrl+Shift+Z, Ctrl+Y", {"Ctrl+Shift+Z", "Ctrl+Y"}},
+		{"Ctrl+,, F5", {"Ctrl+,", "F5"}},
+		{",, `", {",", "`"}},
+		{"", {}},
+	}
+	for c in cases {
+		got := keymap.split_chords(c.text)
+		testing.expect_value(t, len(got), len(c.want))
+		for w, i in c.want do if i < len(got) do testing.expect_value(t, got[i], w)
+	}
+}
+
+// Reset All asks first, since undo does not restore bindings: Cancel keeps
+// the overrides, Reset All drops them.
+@(test)
+test_keymap_reset_all_asks :: proc(t: ^testing.T) {
+	_km_setup()
+	defer _km_teardown()
+	_km_commands()
+	prev_path := keymap.overrides_path
+	keymap.overrides_path = ""
+	defer {
+		widgets.dialog_close()
+		keymap.override_reset_all()
+		keymap.overrides_path = prev_path
+	}
+	km := keymap.add("T Scene", "Scene", proc(km: ^keymap.Keymap) { keymap.bind(km, "W", "T/A") })
+	keymap.override_set(km, "T/A", {"Q"})
+	testing.expect(t, keymap.has_overrides())
+
+	editor.shortcuts_reset_all_ask()
+	d, ok := widgets.dialog_current()
+	testing.expect(t, ok, "the reset opens a dialog")
+	testing.expect_value(t, len(d.buttons), 2)
+	testing.expect(t, keymap.has_overrides(), "nothing is reset before the answer")
+	widgets.dialog_choose(1)
+	testing.expect(t, keymap.has_overrides(), "Cancel keeps the overrides")
+
+	editor.shortcuts_reset_all_ask()
+	widgets.dialog_choose(0)
+	testing.expect(t, !keymap.has_overrides(), "Reset All drops them")
+	testing.expect(t, keymap.is_default(km, "T/A"))
+}
+
 @(test)
 test_keymap_override_roundtrip :: proc(t: ^testing.T) {
 	_km_setup()

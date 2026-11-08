@@ -75,7 +75,7 @@ _create_canvas :: proc() -> engine.Transform_Handle {
 	return tH
 }
 
-@(menu_item={path="GameObject/UI/Canvas", order=50})
+@(menu_item={path="GameObject/UI/Canvas", order=50, help="Creates a UI canvas"})
 ui_menu_canvas :: proc() {
 	g := undo.group_begin("Create Canvas")
 	defer undo.group_end(&g)
@@ -87,7 +87,7 @@ ui_menu_canvas :: proc() {
 
 // An Image node (RectTransform + CanvasRenderer + Image): under the selection
 // when that sits in a canvas, else under a new canvas.
-@(menu_item={path="GameObject/UI/Image", order=51})
+@(menu_item={path="GameObject/UI/Image", order=51, help="Creates a UI image, in the selected canvas or a new one"})
 ui_menu_image :: proc() {
 	g := undo.group_begin("Create Image")
 	defer undo.group_end(&g)
@@ -107,7 +107,7 @@ ui_menu_image :: proc() {
 
 // A Button node: an Image as the target graphic plus the Button. Like the
 // Image menu, under the selection when that sits in a canvas.
-@(menu_item={path="GameObject/UI/Button", order=52})
+@(menu_item={path="GameObject/UI/Button", order=52, help="Creates a UI button, in the selected canvas or a new one"})
 ui_menu_button :: proc() {
 	g := undo.group_begin("Create Button")
 	defer undo.group_end(&g)

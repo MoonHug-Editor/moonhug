@@ -1054,12 +1054,12 @@ _se_panel :: proc(tex: ^engine.Texture2D) {
 // The keymap resolver runs these before the views draw (editor/keymap). They
 // act on _se, the working copy every Sprite Editor tab shares.
 
-@(command={name="Sprite Editor/Delete Slice", enabled=sprite_editor_can_delete_slice})
+@(command={name="Sprite Editor/Delete Slice", enabled=sprite_editor_can_delete_slice, help="Deletes the selected slice"})
 sprite_editor_delete_slice :: proc() { _se_delete_selected() }
 
 sprite_editor_can_delete_slice :: proc() -> bool {
-	if _se.path == "" || !_se_resolve() do return false
-	return _se.sel >= 0 && _se.sel < len(_se.ts.sprites)
+	if _se.path == "" || !_se_resolve() do return keymap.disabled("No texture is open in the Sprite Editor")
+	return (_se.sel >= 0 && _se.sel < len(_se.ts.sprites)) || keymap.disabled("No slice is selected")
 }
 
 @(keymap={name="Sprite Editor", window="sprite_editor"})

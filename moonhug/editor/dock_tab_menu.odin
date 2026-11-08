@@ -217,7 +217,7 @@ _close_view :: proc(title: cstring) {
 // Closes the focused view, as its tab's Close Tab does: a hosted view
 // through its workspace, any other through the registry. The close guard
 // still asks about unapplied edits.
-@(command={name="View/Close", enabled=view_close_can})
+@(command={name="View/Close", enabled=view_close_can, help="Closes the focused view"})
 view_close_focused :: proc() {
 	w := wnd.focused()
 	if w.host != "" {
@@ -228,17 +228,19 @@ view_close_focused :: proc() {
 }
 
 view_close_can :: proc() -> bool {
-	return wnd.focused() != nil
+	if wnd.focused() == nil do return keymap.disabled("No view has focus")
+	return true
 }
 
 // Brings back the view closed last, as a window of its own.
-@(command={name="View/Reopen Closed", enabled=view_reopen_can})
+@(command={name="View/Reopen Closed", enabled=view_reopen_can, help="Brings back the view closed last, as a window of its own"})
 view_reopen_closed :: proc() {
 	wnd.reopen_closed()
 }
 
 view_reopen_can :: proc() -> bool {
-	return wnd.has_closed()
+	if !wnd.has_closed() do return keymap.disabled("No closed view to bring back")
+	return true
 }
 
 // Keys every view shares.

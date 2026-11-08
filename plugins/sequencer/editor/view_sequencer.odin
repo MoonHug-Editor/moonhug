@@ -297,7 +297,7 @@ sequencer_preview_exit_edit_mode :: proc() {
 	}
 }
 
-@(menu_item={path="Window/Animation/Sequencer", shortcut=""})
+@(menu_item={path="Window/Animation/Sequencer", shortcut="", help="Opens the Sequencer"})
 sequencer_menu_open :: proc() {
 	wnd.open("sequencer")
 }
@@ -948,12 +948,12 @@ _sq_selected_clip :: proc() -> ^seq.Clip_View {
 	return &clips[_sq.sel_clip]
 }
 
-@(command={name="Sequencer/Delete Clip", enabled=sequencer_can_delete_clip})
+@(command={name="Sequencer/Delete Clip", enabled=sequencer_can_delete_clip, help="Deletes the selected clip"})
 sequencer_delete_clip :: proc() {
 	if c := _sq_selected_clip(); c != nil do _sq_delete_clip(c)
 }
 
-sequencer_can_delete_clip :: proc() -> bool { return _sq_selected_clip() != nil }
+sequencer_can_delete_clip :: proc() -> bool { return _sq_selected_clip() != nil || keymap.disabled("No clip is selected") }
 
 @(keymap={name="Sequencer", window="sequencer"})
 sequencer_keymap :: proc(km: ^keymap.Keymap) {

@@ -917,7 +917,7 @@ animation_view_target :: proc() -> engine.Transform_Handle {
 // clip and its document are the preview's (_pv_doc), shared by every copy.
 // The selection is _av's, which is the last clicked copy outside a draw.
 
-@(command={name="Animation/Delete Key", enabled=animation_can_delete_key})
+@(command={name="Animation/Delete Key", enabled=animation_can_delete_key, help="Deletes the selected keys"})
 animation_delete_key :: proc() {
 	doc, clip := _pv_doc()
 	if doc == nil || clip == nil do return
@@ -929,7 +929,8 @@ animation_delete_key :: proc() {
 // document and is read-only.
 animation_can_delete_key :: proc() -> bool {
 	doc, clip := _pv_doc()
-	return doc != nil && clip != nil && _pv_sel_valid(clip)
+	if doc == nil || clip == nil do return keymap.disabled("No clip is open")
+	return _pv_sel_valid(clip) || keymap.disabled("No key is selected")
 }
 
 @(keymap={name="Animation", window="Animation"})

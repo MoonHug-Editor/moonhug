@@ -17,7 +17,7 @@ import "moonhug:libs/assets"
 import core "moonhug:libs/core"
 import actions "moonhug:packages/input_actions"
 
-@(menu_item={path="Window/Input/Input Actions", order=0})
+@(menu_item={path="Window/Input/Input Actions", order=0, help="Shows the input contexts and their actions' live values while the game runs"})
 input_actions_window_open :: proc() {
 	window.open("input_actions_debug")
 }

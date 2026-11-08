@@ -577,7 +577,7 @@ _splice_into_node :: proc(v: ^json.Value, fields_json: []byte) {
 	}
 }
 
-@(menu_item={path="Window/Animation/Tween Graph", shortcut=""})
+@(menu_item={path="Window/Animation/Tween Graph", shortcut="", help="Opens the Tween Graph"})
 tween_graph_window_open :: proc() {
 	wnd.open("tween_graph")
 }

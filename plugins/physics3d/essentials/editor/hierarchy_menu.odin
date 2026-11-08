@@ -14,17 +14,17 @@ import essentials "moonhug:packages/essentials"
 import "moonhug:packages/engine"
 import undo "moonhug:packages/engine/editor/undo"
 
-@(menu_item={path="GameObject/3D Object/Cube (Physics)", shortcut=""})
+@(menu_item={path="GameObject/3D Object/Cube (Physics)", shortcut="", help="Creates a cube with a box collider"})
 create_cube_menu :: proc() {
 	_create_primitive("Cube", essentials.CUBE_MESH_GUID, .BoxCollider)
 }
 
-@(menu_item={path="GameObject/3D Object/Sphere (Physics)", shortcut=""})
+@(menu_item={path="GameObject/3D Object/Sphere (Physics)", shortcut="", help="Creates a sphere with a sphere collider"})
 create_sphere_menu :: proc() {
 	_create_primitive("Sphere", essentials.SPHERE_MESH_GUID, .SphereCollider)
 }
 
-@(menu_item={path="GameObject/3D Object/Capsule (Physics)", shortcut=""})
+@(menu_item={path="GameObject/3D Object/Capsule (Physics)", shortcut="", help="Creates a capsule with a capsule collider"})
 create_capsule_menu :: proc() {
 	_create_primitive("Capsule", essentials.CAPSULE_MESH_GUID, .CapsuleCollider)
 }

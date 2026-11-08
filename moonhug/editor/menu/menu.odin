@@ -210,7 +210,8 @@ draw_menu_sections :: proc(sections: []Menu_Section) {
 //
 // On a proc the item is an action that calls it, on a bool variable a toggle
 // that flips it. `path` is "Menu/Submenu/Item", `order` sorts siblings (lower
-// first), `shortcut` is a chord like "Ctrl+S". `enabled` and `checked` name
+// first), `shortcut` is a chord like "Ctrl+S", or several separated by a
+// comma and a space, "Ctrl+Shift+Z, Ctrl+Y". `enabled` and `checked` name
 // procs in the same package, polled each frame: one greys the item out, the
 // other draws a tick, for computed toggles and radio groups.
 //
@@ -222,11 +223,12 @@ draw_menu_sections :: proc(sections: []Menu_Section) {
 // is an action that sets the state and reports whether it is the current one.
 // `id` is the item's command id (editor/keymap), the declaring proc's
 // qualified name from the generator, which keeps the user's bindings when the
-// item moves in the menu. The path when empty.
-@(extension_point={attribute="menu_item", target="proc var", fields="path order shortcut enabled checked id"})
-add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil, checked: proc() -> bool = nil, origin := "", id := "") {
+// item moves in the menu. The path when empty. `help` is one sentence on what
+// the item does, shown in its tooltip and by the command palette.
+@(extension_point={attribute="menu_item", target="proc var", fields="path order shortcut enabled checked id help"})
+add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil, checked: proc() -> bool = nil, origin := "", id := "", help := "") {
 	tree_add_item(_menu_root, path, shortcut, action, order, enabled, checked, origin)
-	_menu_command(_get_or_create_path(_menu_root, path), path, id)
+	_menu_command(_get_or_create_path(_menu_root, path), path, id, help)
 }
 
 tree_add_item :: proc(root: ^MenuNode, path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil, checked: proc() -> bool = nil, origin := "") {
@@ -262,9 +264,9 @@ tree_add_view_item :: proc(root: ^MenuNode, path: string, action: proc(view: ses
 // Declared as @(menu_item) on a bool variable — the same attribute an action
 // uses on a proc, since what it is attached to already says which it is.
 // A shortcut ("Ctrl+1" — Ctrl renders as Cmd on macOS) toggles it globally.
-add_menu_toggle :: proc(path: string, value: ^bool, order: int = ORDER_DEFAULT, shortcut := "", enabled: proc() -> bool = nil, origin := "", id := "") {
+add_menu_toggle :: proc(path: string, value: ^bool, order: int = ORDER_DEFAULT, shortcut := "", enabled: proc() -> bool = nil, origin := "", id := "", help := "") {
 	tree_add_toggle(_menu_root, path, value, order, shortcut, enabled, origin)
-	_menu_command(_get_or_create_path(_menu_root, path), path, id)
+	_menu_command(_get_or_create_path(_menu_root, path), path, id, help)
 }
 
 tree_add_toggle :: proc(root: ^MenuNode, path: string, value: ^bool, order: int = ORDER_DEFAULT, shortcut := "", enabled: proc() -> bool = nil, origin := "") {
@@ -470,15 +472,15 @@ _find_child :: proc(node: ^MenuNode, name: string) -> ^MenuNode {
 _menu_keymap: ^keymap.Keymap
 
 @(private = "file")
-_menu_command :: proc(node: ^MenuNode, path: string, id: string) {
-	node.command = keymap.command_add_data(path, _menu_command_run, node, _menu_command_enabled, node.origin, id).id
+_menu_command :: proc(node: ^MenuNode, path: string, id: string, help: string) {
+	node.command = keymap.command_add_data(path, _menu_command_run, node, _menu_command_enabled, node.origin, id, help = help).id
 	if node.shortcut == "" do return
 	if _menu_keymap == nil {
 		_menu_keymap = keymap.add("Menu", "", nil, origin = "menu/menu.odin")
 	}
 	// A re-registered item binds once: drop its earlier binding.
 	keymap.unbind(_menu_keymap, node.command)
-	keymap.bind(_menu_keymap, node.shortcut, node.command)
+	for chord in keymap.split_chords(node.shortcut) do keymap.bind(_menu_keymap, chord, node.command)
 }
 
 // The chords of the item's command in the "Menu" keymap, as shown. Temp.
@@ -510,12 +512,27 @@ _menu_shortcut_label :: proc(node: ^MenuNode) -> cstring {
 	return node.shortcut_cstr if node.shortcut_cstr != nil else ""
 }
 
-// The item's tooltip: every chord when the item shows only some.
+// The item's tooltip: its command's help, why it cannot run when it is
+// disabled, and every chord when the item shows only some. "" for none.
 @(private = "file")
-_menu_shortcut_tip :: proc(node: ^MenuNode) -> cstring {
+_menu_tip :: proc(node: ^MenuNode) -> cstring {
+	lines := make([dynamic]string, context.temp_allocator)
+	if c := keymap.command(node.command); c != nil {
+		if c.help != "" do append(&lines, c.help)
+		if enabled, reason := keymap.command_state(c); !enabled && reason != "" do append(&lines, reason)
+	}
 	chords := _menu_chords(node)
-	if len(chords) <= _MENU_CHORDS_SHOWN do return ""
-	return strings.clone_to_cstring(strings.join(chords, ", ", context.temp_allocator), context.temp_allocator)
+	if len(chords) > _MENU_CHORDS_SHOWN do append(&lines, strings.join(chords, ", ", context.temp_allocator))
+	return strings.clone_to_cstring(strings.join(lines[:], "\n", context.temp_allocator), context.temp_allocator)
+}
+
+// The item's tooltip, built only while the item is hovered: the reason runs
+// the item's enabled proc again.
+@(private = "file")
+_menu_item_tooltip :: proc(node: ^MenuNode) {
+	flags := im.HoveredFlags_AllowWhenDisabled
+	if !im.IsItemHovered(flags) do return
+	widgets.tooltip(_menu_tip(node), flags)
 }
 
 @(private = "file")
@@ -582,8 +599,8 @@ _draw_menu_child :: proc(child: ^MenuNode, view := session.View{}) {
 				im.EndMenu()
 			}
 		} else {
-			// A menu item has no tooltip of its own, so the empty text below
-			// draws nothing outside debug tooltips.
+			// An item with no help, no reason and no hidden chords has an
+			// empty tooltip, which draws nothing outside debug tooltips.
 			prev := widgets.ui_origin_push(child.origin)
 			defer widgets.ui_origin_pop(prev)
 			#partial switch child.kind {
@@ -593,11 +610,11 @@ _draw_menu_child :: proc(child: ^MenuNode, view := session.View{}) {
 				if im.MenuItem(child.name_cstr, shortcut_label, ticked, _node_enabled(child, view)) {
 					_node_run(child, view)
 				}
-				widgets.tooltip(_menu_shortcut_tip(child), im.HoveredFlags_AllowWhenDisabled)
+				_menu_item_tooltip(child)
 			case .Toggle:
 				if child.value != nil {
 					im.MenuItemBoolPtr(child.name_cstr, _menu_shortcut_label(child), child.value, _node_enabled(child, view))
-					widgets.tooltip(_menu_shortcut_tip(child), im.HoveredFlags_AllowWhenDisabled)
+					_menu_item_tooltip(child)
 				}
 			}
 		}

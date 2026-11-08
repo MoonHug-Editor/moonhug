@@ -56,7 +56,7 @@ _create_canvas :: proc() -> engine.Transform_Handle {
 
 // A Text node: under the selection when that sits in a canvas, else under a
 // new canvas. 200x50, the package's Roboto, the SDF material.
-@(menu_item={path="GameObject/UI/Text", order=53})
+@(menu_item={path="GameObject/UI/Text", order=53, help="Creates a UI text, in the selected canvas or a new one"})
 ui_menu_text :: proc() {
 	g := undo.group_begin("Create Text")
 	defer undo.group_end(&g)

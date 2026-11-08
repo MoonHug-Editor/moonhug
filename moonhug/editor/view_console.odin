@@ -423,19 +423,21 @@ _console_nav_step :: proc(step: int) {
 	cv.scroll_to_sel = true
 }
 
-@(command={name="Console/Select Down", palette=false})
+@(command={name="Console/Select Down", palette=false, help="Selects the next entry"})
 console_select_down :: proc() { _console_nav_step(1) }
 
-@(command={name="Console/Select Up", palette=false})
+@(command={name="Console/Select Up", palette=false, help="Selects the previous entry"})
 console_select_up :: proc() { _console_nav_step(-1) }
 
 // Escape clears the selection, so the rows follow new entries again.
-@(command={name="Console/Clear Selection", enabled=console_can_clear_selection})
+@(command={name="Console/Clear Selection", enabled=console_can_clear_selection, help="Deselects the entry, so the list follows new entries again"})
 console_clear_selection :: proc() { _console_keys_view().selected_id = 0 }
 
 console_can_clear_selection :: proc() -> bool {
 	cv := _console_keys_view()
-	return cv != nil && cv.selected_id != 0
+	if cv == nil do return keymap.disabled("The Console is not open")
+	if cv.selected_id == 0 do return keymap.disabled("No entry is selected")
+	return true
 }
 
 @(keymap={name="Console", window="Console"})

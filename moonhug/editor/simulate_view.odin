@@ -105,7 +105,7 @@ _sim_host_name_store :: proc(name: string) {
     editor_settings.sim_host = strings.clone(name)
 }
 
-@(menu_item={path="Edit/Play", order=30, shortcut="Ctrl+P"})
+@(menu_item={path="Edit/Play", order=30, shortcut="Ctrl+P", help="Starts the game in the editor, or stops it"})
 simulate_menu_play :: proc() {
     if sim.is_active() {
         sim.stop()
@@ -126,7 +126,7 @@ _leave_edit_mode_previews :: proc() {
     phase_editor_run(.ExitingEditMode)
 }
 
-@(menu_item={path="Edit/Pause", order=31, shortcut="Ctrl+Shift+P"})
+@(menu_item={path="Edit/Pause", order=31, shortcut="Ctrl+Shift+P", help="Pauses the running game, or resumes it"})
 simulate_menu_pause :: proc() {
     sim.toggle_pause()
 }

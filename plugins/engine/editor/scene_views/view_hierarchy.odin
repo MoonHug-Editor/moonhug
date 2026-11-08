@@ -553,6 +553,23 @@ _draw_save_as_popup :: proc(scene: ^engine.Scene) {
 	}
 }
 
+// The glyph before an object's name, in the Hierarchy and the command
+// palette: stacks for an object that hosts a nested scene, the variant glyph
+// when that scene is a variant (one AssetDB root-info lookup), a dot
+// otherwise. `sc` is the scene the object is in, `host_ns` the nested scenes
+// by host (engine.scene_nested_hosts_map).
+@(private)
+hierarchy_row_icon :: proc(sc: ^engine.Scene, tH: engine.Transform_Handle, host_ns: map[engine.Transform_Handle]^engine.NestedScene) -> cstring {
+	row_ns, is_ns_host := host_ns[tH]
+	if !is_ns_host || row_ns == nil do return icons.ICON_MD_STAT_0
+	// Root-variant host: the open scene is the variant. Its nested scene
+	// points at the base, so source_prefab would say "not a variant": the
+	// row is the variant itself.
+	if engine.nested_scene_is_root_variant(sc, row_ns) do return icons.ICON_MD_STACKS_VARIANT
+	if info, ok := engine.asset_db_get_root_info(row_ns.source_prefab); ok && info.is_variant do return icons.ICON_MD_STACKS_VARIANT
+	return icons.ICON_MD_STACKS
+}
+
 @(private)
 _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, host_ns: map[engine.Transform_Handle]^engine.NestedScene, is_root := false, parent_inactive := false, parent_nested := false, filter: []string = nil) {
 	w := engine.ctx_world()
@@ -737,21 +754,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 			text_color = im.GetColorU32ImVec4(_hierarchy_dimmed_color)
 		}
 		label_pos := im.Vec2{text_x, node_rect_min.y + im.GetStyle().FramePadding.y}
-		// Every row has an icon slot: stacks for nested-scene hosts (Unity's
-		// prefab icon equivalent), the variant glyph when the source asset is a
-		// variant (one AssetDB root-info lookup), stat_0 as the plain default.
-		row_icon: cstring = icons.ICON_MD_STAT_0
-		if is_ns_host && row_ns != nil {
-			row_icon = icons.ICON_MD_STACKS
-			// Root-variant host: the OPEN SCENE is the variant — its NS points
-			// at the BASE, so checking source_prefab would say "not a variant".
-			// The row is the variant itself.
-			if engine.nested_scene_is_root_variant(sc, row_ns) {
-				row_icon = icons.ICON_MD_STACKS_VARIANT
-			} else if info, ok := engine.asset_db_get_root_info(row_ns.source_prefab); ok && info.is_variant {
-				row_icon = icons.ICON_MD_STACKS_VARIANT
-			}
-		}
+		row_icon := hierarchy_row_icon(sc, tH, host_ns)
 		// Icons draw from the LARGE icon font a couple px above text size —
 		// at 13px the variant glyph's star detail rasterizes away and variants
 		// become indistinguishable from plain stacks.
@@ -1307,24 +1310,24 @@ _hierarchy_nav_row :: proc() -> (cur_idx: int, t: ^engine.Transform, expanded: b
 	return cur_idx, t, expanded, true
 }
 
-@(command={name="Hierarchy/Select Down", palette=false})
+@(command={name="Hierarchy/Select Down", palette=false, help="Selects the next row"})
 hierarchy_select_down :: proc() { _hierarchy_nav_step(1, false) }
 
-@(command={name="Hierarchy/Select Up", palette=false})
+@(command={name="Hierarchy/Select Up", palette=false, help="Selects the previous row"})
 hierarchy_select_up :: proc() { _hierarchy_nav_step(-1, false) }
 
-@(command={name="Hierarchy/Extend Selection Down", palette=false})
+@(command={name="Hierarchy/Extend Selection Down", palette=false, help="Adds the next row to the selection"})
 hierarchy_extend_down :: proc() { _hierarchy_nav_step(1, true) }
 
-@(command={name="Hierarchy/Extend Selection Up", palette=false})
+@(command={name="Hierarchy/Extend Selection Up", palette=false, help="Adds the previous row to the selection"})
 hierarchy_extend_up :: proc() { _hierarchy_nav_step(-1, true) }
 
 // Expand opens a closed node, Expand Subtree its whole subtree, and both step
 // into an open one.
-@(command={name="Hierarchy/Expand", palette=false})
+@(command={name="Hierarchy/Expand", palette=false, help="Opens the selected object's children, or steps into them"})
 hierarchy_expand :: proc() { _hierarchy_expand(false) }
 
-@(command={name="Hierarchy/Expand Subtree", palette=false})
+@(command={name="Hierarchy/Expand Subtree", palette=false, help="Opens every descendant of the selected object"})
 hierarchy_expand_subtree :: proc() { _hierarchy_expand(true) }
 
 @(private = "file")
@@ -1340,10 +1343,10 @@ _hierarchy_expand :: proc(deep: bool) {
 
 // Collapse closes an open node, Collapse Subtree its whole subtree, and both
 // step to the parent of a closed one.
-@(command={name="Hierarchy/Collapse", palette=false})
+@(command={name="Hierarchy/Collapse", palette=false, help="Closes the selected object's children, or steps to its parent"})
 hierarchy_collapse :: proc() { _hierarchy_collapse(false) }
 
-@(command={name="Hierarchy/Collapse Subtree", palette=false})
+@(command={name="Hierarchy/Collapse Subtree", palette=false, help="Closes every descendant of the selected object"})
 hierarchy_collapse_subtree :: proc() { _hierarchy_collapse(true) }
 
 @(private = "file")
@@ -1359,15 +1362,15 @@ _hierarchy_collapse :: proc(deep: bool) {
 	if engine.pool_valid(&w.transforms, engine.Handle(parent_tH)) do session.select_only(parent_tH)
 }
 
-@(command={name="Hierarchy/Rename", enabled=hierarchy_can_rename})
+@(command={name="Hierarchy/Rename", enabled=hierarchy_can_rename, help="Renames the selected object"})
 hierarchy_rename :: proc() { _begin_rename(session.active()) }
 
-hierarchy_can_rename :: proc() -> bool { return session.active() != _HANDLE_NONE }
+hierarchy_can_rename :: proc() -> bool { return session.active() != _HANDLE_NONE || keymap.disabled("Nothing is selected") }
 
-@(command={name="Hierarchy/Clear Filter", enabled=hierarchy_has_filter, palette=false})
+@(command={name="Hierarchy/Clear Filter", enabled=hierarchy_has_filter, palette=false, help="Clears the Hierarchy's search"})
 hierarchy_clear_filter :: proc() { mem.zero(&_hv.filter_buf, len(_hv.filter_buf)) }
 
-hierarchy_has_filter :: proc() -> bool { return _hv.filter_buf[0] != 0 }
+hierarchy_has_filter :: proc() -> bool { return _hv.filter_buf[0] != 0 || keymap.disabled("The Hierarchy has no search") }
 
 // Not while a row is being renamed, nor the frame the rename closed.
 hierarchy_keys_active :: proc() -> bool {
@@ -1398,7 +1401,7 @@ hierarchy_get_selected :: proc() -> engine.Transform_Handle {
 	return session.active()
 }
 
-@(menu_item={path="Edit/Toggle Transform Active", order=0, shortcut="Alt+Shift+A"})
+@(menu_item={path="Edit/Toggle Transform Active", order=0, shortcut="Alt+Shift+A", help="Turns the selected objects off, or back on"})
 hierarchy_toggle_active_menu :: proc() {
 	w := engine.ctx_world()
 	if w == nil do return

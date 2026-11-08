@@ -28,7 +28,7 @@ import "moonhug:libs/serialization"
 @(menu_separator={path="Assets", order=-45})
 extract_gltf_separator :: proc() {}
 
-@(menu_item={path="Assets/Extract Assets", order=-40, shortcut=""})
+@(menu_item={path="Assets/Extract Assets", order=-40, shortcut="", help="Turns the selected glTF model into textures, materials, clips and a scene"})
 extract_gltf_menu :: proc() {
 	path := session.project_active()
 	if !strings.has_suffix(path, ".glb") && !strings.has_suffix(path, ".gltf") {

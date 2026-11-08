@@ -54,7 +54,7 @@ _MAX_GAME :: "Game"
 
 // Puts the maximized view back, or maximizes the view under the mouse. The
 // Views keymap binds it to Shift+Space (dock_tab_menu.odin).
-@(command={name="View/Maximize"})
+@(command={name="View/Maximize", help="Fills the editor with the view under the mouse, or puts the maximized view back"})
 view_maximize :: proc() {
 	if _max.state == .On {
 		_max.state = .Leave

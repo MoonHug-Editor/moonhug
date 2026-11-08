@@ -10,7 +10,7 @@ import "moonhug:editor/inspector"
 import wnd "moonhug:editor/window"
 import plugin_example "moonhug:packages/plugin_example"
 
-@(menu_item={path="Tools/Plugin Example/Log", shortcut=""})
+@(menu_item={path="Tools/Plugin Example/Log", shortcut="", help="Logs a line from the example plugin"})
 plugin_example_menu :: proc() {
 	log.info("[plugin_example] Hello from the plugin's editor package!")
 }
@@ -36,7 +36,7 @@ plugin_example_window_draw :: proc(w: ^wnd.Window) {
 		"Window/Plugin Example.")
 }
 
-@(menu_item={path="Window/Plugin Example", shortcut=""})
+@(menu_item={path="Window/Plugin Example", shortcut="", help="Opens the example plugin's window"})
 plugin_example_window :: proc() {
 	wnd.open("plugin_example")
 }

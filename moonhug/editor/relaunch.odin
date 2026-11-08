@@ -144,5 +144,5 @@ _relaunch_clear :: proc() {
 	_relaunch = {}
 }
 
-@(menu_item={path="File/Relaunch", order=9, shortcut=""})
+@(menu_item={path="File/Relaunch", order=9, shortcut="", help="Rebuilds the editor and starts it again, asking about unsaved edits first"})
 file_relaunch_menu :: proc() { relaunch_request() }

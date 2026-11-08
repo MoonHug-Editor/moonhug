@@ -12,6 +12,7 @@ import engine "moonhug:packages/engine"
 import clip "moonhug:editor/clipboard"
 import "moonhug:editor/session"
 import undo "moonhug:packages/engine/editor/undo"
+import "moonhug:editor/keymap"
 
 @(private)
 _hierarchy_handle_valid :: proc(tH: engine.Transform_Handle) -> bool {
@@ -38,27 +39,33 @@ _hierarchy_active_or_root :: proc() -> engine.Transform_Handle {
 // no override representation. The scene root is never deletable.
 @(private)
 _hierarchy_selection_deletable :: proc() -> bool {
+	found := false
 	for h in session.selection() {
 		if !_hierarchy_handle_valid(h) do continue
+		found = true
 		if _hierarchy_handle_is_root(h) do continue
 		return true
 	}
-	return false
+	if !found do return keymap.disabled("Nothing is selected")
+	return keymap.disabled("A scene root cannot be deleted")
 }
 
 @(private)
 _hierarchy_selection_mutable :: proc() -> bool {
+	found := false
 	for h in session.selection() {
 		if !_hierarchy_handle_valid(h) do continue
+		found = true
 		if _hierarchy_handle_is_root(h) || _hierarchy_handle_is_nested(h) do continue
 		return true
 	}
-	return false
+	if !found do return keymap.disabled("Nothing is selected")
+	return keymap.disabled("The selection is scene roots or objects inside a nested scene")
 }
 
 @(private)
 _hierarchy_has_selection :: proc() -> bool {
-	return _hierarchy_handle_valid(session.active())
+	return _hierarchy_handle_valid(session.active()) || keymap.disabled("Nothing is selected")
 }
 
 // --- Edit: selection ops (Cut..Delete band, mirrored to hierarchy popup) -----
@@ -120,11 +127,13 @@ _hierarchy_copy :: proc() {
 @(private)
 _hierarchy_can_paste :: proc() -> bool {
 	target := _hierarchy_active_or_root()
-	if target == _HANDLE_NONE || _hierarchy_handle_is_nested(target) do return false
+	if target == _HANDLE_NONE do return keymap.disabled("No scene is open")
+	if _hierarchy_handle_is_nested(target) do return keymap.disabled("Objects cannot be pasted inside a nested scene")
 	if _hierarchy_cut_pending() {
-		return target != _hierarchy_cut_tH && !_is_ancestor(_hierarchy_cut_tH, target)
+		if target == _hierarchy_cut_tH || _is_ancestor(_hierarchy_cut_tH, target) do return keymap.disabled("A cut object cannot be pasted into itself")
+		return true
 	}
-	return clip.has_hierarchy()
+	return clip.has_hierarchy() || keymap.disabled("No objects were copied")
 }
 
 @(private = "file")
@@ -149,7 +158,9 @@ _hierarchy_paste :: proc() {
 @(private)
 _hierarchy_can_rename :: proc() -> bool {
 	active := session.active()
-	return _hierarchy_handle_valid(active) && !_hierarchy_handle_is_nested(active)
+	if !_hierarchy_handle_valid(active) do return keymap.disabled("Nothing is selected")
+	if _hierarchy_handle_is_nested(active) do return keymap.disabled("Objects inside a nested scene keep their names")
+	return true
 }
 
 @(private = "file")
@@ -171,7 +182,7 @@ _hierarchy_delete :: proc() {
 
 // --- GameObject creation band (shared: menu bar + hierarchy popup) -----------
 
-@(menu_item={path="GameObject/Create Empty", order=-100})
+@(menu_item={path="GameObject/Create Empty", order=-100, help="Creates an empty object"})
 hierarchy_create_empty_menu :: proc() {
 	scene := engine.sm_scene_get_active()
 	if scene == nil do return
@@ -184,11 +195,11 @@ hierarchy_create_empty_menu :: proc() {
 // added_object, so nested targets are allowed here.
 _hierarchy_can_create_child :: proc() -> bool {
 	active := session.active()
-	if !_hierarchy_handle_valid(active) do return engine.sm_scene_get_active() != nil
+	if !_hierarchy_handle_valid(active) do return engine.sm_scene_get_active() != nil || keymap.disabled("No scene is open")
 	return true
 }
 
-@(menu_item={path="GameObject/Create Empty Child", order=-99, enabled=_hierarchy_can_create_child})
+@(menu_item={path="GameObject/Create Empty Child", order=-99, enabled=_hierarchy_can_create_child, help="Creates an empty object under the selected one"})
 hierarchy_create_empty_child_menu :: proc() {
 	parent := _hierarchy_active_or_root()
 	if parent == _HANDLE_NONE do return
@@ -200,10 +211,13 @@ hierarchy_create_empty_child_menu :: proc() {
 
 _hierarchy_can_create_parent :: proc() -> bool {
 	active := session.active()
-	return _hierarchy_handle_valid(active) && !_hierarchy_handle_is_root(active) && !_hierarchy_handle_is_nested(active)
+	if !_hierarchy_handle_valid(active) do return keymap.disabled("Nothing is selected")
+	if _hierarchy_handle_is_root(active) do return keymap.disabled("A scene root cannot get a parent")
+	if _hierarchy_handle_is_nested(active) do return keymap.disabled("Objects inside a nested scene cannot get a parent")
+	return true
 }
 
-@(menu_item={path="GameObject/Create Empty Parent", order=-98, enabled=_hierarchy_can_create_parent})
+@(menu_item={path="GameObject/Create Empty Parent", order=-98, enabled=_hierarchy_can_create_parent, help="Puts the selected object under a new empty one"})
 hierarchy_create_empty_parent_menu :: proc() {
 	if !_hierarchy_can_create_parent() do return
 	_create_empty_parent(session.active())

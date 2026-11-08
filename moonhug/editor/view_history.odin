@@ -188,18 +188,21 @@ _history_nav_step :: proc(step: int) {
 	hv.scroll_to_sel = true
 }
 
-@(command={name="History/Select Down", palette=false})
+@(command={name="History/Select Down", palette=false, help="Selects the next undo step"})
 history_select_down :: proc() { _history_nav_step(1) }
 
-@(command={name="History/Select Up", palette=false})
+@(command={name="History/Select Up", palette=false, help="Selects the previous undo step"})
 history_select_up :: proc() { _history_nav_step(-1) }
 
-@(command={name="History/Jump To Selected", enabled=history_can_jump})
+@(command={name="History/Jump To Selected", enabled=history_can_jump, help="Undoes or redoes up to the selected step"})
 history_jump_to_selected :: proc() { undo.jump_to(undo.get(), _history_keys_view().selected) }
 
 history_can_jump :: proc() -> bool {
 	hv := _history_keys_view()
-	return hv != nil && hv.selected >= 0 && undo.get() != nil
+	if hv == nil do return keymap.disabled("The History view is not open")
+	if hv.selected < 0 do return keymap.disabled("No step is selected")
+	if undo.get() == nil do return keymap.disabled("There is no undo history")
+	return true
 }
 
 @(keymap={name="History", window="History"})

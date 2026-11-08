@@ -32,6 +32,7 @@ import "moonhug:editor/widgets"
 import assets "moonhug:libs/assets"
 import "moonhug:libs/serialization"
 import core "moonhug:libs/core"
+import "moonhug:editor/keymap"
 
 // --- File clipboard -----------------------------------------------------------
 // Cut and Copy put the selected files on the editor's clipboard (clipboard
@@ -203,7 +204,7 @@ project_ops_copy :: proc() {
 
 // Whether a paste would do anything: a Cut or Copy left files to paste.
 project_ops_can_paste :: proc() -> bool {
-	return len(clip.files()) > 0
+	return len(clip.files()) > 0 || keymap.disabled("No files were copied")
 }
 
 project_ops_paste :: proc() {
@@ -341,7 +342,7 @@ _project_delete_confirmed :: proc() {
 // --- Menu registration ----------------------------------------------------------
 // Assets/... items appear in the top menu AND the project right-click menu.
 
-@(menu_item = {path = "Assets/Create/Folder", order = -20, shortcut = ""})
+@(menu_item = {path = "Assets/Create/Folder", order = -20, shortcut = "", help = "Creates a folder in the Project view's open folder"})
 project_menu_new_folder :: proc() {
 	project_ops_new_folder()
 }
@@ -354,43 +355,46 @@ project_menu_ops_separator :: proc() {}
 
 @(private)
 _project_has_selection :: proc() -> bool {
-	return projectViewData.selectedFile != ""
+	return projectViewData.selectedFile != "" || keymap.disabled("No file is selected")
 }
 
 @(private)
 _project_selection_renameable :: proc() -> bool {
 	sel := projectViewData.selectedFile
-	return sel != "" && !project_path_is_protected(sel)
+	if sel == "" do return keymap.disabled("No file is selected")
+	if project_path_is_protected(sel) do return keymap.disabled("The Assets and Packages roots and the package folders keep their names")
+	return true
 }
 
 @(private)
 _project_selection_is_scene :: proc() -> bool {
-	return strings.has_suffix(projectViewData.selectedFile, ".scene")
+	if projectViewData.selectedFile == "" do return keymap.disabled("No file is selected")
+	return strings.has_suffix(projectViewData.selectedFile, ".scene") || keymap.disabled("The selected file is not a scene")
 }
 
-@(menu_item = {path = "Assets/Reveal in Finder", order = -69, shortcut = ""})
+@(menu_item = {path = "Assets/Reveal in Finder", order = -69, shortcut = "", help = "Shows the selected file in the OS file browser"})
 project_menu_show_in_finder :: proc() {
 	project_ops_show_in_finder()
 }
 
-@(menu_item = {path = "Assets/Open", order = -68, enabled = _project_has_selection})
+@(menu_item = {path = "Assets/Open", order = -68, enabled = _project_has_selection, help = "Opens the selected file in the program the OS assigns to it"})
 project_menu_open :: proc() {
 	sel := projectViewData.selectedFile
 	if sel == "" do return
 	file_open_in_os(sel)
 }
 
-@(menu_item = {path = "Assets/Delete", order = -67, enabled = _project_has_selection})
+@(menu_item = {path = "Assets/Delete", order = -67, enabled = _project_has_selection, help = "Moves the selected files to the Trash"})
 project_menu_delete :: proc() {
 	project_ops_delete()
 }
 
-@(menu_item = {path = "Assets/Rename", order = -66, enabled = _project_selection_renameable})
+@(menu_item = {path = "Assets/Rename", order = -66, enabled = _project_selection_renameable, help = "Renames the selected file"})
 project_menu_rename :: proc() {
 	_project_begin_rename_selected()
 }
 
-@(menu_item = {path = "Assets/Copy Path", order = -65, enabled = _project_has_selection})
+@(menu_item = {path = "Assets/Copy Path", order = -65, enabled = _project_has_selection, help = "Copies the selected file's path"})
 project_menu_copy_path :: proc() {
 	sel := projectViewData.selectedFile
 	if sel == "" do return
@@ -400,12 +404,12 @@ project_menu_copy_path :: proc() {
 @(private)
 _project_selection_has_guid :: proc() -> bool {
 	sel := projectViewData.selectedFile
-	if sel == "" do return false
+	if sel == "" do return keymap.disabled("No file is selected")
 	_, ok := assets.asset_db_get_guid(sel)
-	return ok
+	return ok || keymap.disabled("The selected file is not an asset")
 }
 
-@(menu_item = {path = "Assets/Copy GUID", order = -64, enabled = _project_selection_has_guid})
+@(menu_item = {path = "Assets/Copy GUID", order = -64, enabled = _project_selection_has_guid, help = "Copies the selected asset's GUID"})
 project_menu_copy_uuid :: proc() {
 	guid, ok := assets.asset_db_get_guid(projectViewData.selectedFile)
 	if !ok do return
@@ -413,7 +417,7 @@ project_menu_copy_uuid :: proc() {
 }
 
 @(menu_separator = {path = "Assets", order = -60})
-@(menu_item = {path = "Assets/Open Scene Additive", order = -55, enabled = _project_selection_is_scene})
+@(menu_item = {path = "Assets/Open Scene Additive", order = -55, enabled = _project_selection_is_scene, help = "Opens the selected scene beside the open ones"})
 project_menu_open_scene_additive :: proc() {
 	if !_project_selection_is_scene() do return
 	asset_pipeline.asset_open_additive(projectViewData.selectedFile)

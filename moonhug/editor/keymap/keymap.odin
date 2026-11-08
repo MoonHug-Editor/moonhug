@@ -65,6 +65,9 @@ Command :: struct {
 	enabled_data: proc(data: rawptr) -> bool,
 	data:         rawptr,
 	origin:       string, // where it was declared, for the Shortcuts window and Debug Tooltips
+	// One sentence on what it does, "" for none: the command palette shows it
+	// under the name, the Shortcuts window and the menu in the tooltip. Owned
+	help:         string,
 	// Listed by the command palette. A step of a focused list's navigation
 	// (Select Down, Expand) says false: it does nothing useful from there.
 	palette:      bool,
@@ -157,13 +160,16 @@ _COMMAND_MODS :: im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.ImGuiMod
 // being the window or feature it belongs to. `enabled` names a proc that
 // says whether the command can run now: a disabled command leaves its key to
 // the next binding.
+// An enabled proc that knows why the command cannot run returns
+// disabled("why") instead of false.
 // `id` is the stable identity, the proc's qualified name by default: give
 // one to keep the user's bindings through a rename of the proc. `palette`
 // false keeps it out of the command palette, for a step of a focused list's
-// navigation that only makes sense as a key.
-@(extension_point={attribute="command", target="proc", fields="name enabled id palette"})
-command_add :: proc(name: string, run: proc(), enabled: proc() -> bool = nil, origin := "", id := "", palette := true) -> ^Command {
-	c := _command_slot(name, id, origin)
+// navigation that only makes sense as a key. `help` is one sentence on what
+// it does.
+@(extension_point={attribute="command", target="proc", fields="name enabled id palette help"})
+command_add :: proc(name: string, run: proc(), enabled: proc() -> bool = nil, origin := "", id := "", palette := true, help := "") -> ^Command {
+	c := _command_slot(name, id, origin, help)
 	c.palette = palette
 	c.run = run
 	c.enabled = enabled
@@ -175,8 +181,8 @@ command_add :: proc(name: string, run: proc(), enabled: proc() -> bool = nil, or
 }
 
 // A command that closes over data (a menu item's node).
-command_add_data :: proc(name: string, run: proc(data: rawptr), data: rawptr, enabled: proc(data: rawptr) -> bool = nil, origin := "", id := "", palette := true) -> ^Command {
-	c := _command_slot(name, id, origin)
+command_add_data :: proc(name: string, run: proc(data: rawptr), data: rawptr, enabled: proc(data: rawptr) -> bool = nil, origin := "", id := "", palette := true, help := "") -> ^Command {
+	c := _command_slot(name, id, origin, help)
 	c.palette = palette
 	c.run = nil
 	c.enabled = nil
@@ -192,7 +198,7 @@ command_add_data :: proc(name: string, run: proc(data: rawptr), data: rawptr, en
 // the same name is a declaration error: two commands would share one row,
 // one menu label and one binding, so it panics with both origins.
 @(private = "file")
-_command_slot :: proc(name: string, id: string, origin: string) -> ^Command {
+_command_slot :: proc(name: string, id: string, origin: string, help: string) -> ^Command {
 	context.allocator = runtime.default_allocator()
 	id := id if id != "" else name
 	c := _by_id[id] or_else nil
@@ -214,6 +220,10 @@ _command_slot :: proc(name: string, id: string, origin: string) -> ^Command {
 		delete(c.id)
 		c.id = strings.clone(id)
 		_by_id[c.id] = c
+	}
+	if c.help != help {
+		delete(c.help)
+		c.help = strings.clone(help) if help != "" else ""
 	}
 	return c
 }
@@ -278,6 +288,29 @@ command_enabled :: proc(c: ^Command) -> bool {
 	if c.enabled != nil do return c.enabled()
 	if c.enabled_data != nil do return c.enabled_data(c.data)
 	return true
+}
+
+// The reason the enabled proc running now gave through disabled.
+@(private = "file")
+_reason: string
+
+// Says that a command cannot run now, and why: an enabled proc returns
+// disabled("Nothing to undo") where it would return false. The command
+// palette shows the reason under the dimmed row's name, the menu in the item's
+// tooltip. `reason` is a literal or temp.
+disabled :: proc(reason: string) -> bool {
+	_reason = reason
+	return false
+}
+
+// Whether a command can run now, and when it cannot, the reason its enabled
+// proc gave through disabled, "" for none.
+command_state :: proc(c: ^Command) -> (enabled: bool, reason: string) {
+	_reason = ""
+	enabled = command_enabled(c)
+	if !enabled do reason = _reason
+	_reason = ""
+	return
 }
 
 // Runs a command, enabled or not: the caller checked.
@@ -453,6 +486,7 @@ command_remove :: proc(name: string) {
 		delete_key(&_by_id, c.id)
 		delete(c.name)
 		delete(c.id)
+		delete(c.help)
 		free(c)
 		ordered_remove(&_commands, i)
 		return
@@ -574,6 +608,7 @@ shutdown :: proc() {
 	for c in _commands {
 		delete(c.name)
 		delete(c.id)
+		delete(c.help)
 		free(c)
 	}
 	delete(_commands)
@@ -614,6 +649,17 @@ _imgui_text :: proc() -> bool {
 }
 
 // --- chords -----------------------------------------------------------------
+
+// The chords of a shortcut that lists several, separated by a comma and a
+// space: "Ctrl+Shift+Z, Ctrl+Y". A chord has no space in it, so the comma
+// key itself stays a chord: "Ctrl+,, F5" is Ctrl+, and F5. Temp.
+split_chords :: proc(text: string) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	for part in strings.split(text, ", ", context.temp_allocator) {
+		if chord := strings.trim_space(part); chord != "" do append(&out, chord)
+	}
+	return out[:]
+}
 
 // Parses "Ctrl+S", "Shift+Space", "F2", "Escape", "LeftShift" into an imgui
 // chord. Modifiers: Ctrl (Cmd on macOS), Shift, Alt, Super. Keys: letters,

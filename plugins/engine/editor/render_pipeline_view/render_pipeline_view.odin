@@ -135,7 +135,7 @@ render_pipeline_prefs: Render_Pipeline_Prefs
 
 // Opens the project's active pipeline when it is an asset, else the window's
 // plain instance, which explains the built-in frame.
-@(menu_item={path="Window/Rendering/Render Pipeline", shortcut=""})
+@(menu_item={path="Window/Rendering/Render Pipeline", shortcut="", help="Opens the project's render pipeline"})
 render_pipeline_menu_open :: proc() {
 	active := engine.render_pipeline_active().guid
 	if _, ok := engine.asset_db_get_path(uuid.Identifier(active)); active != {} && ok {
@@ -319,7 +319,7 @@ _rp_keys_target :: proc() -> bool {
 	return _rp_fetch()
 }
 
-@(command={name="Render Pipeline/Delete Step", enabled=render_pipeline_can_delete_step})
+@(command={name="Render Pipeline/Delete Step", enabled=render_pipeline_can_delete_step, help="Deletes the selected step"})
 render_pipeline_delete_step :: proc() {
 	if !_rp_keys_target() do return
 	context.allocator = inspector.doc_alloc()
@@ -327,10 +327,11 @@ render_pipeline_delete_step :: proc() {
 }
 
 render_pipeline_can_delete_step :: proc() -> bool {
-	return _rp_keys_target() && engine.pipeline_find_step(_rp.doc, _rp.sel) != nil
+	if !_rp_keys_target() do return keymap.disabled("No render pipeline is open")
+	return engine.pipeline_find_step(_rp.doc, _rp.sel) != nil || keymap.disabled("No step is selected")
 }
 
-@(command={name="Render Pipeline/Clear Selection", enabled=render_pipeline_can_clear_selection})
+@(command={name="Render Pipeline/Clear Selection", enabled=render_pipeline_can_clear_selection, help="Deselects the step"})
 render_pipeline_clear_selection :: proc() {
 	if !_rp_keys_target() do return
 	_rp.sel = 0
@@ -338,7 +339,8 @@ render_pipeline_clear_selection :: proc() {
 }
 
 render_pipeline_can_clear_selection :: proc() -> bool {
-	return _rp_keys_target() && (_rp.sel != 0 || _rp.sel_res != "")
+	if !_rp_keys_target() do return keymap.disabled("No render pipeline is open")
+	return _rp.sel != 0 || _rp.sel_res != "" || keymap.disabled("Nothing is selected")
 }
 
 @(keymap={name="Render Pipeline", window="render_pipeline"})

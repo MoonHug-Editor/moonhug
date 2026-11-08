@@ -833,7 +833,7 @@ _snap_frame: u64
 // transform gizmo, a component's handles, the rect tool's pivot. Bound held
 // on Ctrl (Cmd on macOS) in the editor-wide "Snap" keymap, its one binding,
 // so a rebinding moves it everywhere.
-@(command={name="Handles/Snap"})
+@(command={name="Handles/Snap", help="Flips snapping for every handle while held"})
 handles_snap_hold :: proc() {
 	_snap_frame = keymap.frame_count()
 }

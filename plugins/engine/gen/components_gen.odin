@@ -367,8 +367,10 @@ generate_component_menus :: proc(w: ^db.World) -> bool {
 	for e in menu_entries {
 		menu_full := strings.concatenate({"Component/", e.menu_path})
 		defer delete(menu_full)
-		fmt.sbprintf(&b, "\tmenu.add_menu_item(%q, \"\", proc() {{ _component_menu_add(.%s) }}, origin = %q)\n",
-			menu_full, e.type_name, e.origin)
+		// The command's help names the component by its menu title.
+		title := e.menu_path[strings.last_index_byte(e.menu_path, '/') + 1:]
+		fmt.sbprintf(&b, "\tmenu.add_menu_item(%q, \"\", proc() {{ _component_menu_add(.%s) }}, origin = %q, help = %q)\n",
+			menu_full, e.type_name, e.origin, fmt.tprintf("Adds the %s component to the selected objects", title))
 	}
 	strings.write_string(&b, "}\n\n")
 

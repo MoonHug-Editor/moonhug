@@ -1623,21 +1623,21 @@ _project_nav_step :: proc(step: int, extend: bool) {
     }
 }
 
-@(command={name="Project/Select Down", palette=false})
+@(command={name="Project/Select Down", palette=false, help="Selects the next row"})
 project_select_down :: proc() { _project_nav_step(1, false) }
 
-@(command={name="Project/Select Up", palette=false})
+@(command={name="Project/Select Up", palette=false, help="Selects the previous row"})
 project_select_up :: proc() { _project_nav_step(-1, false) }
 
 // Extend grows the list's selection by the stepped-onto row.
-@(command={name="Project/Extend Selection Down", palette=false})
+@(command={name="Project/Extend Selection Down", palette=false, help="Adds the next row to the selection"})
 project_extend_down :: proc() { _project_nav_step(1, true) }
 
-@(command={name="Project/Extend Selection Up", palette=false})
+@(command={name="Project/Extend Selection Up", palette=false, help="Adds the previous row to the selection"})
 project_extend_up :: proc() { _project_nav_step(-1, true) }
 
 // Right opens a closed folder and steps into an open one.
-@(command={name="Project/Expand", enabled=project_tree_active, palette=false})
+@(command={name="Project/Expand", enabled=project_tree_active, palette=false, help="Opens the selected folder, or steps into it"})
 project_expand :: proc() {
     cur := _project_tree_index()
     if cur == -1 do return
@@ -1653,7 +1653,7 @@ project_expand :: proc() {
 // Left collapses an open folder first, even one that shows no subfolders
 // (imgui still tracks its open state). A closed folder steps to its parent:
 // package roots go to the Packages node, roots stay (_project_parent_dir).
-@(command={name="Project/Collapse", enabled=project_tree_active, palette=false})
+@(command={name="Project/Collapse", enabled=project_tree_active, palette=false, help="Closes the selected folder, or steps to its parent"})
 project_collapse :: proc() {
     cur := _project_tree_index()
     if cur == -1 do return
@@ -1667,7 +1667,7 @@ project_collapse :: proc() {
 }
 
 // Tab into the list selects its first row when nothing there is selected.
-@(command={name="Project/Switch Pane", palette=false})
+@(command={name="Project/Switch Pane", palette=false, help="Moves the keyboard between the folder tree and the file list"})
 project_switch_pane :: proc() {
     switch _pv.active_pane {
     case .Tree:
@@ -1679,7 +1679,7 @@ project_switch_pane :: proc() {
 }
 
 // The tree renames the shown folder, the list the selected row.
-@(command={name="Project/Rename"})
+@(command={name="Project/Rename", help="Renames the selected file, or the folder the tree shows"})
 project_rename :: proc() {
     switch _pv.active_pane {
     case .Tree: _project_begin_rename(_pv.current_path, true)
@@ -1687,25 +1687,25 @@ project_rename :: proc() {
     }
 }
 
-@(command={name="Project/Open", enabled=project_list_active})
+@(command={name="Project/Open", enabled=project_list_active, help="Opens the selected folder or asset"})
 project_open :: proc() { _project_open_selected() }
 
-@(command={name="Project/Up Level", enabled=project_list_active})
+@(command={name="Project/Up Level", enabled=project_list_active, help="Shows the parent folder"})
 project_up_level :: proc() { _project_go_up() }
 
 // Escape ends a search from either pane, and opens the selected hit's
 // folder (_project_cancel_search). Escape in the search box reverts its text
 // first.
-@(command={name="Project/Cancel Search", enabled=project_has_search, palette=false})
+@(command={name="Project/Cancel Search", enabled=project_has_search, palette=false, help="Ends the search and shows the selected result's folder"})
 project_cancel_search :: proc() { _project_cancel_search() }
 
 project_has_search :: proc() -> bool {
-    return strings.trim_space(string(cstring(raw_data(_pv.search_buf[:])))) != ""
+    return strings.trim_space(string(cstring(raw_data(_pv.search_buf[:])))) != "" || keymap.disabled("The Project view has no search")
 }
 
-project_tree_active :: proc() -> bool { return _pv.active_pane == .Tree }
+project_tree_active :: proc() -> bool { return _pv.active_pane == .Tree || keymap.disabled("Works in the folder tree only") }
 
-project_list_active :: proc() -> bool { return _pv.active_pane == .List }
+project_list_active :: proc() -> bool { return _pv.active_pane == .List || keymap.disabled("Works in the file list only") }
 
 // Not while a row is being renamed, nor the frame the rename closed.
 project_keys_active :: proc() -> bool {

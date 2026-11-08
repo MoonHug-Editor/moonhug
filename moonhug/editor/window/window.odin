@@ -172,16 +172,18 @@ lock_mode :: proc(id: string) -> Lock_Mode {
 	return .None
 }
 
-// Every registered window's plain title and id, for imgui.ini migration
-// (the ini names a window "###<id>" now that titles carry icons).
+// Every registered window's plain title, id and icon, for imgui.ini
+// migration (the ini names a window "###<id>" now that titles carry icons)
+// and for lists of views.
 Title_Id :: struct {
 	title: string,
 	id:    string,
+	icon:  string,
 }
 
 registered :: proc(allocator := context.temp_allocator) -> []Title_Id {
 	out := make([]Title_Id, len(_registry), allocator)
-	for r, i in _registry do out[i] = {r.plain_title, r.id}
+	for r, i in _registry do out[i] = {r.plain_title, r.id, r.icon}
 	return out
 }
 

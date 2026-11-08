@@ -8,7 +8,7 @@ import "core:strings"
 import mcp "moonhug:editor/mcp"
 import "moonhug:editor/keymap"
 
-@(mcp_tool={description="The editor's commands: id, name, whether each can run now, and its key bindings with the keymap each applies in. `filter` keeps the commands whose id or name contains it, case ignored.",
+@(mcp_tool={description="The editor's commands: id, name, help, whether each can run now and why not, and its key bindings with the keymap each applies in. `filter` keeps the commands whose id or name contains it, case ignored.",
 	param_filter="string:Substring of the id or name, case ignored"})
 mcp_tool_commands :: proc(id: i64, params: json.Object) -> (string, mcp.Tool_Error) {
 	filter := strings.to_lower(_param_string(params, "filter"), context.temp_allocator)
@@ -19,7 +19,9 @@ mcp_tool_commands :: proc(id: i64, params: json.Object) -> (string, mcp.Tool_Err
 	Entry :: struct {
 		id:       string,
 		name:     string,
+		help:     string,
 		enabled:  bool,
+		reason:   string, // why it cannot run now, "" when it can or its enabled proc gives no reason
 		bindings: []Bound,
 	}
 	out := make([dynamic]Entry, context.temp_allocator)
@@ -29,7 +31,8 @@ mcp_tool_commands :: proc(id: i64, params: json.Object) -> (string, mcp.Tool_Err
 		for km in keymap.keymaps() do for &b in km.bindings do if keymap.binding_command(&b) == c {
 			append(&bound, Bound{keymap = km.name, chord = b.text})
 		}
-		append(&out, Entry{id = c.id, name = c.name, enabled = keymap.command_enabled(c), bindings = bound[:]})
+		enabled, reason := keymap.command_state(c)
+		append(&out, Entry{id = c.id, name = c.name, help = c.help, enabled = enabled, reason = reason, bindings = bound[:]})
 	}
 	return mcp.tool_ok(struct {
 		commands: []Entry,
@@ -43,7 +46,10 @@ mcp_tool_run_command :: proc(id: i64, params: json.Object) -> (string, mcp.Tool_
 	key := _param_string(params, "command")
 	c := keymap.command(key)
 	if c == nil do return mcp.tool_fail("not_found", "no command %q", key)
-	if !keymap.command_enabled(c) do return mcp.tool_fail("disabled", "command %q cannot run now", c.name)
+	if enabled, reason := keymap.command_state(c); !enabled {
+		if reason != "" do return mcp.tool_fail("disabled", "command %q cannot run now: %s", c.name, reason)
+		return mcp.tool_fail("disabled", "command %q cannot run now", c.name)
+	}
 	keymap.command_run(c)
 	return mcp.tool_ok(struct {
 		id:   string,

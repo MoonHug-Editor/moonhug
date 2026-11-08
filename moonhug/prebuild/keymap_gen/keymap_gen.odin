@@ -2,13 +2,13 @@ package keymap_gen
 
 // keymap_gen: declared editor commands and keymaps (docs/core/Keymaps.md).
 //
-//   @(command={name="Scene/Translate Tool", enabled=scene_can_clear_selection, id="scene.translate"})
+//   @(command={name="Scene/Translate Tool", enabled=scene_can_clear_selection, id="scene.translate", help="Moves the selection along the handle's axes"})
 //   scene_tool_translate :: proc() { ... }
 //
 //   @(keymap={name="Scene Flythrough", modal=true})
 //   scene_flythrough_keymap :: proc(km: ^keymap.Keymap) { ... }
 //
-//   @(command_palette_mode={name="Assets", prefix="#", run=command_palette_assets_run, shortcut="Ctrl+Shift+A"})
+//   @(command_palette_mode={name="Assets", prefix="#", run=command_palette_assets_run, shortcut="Ctrl+Shift+A", help="Finds an asset by name or folder and opens it"})
 //   command_palette_assets :: proc(query: string, rows: ^[dynamic]command_palette.Row) { ... }
 //
 //   generate - moonhug/editor/editor_keymaps_generated.odin:
@@ -37,6 +37,7 @@ CommandEntry :: struct {
 	palette:     bool,   // listed by the command palette, false when the attribute says palette=false
 	proc_name:   string, // the run proc
 	enabled:     string, // the enabled proc, "" for always enabled
+	help:        string, // one sentence on what it does, "" for none
 	source_pkg:  string,
 	source_path: string,
 	origin:      string, // where it was declared, rendered by gen_facts.attr_origin
@@ -62,6 +63,7 @@ ModeEntry :: struct {
 	run:         string, // the run proc
 	shortcut:    string, // the chord of its command, "" for none
 	id:          string, // its command's id, "" for the list proc's qualified name
+	help:        string, // its command's help, "" for none
 	source_pkg:  string,
 	source_path: string,
 	origin:      string,
@@ -108,6 +110,7 @@ provide :: proc(w: ^db.World) -> bool {
 					palette     = args.fields["palette"] != "false",
 					proc_name   = decl.name,
 					enabled     = args.fields["enabled"],
+					help        = args.fields["help"],
 					source_pkg  = decl.pkg.name,
 					source_path = decl.pkg_path,
 					origin      = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, decl.name),
@@ -143,6 +146,7 @@ provide :: proc(w: ^db.World) -> bool {
 					run         = run,
 					shortcut    = args.fields["shortcut"],
 					id          = args.fields["id"],
+					help        = args.fields["help"],
 					source_pkg  = decl.pkg.name,
 					source_path = decl.pkg_path,
 					origin      = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, decl.name),
@@ -259,12 +263,14 @@ generate :: proc(w: ^db.World) -> bool {
 		id := e.id if e.id != "" else fmt.tprintf("%s.%s", e.source_pkg, e.proc_name)
 		fmt.sbprintf(&b, ", id = %q", id)
 		if !e.palette do strings.write_string(&b, ", palette = false")
+		if e.help != "" do fmt.sbprintf(&b, ", help = %q", e.help)
 		fmt.sbprintf(&b, ", origin = %q)\n", e.origin)
 	}
 	for e in modes {
 		fmt.sbprintf(&b, "\t__cp.mode_add(%q, %q, %s, %s", e.name, e.prefix, _qualified_name(e.source_pkg, e.proc_name), _qualified_name(e.source_pkg, e.run))
 		if e.shortcut != "" do fmt.sbprintf(&b, ", shortcut = %q", e.shortcut)
 		fmt.sbprintf(&b, ", id = %q", _mode_command_id(e))
+		if e.help != "" do fmt.sbprintf(&b, ", help = %q", e.help)
 		fmt.sbprintf(&b, ", origin = %q)\n", e.origin)
 	}
 	for e in keymaps {
@@ -278,8 +284,36 @@ generate :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "}\n")
 
 	db.emit(w, "moonhug/editor/editor_keymaps_generated.odin", strings.to_string(b))
+	_warn_missing_help(w, commands[:], modes[:])
 	if gen_facts.write_reference_pages do _write_reference(w, commands[:], keymaps[:], modes[:])
 	return true
+}
+
+// Warns about every command declared without `help`: @(command),
+// @(command_palette_mode), and @(menu_item) on an item or a toggle. The
+// command palette, the Shortcuts page and the menu show the help, so a
+// command without one shows nothing there. A warning, not an error: the
+// command still works.
+@(private = "file")
+_warn_missing_help :: proc(w: ^db.World, commands: []CommandEntry, modes: []ModeEntry) {
+	missing := make([dynamic]string, context.temp_allocator)
+	for e in commands do if e.help == "" {
+		append(&missing, fmt.tprintf("%s: @(command) \"%s\" has no help", _origin_place(e.origin), e.name))
+	}
+	for e in modes do if e.help == "" {
+		append(&missing, fmt.tprintf("%s: @(command_palette_mode) \"%s\" has no help", _origin_place(e.origin), e.name))
+	}
+	decls := db.get_comps_DeclInfo()
+	menus := db.get_comps(w, menu_gen.Menu_GenComp)
+	m := db.all_of(db.r(decls), db.r(menus)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		for e in db.get(menus, entity).entries {
+			if (e.kind != .Item && e.kind != .Toggle) || e.help != "" do continue
+			append(&missing, fmt.tprintf("%s: @(menu_item) \"%s\" has no help", _origin_place(e.origin), e.path))
+		}
+	}
+	slice.sort(missing[:])
+	for msg in missing do fmt.eprintfln("prebuild: warning: %s", msg)
 }
 
 // The id of the command that opens the palette on a mode: the attribute's
@@ -296,15 +330,15 @@ _mode_command_id :: proc(e: ModeEntry) -> string {
 @(private = "file")
 _write_reference :: proc(w: ^db.World, commands: []CommandEntry, keymaps: []KeymapEntry, modes: []ModeEntry) {
 	Row :: struct {
-		id, name, pkg, place: string,
+		id, name, pkg, place, help: string,
 	}
 	rows := make([dynamic]Row, context.temp_allocator)
 	for e in commands {
 		id := e.id if e.id != "" else fmt.tprintf("%s.%s", e.source_pkg, e.proc_name)
-		append(&rows, Row{id, e.name, e.source_pkg, _origin_place(e.origin)})
+		append(&rows, Row{id, e.name, e.source_pkg, _origin_place(e.origin), e.help})
 	}
 	for e in modes {
-		append(&rows, Row{_mode_command_id(e), fmt.tprintf("Command Palette/%s", e.name), e.source_pkg, _origin_place(e.origin)})
+		append(&rows, Row{_mode_command_id(e), fmt.tprintf("Command Palette/%s", e.name), e.source_pkg, _origin_place(e.origin), e.help})
 	}
 	decls := db.get_comps_DeclInfo()
 	menus := db.get_comps(w, menu_gen.Menu_GenComp)
@@ -312,7 +346,7 @@ _write_reference :: proc(w: ^db.World, commands: []CommandEntry, keymaps: []Keym
 	for entity in db.matched(w, &m) {
 		for e in db.get(menus, entity).entries {
 			if e.kind != .Item && e.kind != .Toggle do continue
-			append(&rows, Row{menu_gen._command_id(e), e.path, e.source_pkg, _origin_place(e.origin)})
+			append(&rows, Row{menu_gen._command_id(e), e.path, e.source_pkg, _origin_place(e.origin), e.help})
 		}
 	}
 	slice.sort_by(rows[:], proc(a, b: Row) -> bool {
@@ -321,7 +355,7 @@ _write_reference :: proc(w: ^db.World, commands: []CommandEntry, keymaps: []Keym
 	})
 
 	b := strings.builder_make(context.temp_allocator)
-	strings.write_string(&b, "---\ntitle: \"Commands\"\ndescription: \"Every editor command by its stable id, with its name and where it is declared, and every keymap\"\nweight: 25\n---\n\n")
+	strings.write_string(&b, "---\ntitle: \"Commands\"\ndescription: \"Every editor command by its stable id, with its name, its help and where it is declared, and every keymap\"\nweight: 25\n---\n\n")
 	strings.write_string(&b, "Generated by `moonhug/prebuild/keymap_gen` when `mh docs` runs. Not edited by hand and not committed.\n\n")
 	strings.write_string(&b, "A command is a named proc the editor runs from a key, a menu item or the bridge ([Keymaps](../../core/Keymaps.md)). Its id is what a binding and the shortcuts override files refer to, stable through a rename of the title or a move in the menu. Commands are grouped by the package that declares them. Default chords are not listed here, they are bound in each keymap's proc: the Shortcuts tab of the settings window and the bridge's `commands` tool show the live bindings.\n\n")
 	strings.write_string(&b, "## Commands\n\n")
@@ -329,9 +363,10 @@ _write_reference :: proc(w: ^db.World, commands: []CommandEntry, keymaps: []Keym
 	for r in rows {
 		if r.pkg != pkg {
 			pkg = r.pkg
-			fmt.sbprintf(&b, "\n### %s\n\n| Id | Name | Declared |\n|---|---|---|\n", pkg)
+			fmt.sbprintf(&b, "\n### %s\n\n| Id | Name | Help | Declared |\n|---|---|---|---|\n", pkg)
 		}
-		fmt.sbprintf(&b, "| `%s` | %s | %s |\n", r.id, r.name, gen_core.SourceLinkAt(r.place))
+		help, _ := strings.replace_all(r.help, "|", "\\|", context.temp_allocator)
+		fmt.sbprintf(&b, "| `%s` | %s | %s | %s |\n", r.id, r.name, help, gen_core.SourceLinkAt(r.place))
 	}
 	strings.write_string(&b, "\n## Keymaps\n\n| Name | Scope | Declared |\n|---|---|---|\n")
 	for e in keymaps {

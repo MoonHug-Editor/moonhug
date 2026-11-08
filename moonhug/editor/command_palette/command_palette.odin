@@ -11,6 +11,11 @@ package command_palette
 //   with its prefix typed.
 // - `?`, typed alone, lists the modes with their chords
 //   and the palette's keys.
+// - Rows are ranked by how the query matches their labels (matches), then
+//   the ones that can run first, then the recently run first, then in the
+//   order the mode lists them. With no
+//   query the recently run come first. The editor settings keep the recent
+//   rows.
 //
 // A modal widget like the dialog: it owns the keyboard while it is open, so
 // its own keys are read here, and its empty modal keymap on the stack keeps
@@ -24,16 +29,23 @@ import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/icons"
 import "moonhug:editor/keymap"
 import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
 
 // One row a mode lists. Its strings live at least until the frame ends.
 Row :: struct {
+	icon:     string, // a glyph drawn before the label, "" for none
 	label:    string, // drawn on the left: what the search matched
 	detail:   string, // drawn dimmed on the right: a chord, a folder, "" for none
+	help:     string, // drawn dimmed on a second line under the label: one sentence on what the row does, "" for none
 	disabled: bool,   // drawn dimmed and never run: a command that cannot run now
-	key:      string, // the row's identity for the mode's run proc: an asset path, a view key
+	reason:   string, // why a disabled row cannot run, drawn on the second line in place of help, "" for none
+	// The row's identity for the mode's run proc, and for the recently run
+	// rows: an asset path, a view key, a command id. "" for a row that is
+	// never ranked as recent.
+	key:      string,
 	data:     rawptr, // the same for a mode that keeps a pointer: a command, a handle in temp memory
 }
 
@@ -97,6 +109,26 @@ _pal: struct {
 _PAL_WIDTH :: f32(640)
 @(private = "file")
 _PAL_LIST_HEIGHT :: f32(360)
+// The size the row icons draw at, from the large icon font.
+@(private = "file")
+_ICON_SIZE :: f32(widgets.FONT_SIZE + 3)
+// The colour of the reason a disabled row cannot run.
+@(private = "file")
+_REASON_COLOR :: im.Vec4{1, 0.8, 0.3, 1}
+
+// The recently run rows of each mode, most recent first, by mode name: their
+// Row.key values. Keys and values owned.
+@(private = "file")
+_recent: map[string][dynamic]string
+
+// How many recently run rows a mode keeps.
+RECENT_MAX :: 20
+
+// One mode's recently run rows, as the editor settings save them.
+Recent :: struct {
+	mode: string,
+	keys: []string,
+}
 
 // Declares a palette mode: the rows of one kind the palette searches, picked
 // by the prefix the text starts with. A proc that lists them (List_Proc)
@@ -106,13 +138,14 @@ _PAL_LIST_HEIGHT :: f32(360)
 // - `run` names the proc that acts on the picked row (Run_Proc).
 // - The mode gets a command, Command Palette/<name>, that opens the palette
 //   with its prefix typed. `shortcut` binds it in the editor-wide Command
-//   Palette Modes keymap.
+//   Palette Modes keymap: a chord, or several separated by a comma and a
+//   space.
 // - `id` is that command's stable id, the list proc's qualified name by
-//   default.
+//   default. `help` is that command's help.
 // - A prefix that is empty, starts with `?` or is another mode's is a
 //   declaration error: it panics with both origins.
-@(extension_point={attribute="command_palette_mode", target="proc", fields="name prefix run shortcut id"})
-mode_add :: proc(name: string, prefix: string, list: List_Proc, run: Run_Proc, shortcut := "", id := "", origin := "") -> ^Mode {
+@(extension_point={attribute="command_palette_mode", target="proc", fields="name prefix run shortcut id help"})
+mode_add :: proc(name: string, prefix: string, list: List_Proc, run: Run_Proc, shortcut := "", id := "", origin := "", help := "") -> ^Mode {
 	context.allocator = runtime.default_allocator()
 	if prefix == "" || strings.has_prefix(prefix, HELP) {
 		panic(strings.concatenate({"command_palette: mode \"", name, "\" needs a prefix that is not empty and does not start with ", HELP, "  ", origin}, context.temp_allocator))
@@ -138,14 +171,14 @@ mode_add :: proc(name: string, prefix: string, list: List_Proc, run: Run_Proc, s
 	m.list = list
 	m.run = run
 	m.origin = strings.clone(origin)
-	cmd := keymap.command_add_data(strings.concatenate({"Command Palette/", name}, context.temp_allocator), _mode_open, m, nil, origin, id)
+	cmd := keymap.command_add_data(strings.concatenate({"Command Palette/", name}, context.temp_allocator), _mode_open, m, nil, origin, id, help = help)
 	m.command = strings.clone(cmd.id)
 	km := keymap.find(KEYMAP)
 	// A re-registered mode binds once: drop its earlier binding.
 	if km != nil do keymap.unbind(km, cmd.id)
 	if shortcut != "" {
 		if km == nil do km = keymap.add(KEYMAP, "", nil, origin = "moonhug/editor/command_palette/command_palette.odin")
-		keymap.bind(km, shortcut, cmd.id)
+		for chord in keymap.split_chords(shortcut) do keymap.bind(km, chord, cmd.id)
 	}
 	slice.sort_by(_modes[:], proc(a, b: ^Mode) -> bool { return a.name < b.name })
 	return m
@@ -214,8 +247,9 @@ _mode_open :: proc(data: rawptr) {
 }
 
 // The id is the one the menu item had in the editor package, so the
-// user's bindings for it hold.
-@(menu_item={path="Window/Command Palette", order=-100, shortcut="Ctrl+T", id="editor.command_palette_open"})
+// user's bindings for it hold. The second chord is the key left of 1: imgui
+// maps it by position, so it is that key on every layout, whatever it types.
+@(menu_item={path="Window/Command Palette", order=-100, shortcut="Ctrl+T, `", id="editor.command_palette_open", help="Searches the commands and runs one. Type ? for the other modes"})
 menu_open :: proc() {
 	open()
 }
@@ -236,8 +270,68 @@ shutdown :: proc() {
 	}
 	delete(_modes)
 	_modes = nil
+	_recent_clear()
+	delete(_recent)
+	_recent = nil
 	delete(_pal.view)
 	_pal.view = ""
+}
+
+// Replaces the recently run rows with `list`, from the editor settings at
+// startup. Each mode keeps its first RECENT_MAX keys.
+recent_load :: proc(list: []Recent) {
+	_recent_clear()
+	context.allocator = runtime.default_allocator()
+	for r in list {
+		if r.mode in _recent do continue
+		keys := make([dynamic]string, 0, min(len(r.keys), RECENT_MAX))
+		for k in r.keys[:min(len(r.keys), RECENT_MAX)] do append(&keys, strings.clone(k))
+		_recent[strings.clone(r.mode)] = keys
+	}
+}
+
+// The recently run rows of every mode, by mode name, for the editor
+// settings to save. Temp, its strings the palette's.
+recent_saved :: proc() -> []Recent {
+	out := make([dynamic]Recent, context.temp_allocator)
+	for mode, keys in _recent do append(&out, Recent{mode, keys[:]})
+	slice.sort_by(out[:], proc(a, b: Recent) -> bool { return a.mode < b.mode })
+	return out[:]
+}
+
+// The recently run rows of the mode named `mode`, most recent first.
+recent :: proc(mode: string) -> []string {
+	keys, _ := _recent[mode]
+	return keys[:]
+}
+
+// Puts `key` first in the recently run rows of `mode`.
+@(private = "file")
+_recent_push :: proc(mode: string, key: string) {
+	context.allocator = runtime.default_allocator()
+	// The map keeps the key it was first set with, so the name is cloned
+	// once.
+	if mode not_in _recent do _recent[strings.clone(mode)] = nil
+	keys := _recent[mode]
+	for k, i in keys do if k == key {
+		delete(k)
+		ordered_remove(&keys, i)
+		break
+	}
+	inject_at(&keys, 0, strings.clone(key))
+	for len(keys) > RECENT_MAX do delete(pop(&keys))
+	_recent[mode] = keys
+}
+
+@(private = "file")
+_recent_clear :: proc() {
+	context.allocator = runtime.default_allocator()
+	for mode, keys in _recent {
+		for k in keys do delete(k)
+		delete(keys)
+		delete(mode)
+	}
+	clear(&_recent)
 }
 
 // The query's terms, space separated and lowercased, for matches. Temp.
@@ -245,31 +339,238 @@ terms :: proc(query: string) -> []string {
 	return widgets.search_terms(query)
 }
 
-// Whether `text` contains every term, case ignored. Allocates nothing, so a
-// mode can test every row each frame.
+// Whether every term matches `text`, case ignored. A term matches as a
+// substring, or as prefixes of the text's words in order: `fs` and `frsel`
+// match Frame Selected. A word starts after a character that is not a
+// letter or a digit, at an uppercase letter after a lowercase one, and at a
+// digit after a letter. Allocates nothing, so a mode can test every row each
+// frame. Pass one term as terms[i:i + 1].
 matches :: proc(text: string, terms: []string) -> bool {
-	for t in terms do if !contains_fold(text, t) do return false
-	return true
+	_, all := _score(text, terms)
+	return all
 }
 
 // Whether `text` contains `lower`, a lowercased term, case ignored.
 contains_fold :: proc(text: string, lower: string) -> bool {
 	if len(lower) == 0 do return true
 	for start := 0; start < len(text); {
-		ti, li := start, 0
-		for li < len(lower) && ti < len(text) {
-			r, rn := utf8.decode_rune_in_string(text[ti:])
-			l, ln := utf8.decode_rune_in_string(lower[li:])
-			if unicode.to_lower(r) != l do break
-			ti += rn
-			li += ln
-		}
-		if li == len(lower) do return true
-		if ti >= len(text) do return false
+		if _prefix_fold(text[start:], lower) > 0 do return true
 		_, n := utf8.decode_rune_in_string(text[start:])
 		start += n
 	}
 	return false
+}
+
+// How a term matched, best first. A row ranks by the sum over its terms.
+@(private = "file")
+_SCORE_TITLE_START :: 100 // a substring at the start of the title, the text after the last slash
+@(private = "file")
+_SCORE_TITLE_WORD :: 80 // a substring at the start of a word of the title
+@(private = "file")
+_SCORE_GROUP_WORD :: 70 // a substring at the start of a word before the title
+@(private = "file")
+_SCORE_TITLE_PREFIXES :: 60 // prefixes of words of the title in order, 5 more from its first word
+@(private = "file")
+_SCORE_PREFIXES :: 50 // prefixes of words in order, reaching before the title
+@(private = "file")
+_SCORE_INSIDE :: 20 // a substring inside a word
+@(private = "file")
+_SCORE_WHOLE_WORD :: 5 // added when a substring at a word start is the whole word
+
+// The words of a text the prefix match looks at, and the bytes of a term.
+@(private = "file")
+_MAX_WORDS :: 64
+@(private = "file")
+_MAX_TERM :: 32
+
+// A matched byte range of a label, for the highlight.
+@(private = "file")
+_Span :: struct {
+	lo, hi: int,
+}
+
+// How well the terms match `text`: the sum of each term's score, and whether
+// every term matched. The matched ranges go to `spans` when it is not nil.
+@(private = "file")
+_score :: proc(text: string, ts: []string, spans: ^[dynamic]_Span = nil) -> (score: int, all: bool) {
+	buf: [_MAX_WORDS]int
+	starts := buf[:_word_starts(text, &buf)]
+	title := strings.last_index_byte(text, '/') + 1
+	all = true
+	for t in ts {
+		s := _term_score(text, t, title, starts, spans)
+		if s == 0 do all = false
+		score += s
+	}
+	return
+}
+
+// How well `term` matches `text`, 0 for not at all: its best substring, else
+// prefixes of words, of the title's words first. `title` is where the title
+// starts, `starts` where the words start.
+@(private = "file")
+_term_score :: proc(text: string, term: string, title: int, starts: []int, spans: ^[dynamic]_Span) -> int {
+	if term == "" do return _SCORE_INSIDE
+	best, at, n := 0, 0, 0
+	for s := 0; s < len(text); {
+		if m := _prefix_fold(text[s:], term); m > 0 {
+			score := _SCORE_INSIDE
+			if slice.contains(starts, s) {
+				switch {
+				case s == title: score = _SCORE_TITLE_START
+				case s > title:  score = _SCORE_TITLE_WORD
+				case:            score = _SCORE_GROUP_WORD
+				}
+				if end := s + m; end == len(text) || slice.contains(starts, end) {
+					score += _SCORE_WHOLE_WORD
+				} else if r, _ := utf8.decode_rune_in_string(text[end:]); !_is_word_rune(r) {
+					score += _SCORE_WHOLE_WORD
+				}
+			}
+			if score > best do best, at, n = score, s, m
+		}
+		_, w := utf8.decode_rune_in_string(text[s:])
+		s += w
+	}
+	if best < _SCORE_TITLE_PREFIXES && len(term) <= _MAX_TERM && _all_word_runes(term) {
+		in_title := 0
+		for in_title < len(starts) && starts[in_title] < title do in_title += 1
+		memo: [_MAX_TERM]u64
+		if first := _prefixes(text, term, 0, 0, starts[in_title:], &memo, spans); first >= 0 {
+			return _SCORE_TITLE_PREFIXES + (_SCORE_WHOLE_WORD if first == title else 0)
+		}
+		if in_title > 0 {
+			memo = {}
+			if _prefixes(text, term, 0, 0, starts, &memo, spans) >= 0 do return _SCORE_PREFIXES
+		}
+	}
+	if best > 0 && spans != nil do append(spans, _Span{at, at + n})
+	return best
+}
+
+// Whether term[ti:] is a run of prefixes, one letter or more each, of the
+// words from starts[wi] on, in order: where its first prefix starts, -1 for
+// no match. The longest prefix of a word is tried first. Bit wi of memo[ti]
+// marks a pair known to fail. On a match the ranges go to `spans` when it is
+// not nil.
+@(private = "file")
+_prefixes :: proc(text: string, term: string, ti, wi: int, starts: []int, memo: ^[_MAX_TERM]u64, spans: ^[dynamic]_Span) -> int {
+	if ti == len(term) do return len(text)
+	if memo[ti] & (u64(1) << uint(wi)) != 0 do return -1
+	for w in wi ..< len(starts) {
+		s := starts[w]
+		limit := starts[w + 1] if w + 1 < len(starts) else len(text)
+		// How far the term runs along the word: after k runes, the term is
+		// at term_at[k] and the text at text_at[k].
+		term_at, text_at: [_MAX_TERM + 1]int
+		k, x, t := 0, s, ti
+		for t < len(term) && x < limit {
+			r, rn := utf8.decode_rune_in_string(text[x:])
+			if !_is_word_rune(r) do break
+			l, ln := utf8.decode_rune_in_string(term[t:])
+			if unicode.to_lower(r) != l do break
+			x += rn
+			t += ln
+			k += 1
+			term_at[k], text_at[k] = t, x
+		}
+		for j := k; j >= 1; j -= 1 {
+			if _prefixes(text, term, term_at[j], w + 1, starts, memo, spans) >= 0 {
+				if spans != nil do append(spans, _Span{s, text_at[j]})
+				return s
+			}
+		}
+	}
+	memo[ti] |= u64(1) << uint(wi)
+	return -1
+}
+
+// The byte offsets where the words of `text` start, at most _MAX_WORDS.
+@(private = "file")
+_word_starts :: proc(text: string, out: ^[_MAX_WORDS]int) -> int {
+	n := 0
+	prev: rune = 0
+	for r, i in text {
+		if n == _MAX_WORDS do break
+		if _is_word_rune(r) {
+			if !_is_word_rune(prev) || (unicode.is_upper(r) && unicode.is_lower(prev)) || (unicode.is_digit(r) && unicode.is_letter(prev)) {
+				out[n] = i
+				n += 1
+			}
+		}
+		prev = r
+	}
+	return n
+}
+
+@(private = "file")
+_is_word_rune :: proc(r: rune) -> bool {
+	return unicode.is_letter(r) || unicode.is_digit(r)
+}
+
+@(private = "file")
+_all_word_runes :: proc(s: string) -> bool {
+	for r in s do if !_is_word_rune(r) do return false
+	return true
+}
+
+// The bytes of `text` that `lower`, a lowercased term, matches at its start,
+// case ignored. 0 when it does not match there.
+@(private = "file")
+_prefix_fold :: proc(text: string, lower: string) -> int {
+	ti, li := 0, 0
+	for li < len(lower) {
+		if ti >= len(text) do return 0
+		r, rn := utf8.decode_rune_in_string(text[ti:])
+		l, ln := utf8.decode_rune_in_string(lower[li:])
+		if unicode.to_lower(r) != l do return 0
+		ti += rn
+		li += ln
+	}
+	return ti
+}
+
+// The rows the palette shows for `text`, in the order it shows them: the
+// mode the text picks lists them, then they are ranked. Temp.
+rows_for :: proc(text: string) -> []Row {
+	mode, query := mode_for(text)
+	rows := make([dynamic]Row, context.temp_allocator)
+	mode.list(query, &rows)
+	_rank(mode, query, rows[:])
+	return rows[:]
+}
+
+// Orders the rows `mode` listed for `query`: by how well the query matches
+// each label, then the rows that can run first, then the recently run first,
+// then in the order the mode listed them. A row the mode listed for a match outside its label (an asset's
+// folder) ranks by the terms its label matches.
+@(private = "file")
+_rank :: proc(mode: ^Mode, query: string, rows: []Row) {
+	ts := terms(query)
+	recent_keys := recent(mode.name)
+	Key :: struct {
+		score, recent, index: int,
+		disabled:            bool,
+	}
+	keys := make([]Key, len(rows), context.temp_allocator)
+	for r, i in rows {
+		score, _ := _score(r.label, ts)
+		at := len(recent_keys)
+		if r.key != "" do for k, j in recent_keys do if k == r.key {
+			at = j
+			break
+		}
+		keys[i] = {score, at, i, r.disabled}
+	}
+	slice.sort_by(keys, proc(a, b: Key) -> bool {
+		if a.score != b.score do return a.score > b.score
+		if a.disabled != b.disabled do return !a.disabled
+		if a.recent != b.recent do return a.recent < b.recent
+		return a.index < b.index
+	})
+	sorted := make([]Row, len(rows), context.temp_allocator)
+	for k, i in keys do sorted[i] = rows[k.index]
+	copy(rows, sorted)
 }
 
 // Sets the search text from code and puts the keyboard back in the field.
@@ -358,8 +659,7 @@ draw :: proc() {
 		return
 	}
 
-	rows := make([dynamic]Row, context.temp_allocator)
-	mode.list(query, &rows)
+	rows := rows_for(text)
 	if _keys_move(len(rows)) {
 		// A single-line field lets go of the keyboard on Enter: it gets it
 		// back when the palette stays open.
@@ -371,32 +671,160 @@ draw :: proc() {
 	im.Separator()
 	if im.BeginChild("##pal_list", {_PAL_WIDTH, _PAL_LIST_HEIGHT}) {
 		if len(rows) == 0 do im.TextDisabled("Nothing matches")
-		right := _PAL_WIDTH - style.FramePadding.x * 2
-		clipper: im.ListClipper
-		im.ListClipper_Begin(&clipper, i32(len(rows)))
-		if _pal.moved && len(rows) > 0 do im.ListClipper_IncludeItemByIndex(&clipper, i32(_pal.highlight))
-		for im.ListClipper_Step(&clipper) {
-			for i in clipper.DisplayStart ..< clipper.DisplayEnd {
-				row := rows[i]
-				im.PushIDInt(i)
-				im.BeginDisabled(row.disabled)
-				label := strings.clone_to_cstring(row.label, context.temp_allocator)
-				if im.Selectable(label, int(i) == _pal.highlight) {
-					if _run(mode, row) do im.CloseCurrentPopup()
-				}
-				im.EndDisabled()
-				if row.detail != "" {
-					detail := strings.clone_to_cstring(row.detail, context.temp_allocator)
-					x := max(right - im.CalcTextSize(detail).x, im.CalcTextSize(label).x + style.ItemSpacing.x * 4)
-					im.SameLine(x)
-					im.TextDisabled("%s", detail)
-				}
-				if int(i) == _pal.highlight && _pal.moved do im.SetScrollHereY()
-				im.PopID()
+		ts := terms(query)
+		style := im.GetStyle()
+		line, gap := im.GetTextLineHeight(), style.ItemSpacing.y
+		// A mode whose rows have icons gets an icon column on every row, so
+		// the labels line up.
+		icon_w: f32
+		for r in rows do if r.icon != "" {
+			im.PushFontFloat(widgets.icon_font_lg, _ICON_SIZE)
+			icon_w = im.CalcTextSize(icons.ICON_MD_STACKS).x + style.ItemSpacing.x
+			im.PopFont()
+			break
+		}
+		// A row is one line, or two with a note, so its height comes from its
+		// data: top[i] is where row i starts, below the first row's top. Only
+		// the rows in view are drawn.
+		top := make([]f32, len(rows) + 1, context.temp_allocator)
+		for r, i in rows do top[i + 1] = top[i] + _row_height(r, line) + gap
+		base := im.GetCursorPosY()
+		scroll, view := im.GetScrollY(), im.GetWindowHeight()
+		// The highlight moved by key comes into view, from the next frame.
+		if h := _pal.highlight; _pal.moved && h < len(rows) {
+			if base + top[h] < scroll + style.WindowPadding.y {
+				im.SetScrollY(max(base + top[h] - style.WindowPadding.y, 0))
+			} else if base + top[h + 1] - gap > scroll + view - style.WindowPadding.y {
+				im.SetScrollY(base + top[h + 1] - gap + style.WindowPadding.y - view)
 			}
+		}
+		first := 0
+		for first < len(rows) && base + top[first + 1] <= scroll do first += 1
+		for i := first; i < len(rows) && base + top[i] < scroll + view; i += 1 {
+			im.SetCursorPosY(base + top[i])
+			im.PushIDInt(i32(i))
+			if _draw_row(rows[i], ts, i == _pal.highlight, i % 2 == 1, line, icon_w) {
+				if _run(mode, rows[i]) do im.CloseCurrentPopup()
+			}
+			im.PopID()
+		}
+		// The rows below the view still count for the scrollbar.
+		if len(rows) > 0 {
+			im.SetCursorPosY(base + top[len(rows)] - gap)
+			im.Dummy({0, 0})
 		}
 	}
 	im.EndChild()
+}
+
+// What a row shows on its second line: why a disabled row cannot run, else
+// its help. "" for a row of one line.
+@(private = "file")
+_row_note :: proc(row: Row) -> string {
+	if row.disabled && row.reason != "" do return row.reason
+	return row.help
+}
+
+@(private = "file")
+_row_height :: proc(row: Row, line: f32) -> f32 {
+	return line * 2 if _row_note(row) != "" else line
+}
+
+// Draws one result row: the label with the letters the terms matched in the
+// accent colour, the detail right-aligned, and under the label the note,
+// the help dimmed or the reason a disabled row cannot run in its own colour.
+// An `alt` row has the theme's alternate row background, so rows of one and
+// two lines stay apart. `icon_w` is the icon column's width, 0 for a mode
+// without icons: the label and the note start after it. A note cut short
+// shows whole in the tooltip. True when the row was clicked.
+@(private = "file")
+_draw_row :: proc(row: Row, ts: []string, selected: bool, alt: bool, line: f32, icon_w: f32) -> (clicked: bool) {
+	style := im.GetStyle()
+	row_pos := im.GetCursorScreenPos()
+	pos := row_pos + {icon_w, 0}
+	right := row_pos.x + im.GetContentRegionAvail().x
+	dl := im.GetWindowDrawList()
+	note := _row_note(row)
+
+	// The band covers what the selectable's highlight covers, half the item
+	// spacing past the row on every side, so neighbouring bands meet.
+	if alt {
+		half := style.ItemSpacing * 0.5
+		im.DrawList_AddRectFilled(dl, row_pos - half, {right, pos.y + _row_height(row, line)} + half, im.GetColorU32(.TableRowBgAlt))
+	}
+
+	// The selectable has no text of its own: the row's is drawn over it.
+	// Colours taken inside the disabled block come out dimmed.
+	im.BeginDisabled(row.disabled)
+	clicked = im.Selectable("##row", selected, {}, {0, _row_height(row, line)})
+	if row.icon != "" {
+		// The large icon font a little above text size, as the Hierarchy
+		// draws its glyphs, centred on the label's line.
+		im.PushFontFloat(widgets.icon_font_lg, _ICON_SIZE)
+		icon := strings.clone_to_cstring(row.icon, context.temp_allocator)
+		im.DrawList_AddText(dl, {row_pos.x, row_pos.y - (_ICON_SIZE - widgets.FONT_SIZE) * 0.5}, im.GetColorU32(.Text), icon)
+		im.PopFont()
+	}
+	label_w := _draw_label(dl, pos, row.label, ts)
+	if row.detail != "" {
+		detail := strings.clone_to_cstring(row.detail, context.temp_allocator)
+		x := max(right - im.CalcTextSize(detail).x, pos.x + label_w + style.ItemSpacing.x * 4)
+		im.DrawList_AddText(dl, {x, pos.y}, im.GetColorU32(.TextDisabled), detail)
+	}
+	note_col := im.GetColorU32(.TextDisabled)
+	im.EndDisabled()
+	if note == "" do return
+	if row.disabled && row.reason != "" do note_col = im.GetColorU32ImVec4(_REASON_COLOR)
+
+	fitted, cut := _fit(note, right - pos.x)
+	if fitted != "" do im.DrawList_AddText(dl, {pos.x, pos.y + line}, note_col, fitted)
+	if cut do widgets.tooltip(strings.clone_to_cstring(note, context.temp_allocator), im.HoveredFlags_AllowWhenDisabled)
+	return
+}
+
+// Draws `label` at `pos`, the ranges the terms match in the accent colour,
+// and returns its width.
+@(private = "file")
+_draw_label :: proc(dl: ^im.DrawList, pos: im.Vec2, label: string, ts: []string) -> f32 {
+	text := strings.clone_to_cstring(label, context.temp_allocator)
+	plain, accent := im.GetColorU32(.Text), im.GetColorU32(.CheckMark)
+	spans := make([dynamic]_Span, context.temp_allocator)
+	if len(ts) > 0 do _score(label, ts, &spans)
+	lit := make([]bool, len(label), context.temp_allocator)
+	for sp in spans do for b in sp.lo ..< sp.hi do lit[b] = true
+	raw := transmute([^]u8)text
+	x := pos.x
+	for start := 0; start < len(label); {
+		end := start + 1
+		for end < len(label) && lit[end] == lit[start] do end += 1
+		lo, hi := cstring(raw[start:]), cstring(raw[end:])
+		im.DrawList_AddText(dl, {x, pos.y}, accent if lit[start] else plain, lo, hi)
+		x += im.CalcTextSize(lo, hi).x
+		start = end
+	}
+	return x - pos.x
+}
+
+// `text` cut to fit `width`, with "..." when it was cut, "" when not even
+// that fits. Temp.
+@(private = "file")
+_fit :: proc(text: string, width: f32) -> (fitted: cstring, cut: bool) {
+	whole := strings.clone_to_cstring(text, context.temp_allocator)
+	if im.CalcTextSize(whole).x <= width do return whole, false
+	// The longest rune prefix that fits with the dots.
+	lo, hi := 0, len(text)
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		for mid > 0 && mid < len(text) && !utf8.rune_start(text[mid]) do mid -= 1
+		if mid <= lo {
+			break
+		}
+		try := strings.clone_to_cstring(strings.concatenate({text[:mid], "..."}, context.temp_allocator), context.temp_allocator)
+		if im.CalcTextSize(try).x <= width do lo = mid
+		else do hi = mid - 1
+	}
+	if lo == 0 do return "", true
+	return strings.clone_to_cstring(strings.concatenate({strings.trim_right_space(text[:lo]), "..."}, context.temp_allocator), context.temp_allocator), true
 }
 
 // Moves the highlight on Up and Down within `count` rows. True when Enter
@@ -416,10 +844,12 @@ _keys_move :: proc(count: int) -> bool {
 	return count > 0 && (im.IsKeyPressed(.Enter) || im.IsKeyPressed(.KeypadEnter))
 }
 
-// Runs a row of `mode` when it can run. True when it ran.
+// Runs a row of `mode` when it can run, and puts it first in the mode's
+// recently run rows. True when it ran.
 @(private = "file")
 _run :: proc(mode: ^Mode, row: Row) -> bool {
 	if row.disabled do return false
+	if row.key != "" do _recent_push(mode.name, row.key)
 	mode.run(row)
 	return true
 }
@@ -457,12 +887,16 @@ _draw_help :: proc() {
 	for m, i in all {
 		im.PushIDInt(i32(i))
 		if im.Selectable(strings.clone_to_cstring(m.name, context.temp_allocator), i == _pal.highlight) do _switch_to(m)
+		if c := keymap.command(m.command); c != nil && c.help != "" do widgets.tooltip(strings.clone_to_cstring(c.help, context.temp_allocator))
 		im.PopID()
 		im.SameLine(prefix_x)
 		im.TextUnformatted(_prefix_text(m))
 		im.SameLine(right - im.CalcTextSize(chords[i]).x)
 		im.TextDisabled("%s", chords[i])
 	}
+	im.Spacing()
+	im.TextDisabled("Search")
+	im.TextWrapped("Terms match anywhere in a name, or as the starts of its words in order: fs and frsel find Frame Selected. The best matches come first, then the rows run recently. With nothing typed, the rows run recently come first.")
 	im.Spacing()
 	im.TextDisabled("Keys")
 	if im.BeginTable("##pal_keys", 2, im.TableFlags_SizingStretchProp) {
@@ -498,8 +932,9 @@ _switch_to :: proc(m: ^Mode) {
 }
 
 // The commands mode: every command the palette lists (keymap.in_palette)
-// whose name holds every term, or whose id does for a term with a dot, by
-// name, with its first two chords.
+// whose name matches every term, or whose id contains it for a term with a
+// dot, by name, with its help, the reason it cannot run and its first two
+// chords.
 @(private = "file")
 _commands_list :: proc(query: string, rows: ^[dynamic]Row) {
 	ts := terms(query)
@@ -509,14 +944,15 @@ _commands_list :: proc(query: string, rows: ^[dynamic]Row) {
 		// dot): ids carry package names, scene_views, that would match
 		// "view" everywhere.
 		hit := true
-		for term in ts {
-			if contains_fold(cmd.name, term) do continue
+		for term, i in ts {
+			if matches(cmd.name, ts[i:i + 1]) do continue
 			if strings.contains(term, ".") && contains_fold(cmd.id, term) do continue
 			hit = false
 			break
 		}
 		if !hit do continue
-		append(rows, Row{label = cmd.name, detail = _chords(cmd), disabled = !keymap.command_enabled(cmd), data = cmd})
+		enabled, reason := keymap.command_state(cmd)
+		append(rows, Row{label = cmd.name, detail = _chords(cmd), help = cmd.help, disabled = !enabled, reason = reason, key = cmd.id, data = cmd})
 	}
 	slice.sort_by(rows[:], proc(a, b: Row) -> bool { return a.label < b.label })
 }

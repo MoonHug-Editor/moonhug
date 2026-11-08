@@ -277,6 +277,21 @@ _pick_item :: proc(km: ^keymap.Keymap, command: string, label: cstring = nil) {
 	widgets.tooltip(fmt.ctprintf("%s\n%s", _keymap_scope(km), km.origin))
 }
 
+// Asks before Reset All puts every binding back to its default: undo does
+// not cover bindings.
+shortcuts_reset_all_ask :: proc() {
+	_listen_stop()
+	widgets.dialog_open({
+		title       = "Reset every shortcut?",
+		description = "Every command's bindings go back to their defaults and the shortcuts override file is emptied.\n\nThis cannot be undone.",
+		icon        = icons.ICON_MD_WARNING,
+		buttons     = {
+			{label = "Reset All", action = keymap.override_reset_all, is_default = true},
+			{label = "Cancel", is_cancel = true},
+		},
+	})
+}
+
 shortcuts_draw :: proc() {
 	// A listen the page was away for (another tab, the window closed) is
 	// over: the keys went back to the resolver meanwhile. Otherwise the page
@@ -306,11 +321,8 @@ shortcuts_draw :: proc() {
 	}
 	im.SameLine()
 	im.BeginDisabled(!keymap.has_overrides())
-	if im.Button("Reset All") {
-		_listen_stop()
-		keymap.override_reset_all()
-	}
-	widgets.tooltip("Every binding back to its default, the override file emptied")
+	if im.Button("Reset All") do shortcuts_reset_all_ask()
+	widgets.tooltip("Every binding back to its default, the override file emptied. Asks first: undo does not restore them")
 	im.EndDisabled()
 	if _sc.listen_km != nil {
 		im.SameLine()
@@ -353,7 +365,8 @@ shortcuts_draw :: proc() {
 				im.TableNextRow()
 				im.TableNextColumn()
 				im.TextUnformatted(strings.clone_to_cstring(title, context.temp_allocator))
-				widgets.tooltip(fmt.ctprintf("%s\n%s", c.id, c.origin))
+				if c.help != "" do widgets.tooltip(fmt.ctprintf("%s\n\n%s\n%s", c.help, c.id, c.origin))
+				else do widgets.tooltip(fmt.ctprintf("%s\n%s", c.id, c.origin))
 				_draw_plus(c.id)
 				im.TableNextColumn()
 				_draw_bindings(c.id, conflicts, by_binding, true)

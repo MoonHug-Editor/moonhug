@@ -27,7 +27,7 @@ import im "moonhug:external/odin-imgui"
 
 // @(menu_item) on a bool variable is a toggle, and this package is inside a
 // scan root, so the menu entry costs nothing beyond the attribute.
-@(menu_item={path="Help/Debug Tooltips", order=998})
+@(menu_item={path="Help/Debug Tooltips", order=998, help="Adds to every tooltip where the element is declared"})
 ui_debug_tooltips := false
 
 @(private = "file") _ui_origin: string

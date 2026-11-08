@@ -8,6 +8,7 @@ import "core:os"
 import "core:strings"
 import "menu"
 import wnd "window"
+import "moonhug:editor/command_palette"
 import "moonhug:editor/handles"
 import "moonhug:editor/session"
 import assets "moonhug:libs/assets"
@@ -73,6 +74,7 @@ EditorSettings :: struct {
     gizmo_hidden_gizmos:      [dynamic]string,          // component types whose gizmo the gizmo settings hide
     selection:                Persisted_Selection,      // the selection at quit (selection_persist.odin)
     view_locks:               [dynamic]Persisted_View_Lock, // every locked view (view_lock.odin, selection_persist.odin)
+    command_palette_recent:   []command_palette.Recent, // each palette mode's recently run rows, newest first
 }
 
 editor_settings: EditorSettings
@@ -110,6 +112,7 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
             for name in editor_settings.gizmo_hidden_gizmos do gizmos.gizmo_type_set(name, .Gizmo, false)
             if editor_settings.scene_2d do _sv_plain.pending_2d = true
             _sv_plain.view_mode = editor_settings.scene_mode
+            command_palette.recent_load(editor_settings.command_palette_recent)
             if editor_settings.has_window_state {
                 menu.show_game              = editor_settings.show_game
             }
@@ -172,6 +175,9 @@ save_editor_settings :: proc() {
 
     // The selection and the inspector locks, named so they resolve next run.
     selection_persist_capture()
+
+    // The palette's own copy, temp: the loaded list stays unfreed until exit.
+    editor_settings.command_palette_recent = command_palette.recent_saved()
 
     delete(editor_settings.open_scene_guids)
     editor_settings.open_scene_guids = make([dynamic]string, context.temp_allocator)
