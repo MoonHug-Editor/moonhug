@@ -1,3 +1,27 @@
+## [0.158.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.157.0...v0.158.0) (2026-11-08)
+
+### Features
+
+* a tool's keymap shows its keys in the status bar, @(system_settings) ([7604111](https://github.com/MoonHug-Editor/moonhug/commit/76041116b59de70e40e8814af21bddde2d6e33c6))
+* command palette modes ([99a9c62](https://github.com/MoonHug-Editor/moonhug/commit/99a9c62568264691f4b5b94c5cc970a8dbc5bf7d))
+* command palette ranks rows by word-start matches and recent use, commands carry help and a reason when disabled, Reset All asks first ([ddd7809](https://github.com/MoonHug-Editor/moonhug/commit/ddd7809507393047ed8e630cfbe4b51bcb7e95cc))
+* ctrl+shift+t restore closed tab ([898d231](https://github.com/MoonHug-Editor/moonhug/commit/898d23147b4d0e165e12d6c9a8be355b5f309866))
+* **editor:** command palette on Ctrl+Shift+A, button tooltips show the live chord, the gizmo drag is a modal keymap with Escape to cancel and Ctrl to snap ([0dcf601](https://github.com/MoonHug-Editor/moonhug/commit/0dcf60192b29b8d4b24a34c887f45711b99863a8))
+* **editor:** command-first Shortcuts page with context picker, stable command ids, commands and run_command bridge tools, mac chords as binding data, conflicts logged, Maximize and the view keys as commands ([275ae60](https://github.com/MoonHug-Editor/moonhug/commit/275ae60dec757ee6b4a1ef14d857e37caf637336))
+* **editor:** commands and keymaps resolve every key once per frame, declared with @(command) and @(keymap), menu shortcuts, scene tools and the flythrough converted ([0796b3b](https://github.com/MoonHug-Editor/moonhug/commit/0796b3bd60ae90a42b3ebe95add8adcb180b2e8d))
+* **editor:** every view's keys are commands in keymaps, Ctrl+W closes the focused view, plain keys stay text while typing ([7fb07c0](https://github.com/MoonHug-Editor/moonhug/commit/7fb07c0fcb9112825d9c5a4d743d4d9e83497044))
+* **editor:** Shortcuts preferences tab with per-developer overrides, live menu labels, conflicts shown ([c47e5b8](https://github.com/MoonHug-Editor/moonhug/commit/c47e5b8a878130a8a55de8962178e0de2f3d8a22))
+* **editor:** shortcuts.json moves to the OS user's config folder, Commands reference page of every command id and keymap ([759fd79](https://github.com/MoonHug-Editor/moonhug/commit/759fd79f78d276a159711612a1a86eb9d1d29a5f))
+* Quick Help is its own settings tab with a checkbox per tool ([f930fa2](https://github.com/MoonHug-Editor/moonhug/commit/f930fa2c4735c49e27dc4ccf7bed21347c54a8b6))
+
+### Bug Fixes
+
+* a view reopened into a Workspace goes back to the frame it left last, the workspace drops frame records for views the reopen list no longer holds, and a new window starts with no tab place to restore ([1f6fab4](https://github.com/MoonHug-Editor/moonhug/commit/1f6fab4ae05ff47bc80580481f456a60265f42c9))
+* docs regex ([72448e5](https://github.com/MoonHug-Editor/moonhug/commit/72448e5ba9d1d7d00c5b9f3c2ee3c0494aacc37b))
+* **editor:** audio source and light handles drag in the Handles tool only ([18d52ce](https://github.com/MoonHug-Editor/moonhug/commit/18d52ce64b8352ea89e77a26f71a5bdc8a3e639a))
+* reset bindings restores defaults, hashed lookups and pointer compares, capture held per frame, Snap is one command for every handle, plain keys go to the running game, duplicate command names panic ([0635bbe](https://github.com/MoonHug-Editor/moonhug/commit/0635bbe6c3c0eb37110d4758432e6663e6555b3b))
+* the Commands page links each command and keymap to its declaration, like the other reference pages ([84500c1](https://github.com/MoonHug-Editor/moonhug/commit/84500c1395cbe410590db6362786a215e84a52f8))
+
 ## [0.157.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.156.0...v0.157.0) (2026-11-03)
 
 ### Features
