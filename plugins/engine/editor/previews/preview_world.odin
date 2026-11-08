@@ -14,13 +14,17 @@ package previews
 //	... render ...
 //
 // The world and its scratch scene are created on first use and live for the
-// editor's lifetime; content is spawned and destroyed per render.
+// editor's lifetime. Content is spawned and destroyed per render, except the
+// one instance a live preview keeps between frames (preview_world_hold).
 
 import "moonhug:packages/engine"
 
 @(private = "file") _pvw_world: ^engine.World
 @(private = "file") _pvw_scene: ^engine.Scene
 @(private = "file") _pvw_prev_active: ^engine.Scene
+// Frees the one instance a live preview keeps in the world between frames,
+// nil when none is kept.
+@(private = "file") _pvw_held: proc()
 
 // Swaps the preview world in. Returns the previous world for preview_world_end.
 //
@@ -52,6 +56,25 @@ preview_world_end :: proc(prev: ^engine.World) {
 	engine.ctx_get().world = prev
 }
 
+// Takes the world's one kept instance, for a live preview that keeps its
+// content between frames: a scene preview's instance, a clip preview's rig.
+// Every render draws the whole world, so the instance another preview kept
+// would draw into this one's picture: it is released first. `release` frees
+// the caller's instance and forgets it, so that preview spawns again the next
+// time it shows. Inside a begin/end bracket.
+preview_world_hold :: proc(release: proc()) {
+	if _pvw_held != nil && _pvw_held != release do _pvw_held()
+	_pvw_held = release
+}
+
+// Releases the kept instance before other content renders in the world (a
+// thumbnail), which would otherwise draw it too. Inside a begin/end bracket.
+preview_world_release_held :: proc() {
+	held := _pvw_held
+	_pvw_held = nil
+	if held != nil do held()
+}
+
 // Only valid inside a begin/end bracket.
 preview_world_root :: proc() -> engine.Transform_Handle {
 	return engine.Transform_Handle(_pvw_scene.root.handle)
@@ -61,6 +84,7 @@ preview_world_shutdown :: proc() {
 	if _pvw_scene != nil {
 		// The scene's transforms live in the preview world's pools.
 		prev := preview_world_begin()
+		preview_world_release_held()
 		engine.scene_destroy(_pvw_scene)
 		preview_world_end(prev)
 		_pvw_scene = nil

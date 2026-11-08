@@ -265,9 +265,10 @@ _pv_image_orbit :: proc(rt: ^gfx.Render_Target, avail: im.Vec2) {
 // bleeds in.
 // The scene instance behind the preview, kept alive between frames. Spawning
 // is a full deserialize of the scene file and every object it creates, so
-// doing it per frame pegged a core on a 35-object scene. Exactly one lives at
-// a time: the preview world is rendered whole, so a leftover instance from a
-// previous selection would be drawn into the next one's picture.
+// doing it per frame pegged a core on a 35-object scene. It holds the preview
+// world's one kept instance (preview_world_hold): the world is rendered
+// whole, so a clip preview's rig or a previous scene left in it would be
+// drawn into this picture.
 @(private = "file") _scene_pv_guid: engine.Asset_GUID
 @(private = "file") _scene_pv_root: engine.Transform_Handle
 @(private = "file") _scene_pv_center: [3]f32
@@ -305,6 +306,7 @@ _preview_scene :: proc(path: string) {
 		defer preview_world_end(prev)
 
 		if respawn {
+			preview_world_hold(_scene_pv_release)
 			_scene_pv_release()
 			_scene_pv_stale = false
 			spawned := engine.scene_instantiate_guid(guid, preview_world_root())
@@ -338,8 +340,8 @@ _preview_scene :: proc(path: string) {
 
 // A clip inside a model: the model's skeleton posed by the clip, scrubbed by a
 // slider or playing, orbitable like the other 3D previews. The rig lives in
-// the preview world between frames (see _preview_scene for why one instance
-// at a time) and is rebuilt when the selection moves to another clip.
+// the preview world between frames as its one kept instance (see
+// _preview_scene) and is rebuilt when the selection moves to another clip.
 @(private = "file") _clip_pv: struct {
 	owner:   engine.Asset_GUID,
 	id:      engine.Local_ID,
@@ -367,6 +369,7 @@ _preview_clip :: proc(path: string, owner: engine.Asset_GUID, clip_id: engine.Lo
 	defer preview_world_end(prev)
 
 	if owner != _clip_pv.owner || clip_id != _clip_pv.id || _clip_pv.rig.root == {} {
+		preview_world_hold(_clip_pv_release)
 		_clip_pv_release()
 		if subassets.clip_sampler == nil {
 			im.TextDisabled("Clips preview with the animation plugin installed.")

@@ -82,10 +82,12 @@ _clip_edit_load :: proc(path: string, clip: ^engine.Mesh_Clip) {
 }
 
 // Writes the typed copy back into the meta entry as a JSON value, on the
-// default allocator the working-copy settings live on.
+// allocator the import settings document lives on (inspector.doc_alloc): the
+// document frees the value when undo or redo replaces it, and a debug build's
+// tracking allocator rejects a free of memory it never handed out.
 @(private = "file")
 _clip_edit_store :: proc(clip: ^engine.Mesh_Clip) {
-	context.allocator = runtime.default_allocator()
+	context.allocator = inspector.doc_alloc()
 	bytes, merr := json.marshal(_clip_edit.s, {spec = .JSON}, context.temp_allocator)
 	if merr != nil do return
 	v, perr := json.parse(bytes, .JSON, true)
@@ -124,7 +126,7 @@ property_drawer_MeshSettings_clips :: proc(ctx: ^inspector.Ctx) {
 						c.settings = clip.settings
 						clip.settings = nil
 					}
-					context.allocator = runtime.default_allocator()
+					context.allocator = inspector.doc_alloc()
 					if clip.settings != nil do json.destroy_value(clip.settings)
 					ordered_remove(&ms.clips, idx)
 					inspector.mark_inspector_changed()

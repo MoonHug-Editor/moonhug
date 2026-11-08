@@ -83,6 +83,8 @@ _thumb_render_material :: proc(path: string, guid: engine.Asset_GUID, sub: engin
 _thumb_render_scene :: proc(path: string, guid: engine.Asset_GUID, sub: engine.Local_ID, target: ^gfx.Render_Target) -> bool {
 	prev := preview_world_begin()
 	defer preview_world_end(prev)
+	// The world renders whole: a live preview's kept instance goes first.
+	preview_world_release_held()
 	spawned := engine.scene_instantiate_guid(guid, preview_world_root())
 	if spawned == {} do return false
 	defer engine.transform_destroy(spawned)
@@ -126,6 +128,8 @@ _thumb_render_mesh_part :: proc(guid: engine.Asset_GUID, sub: engine.Local_ID, t
 _thumb_render_clip :: proc(guid: engine.Asset_GUID, sub: engine.Local_ID, path: string, target: ^gfx.Render_Target) -> bool {
 	prev := preview_world_begin()
 	defer preview_world_end(prev)
+	// The world renders whole: a live preview's kept instance goes first.
+	preview_world_release_held()
 	rig, ok := model_clip_rig_build(path, guid, sub, preview_world_root())
 	if !ok do return false
 	defer model_clip_rig_destroy(&rig)
