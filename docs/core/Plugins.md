@@ -342,6 +342,19 @@ Physics2D_Settings :: struct {
 - The OWNING system loads its own file (`engine.project_settings_load`) and consumes the var by polling, so an edit — typed, undone or redone — reaches the runtime with no editor coupling, and the game binary reads the same files. `packages/physics2d/settings.odin` is the shipped example: the fixed step syncs the var into the live box2d world.
 - Declarations land in `editor/project_settings_generated.odin` (project_settings_gen). Built-in tabs use the same attribute — Time (`engine.time_settings`, the fixed tick rate) is one.
 
+A setting about the person instead of the project is one of two more levels, declared the same way on a package-level var:
+
+| Attribute | Saved in | Shared with |
+|---|---|---|
+| `@(project_settings={name})` | `ProjectSettings/<slug>.json`, committed | everyone on the project, and the game |
+| `@(user_settings={name, tab})` | `UserSettings/<slug>.json` in the project, never committed | nobody: this developer in this project |
+| `@(system_settings={name, tab})` | `<slug>.json` in `MoonHug/` under the OS config folder | nobody: this developer in every project on the machine |
+
+- A user or system setting loads at editor start, writes its file with the defaults when there is none, and saves at exit. The editor only: the game never reads them.
+- `tab` makes it a section of the same settings window, saved to its own level's file whenever it changes. Without `tab`, a view or a page edits it and saves it itself, with `core.user_settings_save` or `core.system_settings_save`.
+- The quick help switches, `editor.quick_help_settings`, are a system setting drawn by the Shortcuts section.
+- Declarations land in `editor/user_settings_generated.odin` (user_settings_gen), one load and one save proc per level.
+
 ## Assets
 
 The asset db walks `assets/` plus `packages/<name>/assets` per package.

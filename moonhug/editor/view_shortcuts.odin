@@ -15,6 +15,7 @@ import "core:fmt"
 import "core:slice"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
+import core "moonhug:libs/core"
 import "moonhug:editor/icons"
 import "moonhug:editor/keymap"
 import "moonhug:editor/widgets"
@@ -277,6 +278,26 @@ _pick_item :: proc(km: ^keymap.Keymap, command: string, label: cstring = nil) {
 	widgets.tooltip(fmt.ctprintf("%s\n%s", _keymap_scope(km), km.origin))
 }
 
+// The status bar's quick help: shown at all, then per tool keymap, the ones
+// that have something to show. Saved for every project on this machine.
+@(private = "file")
+_draw_quick_help_settings :: proc() {
+	s := &quick_help_settings
+	if im.Checkbox("Show a tool's keys in the status bar while it runs", &s.show) {
+		core.system_settings_save("Quick Help", s, Quick_Help_Settings)
+	}
+	widgets.tooltip("The keys of the tool running, the flythrough's for one, in place of the last log line. Saved for every project on this machine")
+	im.BeginDisabled(!s.show)
+	im.Indent()
+	for km in keymap.keymaps() {
+		if !km.modal || len(keymap.quick_help(km)) == 0 do continue
+		shown := !slice.contains(s.hidden[:], km.name)
+		if im.Checkbox(strings.clone_to_cstring(km.name, context.temp_allocator), &shown) do quick_help_set_shown(km.name, shown)
+	}
+	im.Unindent()
+	im.EndDisabled()
+}
+
 // Asks before Reset All puts every binding back to its default: undo does
 // not cover bindings.
 shortcuts_reset_all_ask :: proc() {
@@ -302,6 +323,9 @@ shortcuts_draw :: proc() {
 	if _sc.listen_km != nil do keymap.capture_hold()
 	filter_raw := string(cstring(raw_data(_sc.filter[:])))
 	filter := strings.to_lower(strings.trim_space(filter_raw), context.temp_allocator)
+
+	_draw_quick_help_settings()
+	im.Separator()
 
 	// The top bar: search, the conflict count, reset all.
 	im.SetNextItemWidth(260)

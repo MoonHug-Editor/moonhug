@@ -103,7 +103,18 @@ Keymap :: struct {
 	// command, by name or id, and matched by the command it resolves to, so
 	// a binding declared before its command registered still counts.
 	defaults: [dynamic]Default,
+	// Keys and mouse actions a tool reads itself, listed after the bindings
+	// in the status bar while its keymap is on top (quick_help_add). Their
+	// strings are owned.
+	quick_help_lines: [dynamic]Quick_Help,
 	origin:   string,
+}
+
+// One line of the quick help the status bar shows for a tool's keymap: the
+// keys and what they do. "Right Mouse", "Release to stop flying".
+Quick_Help :: struct {
+	keys: string,
+	text: string,
 }
 
 // One declared binding, as bind recorded it.
@@ -349,6 +360,7 @@ add :: proc(name: string, window: string, fill: proc(km: ^Keymap), active: proc(
 		delete(km.window)
 		clear_bindings(km)
 		_defaults_clear(km)
+		_quick_help_clear(km)
 	}
 	km.window = strings.clone(window)
 	km.active = active
@@ -451,6 +463,46 @@ clear_bindings :: proc(km: ^Keymap) {
 	clear(&km.bindings)
 }
 
+// Adds a line to the quick help of a tool's keymap: `keys` the tool reads
+// itself, "Right Mouse" or "Wheel", and what they do. Called from the
+// keymap's fill proc, after its bindings. Not a binding: the Shortcuts page
+// does not list it and it cannot be rebound.
+quick_help_add :: proc(km: ^Keymap, keys: string, text: string) {
+	context.allocator = runtime.default_allocator()
+	append(&km.quick_help_lines, Quick_Help{strings.clone(keys), strings.clone(text)})
+}
+
+// What the status bar lists while `km` is the tool's keymap on top of the
+// modal stack: each bound command once, with its chords as shown and its
+// title, in the order the bindings were made, then the lines added with
+// quick_help_add. Overrides show, since the bindings are the live ones.
+// Temp.
+quick_help :: proc(km: ^Keymap) -> []Quick_Help {
+	out := make([dynamic]Quick_Help, context.temp_allocator)
+	seen := make([dynamic]^Command, context.temp_allocator)
+	for &b in km.bindings {
+		c := _resolve(&b)
+		if c == nil || slice.contains(seen[:], c) do continue
+		append(&seen, c)
+		chords := make([dynamic]string, context.temp_allocator)
+		for &o in km.bindings do if _resolve(&o) == c do append(&chords, format_chord(o.chord))
+		title := c.name[strings.last_index_byte(c.name, '/') + 1:]
+		append(&out, Quick_Help{strings.join(chords[:], " / ", context.temp_allocator), title})
+	}
+	append(&out, ..km.quick_help_lines[:])
+	return out[:]
+}
+
+@(private = "file")
+_quick_help_clear :: proc(km: ^Keymap) {
+	context.allocator = runtime.default_allocator()
+	for l in km.quick_help_lines {
+		delete(l.keys)
+		delete(l.text)
+	}
+	clear(&km.quick_help_lines)
+}
+
 // Removes a keymap. For tests.
 remove :: proc(name: string) {
 	context.allocator = runtime.default_allocator()
@@ -469,6 +521,8 @@ _free_keymap :: proc(km: ^Keymap) {
 	delete(km.bindings)
 	_defaults_clear(km)
 	delete(km.defaults)
+	_quick_help_clear(km)
+	delete(km.quick_help_lines)
 	delete(km.name)
 	delete(km.window)
 	free(km)

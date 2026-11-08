@@ -1,7 +1,7 @@
 package core
 
 // Per-developer settings persistence, the UserSettings half of
-// project_settings.odin.
+// project_settings.odin, and the machine-wide level beside it.
 //
 // A user setting is a package-level var marked @(user_settings={name="..."}):
 //
@@ -17,8 +17,11 @@ package core
 //
 // - @(project_settings) is about the PROJECT. Committed, shared by everyone on
 //   the checkout, and the game binary reads the same file. Physics gravity.
-// - @(user_settings) is about the PERSON. Never committed, editor only. Where
-//   your playhead stops, which panel you left open.
+// - @(user_settings) is about the PERSON in this project. Never committed,
+//   editor only. Where your playhead stops, which panel you left open.
+// - @(system_settings) is about the PERSON on this machine, the same in every
+//   project. Editor only, kept in the OS config folder, never in a project's
+//   folder. Which key hints the status bar shows.
 //
 // Putting a personal preference in ProjectSettings commits it and hands it to
 // the game, which is the wrong file and the wrong reader.
@@ -90,6 +93,41 @@ user_settings_create :: proc(name: string, ptr: rawptr, tid: typeid) -> bool {
 user_settings_save :: proc(name: string, ptr: rawptr, tid: typeid) -> bool {
     if ptr == nil || tid == nil do return false
     os.make_directory(USER_SETTINGS_DIR)
+    return _settings_write(user_settings_file(name), ptr, tid)
+}
+
+// Persists a package-level struct variable for the person on this machine, in
+// <config dir>/MoonHug/<slug>.json (system_settings_file): one file for every
+// project, never in a project's folder.
+//
+// The same shape as @(user_settings): `name` names the file, `tab` makes the
+// setting a section of the Settings window. The editor loads it at startup and
+// saves it at exit. A missing or unreadable file leaves the struct as-is, so
+// its var initializer is the default.
+@(extension_point={attribute="system_settings", target="var", fields="name tab"})
+system_settings_load :: proc(name: string, v: ^$T) -> bool {
+    if v == nil do return false
+    data, read_err := os.read_entire_file(system_settings_file(name), context.temp_allocator)
+    if read_err != nil do return false
+    return json.unmarshal(data, v) == nil
+}
+
+// Writes the settings struct when its file does not exist yet, as
+// user_settings_create does.
+system_settings_create :: proc(name: string, ptr: rawptr, tid: typeid) -> bool {
+    if os.exists(system_settings_file(name)) do return true
+    return system_settings_save(name, ptr, tid)
+}
+
+system_settings_save :: proc(name: string, ptr: rawptr, tid: typeid) -> bool {
+    if ptr == nil || tid == nil do return false
+    os.make_directory_all(system_settings_dir())
+    return _settings_write(system_settings_file(name), ptr, tid)
+}
+
+// Writes a settings struct as pretty JSON with sorted keys.
+@(private = "file")
+_settings_write :: proc(path: string, ptr: rawptr, tid: typeid) -> bool {
     opts := json.Marshal_Options{
         spec = .JSON, pretty = true, use_spaces = true, spaces = 2,
         sort_maps_by_key = true,
@@ -99,5 +137,5 @@ user_settings_save :: proc(name: string, ptr: rawptr, tid: typeid) -> bool {
     // Same canonical float text every other serialize path writes, so a saved
     // preference does not churn the file with 0.30000001 style noise.
     data := json_canonicalize_floats(marshaled, context.temp_allocator)
-    return os.write_entire_file(user_settings_file(name), data) == nil
+    return os.write_entire_file(path, data) == nil
 }

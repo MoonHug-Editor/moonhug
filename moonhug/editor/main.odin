@@ -429,6 +429,7 @@ editor_init :: proc() {
         _register_menu_items()
         _register_view_chrome()
         _load_user_settings() // @(user_settings) vars -> UserSettings/*.json
+        _load_system_settings() // @(system_settings) vars -> <config dir>/MoonHug/*.json
         register_create_asset_menus()
         session.scene_views_register_menus()
 
@@ -516,6 +517,7 @@ editor_shutdown :: proc() {
     shutdown_project_view()
     clip.shutdown()
     _save_user_settings()
+    _save_system_settings()
     menu.shutdown_menu()
     shortcuts_shutdown()
     command_palette.shutdown()

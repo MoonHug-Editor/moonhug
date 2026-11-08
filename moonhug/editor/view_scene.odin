@@ -1257,4 +1257,8 @@ scene_flythrough_keymap :: proc(km: ^keymap.Keymap) {
 	keymap.bind(km, "Q", "Scene/Fly Down", held = true)
 	keymap.bind(km, "LeftShift", "Scene/Fly Fast", held = true)
 	keymap.bind(km, "RightShift", "Scene/Fly Fast", held = true)
+	// What the flythrough reads itself, for the status bar's quick help.
+	keymap.quick_help_add(km, "Mouse", "Look around")
+	keymap.quick_help_add(km, "Wheel", "Change the speed")
+	keymap.quick_help_add(km, "Right Mouse", "Release to stop flying")
 }

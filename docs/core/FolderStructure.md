@@ -22,6 +22,8 @@ moonhug/                    ← the editor's project
   ProjectSettings/          ← settings about the PROJECT, committed: mcp.json and one <slug>.json per @(project_settings) tab
   UserSettings/             ← per-developer editor state, never committed (relative to the project directory, found from the working directory at startup or named with `--project=<dir>`, so another project keeps its own): window layout, open scenes, the selection and the view locks at quit. Safe to delete, the editor writes defaults on the next run
 
+The editor also keeps settings outside the repo, the same for every project on the machine: `MoonHug/` in the OS config folder, `~/Library/Application Support/MoonHug/` on macOS. It holds `shortcuts.json`, the shortcut overrides, and one `<slug>.json` per `@(system_settings)`.
+
 plugins/                    ← next to moonhug/, at the repo root: every plugin, enabled by its link in moonhug/packages/ (see Plugins)
   engine/                   ← the engine plugin: scenes, transforms, components, rendering:  package engine
   app/                      ← the game: a runnable plugin with no editor dependencies outside its own editor/

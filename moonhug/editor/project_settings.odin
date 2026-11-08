@@ -8,7 +8,8 @@ package editor
 // (project_settings_gen emits settings_add_tab calls). A var marked
 // @(user_settings={name="...", tab="..."}) is a section too, saved per
 // developer in UserSettings/ instead (user_settings_gen emits
-// settings_add_user_tab). The
+// settings_add_user_tab), and so is a @(system_settings) with `tab`, saved
+// once for every project on the machine (settings_add_system_tab). The
 // window owns what every tab would otherwise hand-roll:
 //   - drawing: inspector reflection, so decorators, custom property drawers
 //     and collection editing all apply. A fully custom pane is a
@@ -16,8 +17,9 @@ package editor
 //   - undo: the tab's struct is a Raw owner, so field edits and array ops land
 //     in the global undo history like any inspector edit.
 //   - persistence: the selected tab diff-saves to ProjectSettings/<slug>.json,
-//     or UserSettings/<slug>.json for a user setting, when no widget is
-//     active; everything saves again at editor shutdown.
+//     UserSettings/<slug>.json for a user setting, or the machine's
+//     <config dir>/MoonHug/<slug>.json for a system setting, when no widget
+//     is active; everything saves again at editor shutdown.
 // Owners consume their vars by polling, so an edit — typed, undone or redone —
 // reaches the runtime with no editor coupling.
 
@@ -30,6 +32,14 @@ import "inspector"
 import "undo"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/widgets"
+
+// Where a tab's struct is saved.
+@(private = "file")
+_Settings_Level :: enum {
+	Project, // ProjectSettings/, committed, read by the game
+	User,    // UserSettings/, this developer in this project
+	System,  // the OS config folder, this developer on this machine
+}
 
 @(private = "file")
 _Settings_Tab :: struct {
@@ -44,11 +54,9 @@ _Settings_Tab :: struct {
 	// rendered by the generator. Shown in the tab row's tooltip with debug tooltips on.
 	// A hand-registered tab (settings_add_custom_tab) has none.
 	origin:    string,
-	// A @(user_settings) tab: saved per developer in UserSettings/, never
-	// committed, never read by the game.
-	user:      bool,
-	// A user tab's file name, its @(user_settings) `name`. A project tab's
-	// file is named after `name`, which is also its label.
+	level:     _Settings_Level,
+	// A user or system tab's file name, its attribute's `name`. A project
+	// tab's file is named after `name`, which is also its label.
 	file:      string,
 }
 
@@ -91,7 +99,21 @@ settings_add_tab :: proc(name: string, ptr: rawptr, tid: typeid, origin := "") {
 // calls it right after loading the var.
 settings_add_user_tab :: proc(tab, file: string, ptr: rawptr, tid: typeid, origin := "") {
 	append(&_settings_tabs, _Settings_Tab{
-		name = tab, file = file, ptr = ptr, tid = tid, origin = origin, user = true,
+		name = tab, file = file, ptr = ptr, tid = tid, origin = origin, level = .User,
+		last_json = undo.capture_json(ptr, tid),
+	})
+	slice.sort_by(_settings_tabs[:], proc(a, b: _Settings_Tab) -> bool {
+		return a.name < b.name
+	})
+}
+
+// Registers a tab for a @(system_settings) var with `tab`. The same as
+// settings_add_user_tab, but saved to the machine's <config dir>/MoonHug/
+// <file slug>.json, one file for every project. The generated
+// _load_system_settings calls it right after loading the var.
+settings_add_system_tab :: proc(tab, file: string, ptr: rawptr, tid: typeid, origin := "") {
+	append(&_settings_tabs, _Settings_Tab{
+		name = tab, file = file, ptr = ptr, tid = tid, origin = origin, level = .System,
 		last_json = undo.capture_json(ptr, tid),
 	})
 	slice.sort_by(_settings_tabs[:], proc(a, b: _Settings_Tab) -> bool {
@@ -133,10 +155,10 @@ _settings_persist :: proc(tab: ^_Settings_Tab) {
 		delete(cur)
 		return
 	}
-	if tab.user {
-		core.user_settings_save(tab.file, tab.ptr, tab.tid)
-	} else {
-		core.project_settings_save(tab.name, tab.ptr, tab.tid)
+	switch tab.level {
+	case .Project: core.project_settings_save(tab.name, tab.ptr, tab.tid)
+	case .User:    core.user_settings_save(tab.file, tab.ptr, tab.tid)
+	case .System:  core.system_settings_save(tab.file, tab.ptr, tab.tid)
 	}
 	delete(tab.last_json)
 	tab.last_json = cur

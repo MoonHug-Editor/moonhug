@@ -46,7 +46,7 @@ _km_setup :: proc() {
 
 @(private = "file")
 _km_teardown :: proc() {
-	for name in ([]string{"T Scene", "T Fly", "T Global", "T Low", "T Host", "T Modal", "T Early"}) do keymap.remove(name)
+	for name in ([]string{"T Scene", "T Fly", "T Global", "T Low", "T Host", "T Modal", "T Early", "T Tool", "T Empty"}) do keymap.remove(name)
 	for name in ([]string{"T/A", "T/B", "T/C", "T/Held"}) do keymap.command_remove(name)
 	delete(_km_log)
 	_km_log = nil
@@ -251,6 +251,35 @@ test_keymap_dangling_binding :: proc(t: ^testing.T) {
 // An override replaces a command's chords in one keymap, survives the keymap
 // being removed and registered again, round-trips through the file, and
 // resets to the declared bindings.
+// A tool's quick help: each bound command once with all its chords and its
+// title, in binding order, then the added lines. Registering the keymap
+// again starts the lines over.
+@(test)
+test_keymap_quick_help :: proc(t: ^testing.T) {
+	_km_setup()
+	defer _km_teardown()
+	_km_commands()
+	fill := proc(km: ^keymap.Keymap) {
+		keymap.bind(km, "W", "T/A", held = true)
+		keymap.bind(km, "LeftShift", "T/Held", held = true)
+		keymap.bind(km, "RightShift", "T/Held", held = true)
+		keymap.quick_help_add(km, "Right Mouse", "Release to stop")
+	}
+	km := keymap.add("T Tool", "", fill, modal = true)
+	help := keymap.quick_help(km)
+	testing.expect_value(t, len(help), 3)
+	testing.expect_value(t, help[0].keys, "W")
+	testing.expect_value(t, help[0].text, "A")
+	testing.expect_value(t, help[1].keys, "LeftShift / RightShift")
+	testing.expect_value(t, help[1].text, "Held")
+	testing.expect_value(t, help[2].keys, "Right Mouse")
+	testing.expect_value(t, help[2].text, "Release to stop")
+
+	keymap.add("T Tool", "", fill, modal = true)
+	testing.expect_value(t, len(keymap.quick_help(km)), 3)
+	testing.expect_value(t, len(keymap.quick_help(keymap.add("T Empty", "", nil, modal = true))), 0)
+}
+
 // A shortcut lists its chords separated by a comma and a space. The comma
 // key stays a chord.
 @(test)
