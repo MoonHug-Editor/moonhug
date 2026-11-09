@@ -7,6 +7,14 @@ tags: ["physics3d", "components"]
 
 A capsule collision shape: a cylinder with round ends. Without a [Rigidbody](Rigidbody.md) on or above its object it is a static collider, with one it is a shape of that body.
 
+## Example
+
+```
+Player     Rigidbody freeze_rotation X Y Z, CapsuleCollider radius 0.4, height 1.8
+```
+
+A character body. The round ends slide over steps and seams, and the frozen rotation keeps it upright.
+
 ## Properties
 
 | Field | Default | What it does |

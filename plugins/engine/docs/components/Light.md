@@ -8,6 +8,16 @@ path: engine/components
 
 Lights the scene from its object: a directional light along its -Z, or a point or spot light at its position.
 
+## Example
+
+```
+Sun        Light type Directional, intensity 3, shadows Shadows
+Lamp       Light type Point, color warm white, range 6
+Spotlight  Light type Spot, spot_angle 40, range 12
+```
+
+The sun lights the whole scene along its -Z and casts shadows. The lamp lights a sphere around it, and the spotlight a cone.
+
 ## Properties
 
 | Field | Default | What it does |

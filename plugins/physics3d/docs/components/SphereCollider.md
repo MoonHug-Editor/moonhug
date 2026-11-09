@@ -7,6 +7,15 @@ tags: ["physics3d", "components"]
 
 A sphere collision shape. Without a [Rigidbody](Rigidbody.md) on or above its object it is a static collider, with one it is a shape of that body.
 
+## Example
+
+```
+Ball       Rigidbody, SphereCollider radius 0.25, material Bouncy
+Pickup     SphereCollider radius 0.5, is_trigger on
+```
+
+The ball rolls and bounces. The pickup is a trigger: bodies pass through it and its object gets trigger callbacks.
+
 ## Properties
 
 | Field | Default | What it does |

@@ -7,6 +7,15 @@ tags: ["physics3d", "components"]
 
 A mesh's own shape, in one of three forms: its convex hull, a [convex decomposition](../assets/ConvexDecompositions.md) into several hulls, or its triangles as they are.
 
+## Example
+
+```
+Level      MeshRenderer, MeshCollider mesh Level.glb, convex off
+Barrel     Rigidbody, MeshCollider mesh Barrel.glb, convex on, hulls Convex Hull
+```
+
+The level collides as drawn and never moves. The barrel is a dynamic body, so it uses its mesh's convex hull.
+
 ## Properties
 
 | Field | Default | What it does |

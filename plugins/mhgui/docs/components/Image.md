@@ -7,6 +7,15 @@ tags: ["mhgui", "components"]
 
 A UI graphic that draws a sprite in its rect, or a solid colour when it has none. It needs a RectTransform and a CanvasRenderer on its node ([UI canvas](/plugins/engine/docs/UICanvas.md)).
 
+## Example
+
+```
+Panel      RectTransform size_delta 400, 300, CanvasRenderer, Image sprite PanelFrame, image_type Sliced
+Icon       RectTransform, CanvasRenderer, Image sprite Heart, preserve_aspect on
+```
+
+The panel stretches a 9-slice frame to its size without stretching the corners. The icon keeps its sprite's proportions inside its rect.
+
 ## Properties
 
 | Field | Default | What it does |

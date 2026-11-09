@@ -8,6 +8,14 @@ path: engine/components
 
 Names the mesh its object draws. How it draws is the [MeshRenderer](MeshRenderer.md) beside it.
 
+## Example
+
+```
+Crate      MeshFilter mesh Crate.glb, MeshRenderer materials Wood
+```
+
+The MeshFilter names the mesh and the MeshRenderer draws it with its material.
+
 ## Properties
 
 | Field | Default | What it does |

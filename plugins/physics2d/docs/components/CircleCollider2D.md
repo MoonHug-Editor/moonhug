@@ -7,6 +7,15 @@ tags: ["physics2d", "components"]
 
 A circle collision shape. Without a [Rigidbody2D](Rigidbody2D.md) on or above its object it is a static collider, with one it is a shape of that body.
 
+## Example
+
+```
+Ball       Rigidbody2D, CircleCollider2D radius 0.25, material Bouncy
+Coin       CircleCollider2D radius 0.3, is_trigger on
+```
+
+The ball rolls and bounces. The coin is a trigger: bodies pass through it and its object gets trigger callbacks.
+
 ## Properties
 
 | Field | Default | What it does |

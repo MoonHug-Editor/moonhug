@@ -7,6 +7,15 @@ tags: ["physics3d", "components"]
 
 A box collision shape. Without a [Rigidbody](Rigidbody.md) on or above its object it is a static collider, with one it is a shape of that body.
 
+## Example
+
+```
+Crate      Rigidbody, BoxCollider size 1, 1, 1
+Floor      BoxCollider size 20, 0.2, 20
+```
+
+The crate falls and lands on the floor. The floor has no Rigidbody, so its box is static.
+
 ## Properties
 
 | Field | Default | What it does |

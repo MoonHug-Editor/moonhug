@@ -7,6 +7,15 @@ tags: ["physics2d", "components"]
 
 A rectangle collision shape. Without a [Rigidbody2D](Rigidbody2D.md) on or above its object it is a static collider, with one it is a shape of that body.
 
+## Example
+
+```
+Crate      Rigidbody2D, BoxCollider2D size 1, 1
+Ground     BoxCollider2D size 20, 1
+```
+
+The crate falls and lands on the ground. The ground has no Rigidbody2D, so its box is static.
+
 ## Properties
 
 | Field | Default | What it does |

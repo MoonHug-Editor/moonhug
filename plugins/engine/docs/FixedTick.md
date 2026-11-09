@@ -6,7 +6,7 @@ tags: ["components", "engine"]
 path: engine/concepts/frame
 ---
 
-Fixed-rate simulation update. ONE project tick rate (default 60 Hz, `plugins/engine/fixed_tick.odin`, configurable via the Time section of Project Settings — `engine.time_settings`) — no per-system rates; coarse systems use the divisor instead. 60 rather than Unity's 50: without view interpolation it aligns 1:1 with 60 Hz displays, so fixed-stepped motion shows no cadence judder. `fixed_set_rate` is a code-side override that wins over the setting until reset to 0.
+Fixed-rate simulation update. ONE project tick rate (default 60 Hz, `plugins/engine/fixed_tick.odin`, configurable via the Time section of Project Settings — `engine.time_settings`) — no per-system rates; coarse systems use the divisor instead. 60 rather than the common 50: without view interpolation it aligns 1:1 with 60 Hz displays, so fixed-stepped motion shows no cadence judder. `fixed_set_rate` is a code-side override that wins over the setting until reset to 0.
 
 ```odin
 @(fixed_update={order=10})            // every tick, fixed_dt

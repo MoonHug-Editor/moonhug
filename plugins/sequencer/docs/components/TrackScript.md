@@ -7,6 +7,17 @@ tags: ["sequencer", "components"]
 
 Makes a track a script track: each clip runs the scripts listed on its [ClipScript](ClipScript/_index.md) as playback enters, stays in and leaves the clip's span.
 
+## Example
+
+```
+LevelStart              PlayableDirector
+└── Events              TimelineTrack + TrackScript
+    └── hint            TimelineClip + ClipScript, 0 to 4 s
+                          ScriptSetActive target HintPanel, active on
+```
+
+The hint panel is active for the first four seconds of the level.
+
 ## Properties
 
 | Field | Default | What it does |

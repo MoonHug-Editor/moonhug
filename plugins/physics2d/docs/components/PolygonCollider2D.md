@@ -7,6 +7,14 @@ tags: ["physics2d", "components"]
 
 Any simple polygon as a solid shape: a closed path of points. A concave path collides as drawn.
 
+## Example
+
+```
+Rock       PolygonCollider2D points (-1, -0.5) (1, -0.5) (0.6, 0.4) (-0.3, 0.6)
+```
+
+A static rock with an outline no box or circle fits. Add a Rigidbody2D to make it fall.
+
 ## Properties
 
 | Field | Default | What it does |

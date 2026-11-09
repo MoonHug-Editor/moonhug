@@ -7,6 +7,17 @@ tags: ["sequencer", "components"]
 
 Makes a track a tween track: each clip's span drives the tweens on its [ClipTween](ClipTween/_index.md), posing objects as a function of the playhead.
 
+## Example
+
+```
+Intro                   PlayableDirector
+└── Camera              TimelineTrack + TrackTween, target Main Camera
+    └── dolly           TimelineClip + ClipTween, 0 to 5 s
+                          TweenMoveLocalTo to 0, 2, -6
+```
+
+The camera moves to its framing over five seconds, posed by the playhead, so scrubbing shows each point of the move.
+
 ## Properties
 
 | Field | Default | What it does |

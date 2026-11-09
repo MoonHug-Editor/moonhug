@@ -7,6 +7,16 @@ tags: ["mhgui", "components"]
 
 A clickable control. It tints a graphic as the pointer hovers and presses it, and reports a click for game code to poll. GameObject, UI, Button creates an Image with a Button.
 
+## Example
+
+```
+Canvas             Canvas, GraphicRaycaster
+└── Play           RectTransform size_delta 160, 30, CanvasRenderer, Image, Button transition Color_Tint
+    └── Label      RectTransform, CanvasRenderer, Text text "Play"
+```
+
+The button tints its Image as the pointer hovers and presses it. Game code polls `button_clicked` each frame, as in From code below.
+
 ## Properties
 
 | Field | Default | What it does |

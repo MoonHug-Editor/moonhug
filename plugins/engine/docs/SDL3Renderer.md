@@ -237,7 +237,7 @@ The mesh sampler filters trilinearly between levels and anisotropically (8x), so
 
 Highlights that are too small for a pixel flicker between pixels as the camera moves. The surface template counters it twice:
 
-- `specular_aa` (geometric specular anti-aliasing, as Filament and HDRP do) raises the roughness where the shading normal turns faster across the screen than a pixel shows, from its screen derivatives, before the alpha-clip discard.
+- `specular_aa` (geometric specular anti-aliasing, as Filament does) raises the roughness where the shading normal turns faster across the screen than a pixel shows, from its screen derivatives, before the alpha-clip discard.
 - `toksvig_smoothness` lowers the built-in Lit's smoothness where its normal map's mip levels averaged diverging normals into a shorter one, so the highlight widens as the bumps blur away. The first hundredth of shortening is 8-bit rounding and ignored.
 
 A light's specular term is capped at 100 times a white diffuse surface, and the template's output at 4096, inside half-float range: a pixel that overflowed was infinite, and bloom blurred it into a white block.
@@ -331,14 +331,14 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
   rects in canvas pixels and emit `Draw_Quad` commands whose corners are the
   rect's pixels unprojected onto a plane just inside the near plane, keyed at
   layer 127 so the HUD draws over everything (/plugins/engine/docs/UICanvas.md).
-- Sprite slicing is importer data, Unity's TextureImporter model:
+- Sprite slicing is importer data:
   `TextureSettings.sprite_mode` + `sprites: [dynamic]Sprite_Rect` (name, pixel
   rect, pivot) live in the texture's meta and bake into the catalog with the
   rest of the settings. `Texture2D` caches the slices. `SpriteRenderer.sprite`
-  is a `PPtr{guid, local_id}` — Unity's guid+fileID sub-asset reference: guid
+  is a `PPtr{guid, local_id}`, a sub-asset reference: guid
   names the texture, local_id the slice's persistent id (0 = whole texture).
   Ids are minted by the slicer and survive renames and reslicing (the meta's
-  slice list is Unity's internalIDToNameTable — the name is a view detail).
+  slice list maps ids to names — the name is a view detail).
   The package's editor half draws the sprite picker (a flat list of every
   pickable sprite) through the inspector funnel and owns the Sprite
   Editor window (`@(editor_window)`): zoom/pan canvas, Slice popup
@@ -458,7 +458,7 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 - [x] `plugins/engine/editor/scene_tools/scene_pick.odin` — package renderers' drawn quads (the owner on
       each render command) + 2 triangle tests; meshes via ray→local space +
       artifact AABB; nearest t wins; editor
-      ignores layer mask (Unity behavior); packages add shapes through
+      ignores layer mask; packages add shapes through
       `handles.pick_register` (docs/core/Handles.md). CPU picking, NOT GPU id-buffer
       (hundreds of objects; id-buffer = extra pipeline + readback for no gain)
 - [x] LMB click hook in `handle_scene_input` (pressed+released under a 4px drag
@@ -475,7 +475,7 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 ### 8. Selection outline + translate gizmo + scene overlay
 - [x] Outline in scene pass (`draw_selection_outline`): mesh → 12 local-AABB
       edges through the model matrix; sprite → its exact world quad; neither →
-      axis cross. Unity orange `{1, 0.6, 0.1, 1}`, depth-tested lines
+      axis cross. Orange `{1, 0.6, 0.1, 1}`, depth-tested lines
 - [x] `plugins/engine/editor/scene_tools/gizmo.odin` — all three modes. Translate: world-axis arrows,
       drag = closest-point-on-axis delta. Rotate: world-axis circles, drag =
       signed ray↔plane angle around the axis (grab/current vectors drawn as a

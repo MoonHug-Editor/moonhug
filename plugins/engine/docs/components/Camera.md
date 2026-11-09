@@ -8,6 +8,14 @@ path: engine/components
 
 Renders the scene from its object's position and rotation, looking along its -Z.
 
+## Example
+
+```
+Main Camera    Camera fov 60, far_clip 500, render_layer_mask all but Hidden
+```
+
+The game renders from this camera through the pipeline's Main slot. It sees everything within 500 metres, except objects on the Hidden render layer.
+
 ## Properties
 
 | Field | Default | What it does |

@@ -7,6 +7,18 @@ tags: ["sequencer", "components"]
 
 Makes a clip a script clip: the scripts it runs while playback is inside it ([TrackScript](../TrackScript.md)).
 
+## Example
+
+```
+DoorScene               PlayableDirector
+└── Events              TimelineTrack + TrackScript
+    └── open            TimelineClip + ClipScript, 3 to 5 s
+                          ScriptSetActive target Door, active off
+                          ScriptLog enter "door opens"
+```
+
+From 3 to 5 seconds the door is inactive, and entering the clip logs a line.
+
 ## Properties
 
 | Field | Default | What it does |

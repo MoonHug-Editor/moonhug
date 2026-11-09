@@ -7,6 +7,16 @@ tags: ["audio", "sequencer", "components"]
 
 Makes a timeline track an audio track: its clips play sounds through an [AudioSource](AudioSource.md)'s settings. Its clips carry [ClipAudio](ClipAudio.md). Needs the sequencer plugin.
 
+## Example
+
+```
+Cutscene                PlayableDirector
+└── Voice               TimelineTrack + TrackAudio, source Narrator
+    └── line1           TimelineClip + ClipAudio, clip Line1.wav, 1 to 4 s
+```
+
+The line plays through the Narrator's AudioSource settings: its volume, pitch and spatial blend.
+
 ## Properties
 
 | Field | Default | What it does |

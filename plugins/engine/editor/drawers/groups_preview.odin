@@ -1,6 +1,6 @@
 package drawers
 
-// The Group Names asset in the editor (plugins/engine/docs/Groups.md): the
+// The Group Names asset in the editor (plugins/engine/docs/assets/GroupNames.md): the
 // open document's names reach the group picker every frame, saved or not, as
 // the Render Layers asset's do (layers_preview.odin).
 

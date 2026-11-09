@@ -12,7 +12,7 @@ Run the open scene inside the editor, then roll it back. Everything stays inspec
 
 ## Controls
 
-All three buttons are always visible and always enabled, and the cluster keeps its width. Pressing Pause or Step while stopped enters a run, as in Unity.
+All three buttons are always visible and always enabled, and the cluster keeps its width. Pressing Pause or Step while stopped enters a run.
 
 | Button | Stopped | Running | Paused |
 | --- | --- | --- | --- |
@@ -20,7 +20,7 @@ All three buttons are always visible and always enabled, and the cluster keeps i
 | **Pause** | starts paused, on frame zero | pauses | resumes |
 | **Step** | starts paused, then one frame | pauses, then one frame | one frame |
 
-Simulate becomes Stop while a run is active, the way Unity's Play button does. Pause shows a resume icon while held.
+Simulate becomes Stop while a run is active. Pause shows a resume icon while held.
 
 **All three buttons turn orange while a simulation is active**, paused included — the scene is still in a simulated state that Stop reverts. The accent marks the editor's state, not which button is toggled; the rest of the toolbar is theme-neutral.
 
@@ -57,7 +57,7 @@ Removed:
 
 **Assets.** The snapshot covers scene objects only. If gameplay changes a material, a texture, or a settings asset, that change stays after Stop. The guarantee is "your scene is safe", not "nothing changed".
 
-Assets live on disk and are shared by every scene that references them, so they are not part of any one scene's state, and mutating one at runtime is legitimate gameplay. Git is the restore path for an asset a run changed, as in Unity.
+Assets live on disk and are shared by every scene that references them, so they are not part of any one scene's state, and mutating one at runtime is legitimate gameplay. Git is the restore path for an asset a run changed.
 
 **Undo history from the run.** Edits made while simulating are undoable while the run lasts, and their scene steps are dropped on Stop: they describe objects and values Stop replaces. Asset edits made during the run stay, with their undo steps, since Stop does not roll assets back.
 
@@ -113,9 +113,9 @@ Pause stops the ticking without leaving the simulation, so windows keep drawing 
 
 ## Input
 
-Application focus (`engine.application_is_focused`, Unity's Application.isFocused, stored in `libs/core` so every layer can ask) gates the game's input. Standalone it is the window's focus. In the editor it is the Game window's focus during a run: Play focuses the window (and brings its tab forward), a click on the window's image focuses it, a click anywhere else in the editor unfocuses it. `main.odin` sets `input.set_app_focused` every frame from that and opens `input.set_game_scope` around the simulation tick, so keys and mouse buttons read as released to the game while the editor's own windows, reading outside the scope, are unaffected. A standalone app sets the scope once for the whole frame.
+Application focus (`engine.application_is_focused`, stored in `libs/core` so every layer can ask) gates the game's input. Standalone it is the window's focus. In the editor it is the Game window's focus during a run: Play focuses the window (and brings its tab forward), a click on the window's image focuses it, a click anywhere else in the editor unfocuses it. `main.odin` sets `input.set_app_focused` every frame from that and opens `input.set_game_scope` around the simulation tick, so keys and mouse buttons read as released to the game while the editor's own windows, reading outside the scope, are unaffected. A standalone app sets the scope once for the whole frame.
 
-Losing focus freezes the mouse position where it was, so nothing in the game follows the cursor, and drops the fixed-tick edges nothing consumed. Gaining focus seeds the fixed-tick edges from the current frame, so the click that gives focus reaches the game like in Unity, while clicks from before it do not. Entering play mode drops every pending edge, so the Play click itself never reaches the first tick. The raw state keeps tracking underneath: a key held across the gap reads as down once focus returns. The focus decision is made at the start of the frame, before the tick.
+Losing focus freezes the mouse position where it was, so nothing in the game follows the cursor, and drops the fixed-tick edges nothing consumed. Gaining focus seeds the fixed-tick edges from the current frame, so the click that gives focus reaches the game, while clicks from before it do not. Entering play mode drops every pending edge, so the Play click itself never reaches the first tick. The raw state keeps tracking underneath: a key held across the gap reads as down once focus returns. The focus decision is made at the start of the frame, before the tick.
 
 Standalone, the click that gives the window focus is delivered to the game as a click as well (SDL's focus click-through hint). While the window has focus the mouse position follows the cursor outside the window too (the platform reads the global cursor after the frame's events), as a windowed game expects when aiming. Relative mouse mode is exempt.
 
@@ -124,22 +124,22 @@ The Game window's image is the game's screen. Every frame the window hands its w
 ## Limits
 
 - **One scene.** Simulate captures and restores the ACTIVE scene. Scenes loaded alongside it at Start keep ticking (they share the world) but are not captured, so changes gameplay makes to them are not reverted by Stop. Scenes the run loads are unloaded by Stop.
-- **Assets are not restored** — by design, as Unity does (see above).
+- **Assets are not restored** — by design (see above).
 
 ## Asking "is gameplay running?" from component code
 
 ```odin
-engine.application_is_editor()   // editor binary? fixed per process, Unity's Application.isEditor
+engine.application_is_editor()   // editor binary? fixed per process
 engine.application_is_playing()  // gameplay advancing? true in the app, and in the editor while simulating
 ```
 
-`application_is_playing()` is the one component code wants. It stays true while paused - Unity's model, where a paused play mode still reports `isPlaying` and paused is a separate condition. Ask `sim_state()` if you need the distinction.
+`application_is_playing()` is the one component code wants. It stays true while paused: a paused play mode still counts as playing, and paused is a separate condition. Ask `sim_state()` if you need the distinction.
 
 These two are the whole vocabulary. Editor-only work (nested-prefab resolve) gates on `application_is_editor()`, so it keeps running during Simulate. Undo gates on `application_is_playing()`, so it is unavailable for the whole simulation, paused included.
 
 ## Play-mode phases
 
-Simulate fires four phases, mirroring Unity's `PlayModeStateChange`:
+Simulate fires four phases:
 
 | Phase | When |
 | --- | --- |

@@ -48,7 +48,7 @@ history_window focused:
   - Value_Command   — change to a single field (old_json / new_json payloads). An `.Asset`-kind target holds a whole asset document
   - Reparent_, Create_Subtree_, Delete_Subtree_, Add_Component_, Remove_Component_, Reorder_Components_, Remove_Unknown_Component_Command — hierarchy mutations, one command each
   - Group_Command   — multiple sub-commands under one undo step (multi-field edits)
-  - Selection_Command — a selection change (before/after states), Unity's "Selection Change" steps
+  - Selection_Command — a selection change (before/after states), one "Selection Change" step
   - Prefab_Apply_Command — a Prefab Apply: the prefab files it wrote (bytes before/after) and the instance's records (before/after). Undo and redo write one side back and re-propagate the prefab (plugins/engine/docs/NestedPrefabs.md)
 - Property_Target   — robust identifier for a field (Owner_Kind + Scene_Ref + Local_ID + Handle + offset + typeid, or asset guid for `.Asset`)
 - Edit_Session      — a bracketed transaction over N targets: before-state captured at open, one grouped action recorded at close (see "Edit sessions")
@@ -109,8 +109,7 @@ Behavior examples:
   selected again with the same active one.
 - Enter nested scene (edit stack) → edit a .mat → exit: scene entries purge
   on each swap. The .mat edit survives and stays undoable.
-- Click through 5 objects → Ctrl+Z walks back through the selections,
-  Unity-style.
+- Click through 5 objects → Ctrl+Z walks back through the selections.
 - Select an object → GameObject / Create Empty → Ctrl+Z: one undo removes the new object AND reselects the old one.
 - Edit a light → Play → change its intensity → Ctrl+Z: undoes the Play-time change only. The edit from before Play is locked until Stop. Stop drops the Play-time step, and the next Ctrl+Z reverts the edit from before Play on the restored scene. Details in docs/core/Simulate.md.
 
@@ -321,7 +320,7 @@ An asset's import settings are a second kind of asset document (`undo.Doc_Kind.I
 - **Reimport.** A reimport can rewrite the `.meta` itself (the model importer adds entries for new clips). A settings document with no unapplied edits then reloads, so the next Apply does not write the old version back.
 - The JSON is marshaled with sorted map keys: a clip's settings are a JSON object, and an unsorted marshal could read as a change.
 
-## Selection undo (Unity model)
+## Selection undo
 
 Selection changes are undo steps. A per-frame tracker
 (`editor/selection_undo.odin`, called at the end of the main loop) diffs the
@@ -596,6 +595,6 @@ undo.purge_scenes(undo.get())       // all scenes, before a single-scene load
 
 - Capacity is 128 entries. Overflow drops the oldest.
 - Undoing an asset edit replaces the whole document instance. The old instance's nested allocations live until editor shutdown (same lifetime the pre-registry reload-on-click had). Asset docs have no eviction — `.mat`-scale files only.
-- File operations in the Project window (rename/move/delete files) are not undoable — Unity doesn't undo these either. Delete asks for confirmation first and lists the files, since undo can't bring them back (they go to the OS Trash).
+- File operations in the Project window (rename/move/delete files) are not undoable. Delete asks for confirmation first and lists the files, since undo can't bring them back (they go to the OS Trash).
 - Structural commands capture full subtree JSON on delete/remove. Large subtrees produce large entries.
 - Component inspector edits serialize the whole component per step. Components with large dynamic arrays produce correspondingly large entries. In practice the inspector is not the hot path, so this is acceptable.

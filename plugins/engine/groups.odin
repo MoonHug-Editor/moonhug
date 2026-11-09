@@ -1,6 +1,6 @@
 package engine
 
-// Groups (docs/Groups.md): an object belongs to any of 32 named groups, and
+// Groups (docs/components/Groups.md): an object belongs to any of 32 named groups, and
 // game code asks for every member of one. A Groups component on the object
 // holds its membership as a bit per group. The names live in a Group Names
 // asset, picked by the Groups project setting, registered as the "group"

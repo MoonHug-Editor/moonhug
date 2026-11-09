@@ -36,7 +36,7 @@ Owned  :: struct { local_id: Local_ID, handle: Handle, type_key: Type_Key } // l
 - `PPtr` survives save/load — it is what goes to disk.
 - `Handle` is resolved at load time and never serialized.
 - `Local_ID` is file-scoped; every transform and component gets one. Authored
-  lids are minted randomly in `[1, 2^52)` (Unity's fileID model) via
+  lids are minted randomly in `[1, 2^52)` via
   `scene_new_lid` — random identity lets parallel branches add objects to the
   same scene and merge without collisions. Bit 52 tags composed instance lids
   (`nested_lid_compose`), and all lids stay below 2^53 so they survive
@@ -89,7 +89,7 @@ scene_load_single   :: proc(sf: ^SceneFile) -> ^Scene
 // adds alongside existing scenes
 scene_load_additive :: proc(sf: ^SceneFile) -> ^Scene 
 
-// behaves like Unity's GameObject.Instantiate (fully unpacked prefab)
+// places a copy of the scene under `parent`, fully unpacked: no prefab link
 scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle, s: ^Scene) -> Transform_Handle
 ```
 

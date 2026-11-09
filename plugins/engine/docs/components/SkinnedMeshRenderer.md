@@ -8,6 +8,18 @@ path: engine/components
 
 Draws a skinned mesh, posed by a skeleton of transforms. The mesh comes from a [MeshFilter](MeshFilter.md) on the same object.
 
+## Example
+
+```
+Character          Animation
+├── Body           MeshFilter mesh Character.glb Body, SkinnedMeshRenderer
+└── Armature
+    └── Hips
+        └── ...
+```
+
+The body mesh follows the armature's joints as the Animation component poses them. With no `root_bone`, the joints are found in the parent's subtree. Extract Assets on a skinned model builds this tree.
+
 ## Properties
 
 | Field | Default | What it does |

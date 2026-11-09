@@ -143,7 +143,7 @@ A package that can run as a program (the `app` package, a future headless server
 
 ## Install model
 
-Presence in `packages/` = installed. Management is manual and mechanism-free: copy a folder in, delete it to uninstall, use a symlink or git submodule if you personally prefer — the editor doesn't know or care, it only ever sees a directory. Packages committed with the repo are shared with the team automatically (Unity's *embedded packages* model).
+Presence in `packages/` = installed. Management is manual and mechanism-free: copy a folder in, delete it to uninstall, use a symlink or git submodule if you personally prefer — the editor doesn't know or care, it only ever sees a directory. Packages committed with the repo are shared with the team automatically.
 
 Install/remove changes what gets compiled, so it takes a prebuild + rebuild (`mh run`). Static compilation is deliberate: Odin has no useful dylib story (no stable ABI, `typeid` identity breaks across boundaries), and static keeps plugin code debuggable and optimizable like first-party code.
 
@@ -360,7 +360,7 @@ A setting about the person instead of the project is one of two more levels, dec
 
 The asset db walks `assets/` plus `packages/<name>/assets` per package.
 - Metas are committed with the package, so its guids are the same in every project.
-- References are guid-based, so removing a package just leaves unresolved refs (Unity's missing-package behavior).
+- References are guid-based, so removing a package just leaves unresolved refs.
 - Duplicate guids error loudly on refresh.
 
 Each package's `assets/` folder is an **additional root**, the same concept as the existing Assets root: label = package name, path = the root directory (`packages/<name>/assets`). Project window shows these roots under a top-level **Packages** node, one row per installed package — the root directory always exists because refresh auto-creates a missing `assets/` folder. The Packages node and its direct children (the package rows) are special the way the Assets root already is: non-renameable, non-deletable, no file ops on the rows themselves. Selecting a package — the left-pane node or the right-pane row — opens the package inspector: name, asset count, the manifest and the Samples foldout. The manifest part reads the package's `mh_plugin.json`: its description, a Dependencies foldout, a table of each dependency with a dot under Compile (an import, the build stops without it), Tests (an import from `tests/` only, the test build stops) or Content (a guid in `assets/` or code, what uses it does not load) for what needs it, none for an entry written by hand, and the ones not installed marked, and a Used by foldout, the same table for the installed packages whose manifest lists this one. Both tables sort by a header click. Clicking a row pings that package in the Project window, a double click selects it. A package without a manifest says which `mh deps` command makes it.

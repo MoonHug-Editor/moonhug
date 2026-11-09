@@ -7,6 +7,17 @@ tags: ["physics2d", "components"]
 
 Makes its object a simulated body. The colliders on it and below it are the body's shapes ([Bodies](../concepts/Bodies.md)).
 
+## Example
+
+```
+Cart           Rigidbody2D, BoxCollider2D size 2, 0.5
+├── WheelL     CircleCollider2D radius 0.3, offset -0.7, -0.3
+└── WheelR     CircleCollider2D radius 0.3, offset 0.7, -0.3
+Platform       Rigidbody2D body_type Kinematic, BoxCollider2D size 3, 0.3
+```
+
+The cart is one dynamic body with three shapes, its own box and the circles of its children. The platform moves by code or animation and carries what stands on it.
+
 ## Properties
 
 | Field | Default | What it does |

@@ -7,6 +7,14 @@ tags: ["text", "components"]
 
 A UI graphic that draws a string in its rect. It needs a RectTransform and a CanvasRenderer on its node ([UI canvas](/plugins/engine/docs/UICanvas.md)).
 
+## Example
+
+```
+Score      RectTransform size_delta 300, 50, CanvasRenderer, Text text "Score: 0", font_size 36, horizontal_alignment Right
+```
+
+The score sits right-aligned in its rect. Game code sets `text` as the score changes.
+
 ## Properties
 
 | Field | Default | What it does |

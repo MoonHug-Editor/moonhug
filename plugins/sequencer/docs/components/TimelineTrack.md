@@ -7,6 +7,16 @@ tags: ["sequencer", "components"]
 
 Makes an object under a [PlayableDirector](PlayableDirector.md) a track. A track object carries two components: this one, which every track has, and a kind component beside it that says what the track drives, such as [TrackActivation](TrackActivation.md).
 
+## Example
+
+```
+Intro                   PlayableDirector
+├── Hero                TimelineTrack + TrackAnimation, target Hero
+└── Music               TimelineTrack muted on, TrackAudio, source MusicSource
+```
+
+The director has two tracks, one per child. The music track is muted, so it plays nothing while the animation is tuned.
+
 ## Properties
 
 | Field | Default | What it does |

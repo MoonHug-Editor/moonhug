@@ -8,6 +8,14 @@ path: engine/components
 
 Overrides the settings of render pipeline steps inside a box, or everywhere, for a camera that is inside. Bloom stronger in a cave, depth of field focused in a cutscene ([Render pipeline](../RenderPipeline.md), "Volumes").
 
+## Example
+
+```
+Cave       Volume size 20, 6, 30, blend_distance 3, overrides postfx_bloom strength 0.8
+```
+
+Bloom is stronger while the camera is inside the cave, and blends back to the pipeline's setting over 3 metres as it leaves.
+
 ## Properties
 
 | Field | Default | What it does |

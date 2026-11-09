@@ -23,7 +23,7 @@ history live there.
   entries render white, lit) to a transform.
 - MeshRenderer's `cast_shadows` (On, Off, Double_Sided, Shadows_Only) and `reflections` (Visible, Hidden) pick the passes it draws in ([Layers](Layers.md#pass-flags)).
 
-Unity parity: MeshFilter references the mesh DATA, MeshRenderer decides how
+MeshFilter references the mesh DATA, MeshRenderer decides how
 it draws (via its Materials — submesh i uses `materials[i]`).
 
 ## Import behavior
@@ -46,8 +46,8 @@ Each part and clip has an id, its sub-asset id, kept in the model's import setti
 - a mesh with no triangles (points or lines only) still gets its part file, with zero vertices, indices and submeshes. It loads and draws nothing
 
 In both, indices are grouped **by glTF material** into submeshes (primitives
-sharing a material merge into one submesh, ordered by first appearance — the
-Unity model; across the file for the whole model, within the mesh for a
+sharing a material merge into one submesh, ordered by first appearance;
+across the file for the whole model, within the mesh for a
 part):
 
 - missing normals → flat `{0,0,1}` (fine for the unlit shader)

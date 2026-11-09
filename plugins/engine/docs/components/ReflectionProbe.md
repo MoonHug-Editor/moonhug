@@ -8,6 +8,14 @@ path: engine/components
 
 Captures the scene around its position into a box. Meshes inside the box reflect the room, and optionally take its diffuse light, instead of the [Environment](Environment.md)'s sky. The component type is `Reflection_Probe`.
 
+## Example
+
+```
+Hall       Reflection_Probe size 12, 4, 20, box_projection on, refresh Once
+```
+
+Shiny floors and walls inside the hall reflect the hall itself instead of the sky. Box projection lines the reflections up with the walls.
+
 ## Properties
 
 | Field | Default | What it does |

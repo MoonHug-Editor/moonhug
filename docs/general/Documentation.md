@@ -74,7 +74,7 @@ The plugin it extends documents only its own extension points, such as how to ad
 
 ### Page templates
 
-- A component page: a one-sentence lead, then Example, Properties (field, default, what it does), Behavior, In the editor, From code, Limits and See also.
+- A component page: a short lead of at most three sentences, what it does and what it needs, then Example, Properties (field, default, what it does), Behavior, In the editor, From code, Limits and See also. A page has only the sections it needs, but every component page has an Example: a typical setup as an object tree, or a short piece of code.
 - Types that all plug into one component, such as the scripts and the tweens a timeline clip lists, are child pages of that component: its page becomes `components/<Component>/_index.md`, with one short page per type beside it. When several types plug into one component and none is a component, they can instead form a sub-group under `scripts/`.
 - A child or scripts page shows only the important parts: a one-sentence lead naming the component it goes in, Properties and Behavior.
 - An asset page: Example, Import settings, Artifact, In the editor, From code, Limits and See also.

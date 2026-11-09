@@ -8,6 +8,14 @@ path: engine/components
 
 Draws the mesh its [MeshFilter](MeshFilter.md) names.
 
+## Example
+
+```
+Lamp       MeshFilter mesh Lamp.glb, MeshRenderer materials Metal, Glass
+```
+
+The lamp model has two submeshes. The first draws with Metal and the second with Glass.
+
 ## Properties
 
 | Field | Default | What it does |

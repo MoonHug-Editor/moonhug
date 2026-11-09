@@ -8,6 +8,14 @@ path: engine/components
 
 The sky behind the cameras, the light it gives surfaces, and fog. One per scene is enough: the first enabled one is used.
 
+## Example
+
+```
+Environment    Environment sky Panorama, panorama Studio.hdr, fog Exponential, density 0.02
+```
+
+The scene's sky is an HDR panorama that also lights and reflects in every surface, with exponential fog toward the distance.
+
 ## Properties
 
 | Field | Default | What it does |

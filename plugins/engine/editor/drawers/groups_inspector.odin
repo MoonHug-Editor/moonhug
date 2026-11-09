@@ -1,6 +1,6 @@
 package drawers
 
-// The Groups component's inspector (plugins/engine/docs/Groups.md): the
+// The Groups component's inspector (plugins/engine/docs/components/Groups.md): the
 // picker, then a Members button that opens a popup with every group the
 // object is in, its alive and active counts, and its alive members. Clicking
 // a member selects it. Alt held while the popup opens lists every named

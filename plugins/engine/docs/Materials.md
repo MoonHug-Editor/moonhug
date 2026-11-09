@@ -6,7 +6,7 @@ tags: ["materials", "rendering", "assets", "engine", "editor"]
 path: engine/concepts/rendering
 ---
 
-Unity-style Material assets for MeshRenderer: a material picks a **built-in
+Material assets for MeshRenderer: a material picks a **built-in
 shader** and supplies its property block (texture + color). Follows the same
 asset conventions as everything else — a JSON file under `assets/` with a
 `.meta` guid, referenced by guid, cached at runtime.
@@ -34,12 +34,12 @@ plain files next to the model (`<model>_<image>.png/jpg`) and one `.mat`
 per glTF material is created with its slots wired — albedo into `texture`,
 metal-rough/normal/ao/emissive into the pbr.glsl rows (built-in Lit with
 albedo only when that shader asset is missing). Everything extracted is an
-ordinary editable asset (deliberately not Unity's read-only sub-assets),
+ordinary editable asset, not a read-only sub-asset of the model,
 and existing files are skipped so re-running never overwrites your edits.
 Materials come out in submesh order — assign them to
 `MeshRenderer.materials` in file order.
 
-**SpriteRenderer** takes one material too (Unity model): the material's
+**SpriteRenderer** takes one material too: the material's
 shader, color (multiplied with the sprite color) and custom-shader
 properties apply, but its texture slot is REPLACED by the sprite's own
 texture. Empty = unlit, exactly the pre-material sprite look. Set the
@@ -115,7 +115,7 @@ A panorama is any color texture for now. HDR images (`.hdr`, float) need a float
 
 ### Light component
 
-Directional, Point or Spot via `type` (Unity's `Light.type`): `color`,
+Directional, Point or Spot via `type`: `color`,
 `intensity`, plus `range` (point/spot falloff end), `spot_angle` /
 `inner_spot_angle` (full cone angles, degrees) and `ambient` (unlit floor). A
 directional light travels along the transform's forward (-Z, like cameras);

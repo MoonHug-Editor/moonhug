@@ -95,7 +95,7 @@ For more details see [Architecture](docs/core/Architecture.md)
 
 - [Asset Pipeline](docs/core/AssetPipeline.md) - asset importer/loader
 - [Components](plugins/engine/docs/Components.md) - component data layer: pools, handles, iteration contract
-- [Groups](plugins/engine/docs/Groups.md) - named groups of objects: a Groups component holds membership bits, alive and active lists per group kept by the lifecycle hooks, names in a Group Names asset
+- [Groups](plugins/engine/docs/components/Groups.md) - named groups of objects: a Groups component holds membership bits, alive and active lists per group kept by the lifecycle hooks, names in a Group Names asset
 - [input_actions](plugins/input_actions/docs/_index.md) - named actions over keys, mouse and gamepad: an Input Actions asset of mapping contexts, a priority stack of contexts that consume the keys below them, per-frame and per-tick values
 - [Scenes](plugins/engine/docs/Scenes.md)
 - [tween](plugins/tween/docs/_index.md) - tween trees authored as values in component fields and run as live node trees, Sequence and Parallel composites, node types any plugin adds, the Tween Graph window
@@ -151,10 +151,6 @@ For more details see [Architecture](docs/core/Architecture.md)
   - first consumer: a sequencer track that drives a transform along a spline
 
 - project file ops: Windows trash/reveal (darwin-only today, see project_os_stub.odin)
-
-- docs
-  - components group in left pane for engine and plugins
-    - should be similar structure across all comp docs. Description, example, some technical info, etc
 
 - physics2d follow-ups:
   - joints

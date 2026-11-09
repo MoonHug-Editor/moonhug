@@ -7,6 +7,19 @@ tags: ["sequencer", "components"]
 
 Makes a clip a tween clip: the tweens its span drives ([TrackTween](../TrackTween.md)). Several tweens on one clip play in parallel, and consecutive clips play in sequence.
 
+## Example
+
+```
+Lift                    PlayableDirector
+└── Platform            TimelineTrack + TrackTween, target Platform
+    ├── up              TimelineClip + ClipTween, 0 to 2 s
+    │                     TweenMoveLocalTo to 0, 4, 0
+    └── turn            TimelineClip + ClipTween, 2 to 3 s
+                          TweenRotateLocalTo to 0, 90, 0
+```
+
+The platform rises for two seconds, then turns. Scrubbing poses it at any time in between.
+
 ## Properties
 
 | Field | Default | What it does |

@@ -8,6 +8,16 @@ path: engine/components
 
 The root of a UI tree ([UI canvas](../UICanvas.md)). GameObject, UI, Canvas adds one with a GraphicRaycaster.
 
+## Example
+
+```
+Canvas             Canvas render_mode Screen Space Overlay, CanvasScaler, GraphicRaycaster
+└── Panel          RectTransform, CanvasRenderer, Image
+    └── Play       RectTransform, CanvasRenderer, Image, Button
+```
+
+A menu drawn over the game. The scaler keeps it the same size on every screen, and the raycaster lets the pointer reach the button.
+
 ## Properties
 
 | Field | Default | What it does |

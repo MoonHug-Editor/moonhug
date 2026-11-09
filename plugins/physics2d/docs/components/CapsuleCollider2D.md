@@ -7,6 +7,14 @@ tags: ["physics2d", "components"]
 
 A capsule collision shape: a rectangle with round ends. Without a [Rigidbody2D](Rigidbody2D.md) on or above its object it is a static collider, with one it is a shape of that body.
 
+## Example
+
+```
+Player     Rigidbody2D fixed_rotation on, CapsuleCollider2D size 0.8, 1.8
+```
+
+A character body. The round ends slide over steps and seams, and the fixed rotation keeps it upright.
+
 ## Properties
 
 | Field | Default | What it does |

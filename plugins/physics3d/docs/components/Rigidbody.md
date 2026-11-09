@@ -7,6 +7,16 @@ tags: ["physics3d", "components"]
 
 Makes its object a dynamic or kinematic body. The colliders on it and below it are the body's shapes. A collider with no Rigidbody on or above it is static ([Bodies](../concepts/Bodies.md)).
 
+## Example
+
+```
+Car            Rigidbody mass 1200, BoxCollider size 2, 0.8, 4.5
+└── Cabin      BoxCollider size 1.8, 0.7, 2, center 0, 0.7, -0.3
+Door           Rigidbody is_kinematic on, BoxCollider size 1, 2, 0.1
+```
+
+The car is one dynamic body with two shapes, its own box and the cabin's. The door moves by code or animation and pushes what it meets.
+
 ## Properties
 
 | Field | Default | What it does |

@@ -7,6 +7,14 @@ tags: ["physics2d", "components"]
 
 An open line of points, for ground outlines. It has no inside and no mass.
 
+## Example
+
+```
+Terrain    EdgeCollider2D points (10, 0) (4, 1) (-4, 1) (-10, 0), two_sided off
+```
+
+A one-sided hill line for a ground outline. The points run from right to left, so the solid side faces up.
+
 ## Properties
 
 | Field | Default | What it does |

@@ -7,6 +7,17 @@ tags: ["tween", "components"]
 
 Holds a list of authored tween trees on an object. It does not play them on its own: game code runs one with `tween_run`.
 
+## Example
+
+```
+Door       TweenPlayer animations
+             [0] Sequence
+                   TweenMoveToLocal position 0, 3, 0, duration 1
+                   TweenMoveToLocal position 0, 0, 0, duration 1, delay 2
+```
+
+The door holds one tree: rise, wait two seconds, come back down. Game code runs it with `tween_run` when the player opens the door.
+
 ## Properties
 
 | Field | Default | What it does |

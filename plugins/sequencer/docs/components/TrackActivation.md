@@ -7,6 +7,17 @@ tags: ["sequencer", "components"]
 
 Makes a track an activation track: its target object is active while any of its clips covers the time, and inactive otherwise. Its clips carry [ClipActivation](ClipActivation.md).
 
+## Example
+
+```
+Show                    PlayableDirector
+└── Banner              TimelineTrack + TrackActivation, target Banner
+    ├── first           TimelineClip + ClipActivation, 1 to 3 s
+    └── second          TimelineClip + ClipActivation, 6 to 8 s
+```
+
+The banner is active from 1 to 3 seconds and from 6 to 8, and inactive the rest of the time.
+
 ## Properties
 
 | Field | Default | What it does |

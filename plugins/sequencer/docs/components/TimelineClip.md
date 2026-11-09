@@ -7,6 +7,17 @@ tags: ["sequencer", "components"]
 
 Makes an object under a track a clip: its span on the timeline. The kind's clip component beside it holds what the clip plays, such as [ClipScript](ClipScript/_index.md).
 
+## Example
+
+```
+Intro                   PlayableDirector
+└── Hero                TimelineTrack + TrackAnimation, target Hero
+    ├── walk            TimelineClip start 0, duration 3, ClipAnimation clip Walk.anim
+    └── wave            TimelineClip start 2.5, duration 2, ease_in 0.5, ClipAnimation clip Wave.anim
+```
+
+The wave overlaps the walk by half a second and blends in over that time.
+
 ## Properties
 
 | Field | Default | What it does |

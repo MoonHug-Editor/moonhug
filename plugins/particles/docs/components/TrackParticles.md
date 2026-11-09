@@ -7,6 +7,16 @@ tags: ["particles", "sequencer", "components"]
 
 Makes a timeline track a particles track: each clip's span plays a [ParticleSystem](ParticleSystem.md). Its clips carry [ClipParticles](ClipParticles.md). Needs the sequencer plugin.
 
+## Example
+
+```
+Fireworks               PlayableDirector
+└── Sparks              TimelineTrack + TrackParticles, system Sparks
+    └── burst           TimelineClip + ClipParticles, 2.5 to 4 s
+```
+
+The Sparks system plays from 2.5 to 4 seconds, and scrubbing the timeline shows the same particles every time.
+
 ## Properties
 
 | Field | Default | What it does |

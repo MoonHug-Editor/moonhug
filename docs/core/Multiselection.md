@@ -6,7 +6,7 @@ tags: ["selection", "inspector", "editor"]
 path: editor/editing
 ---
 
-Unity-style multi-selection in the hierarchy, Scene window and Project window.
+Multi-selection in the hierarchy, Scene window and Project window.
 The inspector edits the whole selection (see [Multiedit](#multiedit)). The
 header says "N selected".
 
@@ -39,7 +39,7 @@ The project status line shows the count.
 - **Edit/Toggle Transform Active** (Alt+Shift+A) toggles all selected, one step
 - Right-click on a selected row keeps the selection. On an unselected row it
   selects that row first
-- **Gizmo drags move the whole selection** (Unity): translate offsets every
+- **Gizmo drags move the whole selection**: translate offsets every
   object, rotate orbits positions and spins orientations, scale scales offsets
   and local scales — one undo step per drag. The gizmo anchors at the active
   object's pivot or the selection center (Pivot/Center overlay toggle)
@@ -54,7 +54,7 @@ session over all of them — see [Undo](Undo.md)). The inspector shows the
 Transform plus the components every selected object has. A component only some
 carry is hidden.
 
-Fields the selection disagrees on show Unity's mixed indicator: a dash instead
+Fields the selection disagrees on show a mixed indicator: a dash instead
 of the number, an empty text box, a dash in the checkbox. Vectors mark each
 axis separately. Editing a mixed field assigns the typed value to everything.
 
@@ -71,7 +71,7 @@ object, so there is nothing to edit. When lengths differ the size row explains:
 **Add and remove apply to the whole selection**, so lists converge as you work
 and a new row is immediately editable everywhere. Drag reordering stays
 single-object — a permutation of one array means nothing on a peer whose
-contents differ (Unity suppresses it too).
+contents differ.
 
 A dynamic array's elements live in a separate allocation, so a peer's element
 cannot be reached by offset from the component base. The peer list is rebased
@@ -81,7 +81,7 @@ on every object.
 
 ### Prefab instances
 
-Instance content multi-edits like anything else (Unity). An edit records an
+Instance content multi-edits like anything else. An edit records an
 override against its own instance — each `Multi_Peer` carries the
 host/local-id pair naming which one — so a selection mixing plain objects and
 instance content works uniformly: overrides on the instances, plain writes on

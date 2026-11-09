@@ -8,6 +8,14 @@ path: engine/components
 
 Sets how canvas units map to screen pixels. It sits on the Canvas node. Without one, one canvas unit is one screen pixel.
 
+## Example
+
+```
+HUD        Canvas, CanvasScaler mode Scale With Screen Size, reference_resolution 1920, 1080, match 0.5
+```
+
+The HUD is laid out for 1920 by 1080. On another screen it scales up or down, matching width and height equally.
+
 ## Properties
 
 | Field | Default | What it does |

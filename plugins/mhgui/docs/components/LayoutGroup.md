@@ -7,6 +7,17 @@ tags: ["mhgui", "components"]
 
 Lays out its node's RectTransform children in a row, a column or a grid.
 
+## Example
+
+```
+Inventory          RectTransform, LayoutGroup direction Grid, cell_size 80, 80, constraint Fixed_Column_Count, constraint_count 4
+├── Slot           RectTransform, CanvasRenderer, Image
+├── Slot           ...
+└── Slot           ...
+```
+
+The slots fill a grid four columns wide, rows top to bottom. Adding a slot places it in the next cell.
+
 ## Properties
 
 | Field | Default | What it does |

@@ -8,6 +8,16 @@ path: engine/components
 
 A UI node's rect, in canvas units with a bottom-left origin ([UI canvas](../UICanvas.md)).
 
+## Example
+
+```
+Canvas             Canvas
+├── Title          RectTransform anchor_min 0.5, 1, anchor_max 0.5, 1, anchored_position 0, -60, size_delta 600, 80
+└── Bar            RectTransform anchor_min 0, 0, anchor_max 1, 0, size_delta 0, 40
+```
+
+The title stays centered 60 units below the top edge. The bar stretches across the bottom at any screen width, 40 units tall.
+
 ## Properties
 
 | Field | Default | What it does |
