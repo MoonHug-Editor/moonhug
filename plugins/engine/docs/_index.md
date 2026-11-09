@@ -16,12 +16,38 @@ The engine plugin is everything a game runs on: the world of pools and handles, 
 - UI canvas: [Canvas](components/Canvas.md), [RectTransform](components/RectTransform.md), [CanvasRenderer](components/CanvasRenderer.md), [CanvasScaler](components/CanvasScaler.md) and [GraphicRaycaster](components/GraphicRaycaster.md).
 - Scene: [Groups](components/Groups.md).
 
+**Windows**
+
+- [Hierarchy](windows/Hierarchy.md): the loaded scenes and their objects.
+- [Inspector](windows/Inspector.md): the selected objects' components.
+- [Render Pipeline](windows/RenderPipeline.md): a pipeline's passes and resources as a matrix, with live thumbnails.
+
+**Render steps**
+
+- Frame lane: [Environment](render-steps/EnvironmentPass.md), [Shadow atlas](render-steps/ShadowAtlas.md) and [Reflection probes](render-steps/ReflectionProbesPass.md).
+- Scene: [Shadow cascades](render-steps/ShadowCascades.md), [Depth prepass](render-steps/DepthPrepass.md), [Ambient occlusion](render-steps/SceneSsao.md), [Screen-space reflections](render-steps/SceneSsr.md), [Opaque](render-steps/SceneOpaque.md), [Sky](render-steps/SceneSky.md), [Scene copy](render-steps/SceneCopy.md), [Scene under](render-steps/SceneUnder.md) and [Transparent](render-steps/SceneTransparent.md).
+- After the scene: [Motion vectors](render-steps/MotionVectors.md), [TAA](render-steps/SceneTaa.md), [Scene over](render-steps/SceneOver.md) and [Final blit](render-steps/FinalBlit.md).
+
 **Concepts**
 
 - [Data](concepts/data/_index.md): the world, pools and handles, the component data layer, references and groups.
 - [Scenes](concepts/scenes/_index.md): scene files, prefabs and nested prefabs.
 - [Frame](concepts/frame/_index.md): the fixed tick and the order updates and lifecycle procs run in.
 - [Rendering](concepts/rendering/_index.md): the renderer, the render pipeline, materials, meshes, render layers and the UI canvas.
+
+## Project settings
+
+Edit, Project Settings. Each tab is saved in `ProjectSettings/<name>.json`, which the game reads too.
+
+| Tab | Setting | Default | What it does |
+|---|---|---|---|
+| Rendering | `pipeline` | none | The render pipeline the project renders through. None is the essentials plugin's `Default.renderpipeline` ([Render pipeline](RenderPipeline.md)). |
+| Layers | `render_layers` | none | The Render Layers asset naming the render layers ([Layers](Layers.md)). |
+| Groups | `group_names` | none | The Group Names asset naming the groups ([Groups](Groups.md)). |
+| Time | `fixed_rate` | 60 | Fixed simulation ticks per second ([Fixed tick](FixedTick.md)). |
+| Player | `title` | App | The game window's title. |
+| Player | `width`, `height` | 800, 600 | The game window's size. |
+| Player | `boot_scene` | empty | The scene guid the player boots when no program argument and no exported boot scene names one. |
 
 ## Reference
 

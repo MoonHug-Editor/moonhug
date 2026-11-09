@@ -17,11 +17,11 @@ The postfx plugin adds six render steps a render pipeline places after the engin
 | [Auto exposure](render-steps/AutoExposure.md) | Meters the scene's brightness and adapts the exposure to it over time. Muted by default. |
 | [Bloom](render-steps/Bloom.md) | Blurs what is brighter than a threshold, for the tonemap to add. |
 | [Tonemap](render-steps/Tonemap.md) | Exposure, bloom, colour grading, then HDR to LDR by an operator. |
-| [FXAA](render-steps/FXAA.md) | Fast approximate anti-aliasing. |
+| [FXAA](render-steps/FXAA.md) | Fast approximate anti-aliasing. Not in the default pipeline. |
 
 ## How the steps chain
 
-- The default pipeline places motion blur and depth of field right after `scene_taa`, and the other four after them and before `scene_over`, which draws the gizmos onto the finished image, so the gizmos stay sharp.
+- The default pipeline places motion blur and depth of field right after `scene_taa`, and auto exposure, bloom and tonemap after them and before `scene_over`, which draws the gizmos onto the finished image, so the gizmos stay sharp. FXAA is not in it: add it after the tonemap.
 - A step reads the finished image so far, `final`, and writes its own target. A `*` on that target makes it the new final, so the engine's `final_blit` copies whichever step ran last.
 - Removing a step removes its effect. Without FXAA the tonemap's output is the final, and without bloom, tonemap and FXAA the scene's HDR image is, the engine's own look.
 - The tonemap adds bloom only when a bloom step ran before it in the lane. Without an exposure step the auto exposure is 1.

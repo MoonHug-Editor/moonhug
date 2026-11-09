@@ -25,7 +25,7 @@ Lights the scene from its object: a directional light along its -Z, or a point o
 
 ## Behavior
 
-- The first shadowing directional light casts through cascades fitted to each camera's view. Spot and point lights cast through tiles of a shadow atlas ([Materials](../Materials.md), "Shadows").
+- The first shadowing directional light casts through cascades fitted to each camera's view. Spot and point lights cast through tiles of a shadow atlas ([Materials](../Materials.md), "Light component").
 - The first enabled directional light is also the [Environment](Environment.md)'s sun: its direction and colour.
 
 ## In the editor
