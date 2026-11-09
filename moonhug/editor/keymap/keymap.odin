@@ -49,9 +49,9 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:libs/log"
 
-// A command the editor can run. `run` takes no data, `run_data` takes `data`:
-// a registration sets one of them. `enabled` and `enabled_data` the same way,
-// nil for always enabled.
+// A command the editor can run. `run` takes no data, `run_data` takes `data`,
+// `run_args` takes the command's arguments: a registration sets one of them.
+// `enabled` and `enabled_data` the same way, nil for always enabled.
 Command :: struct {
 	// The stable identity bindings and the override file refer to: the
 	// declaring proc's qualified name ("editor.scene_tool_translate") unless
@@ -71,6 +71,21 @@ Command :: struct {
 	// Listed by the command palette. A step of a focused list's navigation
 	// (Select Down, Expand) says false: it does nothing useful from there.
 	palette:      bool,
+	// A command with arguments (command_add_args): the values it runs with,
+	// the last ones used, in a value of `args_type` the command owns, the
+	// declared defaults beside them, and the proc that takes them.
+	args:         rawptr,
+	args_default: rawptr,
+	args_type:    typeid,
+	args_ptr_type: typeid, // ^T, for decoding the arguments from JSON
+	run_args:     proc(args: rawptr),
+	// Applies changed arguments to what the last run made, in place, instead
+	// of undoing the run and running again. nil for a command that always
+	// runs again. See command_add_args.
+	update_args:  proc(args: rawptr) -> bool,
+	// Shows its arguments before it runs, instead of running at once with
+	// the last values used and offering them for adjusting after.
+	ask:          bool,
 }
 
 // One chord bound to a command name.
@@ -178,7 +193,7 @@ _COMMAND_MODS :: im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.ImGuiMod
 // false keeps it out of the command palette, for a step of a focused list's
 // navigation that only makes sense as a key. `help` is one sentence on what
 // it does.
-@(extension_point={attribute="command", target="proc", fields="name enabled id palette help"})
+@(extension_point={attribute="command", target="proc", fields="name enabled id palette help defaults ask update"})
 command_add :: proc(name: string, run: proc(), enabled: proc() -> bool = nil, origin := "", id := "", palette := true, help := "") -> ^Command {
 	c := _command_slot(name, id, origin, help)
 	c.palette = palette
@@ -188,8 +203,119 @@ command_add :: proc(name: string, run: proc(), enabled: proc() -> bool = nil, or
 	c.enabled_data = nil
 	c.data = nil
 	c.origin = origin
+	_args_clear(c)
 	return c
 }
+
+// Drops a command's arguments, for a slot registered again as a command
+// without them.
+@(private = "file")
+_args_clear :: proc(c: ^Command) {
+	context.allocator = runtime.default_allocator()
+	free(c.args)
+	free(c.args_default)
+	c.args, c.args_default, c.args_type, c.args_ptr_type, c.run_args, c.update_args, c.ask = nil, nil, nil, nil, nil, nil, false
+}
+
+// A command with arguments: `run` takes a pointer to a T, which the command
+// keeps as its arguments, starting from `defaults`. A command declared with
+// `@(command)` on a proc taking `^T` registers here, `defaults=` naming a
+// constant of T, its zero value without one. The arguments are plain values,
+// numbers, bools, enums and arrays and structs of them: a string, a pointer,
+// a slice or a dynamic array panics with the command's origin. `ask` shows
+// them before the first run instead of running at once (args_runner).
+//
+// `update` applies changed arguments to what the last run made, in place: a
+// copy moved instead of made again. It returns false, before changing
+// anything, for a change it does not apply in place, and the run is undone
+// and run again. Its edits are recorded the usual way and become part of the
+// run's undo step. Without it every change runs again.
+command_add_args :: proc(name: string, run: proc(args: ^$T), defaults: T, enabled: proc() -> bool = nil, origin := "", id := "", palette := true, help := "", ask := false, update: proc(args: ^T) -> bool = nil) -> ^Command {
+	context.allocator = runtime.default_allocator()
+	if why, plain := _plain_value(type_info_of(T)); !plain {
+		panic(strings.concatenate({"keymap: command \"", name, "\" takes arguments that hold ", why, ", which the argument panel cannot own. Use plain values  ", origin}, context.temp_allocator))
+	}
+	c := _command_slot(name, id, origin, help)
+	c.palette = palette
+	c.run = nil
+	c.enabled = enabled
+	c.run_data = nil
+	c.enabled_data = nil
+	c.data = nil
+	c.origin = origin
+	c.run_args = cast(proc(args: rawptr))run
+	c.update_args = cast(proc(args: rawptr) -> bool)update
+	c.ask = ask
+	// Registered again with the same type: the last values used stay.
+	if c.args_type != T {
+		free(c.args)
+		free(c.args_default)
+		c.args = new_clone(defaults)
+		c.args_type = T
+		c.args_ptr_type = ^T
+	} else {
+		free(c.args_default)
+	}
+	c.args_default = new_clone(defaults)
+	return c
+}
+
+// Whether a value of `ti` is plain: nothing in it points at memory of its
+// own, so the argument panel can copy, edit and free it as bytes. When not,
+// what it holds that is not.
+@(private = "file")
+_plain_value :: proc(ti: ^runtime.Type_Info) -> (why: string, plain: bool) {
+	#partial switch v in runtime.type_info_base(ti).variant {
+	case runtime.Type_Info_Integer, runtime.Type_Info_Float, runtime.Type_Info_Boolean, runtime.Type_Info_Enum, runtime.Type_Info_Bit_Set, runtime.Type_Info_Rune, runtime.Type_Info_Quaternion, runtime.Type_Info_Complex, runtime.Type_Info_Matrix:
+		return "", true
+	case runtime.Type_Info_Array:
+		return _plain_value(v.elem)
+	case runtime.Type_Info_Enumerated_Array:
+		return _plain_value(v.elem)
+	case runtime.Type_Info_Struct:
+		for i in 0 ..< v.field_count {
+			if why, plain := _plain_value(v.types[i]); !plain do return why, false
+		}
+		return "", true
+	case runtime.Type_Info_String:
+		return "a string", false
+	case runtime.Type_Info_Dynamic_Array, runtime.Type_Info_Slice:
+		return "a dynamic array or a slice", false
+	case runtime.Type_Info_Map:
+		return "a map", false
+	case runtime.Type_Info_Pointer, runtime.Type_Info_Multi_Pointer:
+		return "a pointer", false
+	}
+	return "a value of a kind that is not plain", false
+}
+
+// A command's arguments as JSON, nil for a command without them. For the
+// editor settings, which keep the last values used, and the bridge.
+command_args_json :: proc(c: ^Command, allocator := context.temp_allocator) -> []byte {
+	if c.args == nil do return nil
+	data, err := json.marshal(any{c.args, c.args_type}, {spec = .JSON}, allocator)
+	return data if err == nil else nil
+}
+
+// Sets a command's arguments from JSON. A field the JSON leaves out keeps
+// its value. False when the command has no arguments or the JSON does not
+// decode into them.
+command_args_set_json :: proc(c: ^Command, data: []byte) -> bool {
+	if c.args == nil do return false
+	p := c.args
+	return json.unmarshal_any(data, any{&p, c.args_ptr_type}, .JSON, context.temp_allocator) == nil
+}
+
+// Puts a command's arguments back to its declared defaults.
+command_args_reset :: proc(c: ^Command) {
+	if c.args == nil || c.args_default == nil do return
+	runtime.mem_copy(c.args, c.args_default, type_info_of(c.args_type).size)
+}
+
+// Runs a command with arguments for command_run: the shell installs the
+// settings panel's runner, which records the run as one undo step and offers
+// its arguments for adjusting. nil runs the command directly.
+args_runner: proc(c: ^Command)
 
 // A command that closes over data (a menu item's node).
 command_add_data :: proc(name: string, run: proc(data: rawptr), data: rawptr, enabled: proc(data: rawptr) -> bool = nil, origin := "", id := "", palette := true, help := "") -> ^Command {
@@ -201,6 +327,7 @@ command_add_data :: proc(name: string, run: proc(data: rawptr), data: rawptr, en
 	c.enabled_data = enabled
 	c.data = data
 	c.origin = origin
+	_args_clear(c)
 	return c
 }
 
@@ -324,10 +451,16 @@ command_state :: proc(c: ^Command) -> (enabled: bool, reason: string) {
 	return
 }
 
-// Runs a command, enabled or not: the caller checked.
+// Runs a command, enabled or not: the caller checked. A command with
+// arguments goes through args_runner when one is installed.
 command_run :: proc(c: ^Command) {
-	if c.run != nil do c.run()
-	else if c.run_data != nil do c.run_data(c.data)
+	switch {
+	case c.run != nil:        c.run()
+	case c.run_data != nil:   c.run_data(c.data)
+	case c.run_args == nil:
+	case args_runner != nil:  args_runner(c)
+	case:                     c.run_args(c.args)
+	}
 }
 
 // Runs the command named `name` when it exists and is enabled. True when it
@@ -541,6 +674,8 @@ command_remove :: proc(name: string) {
 		delete(c.name)
 		delete(c.id)
 		delete(c.help)
+		free(c.args)
+		free(c.args_default)
 		free(c)
 		ordered_remove(&_commands, i)
 		return
@@ -663,6 +798,8 @@ shutdown :: proc() {
 		delete(c.name)
 		delete(c.id)
 		delete(c.help)
+		free(c.args)
+		free(c.args_default)
 		free(c)
 	}
 	delete(_commands)

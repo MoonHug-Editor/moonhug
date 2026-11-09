@@ -78,6 +78,18 @@ record_reparent :: proc(node: engine.Transform_Handle, old_parent, new_parent: e
 	shell.push(s, shell.Command(cmd))
 }
 
+// The subtree at `root` as undo restores it. Prefab content, a part of an
+// instance, is captured whole, objects and components, or a delete of it
+// would have nothing to restore. Any other subtree is captured the way a save
+// writes it: its own objects and the records of the prefab instances in it,
+// whose content the restore resolves from the prefab again. Captured whole,
+// an instance's content would come back twice, from the payload and from the
+// resolve.
+@(private = "file")
+_capture_subtree :: proc(root: engine.Transform_Handle) -> []byte {
+	return engine.scene_copy_subtree(root, include_nested_owned = engine.transform_is_nested_owned(root))
+}
+
 record_create :: proc(root: engine.Transform_Handle, parent: engine.Transform_Handle) {
 	s := shell.get()
 	if s == nil || !s.recording || s.applying do return
@@ -92,9 +104,7 @@ record_create :: proc(root: engine.Transform_Handle, parent: engine.Transform_Ha
 		}
 	}
 
-	// Prefab content must be captured too, or undo of a nested delete has
-	// nothing to restore.
-	payload := engine.scene_copy_subtree(root, include_nested_owned = true)
+	payload := _capture_subtree(root)
 	if payload == nil do return
 
 	sibling_idx := engine.transform_get_sibling_index(root)
@@ -116,9 +126,7 @@ record_delete_pre :: proc(root: engine.Transform_Handle) -> (undo_ops.Delete_Sub
 	if !ok do return {}, false
 	parent_lid := parent_local_id(root)
 
-	// Prefab content must be captured too, or undo of a nested delete has
-	// nothing to restore.
-	payload := engine.scene_copy_subtree(root, include_nested_owned = true)
+	payload := _capture_subtree(root)
 	if payload == nil do return {}, false
 
 	sibling_idx := engine.transform_get_sibling_index(root)

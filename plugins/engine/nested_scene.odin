@@ -75,15 +75,16 @@ _json_local_id_of :: proc(obj: json.Object) -> (Local_ID, bool) {
 
 scene_file_remap_merge_metadata :: proc(sf: ^SceneFile, s: ^Scene) {
 	if s == nil do return
-	used := make(map[Local_ID]bool, context.temp_allocator)
-	for lid, _ in s.local_ids.forward {
-		used[lid] = true
-	}
-	for lid, _ in s.breadcrumb_data {
-		used[lid] = true
-	}
-	for ns in s.nested_scenes {
-		used[ns.local_id] = true
+	// The ids this merge claimed. The scene's own ids are looked up where
+	// they live: a set of all of them would cost the whole scene on every
+	// instance load, which a scene of many instances does many times.
+	claimed := make(map[Local_ID]bool, context.temp_allocator)
+	_used :: proc(s: ^Scene, claimed: ^map[Local_ID]bool, lid: Local_ID) -> bool {
+		if lid in claimed^ || lid in s.local_ids.forward || lid in s.breadcrumb_data do return true
+		for &ns in s.nested_scenes {
+			if ns.local_id == lid do return true
+		}
+		return false
 	}
 
 	ns_remap := make(map[Local_ID]Local_ID, context.temp_allocator)
@@ -97,13 +98,13 @@ scene_file_remap_merge_metadata :: proc(sf: ^SceneFile, s: ^Scene) {
 		if ns.local_id_in_parent == 0 {
 			ns.local_id_in_parent = old
 		}
-		if used[old] {
+		if _used(s, &claimed, old) {
 			new_id := scene_new_lid(s)
 			ns_remap[old] = new_id
 			ns.local_id = new_id
-			used[new_id] = true
+			claimed[new_id] = true
 		} else {
-			used[old] = true
+			claimed[old] = true
 		}
 	}
 
@@ -116,13 +117,13 @@ scene_file_remap_merge_metadata :: proc(sf: ^SceneFile, s: ^Scene) {
 	bc_remap := make(map[Local_ID]Local_ID, context.temp_allocator)
 	for &bc in sf.breadcrumbs {
 		old := bc.local_id
-		if used[old] {
+		if _used(s, &claimed, old) {
 			new_id := scene_new_lid(s)
 			bc_remap[old] = new_id
 			bc.local_id = new_id
-			used[new_id] = true
+			claimed[new_id] = true
 		} else {
-			used[old] = true
+			claimed[old] = true
 		}
 	}
 
@@ -1156,26 +1157,48 @@ _nested_scene_scan_hosts_for_lid :: proc(s: ^Scene, ns: ^NestedScene, lid: Local
 	w := ctx_world()
 	first: Transform_Handle = {}
 	n := 0
+	// An inner record's host is prefab content under the instance that
+	// expanded it, so only that subtree is searched. Searched across the
+	// world, every lookup grows with the scene, and code that resolves every
+	// record's host (the hierarchy each frame, every subtree copy) grows with
+	// its square.
+	if ns.expand_parent != {} {
+		_nested_scene_scan_subtree_for_lid(w, s, ns.expand_parent, lid, &first, &n)
+		return first, n
+	}
 	it := pool_iterator(&w.transforms)
 	for tt, h in pool_next(&it) {
 		if tt.scene != s || tt.local_id != lid do continue
+		// A native NS's host is host-authored — never nested_owned. Without
+		// this filter, absorbed prefab content whose (prefab-namespace) lid
+		// happens to equal the host's lid makes the scan ambiguous (n > 1)
+		// and host identification fails.
+		if tt.nested_owned do continue
 		h := h
 		h.type_key = .Transform
-		tH := Transform_Handle(h)
-		if ns.expand_parent != {} {
-			if !tt.nested_owned do continue
-			if !_transform_is_descendant_or_self(tH, ns.expand_parent) do continue
-		} else {
-			// A native NS's host is host-authored — never nested_owned. Without
-			// this filter, absorbed prefab content whose (prefab-namespace) lid
-			// happens to equal the host's lid makes the scan ambiguous (n > 1)
-			// and host identification fails.
-			if tt.nested_owned do continue
-		}
-		if n == 0 do first = tH
+		if n == 0 do first = Transform_Handle(h)
 		n += 1
 	}
 	return first, n
+}
+
+// The nested-owned transforms of `s` with local id `lid` in the subtree at
+// `tH`, `tH` included: the first one found and how many.
+@(private = "file")
+_nested_scene_scan_subtree_for_lid :: proc(w: ^World, s: ^Scene, tH: Transform_Handle, lid: Local_ID, first: ^Transform_Handle, n: ^int) {
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return
+	if t.scene == s && t.local_id == lid && t.nested_owned {
+		if n^ == 0 {
+			h := Handle(tH)
+			h.type_key = .Transform
+			first^ = Transform_Handle(h)
+		}
+		n^ += 1
+	}
+	for c in t.children {
+		_nested_scene_scan_subtree_for_lid(w, s, Transform_Handle(c.handle), lid, first, n)
+	}
 }
 
 nested_row_direct_for_host :: proc(s: ^Scene, host_tH: Transform_Handle) -> ^NestedScene {
@@ -1204,14 +1227,6 @@ nested_scene_hosts_transform :: proc(s: ^Scene, ns: ^NestedScene, host_tH: Trans
 		if !pptr_guid_is_empty(bc.scene_source.guid) do return false
 		lid := bc.scene_source.local_id
 
-		if !t.nested_owned {
-			if dir := nested_row_direct_for_host(s, host_tH); dir != nil {
-				if ns.source_prefab != dir.source_prefab {
-					return false
-				}
-			}
-		}
-
 		if t.nested_owned && t.local_id == lid {
 			if ns.expand_parent != {} {
 				// The descendant-or-self check at the top of this proc already
@@ -1230,11 +1245,24 @@ nested_scene_hosts_transform :: proc(s: ^Scene, ns: ^NestedScene, host_tH: Trans
 			return false
 		}
 
+		matches: bool
 		if h, ok2 := bimap_get(&s.local_ids, lid); ok2 {
-			return h == Handle(host_tH)
+			matches = h == Handle(host_tH)
+		} else {
+			want, n := _nested_scene_scan_hosts_for_lid(s, ns, lid)
+			matches = n == 1 && want == host_tH
 		}
-		want, n := _nested_scene_scan_hosts_for_lid(s, ns, lid)
-		return n == 1 && want == host_tH
+		if !matches do return false
+		// A host-authored host belongs to the record that names it directly,
+		// when one does, and to no record of another prefab. Checked after the
+		// id match: it searches every record, and a caller that asks every
+		// record about one host would otherwise search them all for each.
+		if !t.nested_owned {
+			if dir := nested_row_direct_for_host(s, host_tH); dir != nil && ns.source_prefab != dir.source_prefab {
+				return false
+			}
+		}
+		return true
 	}
 	if ns.transform_parent != t.local_id do return false
 	if h, ok2 := bimap_get(&s.local_ids, ns.transform_parent); ok2 {

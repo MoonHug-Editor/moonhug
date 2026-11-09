@@ -10,6 +10,7 @@ import "menu"
 import wnd "window"
 import "moonhug:editor/command_palette"
 import "moonhug:editor/handles"
+import "moonhug:editor/keymap"
 import "moonhug:editor/session"
 import assets "moonhug:libs/assets"
 import core "moonhug:libs/core"
@@ -75,6 +76,7 @@ EditorSettings :: struct {
     selection:                Persisted_Selection,      // the selection at quit (selection_persist.odin)
     view_locks:               [dynamic]Persisted_View_Lock, // every locked view (view_lock.odin, selection_persist.odin)
     command_palette_recent:   []command_palette.Recent, // each palette mode's recently run rows, newest first
+    command_args:             map[string]string,        // each command with arguments' last values, JSON by command id (adjust_last.odin)
 }
 
 editor_settings: EditorSettings
@@ -178,6 +180,12 @@ save_editor_settings :: proc() {
 
     // The palette's own copy, temp: the loaded list stays unfreed until exit.
     editor_settings.command_palette_recent = command_palette.recent_saved()
+
+    // The last values of every command with arguments. Temp, as above.
+    editor_settings.command_args = make(map[string]string, context.temp_allocator)
+    for c in keymap.commands() {
+        if args := keymap.command_args_json(c); args != nil do editor_settings.command_args[c.id] = string(args)
+    }
 
     delete(editor_settings.open_scene_guids)
     editor_settings.open_scene_guids = make([dynamic]string, context.temp_allocator)

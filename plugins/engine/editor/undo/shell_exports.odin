@@ -34,6 +34,7 @@ Value_Command                   :: shell.Value_Command
 abort_group_command             :: shell.abort_group_command
 activity_consume                :: shell.activity_consume
 activity_take                   :: shell.activity_take
+amend_begin                     :: shell.amend_begin
 amend_top_selection             :: shell.amend_top_selection
 apply_Group_Command             :: shell.apply_Group_Command
 apply_Selection_Command         :: shell.apply_Selection_Command

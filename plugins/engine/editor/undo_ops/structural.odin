@@ -115,10 +115,7 @@ apply_Delete_Subtree_Command :: proc(v: ^Delete_Subtree_Command) {
 revert_Delete_Subtree_Command :: proc(v: ^Delete_Subtree_Command) {
 	parent_h, ok := _find_transform_for_undo(_scene(v.scene), v.parent_local_id)
 	if !ok do return
-	root := _paste_subtree_preserve_ids(v.payload, engine.Transform_Handle(parent_h), v.sibling_index)
-	if v.nested_owned && root != {} {
-		engine.transform_mark_subtree_nested_owned(root)
-	}
+	_paste_subtree_preserve_ids(v.payload, engine.Transform_Handle(parent_h), v.sibling_index, v.nested_owned)
 }
 
 destroy_Delete_Subtree_Command :: proc(v: ^Delete_Subtree_Command) {
@@ -408,8 +405,15 @@ _find_transform_for_undo :: proc(s: ^engine.Scene, id: engine.Local_ID) -> (engi
 	return {}, false
 }
 
+// Restores a subtree captured by undo with its local ids. `nested_owned` is
+// for a part of a prefab instance: its payload holds every object and
+// component as it was, inner prefab instances' content included. The restored
+// objects are marked as prefab content again, and the inner instances are not
+// loaded from their prefabs, which would add their content a second time.
+// Their records stay in the scene through the delete and match the restored
+// objects by local id.
 @(private)
-_paste_subtree_preserve_ids :: proc(payload: []byte, parent: engine.Transform_Handle, sibling_index: int) -> engine.Transform_Handle {
+_paste_subtree_preserve_ids :: proc(payload: []byte, parent: engine.Transform_Handle, sibling_index: int, nested_owned := false) -> engine.Transform_Handle {
 	if payload == nil || len(payload) == 0 do return {}
 	sf: engine.SceneFile
 	if err := json.unmarshal(payload, &sf); err != nil {
@@ -422,6 +426,21 @@ _paste_subtree_preserve_ids :: proc(payload: []byte, parent: engine.Transform_Ha
 	parent_scene: ^engine.Scene
 	if p := engine.pool_get(&w.transforms, engine.Handle(parent)); p != nil {
 		parent_scene = p.scene
+	}
+
+	// The instances in the payload replace the records their removal left
+	// in the scene: a record outlives its host until the next save prunes
+	// it, and two records for one host would resolve its prefab twice.
+	if parent_scene != nil {
+		for &rec in sf.nested_scenes {
+			for i := len(parent_scene.nested_scenes) - 1; i >= 0; i -= 1 {
+				if parent_scene.nested_scenes[i].local_id != rec.local_id do continue
+				engine.breadcrumb_clear_for_nested_scene(parent_scene, rec.local_id)
+				engine.nested_scene_free_owned(&parent_scene.nested_scenes[i])
+				delete(parent_scene.nested_scenes[i].source_of_inst)
+				ordered_remove(&parent_scene.nested_scenes, i)
+			}
+		}
 	}
 
 	root_tH := engine._scene_load_as_child(&sf, parent, parent_scene)
@@ -445,7 +464,9 @@ _paste_subtree_preserve_ids :: proc(payload: []byte, parent: engine.Transform_Ha
 		}
 	}
 
-	if engine.application_is_editor() {
+	if nested_owned {
+		engine.transform_mark_subtree_nested_owned(root_tH)
+	} else if engine.application_is_editor() {
 		engine._scene_resolve_nested_in_subtree(root_tH)
 	}
 	// While the game runs the restored objects awake as a new creation, at

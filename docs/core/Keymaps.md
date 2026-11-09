@@ -37,6 +37,42 @@ view_close_can :: proc() -> bool {
 - A command never reads a modifier key to decide what it does: the chord carries the modifier, and a different action is a different command. Collapse and Collapse Subtree are two commands, bound to Left and Alt+Left, so each can be rebound on its own.
 - Every item and toggle of the main menu is a command named by its path (`Edit/Undo`), registered by the menu with the item. Its `shortcut=` is a binding in the `Menu` keymap, or several: chords separated by a comma and a space, `shortcut="Ctrl+Shift+Z, Ctrl+Y"`. A chord has no space in it, so `"Ctrl+,, F5"` is Ctrl+, and F5. `@(command_palette_mode)` reads `shortcut` the same way.
 
+## Commands with arguments
+
+A command whose proc takes a pointer to a struct runs with arguments: the values in the struct. `defaults=` names a constant of the struct for the values it starts with, the zero value without one.
+
+```odin
+Duplicate_Array_Args :: struct {
+	count:  int,
+	offset: [3]f32,
+}
+
+DUPLICATE_ARRAY_DEFAULT :: Duplicate_Array_Args{count = 3, offset = {1, 0, 0}}
+
+@(command={name="Edit/Duplicate Array", enabled=duplicate_array_can, defaults=DUPLICATE_ARRAY_DEFAULT, update=duplicate_array_update, help="Duplicates the selection several times, each copy a step further along an offset"})
+edit_duplicate_array :: proc(args: ^Duplicate_Array_Args) { ... }
+
+// A new offset moves the copies the last run made. A new count returns false.
+duplicate_array_update :: proc(args: ^Duplicate_Array_Args) -> bool { ... }
+```
+
+- A key, the menu, the palette or the bridge runs it at once with the values it last used, as one undo step: the run is wrapped in an undo group.
+- The command's settings panel then shows those values at the bottom left of the editor, drawn by the inspector. It takes no keyboard focus and blocks no view, and it collapses to its title bar. Changing a value undoes the last run and runs the command again with the new values, unless the command's update proc applies it in place, so the history keeps one step and a dragged value updates the result live.
+- `update=` names a proc that applies changed values to what the last run made, in place, instead of undoing it and running again: Duplicate Array moves its copies for a new offset. The panel tries it first on every change, and runs the command again when it returns false.
+- An update proc takes the command's arguments pointer and returns a bool. The prebuild fails with the declaration's place when the proc is missing or its signature differs.
+- An update proc decides first and changes after: it returns false before it changes anything. A change made before returning false would stay outside the undo step.
+- An update proc records its edits the usual way, with `undo.edit_begin` and `undo.edit_end`. The panel folds them into the run's undo step with `undo.amend_begin`, so undo takes back the run and its adjustments together, and redo makes the result again and applies them.
+- A folded edit of a field the step already edits replaces that edit's new value, so a value dragged on every frame keeps one edit per field.
+- Anything else that records an undo step, an undo or a redo closes the panel: the run is no longer the last step. A run that recorded nothing closes it too, since there is nothing to adjust.
+- Reset in the panel puts the command's declared defaults back. It is disabled while the values are the defaults. A reset is a change like any other: the result is redone with the defaults, still as one step.
+- `ask=true` opens the panel before the first run, with a Run button, for a command whose values should be chosen first.
+- The last values used are kept per command in the editor settings, so they survive a restart.
+- The arguments are plain values: numbers, bools, enums, and arrays and structs of them. A string, a pointer, a slice, a map or a dynamic array in them panics at registration with the command's origin.
+- The struct carries no `decor:` tags when its package imports the inspector: the inspector's generated decorators would import that package back.
+- The bridge's `commands` lists each command's current arguments, and `run_command` takes `args`, the fields to set before it runs. The values set stay as the last used.
+- `keymap.command_args_json` and `keymap.command_args_set_json` read and write the values as JSON, `keymap.command_args_reset` puts the defaults back.
+- Values per binding, one command bound twice with different arguments, are not supported yet.
+
 ## Keymaps
 
 A keymap is declared with `@(keymap)` on a proc that takes `^keymap.Keymap` and binds its chords.

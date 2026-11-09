@@ -33,9 +33,11 @@ _paste_subtree_with_undo :: proc(data: []byte, parent: engine.Transform_Handle) 
 }
 
 @(private)
-_duplicate_with_undo :: proc(tH: engine.Transform_Handle) -> engine.Transform_Handle {
+_duplicate_with_undo :: proc(tH: engine.Transform_Handle, suffix := "") -> engine.Transform_Handle {
 	result := engine.scene_duplicate_subtree(tH)
 	if result != {} {
+		// Named before the create is recorded, so a redo brings the name back.
+		if suffix != "" do engine._transform_append_name_suffix(result, suffix)
 		w := engine.ctx_world()
 		t := engine.pool_get(&w.transforms, engine.Handle(result))
 		if t != nil {
@@ -983,9 +985,8 @@ _duplicate_selected :: proc() {
 	for h in targets {
 		if !engine.pool_valid(&w.transforms, engine.Handle(h)) do continue
 		if _hierarchy_handle_is_root(h) || _hierarchy_handle_is_nested(h) do continue
-		result := _duplicate_with_undo(h)
+		result := _duplicate_with_undo(h, "_copy")
 		if result == {} do continue
-		engine._transform_append_name_suffix(result, "_copy")
 		append(&results, result)
 	}
 	if len(results) > 0 do undo.group_commit(&g)

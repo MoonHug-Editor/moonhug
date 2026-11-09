@@ -858,6 +858,64 @@ amend_top_selection :: proc(s: ^Undo_Stack, before, after: Selection_State) {
 	e.cmd = Command(grp)
 }
 
+// Ends the group on top of the transaction stack by folding it into the entry
+// on top of the stack (amend_begin): its commands are appended to that entry,
+// so one undo takes back both. Groups inside it are flattened. A value edit of
+// a target the entry already edits replaces that edit's new value instead of
+// being appended, so a field adjusted on every frame of a drag stays one edit.
+// Without a fresh top entry to fold into, the group lands as an entry of its
+// own.
+@(private)
+_end_group_into_top :: proc(s: ^Undo_Stack, label: string) {
+	if len(s.txn_stack) == 0 do return
+	if len(s.txn_stack) > 1 || len(s.items) == 0 || s.top != len(s.items) {
+		end_group_command(s, label)
+		return
+	}
+	grp := pop(&s.txn_stack)
+	defer delete(grp.subs)
+	if len(grp.subs) == 0 do return
+	e := &s.items[len(s.items) - 1]
+	if _, is_group := e.cmd.(Group_Command); !is_group {
+		g := Group_Command{subs = make([dynamic]Command, 0, 1 + len(grp.subs))}
+		append(&g.subs, e.cmd)
+		e.cmd = Command(g)
+	}
+	top := &e.cmd.(Group_Command)
+	for sub in grp.subs do _fold_command(top, sub)
+	_stack_mutated(s)
+	_mark_scenes_dirty(&e.cmd)
+}
+
+// Moves `sub` into `top`: a group's commands one by one, a value edit merged
+// into the edit `top` already holds for its target, anything else appended.
+@(private = "file")
+_fold_command :: proc(top: ^Group_Command, sub: Command) {
+	sub := sub
+	#partial switch &v in sub {
+	case Group_Command:
+		for inner in v.subs do _fold_command(top, inner)
+		delete(v.subs)
+		return
+	case Value_Command:
+		for i := len(top.subs) - 1; i >= 0; i -= 1 {
+			into, is_value := &top.subs[i].(Value_Command)
+			if !is_value || !_same_target(into.target, v.target) do continue
+			delete(into.new_json)
+			into.new_json = v.new_json
+			delete(v.old_json)
+			return
+		}
+	}
+	append(&top.subs, sub)
+}
+
+// Whether two targets name the same field of the same object or document.
+@(private = "file")
+_same_target :: proc(a, b: Property_Target) -> bool {
+	return a.kind == b.kind && a.scene == b.scene && a.local_id == b.local_id && a.offset == b.offset && a.type_id == b.type_id && a.raw_ptr == b.raw_ptr && a.asset_guid == b.asset_guid && a.asset_doc == b.asset_doc && a.asset_copy == b.asset_copy && (a.kind != .Pooled || a.handle.type_key == b.handle.type_key)
+}
+
 // --- History view details ------------------------------------------------------
 
 @(private)

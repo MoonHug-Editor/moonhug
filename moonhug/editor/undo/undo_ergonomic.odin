@@ -66,6 +66,7 @@ Group_Scope :: struct {
 	active:    bool,
 	aborted:   bool,
 	committed: bool,
+	amend:     bool, // amend_begin: folds into the entry on top of the stack
 	label:     string,
 }
 
@@ -78,6 +79,19 @@ group_begin :: proc(label := "") -> Group_Scope {
 	return Group_Scope{active = true, label = label}
 }
 
+// A group that becomes part of the entry on top of the stack instead of an
+// entry of its own, for an edit that adjusts what the last step did (a
+// command settings panel's in-place update). Committed and ended like
+// group_begin's. A value edit of a field the entry already edits replaces
+// that edit's new value, so adjusting a field on every frame of a drag keeps
+// one edit of it. Without an entry on top to fold into, the group lands as an
+// entry of its own, labeled `label`.
+amend_begin :: proc(label := "") -> Group_Scope {
+	g := group_begin(label)
+	g.amend = g.active
+	return g
+}
+
 group_end :: proc(g: ^Group_Scope) {
 	if g == nil || !g.active do return
 	defer g^ = {}
@@ -85,6 +99,10 @@ group_end :: proc(g: ^Group_Scope) {
 	if s == nil do return
 	if g.aborted || !g.committed {
 		abort_group_command(s)
+		return
+	}
+	if g.amend {
+		_end_group_into_top(s, g.label)
 		return
 	}
 	end_group_command(s, g.label)

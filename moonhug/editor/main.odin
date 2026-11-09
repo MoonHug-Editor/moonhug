@@ -173,6 +173,10 @@ main :: proc() {
     // the OS user's config folder, applied over the declared bindings and to
     // any keymap registered later (editor/keymap).
     _register_editor_keymaps()
+    // The values the commands with arguments last ran with, now they exist.
+    for id, args in editor_settings.command_args {
+        if c := keymap.command(id); c != nil do keymap.command_args_set_json(c, transmute([]u8)args)
+    }
     keymap.overrides_path = strings.clone(core.system_settings_file("Shortcuts"))
     keymap.overrides_load()
     keymap.log_conflicts()
@@ -342,6 +346,7 @@ main :: proc() {
         // Plugin-opened windows (editor/window, docs/core/Plugins.md).
         wnd.draw_all()
         command_palette.draw()
+        adjust_last_draw()
 
         draw_about_popup()
         // Confirmations and other modal questions (widgets/dialog.odin).
@@ -520,6 +525,7 @@ editor_shutdown :: proc() {
     _save_system_settings()
     menu.shutdown_menu()
     shortcuts_shutdown()
+    adjust_last_close()
     command_palette.shutdown()
     keymap.shutdown()
     delete(keymap.overrides_path)

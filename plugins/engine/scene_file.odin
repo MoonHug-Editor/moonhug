@@ -1746,6 +1746,46 @@ _collect_subtree_verbatim :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFil
 	}
 }
 
+// The prefab instances whose hosts lie in the subtree at `tH`: their records
+// and the breadcrumbs that peg them, so a paste makes them instances again
+// instead of empty objects. _collect_transform_tree leaves an instance's
+// content and its host's components out, the record brings them back. As a
+// save does, records pulled in from inner prefabs (expand_parent) and a
+// variant's root record stay out.
+@(private)
+_collect_subtree_nested_scenes :: proc(s: ^Scene, tH: Transform_Handle, sf: ^SceneFile) {
+	if s == nil do return
+	lids := make(map[Local_ID]bool, 0, context.temp_allocator)
+	for &ns in s.nested_scenes {
+		if ns.expand_parent != {} || nested_scene_is_root_variant(s, &ns) do continue
+		host := nested_scene_resolve_host_handle(s, &ns)
+		if host == {} do continue
+		// The host is `tH` or under it.
+		inside := false
+		for cur := host; cur != {}; {
+			if cur == tH {
+				inside = true
+				break
+			}
+			ct := pool_get(&ctx_world().transforms, Handle(cur))
+			if ct == nil do break
+			cur = Transform_Handle(ct.parent.handle)
+		}
+		if !inside do continue
+		append(&sf.nested_scenes, ns)
+		lids[ns.local_id] = true
+	}
+	for _, bc in s.breadcrumb_data {
+		if lids[bc.scene_instance] do append(&sf.breadcrumbs, bc)
+	}
+}
+
+// The subtree at `tH` as scene file JSON, for scene_paste_subtree. By default
+// it is written the way a save writes it: its own objects and the records of
+// the prefab instances in it, so a paste resolves their content from the
+// prefab again. With `include_nested_owned` every object and component is
+// written as it is, prefab content too, and no records: for a part of an
+// instance, which has no record of its own.
 scene_copy_subtree :: proc(tH: Transform_Handle, include_nested_owned := false) -> []byte {
 	w := ctx_world()
 	t := pool_get(&w.transforms, Handle(tH))
@@ -1757,6 +1797,7 @@ scene_copy_subtree :: proc(tH: Transform_Handle, include_nested_owned := false) 
 		_collect_subtree_verbatim(w, tH, &sf)
 	} else {
 		_collect_transform_tree(w, tH, &sf, _scene_hosts(t.scene))
+		_collect_subtree_nested_scenes(t.scene, tH, &sf)
 	}
 	defer scene_file_destroy_shallow(&sf)
 
