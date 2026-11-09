@@ -919,7 +919,11 @@ docs_write_group_indexes :: proc(groups: []string) -> bool {
 		// A section folder of a plugin's docs, plugins/<name>/<section>: the
 		// standard title and its place in the standard order, so every plugin
 		// shows the same groups in the same order.
-		if strings.has_prefix(dir, "plugins/") && strings.count(dir, "/") == 2 {
+		// The engine's pages sit in a site section of their own, /engine, so
+		// its section folders are engine/<section>.
+		plugin_section := strings.has_prefix(dir, "plugins/") && strings.count(dir, "/") == 2
+		plugin_section ||= strings.has_prefix(dir, "engine/") && strings.count(dir, "/") == 1
+		if plugin_section {
 			weight = PLUGIN_DOC_UNKNOWN_WEIGHT
 			for sec, i in PLUGIN_DOC_SECTIONS {
 				if sec.dir != filepath.base(dir) do continue

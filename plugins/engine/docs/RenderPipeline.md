@@ -3,7 +3,7 @@ title: "Render Pipeline"
 description: "The frame as an asset: a .renderpipeline places render steps in a frame lane and per-slot lanes, cameras name a slot, the window edits it live"
 weight: 110
 tags: ["rendering", "engine"]
-path: engine/rendering
+path: engine/concepts/rendering
 ---
 
 ## What it is

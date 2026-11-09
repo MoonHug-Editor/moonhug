@@ -3,7 +3,7 @@ title: "Groups"
 description: "Named groups of objects: a Groups component holds membership bits, the lifecycle hooks keep alive and active lists per group, the names live in a Group Names asset"
 weight: 65
 tags: ["components", "engine", "editor"]
-path: engine/data
+path: engine/concepts/data
 ---
 
 A group is a named set of objects game code asks for as a whole: every enemy, every checkpoint, every door. An object can be in several groups. Groups replace one-tag-per-object schemes: membership is a bit set, and a lookup costs the group's member count, not a scan of the scene.

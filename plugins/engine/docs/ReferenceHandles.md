@@ -3,7 +3,7 @@ title: "Reference Handles"
 description: "Handles, pools, persistent pointers and reference types, pool dispatch by type key, and how references serialize"
 weight: 50
 tags: ["serialization", "components", "engine"]
-path: engine/data
+path: engine/concepts/data
 ---
 
 ## Core concepts

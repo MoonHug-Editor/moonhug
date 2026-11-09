@@ -3,7 +3,7 @@ title: "Layers"
 description: "Named layers per domain: objects hold layer bits, consumers hold masks, the render layer names live in a Render Layers asset chosen in the Layers project setting, plugins own domains of their own"
 weight: 95
 tags: ["layers", "rendering", "physics", "engine", "editor"]
-path: engine/rendering
+path: engine/concepts/rendering
 ---
 
 A layer sorts objects for one system. An object holds layer bits, a consumer holds a mask, and the consumer handles an object when the two share a bit. Layers are per domain: the engine's render domain sorts objects for views, and a plugin can own a domain of its own, as the physics plugins do for their colliders. An object's render layer says nothing about what it collides with.
