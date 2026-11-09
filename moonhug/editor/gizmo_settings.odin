@@ -1,6 +1,6 @@
 package editor
 
-// The Gizmo Settings menu (docs/core/Gizmos.md) in the scene and game views:
+// The Gizmo Settings menu (docs/core/Gizmos.md) in the scene and Game windows:
 // the icon size, and per component type with an @(comp_on_draw_gizmos) hook
 // whether its icon and its gizmo show. The state lives in libs/gizmos
 // (settings.odin), the editor persists it.
@@ -14,14 +14,14 @@ import "moonhug:editor/widgets"
 
 @(phase={key=core.Phase.EditorInit, order=1, mode=Editor})
 gizmo_settings_install :: proc() {
-	view_menu_add_dynamic("Scene", "Gizmo Settings", _draw_gizmo_settings, order = 1)
-	view_menu_add_dynamic("Game", "Gizmo Settings", _draw_gizmo_settings, order = 1)
+	window_menu_add_dynamic("Scene", "Gizmo Settings", _draw_gizmo_settings, order = 1)
+	window_menu_add_dynamic("Game", "Gizmo Settings", _draw_gizmo_settings, order = 1)
 }
 
 // The Gizmo Settings submenu: the icon size, then a row per component type
 // with its icon and gizmo checkboxes. Checkboxes leave the menu open.
 @(private = "file")
-_draw_gizmo_settings :: proc(view: session.View) {
+_draw_gizmo_settings :: proc(window: session.Window_Ref) {
 	im.TextUnformatted("Icon Size")
 	im.SameLine()
 	widgets.slider_float("##gizmo_icon_px", &handles.icon_px, 12, 64, "%.0f px", 140)

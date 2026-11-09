@@ -1,6 +1,6 @@
 package widgets
 
-// Shared imgui widgets for editor views. Every window that splits into panes
+// Shared imgui widgets for editor windows. Every window that splits into panes
 // uses `splitter`, so the gap, the hit area and the highlight are the same
 // everywhere.
 
@@ -19,7 +19,7 @@ SPLITTER_SIZE :: f32(4)
 @(private = "file") _HOVER_DELAY :: f32(0.04)
 
 // A pane splitter that draws nothing at rest: the gap is the only mark. Under
-// the pointer it highlights the way imgui's splitter between docked views
+// the pointer it highlights the way imgui's splitter between docked windows
 // does: a strip of style.DockingSeparatorSize centered in the gap, in
 // ResizeGripHovered, ResizeGripActive while dragging, resize-arrow cursor.
 // (imgui draws its dock splitters through SplitterBehavior with the

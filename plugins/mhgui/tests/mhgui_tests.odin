@@ -138,7 +138,7 @@ test_collect_emits_one_quad_per_renderer_in_game_views :: proc(t: ^testing.T) {
 	// Layer 127 packs to 255 in the top byte: after every sprite layer.
 	testing.expect_value(t, out[0].key[0] >> 56, u64(255))
 
-	// The scene view draws the canvas as a world rect at the origin, one unit
+	// The Scene window draws the canvas as a world rect at the origin, one unit
 	// per canvas unit, sized like the game viewport (200x100 here): the
 	// centered 100x100 image starts at (50, 0).
 	engine.canvas_set_game_viewport({200, 100})
@@ -346,7 +346,7 @@ test_canvas_resolve_rects_applies_layout_and_scaler :: proc(t: ^testing.T) {
 		_ = i
 	}
 
-	// Game view 400x300 at scale 2: the canvas is 200x150 units.
+	// Game window 400x300 at scale 2: the canvas is 200x150 units.
 	view := engine.render_view_make(linalg.MATRIX4F32_IDENTITY, linalg.MATRIX4F32_IDENTITY, 400, 300, 0xFFFFFFFF)
 	root := engine.canvas_rect(view, canvas)
 	testing.expect_value(t, root.size, [2]f32{200, 150})
@@ -670,11 +670,11 @@ test_keep_rect_and_driven_flag :: proc(t: ^testing.T) {
 	testing.expect(t, !engine.rect_transform_driven(group), "the group itself is not")
 }
 
-// A UI Image in the scene view takes a click and a box select through the
-// scene view's own UI picking (any registered graphic), with no picking code
+// A UI Image in the Scene window takes a click and a box select through the
+// Scene window's own UI picking (any registered graphic), with no picking code
 // in the package.
 @(test)
-test_scene_view_picks_ui :: proc(t: ^testing.T) {
+test_scene_window_picks_ui :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
@@ -687,24 +687,24 @@ test_scene_view_picks_ui :: proc(t: ^testing.T) {
 	_add(image, .RectTransform)
 	_add(image, .CanvasRenderer)
 	_add(image, .Image)
-	// The scene view places the centered 100x100 image at (50, 0)..(150, 100).
+	// The Scene window places the centered 100x100 image at (50, 0)..(150, 100).
 	engine.canvas_set_game_viewport({200, 100})
 
 	eye := [3]f32{100, 50, 300}
 	view := engine.render_view_make(linalg.matrix4_look_at_f32(eye, {100, 50, 0}, {0, 1, 0}), linalg.matrix4_perspective_f32(1, 800.0 / 600.0, 0.1, 1000), 800, 600, ~u32(0), .SceneView)
 	at, _ := gizmos.helper_project_in(view, {100, 50, 0})
-	picked, ok := scene_tools.scene_view_pick(view, at.x, at.y)
+	picked, ok := scene_tools.scene_window_pick(view, at.x, at.y)
 	testing.expect(t, ok && picked == image, "a click on the image picks it")
-	_, ok = scene_tools.scene_view_pick(view, at.x + 300, at.y)
+	_, ok = scene_tools.scene_window_pick(view, at.x + 300, at.y)
 	testing.expect(t, !ok, "beside it, nothing")
-	band := scene_tools.scene_view_band_query(view, at - 5, at + 5)
+	band := scene_tools.scene_window_band_query(view, at - 5, at + 5)
 	testing.expect(t, len(band) >= 1 && band[0] == image, "box select takes it")
 }
 
 // --- Rect tool and transform tool on UI --------------------------------------------------
 
 // A canvas with one Image: anchors at the parent point (50, 50), the pivot 30
-// to the right at (80, 50), the rect (30..130, 0..100) in the scene view.
+// to the right at (80, 50), the rect (30..130, 0..100) in the Scene window.
 @(private = "file")
 _UI_Case :: struct {
 	rt:    ^engine.RectTransform,

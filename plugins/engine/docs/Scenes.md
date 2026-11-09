@@ -115,12 +115,12 @@ Generation is used as a validity sentinel — a zeroed generation means the scen
 
 ## UX
 
-- scene files can be selected in project view
+- scene files can be selected in Project window
 - hierarchy shows SceneManager's loaded scenes
-- scene view shows objects of loaded scenes in 3D space
+- Scene window shows objects of loaded scenes in 3D space
 - inspector shows selected transform and its components
 
-### Scene View UX
+### Scene Window UX
 The editor renders the active scene into an offscreen `RenderTexture2D` and displays it as an ImGui image. Camera is an orbit/flythrough hybrid:
 
 | Input | Action |

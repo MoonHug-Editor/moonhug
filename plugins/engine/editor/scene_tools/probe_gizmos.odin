@@ -1,6 +1,6 @@
 package scene_tools
 
-// The Reflection Probe in the scene view (plugins/engine/component_Reflection_Probe.odin):
+// The Reflection Probe in the Scene window (plugins/engine/component_Reflection_Probe.odin):
 // a small sphere at its position always, its box when selected, and inside
 // it, fainter, the box where the blend distance's fade starts. The boxes are
 // world-aligned and unscaled, as the probe applies them.

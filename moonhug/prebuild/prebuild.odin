@@ -43,7 +43,7 @@ import _ "naming_gen"
 import _ "project_settings_gen"
 import _ "user_settings_gen"
 import _ "scene_overlay_gen"
-import _ "view_chrome_gen"
+import _ "window_chrome_gen"
 import _ "inspector_button_gen"
 import _ "packages_gen"
 import _ "mcp_tool_gen"
@@ -290,7 +290,7 @@ _discover :: proc(list: ^[dynamic]string, dir: string) {
 	// joins the scan only while that plugin is installed. Its subfolders go
 	// with it. The plugin's own editor/ is part of the plugin like its root: a
 	// missing import there is a build error (docs/core/Plugins.md). So are
-	// the subpackages below editor/ (the engine's editor/scene_views).
+	// the subpackages below editor/ (the engine's editor/scene_windows).
 	if rest := strings.trim_prefix(dir, PACKAGES_DIR + "/"); rest != dir {
 		parts := strings.split(rest, "/", context.temp_allocator)
 		is_sub := len(parts) > 1

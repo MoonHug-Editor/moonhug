@@ -17,7 +17,7 @@ package animation_editor
 // A play button therefore never touches graph nodes. While simulating it calls
 // the driver (animation_play_entry) and lets the next tick rebuild the graph.
 // In edit mode nothing ticks the component, so it drives the animation window's
-// preview instead (view_animation.odin) — one preview in the editor, so a state
+// preview instead (window_animation.odin) — one preview in the editor, so a state
 // and a clip scrub can never pose the same object at once.
 
 import "base:runtime"
@@ -43,7 +43,7 @@ shutdown_animation_inspector :: proc() {
 }
 
 // Alt-click on a foldout applies to the whole subtree, as in the hierarchy
-// (plugins/engine/editor/scene_views/view_hierarchy.odin): the click toggles the row itself, and every row
+// (plugins/engine/editor/scene_windows/window_hierarchy.odin): the click toggles the row itself, and every row
 // under it is queued to take the same state when it next draws. Queued rather
 // than applied directly, because imgui owns a node's open state and the only
 // way to set it is SetNextItemOpen before that node draws.

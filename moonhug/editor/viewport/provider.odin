@@ -23,7 +23,7 @@ Viewport_Provider :: struct {
 	pick:                proc(view: core.Render_View, px, py: f32) -> (core.Transform_Handle, bool),
 	pick_all:            proc(view: core.Render_View, px, py: f32) -> []core.Transform_Handle, // temp-allocated, nearest first
 	band_query:          proc(view: core.Render_View, vmin, vmax: [2]f32) -> []core.Transform_Handle, // temp-allocated
-	// The selection outline for `view`. Draw only: every Scene view copy records its own.
+	// The selection outline for `view`. Draw only: every Scene window copy records its own.
 	outline:             proc(view: core.Render_View),
 	// The handles' frame, after handles.frame_begin: the scene handles, the transform tool. Once per frame, in one copy.
 	tools_frame:         proc(view: core.Render_View),
@@ -33,15 +33,15 @@ Viewport_Provider :: struct {
 	marks_rebuild:       proc(),
 	// Every @(comp_on_draw_gizmos) proc for the current gizmo view and channel.
 	draw_gizmos:         proc(),
-	// The game camera's view at this size, for the Game view's gizmos.
-	game_view:           proc(width, height: f32) -> (core.Render_View, bool),
+	// The game camera's view at this size, for the Game window's gizmos.
+	game_view:             proc(width, height: f32) -> (core.Render_View, bool),
 	// The open document has unsaved changes (the tab's dirty mark).
 	dirty:               proc() -> bool,
 	// Renders the world into `target` through its game cameras, its own
 	// passes. `over` draws over the scene inside the last camera's pass (the
-	// Game view's gizmos). False when no game camera is active.
+	// Game window's gizmos). False when no game camera is active.
 	render_game:         proc(target: ^gfx.Render_Target, over: proc()) -> bool,
-	// Gameplay debug drawing is on: the Game view shows the .Game gizmo channel.
+	// Gameplay debug drawing is on: the Game window shows the .Game gizmo channel.
 	debug_draw:          proc() -> bool,
 }
 

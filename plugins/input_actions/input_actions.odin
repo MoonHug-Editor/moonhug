@@ -463,7 +463,7 @@ context_pushed :: proc(name: string) -> bool {
 	return false
 }
 
-// The pushed maps from the top down, for a debug view.
+// The pushed maps from the top down, for a debug window.
 contexts_pushed :: proc(allocator := context.temp_allocator) -> []string {
 	_ensure_built()
 	out := make([]string, len(_rt.stack), allocator)
@@ -471,7 +471,7 @@ contexts_pushed :: proc(allocator := context.temp_allocator) -> []string {
 	return out
 }
 
-// Every mapping context of the asset, pushed or not, for a debug view.
+// Every mapping context of the asset, pushed or not, for a debug window.
 Context_Info :: struct {
 	name:     string,
 	priority: int,
@@ -512,7 +512,7 @@ released_fixed :: proc(id: Action_Id) -> bool { return _rt.contexts[id.map_index
 value_fixed :: proc(id: Action_Id) -> f32 { return _rt.contexts[id.map_index].actions[id.action_index].fixed.value.x }
 value2_fixed :: proc(id: Action_Id) -> [2]f32 { return _rt.contexts[id.map_index].actions[id.action_index].fixed.value }
 
-// --- Debug view -------------------------------------------------------------------
+// --- Debug window -----------------------------------------------------------------
 
 // One action of a pushed context, with its frame values, for the debug
 // window: `blocked` when every key of the action is consumed by a context

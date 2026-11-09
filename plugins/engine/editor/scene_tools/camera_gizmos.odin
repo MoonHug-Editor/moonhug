@@ -2,7 +2,7 @@ package scene_tools
 
 // Camera frustum gizmo (Unity's): the selected camera draws its view frustum
 // as a wire frustum (near rect, far rect, connecting edges). Aspect comes from
-// the game view's render target so the wires show exactly what the game view
+// the Game window's render target so the wires show exactly what the Game window
 // sees. Runs through the @(comp_on_draw_gizmos) hook for cameras in the selection, drawn with
 // libs/gizmos. Every camera also gets a scene icon.
 

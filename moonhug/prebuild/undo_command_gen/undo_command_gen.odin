@@ -10,7 +10,7 @@ package undo_command_gen
 // and three optional ones:
 //   scenes_<Name>(v: ^Name, out: ^[dynamic]core.Scene_Ref)   scenes it edits: dirtied on apply, purged with the scene
 //   assets_<Name>(v: ^Name, out: ^[dynamic]core.Asset_GUID)  assets it edits: purged with the asset
-//   describe_<Name>(v: ^Name, b: ^strings.Builder, depth: int)  the history view's detail lines
+//   describe_<Name>(v: ^Name, b: ^strings.Builder, depth: int)  the History window's detail lines
 //
 // The union is written into moonhug/editor/undo, so a command's package must
 // not import undo: it works on its own world and the stack drives it. The
@@ -53,7 +53,7 @@ _register :: proc "contextless" () {
 			{prefix = "label_", signature = "proc(v: ^T) -> string", required = true, summary = "The history row's default label."},
 			{prefix = "scenes_", signature = "proc(v: ^T, out: ^[dynamic]core.Scene_Ref)", summary = "The scenes the command edits: dirtied when it runs, purged with the scene."},
 			{prefix = "assets_", signature = "proc(v: ^T, out: ^[dynamic]core.Asset_GUID)", summary = "The assets the command edits: purged with the asset."},
-			{prefix = "describe_", signature = "proc(v: ^T, b: ^strings.Builder, depth: int)", summary = "The detail lines the history view shows for the entry."},
+			{prefix = "describe_", signature = "proc(v: ^T, b: ^strings.Builder, depth: int)", summary = "The detail lines the History window shows for the entry."},
 		},
 		doc     = "Every type marked `@(undo_command)` joins the undo stack's `Command` union, and the generated dispatch calls these by name. A command's package must not import `moonhug:editor/undo`, since the generated union imports it.",
 	})
@@ -174,7 +174,7 @@ generate :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "}\n\n")
 	dispatch(&b, rows[:], "// Assets the command edits: purged with the asset.\n_command_assets :: proc(cmd: ^Command, out: ^[dynamic]core.Asset_GUID) {\n", "assets", ", out", optional = true)
 	strings.write_string(&b, "}\n\n")
-	dispatch(&b, rows[:], "// The history view's detail lines for one entry.\ndescribe :: proc(cmd: ^Command, b: ^strings.Builder, depth: int) {\n", "describe", ", b, depth", optional = true)
+	dispatch(&b, rows[:], "// The History window's detail lines for one entry.\ndescribe :: proc(cmd: ^Command, b: ^strings.Builder, depth: int) {\n", "describe", ", b, depth", optional = true)
 	strings.write_string(&b, "}\n")
 	db.emit(w, OUT_FILE, strings.to_string(b))
 	return true

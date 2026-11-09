@@ -1,13 +1,13 @@
 ---
 title: "SDL3 Renderer"
-description: "Migration from raylib to SDL3 and SDL_GPU, mesh components, and the scene-view features built on the new renderer"
+description: "Migration from raylib to SDL3 and SDL_GPU, mesh components, and the Scene window features built on the new renderer"
 weight: 110
 tags: ["rendering", "meshes", "gizmos", "engine"]
 path: engine/rendering
 ---
 
 Migration from raylib to SDL3 + SDL_GPU, with Mesh components (MeshFilter /
-MeshRenderer, glTF import) and the scene-view features that build on the new
+MeshRenderer, glTF import) and the Scene window features that build on the new
 renderer: per-camera render commands, click picking, selection outline,
 transform gizmos.
 
@@ -150,7 +150,7 @@ Everything gfx draws is lit, blended and filtered in linear light:
 
 - Colors handed to gfx (vertex colors, tints, material colors, clear colors, light colors, the ambient level) are sRGB as authored and decoded once on the way in: the world vertex shader decodes vertex colors and tints, `pass_begin_*` and `set_lights` decode on the CPU. A color brighter than 1 is an sRGB color times a linear intensity.
 - Color textures stay stored as sRGB bytes (imgui shows them as they are) and the shaders that sample them decode them: the unlit shader, the lit template's albedo, the shader graph's texture nodes.
-- Render targets come in three formats (`Target_Format`). `HDR` is linear float. `LDR` is linear at 8 bits, stored as sRGB so the GPU encodes on write and decodes on sampling. `Display` holds sRGB bytes: the window and every target imgui shows (scene and game views, previews, thumbnails).
+- Render targets come in three formats (`Target_Format`). `HDR` is linear float. `LDR` is linear at 8 bits, stored as sRGB so the GPU encodes on write and decodes on sampling. `Display` holds sRGB bytes: the window and every target imgui shows (scene and Game windows, previews, thumbnails).
 - A pass on a Display target draws into a linear scratch target of its size and `pass_end` encodes it, so previews and thumbnails light in linear like the scene. `display_blit` encodes a finished linear image onto a Display target directly: the last pass of a render pipeline (`final_blit`).
 
 ## Cubemaps and the environment
@@ -205,7 +205,7 @@ The surface template lights a back face with its normal reversed (`vertex_normal
 
 ## Screen-space reflections
 
-`set_screen_reflections(tex)` hands a pass's lit draws the screen's reflections: the view's size, premultiplied, rgb what each pixel's mirror ray sees times the confidence, alpha the confidence, with mip levels. Shaders that declare `REFLECTIONS_SLOT` (the surface template's `screen_reflections`, binding 13) get it there, clear when none is set. The template reads it at the fragment's screen position blurrier the rougher the surface and fades it out toward rough surfaces (`screen_reflection(roughness)`), then puts it in place of the environment's reflection by its alpha. `SSR_SHADER` is the fullscreen pass that makes it from the depth, the surfaces' world-space normals and last frame's opaque image (`Ssr_Params`: the projection, the view, the reprojection into last frame's clip space, the march's distance, thickness, steps and edge fade, and whether the back faces' depth is bound at binding 3). The engine's `scene_ssr` step drives it (RenderPipeline.md, Screen-space reflections). `pass_output_normals()` turns the current pass into a normals pass: the surface template and `world.frag` read `draw_params.y` from the draw block and write the surface's world-space normal, normal map applied, instead of shading, alpha clipping kept. `pass_draw_back_faces()` flips the culling of the current pass's mesh draws (back-culled draws cull their front faces, double-sided ones stay double-sided), so a depth-only pass holds each closed mesh's far side: `scene_ssr` reads it as how thick each surface is. `NORMALS_SHADER` (the scene view's Normals mode) encodes the vertex normal as colour and clips by the draw's alpha cutoff.
+`set_screen_reflections(tex)` hands a pass's lit draws the screen's reflections: the view's size, premultiplied, rgb what each pixel's mirror ray sees times the confidence, alpha the confidence, with mip levels. Shaders that declare `REFLECTIONS_SLOT` (the surface template's `screen_reflections`, binding 13) get it there, clear when none is set. The template reads it at the fragment's screen position blurrier the rougher the surface and fades it out toward rough surfaces (`screen_reflection(roughness)`), then puts it in place of the environment's reflection by its alpha. `SSR_SHADER` is the fullscreen pass that makes it from the depth, the surfaces' world-space normals and last frame's opaque image (`Ssr_Params`: the projection, the view, the reprojection into last frame's clip space, the march's distance, thickness, steps and edge fade, and whether the back faces' depth is bound at binding 3). The engine's `scene_ssr` step drives it (RenderPipeline.md, Screen-space reflections). `pass_output_normals()` turns the current pass into a normals pass: the surface template and `world.frag` read `draw_params.y` from the draw block and write the surface's world-space normal, normal map applied, instead of shading, alpha clipping kept. `pass_draw_back_faces()` flips the culling of the current pass's mesh draws (back-culled draws cull their front faces, double-sided ones stay double-sided), so a depth-only pass holds each closed mesh's far side: `scene_ssr` reads it as how thick each surface is. `NORMALS_SHADER` (the Scene window's Normals mode) encodes the vertex normal as colour and clips by the draw's alpha cutoff.
 
 ## Sampler slots
 
@@ -288,18 +288,18 @@ camera_view_proj        :: proc(cam: ^Camera, aspect: f32) -> (view, proj: matri
 render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command)
 render_execute          :: proc(view: Render_View, commands: []Render_Command, phases := RENDER_ALL_PHASES)  // guid→cache→gfx.draw_*, the opaque meshes and/or the transparent quads
 render_world_cameras    :: proc(rt: ^gfx.Render_Target, overlay: proc())  // nil = swapchain; ALL enabled cams by order, each a run of its pipeline slot; overlay draws over the last camera's scene
-render_scene_view       :: proc(rt, view, slot, clear, under, over: proc())  // one editor view through the pipeline slot (the scene view asks for Editor, gets Main otherwise), the grid under and the gizmos over the scene. view.mode (core.View_Mode) picks shaded / wireframe / unlit / normals / overdraw
+render_scene_view       :: proc(rt, view, slot, clear, under, over: proc())  // one editor window through the pipeline slot (the Scene window asks for Editor, gets Main otherwise), the grid under and the gizmos over the scene. view.mode (core.View_Mode) picks shaded / wireframe / unlit / normals / overdraw
 render_pipeline_run     :: proc(slot: string, ctx: ^Render_Ctx) -> bool  // render_pipeline.odin: the frame lane once per frame, then the slot's lane in canvas order
 shadow_cascades / shadow_atlas / shadow_bind                              // render_shadow.odin: the directional cascades per view, the spot and point atlas per frame, handed to gfx.set_shadow_cascades / set_shadow_atlas by scene_target_begin
 camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // replaces rl.GetScreenToWorldRay
 ```
 
-- Culling: layers (`t.render_layer & view.layer_mask`), and the view frustum when `Render_View.cull` is on. Camera views and the editor scene view turn it on. Probe views leave it off: the shadow steps collecting every caster, thumbnails and previews. The mesh collector tests the mesh's local box moved by the model matrix (`core.aabb_transform`) against the view's six planes (`core.frustum_intersects_aabb`, planes from `core.frustum_from_view_proj` in `render_view_make`). The skinned collector tests the posed bounds after posing, since another view in the same frame may still draw the mesh. The package collectors (sprites, particles, the canvas) do not cull.
+- Culling: layers (`t.render_layer & view.layer_mask`), and the view frustum when `Render_View.cull` is on. Camera views and the editor Scene window turn it on. Probe views leave it off: the shadow steps collecting every caster, thumbnails and previews. The mesh collector tests the mesh's local box moved by the model matrix (`core.aabb_transform`) against the view's six planes (`core.frustum_intersects_aabb`, planes from `core.frustum_from_view_proj` in `render_view_make`). The skinned collector tests the posed bounds after posing, since another view in the same frame may still draw the mesh. The package collectors (sprites, particles, the canvas) do not cull.
 - Sprites stay transform-oriented quads (NOT billboards), 100 px/unit;
   `sprite_world_corners` helper is shared by draw AND picking so they can't
   diverge.
-- The editor scene view builds a `Render_View` from its own plain-data camera
-  and goes through the SAME collect/execute — game view and scene view render
+- The editor Scene window builds a `Render_View` from its own plain-data camera
+  and goes through the SAME collect/execute — Game window and Scene window render
   identically by construction.
 - Collection is a list of collectors: a collector is a
   `proc(view: Render_View, out: ^[dynamic]Render_Command)` declared with
@@ -345,7 +345,7 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
   (Automatic by transparency islands, Grid By Cell Count, Grid By Cell Size),
   drag-create/move rects, per-slice name/rect/pivot panel, its own
   Apply/Revert against the texture's meta. Opened from the importer
-  inspector's Sprite Editor button or Window/Sprite Editor.
+  inspector's Sprite Editor button.
 
 ## Roadmap
 
@@ -398,18 +398,18 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
       focus-regain refresh via `gfx.input_focus_gained()`;
       DELETED `editor/imgui_raylib_input.odin` + all manual imgui IO code +
       the `scale_ui_for_dpi` workaround toggle
-- [x] `editor/view_scene.odin` / `view_game.odin` — `^gfx.Render_Target` +
+- [x] `editor/window_scene.odin` / `window_game.odin` — `^gfx.Render_Target` +
       `rt_resize`; scene camera stays plain orbit data (orbit/fly logic
       unchanged); grid/axes via `gfx.draw_line`; imgui image uvs `{0,0}/{1,1}`
-- [x] `editor/view_about.odin`, `editor/window.odin` (SDL display APIs),
+- [x] `editor/window_about.odin`, `editor/window.odin` (SDL display APIs),
       `dock_icon_darwin.odin` unchanged
 - [x] Checkpoint: zero `vendor:raylib` imports; tests green; app runs (init +
       loop + shutdown clean); editor starts and runs its loop clean.
-      VISUAL parity (tank scene in views, turret aim) verified in phase 4
+      VISUAL parity (tank scene in windows, turret aim) verified in phase 4
 
 ### 4. Parity polish
 - [x] Sprite orientation/uv verification — confirmed in-editor; sprites also
-      render SHARPER than raylib did (views run at native HiDPI resolution)
+      render SHARPER than raylib did (windows run at native HiDPI resolution)
 - [ ] Overlapping-sprite alpha/depth check
 - [ ] Window position persistence across monitors; ProMotion dt sanity
 - [ ] macOS live-resize freeze documented (SDL_AddEventWatch fix deferred)
@@ -443,13 +443,13 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
       transform_get_comp; skip empty guid); render_execute draws meshes first
       (depth-write), then sprites back-to-front
 - [x] Object Picker `ext:` tag: `current_field_ext_filter` in
-      `editor/inspector/view_inspector.odin`, row + drag-drop filtering in
+      `editor/inspector/window_inspector.odin`, row + drag-drop filtering in
       `property_drawer_asset_guid.odin`; SpriteRenderer.texture tagged too
 - [x] prebuild rerun
 - [x] Checkpoint: save/load round-trip test green (125 tests);
       `assets/meshes/cube.glb` added for the in-editor check — Add Component
       shows both, mesh picker lists only glb/gltf, cube renders in Scene AND
-      Game views (VERIFY IN EDITOR)
+      Game windows (VERIFY IN EDITOR)
 
 ### 7. Scene picking
 - [x] `engine/raycast.odin` — `ray_hit_aabb` (slab, unnormalized-direction
@@ -464,7 +464,7 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 - [x] LMB click hook in `handle_scene_input` (pressed+released under a 4px drag
       threshold, no Alt) → `inspector_request_select`; miss clears selection.
       Cmd (Ctrl) + right-click opens the pick menu: every object under the
-      pointer (`scene_view_pick_all`), nearest first, a row selects it.
+      pointer (`scene_window_pick_all`), nearest first, a row selects it.
       A right-click that does not look or fly opens the context menu on
       release: the picked object's hierarchy-row menu (selecting it unless it
       is already selected), or the create and view items on empty space

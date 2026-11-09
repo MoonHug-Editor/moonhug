@@ -11,10 +11,10 @@ package handles
 //   (external/fonts/material/MaterialSymbolsOutlined.codepoints)
 // - a texture asset, by its guid
 //
-// Clicking the badge in the scene view selects its owner, and box select
-// takes it too. Icons are gizmos, recorded for each view that shows gizmos
+// Clicking the badge in the Scene window selects its owner, and box select
+// takes it too. Icons are gizmos, recorded for each window that shows gizmos
 // (.Editor, .Editor_Game), so handles and the transform gizmo (.Tools) draw over them,
-// and the game view shows them with its Gizmos toggle. Each view draws them
+// and the Game window shows them with its Gizmos toggle. Each window draws them
 // facing its own camera.
 
 import "base:runtime"

@@ -34,7 +34,7 @@ what the field's type can physically reference (see
   `{"pptr":{...}}` — re-pick and save after converting.
 - Ping channels: `inspector_request_ping` (hierarchy reveal + fading flash,
   selection untouched), `inspector_request_select` (select + reveal + scroll),
-  `inspector_request_ping_asset` (project view reveal + flash), and
+  `inspector_request_ping_asset` (Project window reveal + flash), and
   `inspector_request_open_asset` (reveal + select + activate).
 - AssetDB: `root_info` + `assets_by_type` (values are complete PPtrs), kept
   current by the incremental Unity-style `asset_db_refresh` (roadmap step 5;
@@ -122,10 +122,10 @@ Label   [ value          ] [x] [pick]
 - **Label**: plain field name.
 - **Value button**: shows the referenced object's name / "None".
   - Single click PINGS: reveal + fading highlight (~0.5s), selection
-    untouched — in the hierarchy for scene objects, in the project view for
+    untouched — in the hierarchy for scene objects, in the Project window for
     assets.
   - Double click acts: SELECTS the scene object in the hierarchy / OPENS the
-    asset (selected in the project view; scene loads, .asset goes to the
+    asset (selected in the Project window; scene loads, .asset goes to the
     inspector).
 - **[x] remove**: shown only when the value is not None, placed BEFORE the
   picker button.

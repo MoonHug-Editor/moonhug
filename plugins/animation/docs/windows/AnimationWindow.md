@@ -11,7 +11,7 @@ Edits a clip of the selected object's [Animation](../components/Animation.md) co
 
 - The Animation component of the selected object or its nearest ancestor, or of the object kept while an asset is selected. Selecting a bone keeps the window on the animated root. A locked Inspector does not change it.
 - The clip list holds every clip the component references: its `clip` field and every Clip state on every layer, blend children included. A clip is listed because something references it, not because it exists in the project.
-- The padlock in the tab bar is the shared view lock ([Views](/docs/core/Views.md), "View locks"): every copy of the window shares one lock, as they share one preview. Locked, the window stays on its object when you select another, whether or not the object has an Animation component yet. An object locked before its component is added shows the editor once it has one.
+- The padlock in the tab bar is the shared window lock ([Windows](/docs/core/Windows.md), "Window locks"): every copy of the window shares one lock, as they share one preview. Locked, the window stays on its object when you select another, whether or not the object has an Animation component yet. An object locked before its component is added shows the editor once it has one.
 - A locked object that is deleted, or whose scene closes, leaves the window saying it is missing. The lock stays, and the window shows the object again when it is back. The lock survives a restart.
 
 ## Editing and saving
@@ -136,7 +136,7 @@ In the curve view every Free key of the plotted row shows its tangent handles: a
 - Dragging a handle sets that side's tangent of that lane, one undo step per drag.
 - Holding Shift while dragging sets both tangents to the same slope: a smooth joint.
 - A press near both a handle and a key takes the handle.
-- The view's value range takes in the handle points, so a steep handle stays visible.
+- The window's value range takes in the handle points, so a steep handle stays visible.
 
 ## Model clips
 
@@ -148,9 +148,9 @@ A missing or unreadable `.anim` edits nothing either, but is not marked Read-Onl
 
 - By default playback follows the clip's `wrap`: a Once clip plays through and stops, a Loop clip cycles. The window reads the imported clip for that, since the setting lives in the `.meta`.
 - The playback toggle after the transport buttons overrides it. A click steps through: **Match the clip's wrap setting**, **Play once** to look at a loop's end pose, and **Loop** to watch a one-shot over and over.
-- Play Ends on Last Frame, in the view's menu, decides where a Once playback comes to rest: on the last frame or back at the first.
+- Play Ends on Last Frame, in the window's menu, decides where a Once playback comes to rest: on the last frame or back at the first.
 - Keys snap to frames while dragging. Hold Alt to drag freely.
-- The ruler over the time canvas is a choice in the view's menu: Frames and Time, two rulers sharing the band, Frames, or Time.
+- The ruler over the time canvas is a choice in the window's menu: Frames and Time, two rulers sharing the band, Frames, or Time.
 
 ## Preferences
 
@@ -159,8 +159,8 @@ Saved per developer in `UserSettings/animation.json`:
 | Preference | Default | Set from |
 |---|---|---|
 | Playback | Match the clip's wrap setting | the toolbar's playback toggle |
-| Play Ends on Last Frame | off | the view's menu |
-| Ruler | Frames and Time | the view's menu |
+| Play Ends on Last Frame | off | the window's menu |
+| Ruler | Frames and Time | the window's menu |
 
 A saved value the window does not know reads as the default.
 

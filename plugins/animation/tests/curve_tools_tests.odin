@@ -231,7 +231,7 @@ test_curve_tools_window_sets_mode_on_selection :: proc(t: ^testing.T) {
 	undo.set_asset_apply(inspector.asset_doc_apply_json)
 	undo.set_asset_doc_lookup(inspector.asset_doc_payload_ptr)
 	defer {
-		animation_editor.animation_view_deselect()
+		animation_editor.animation_window_deselect()
 		animation_editor.animation_record_reset()
 		inspector.asset_docs_shutdown()
 		engine.asset_db_shutdown()
@@ -248,11 +248,11 @@ test_curve_tools_window_sets_mode_on_selection :: proc(t: ^testing.T) {
 
 	root := engine.transform_new("Root")
 	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0, armed = false)
-	animation_editor.animation_view_select_key(0, 1)
-	animation_editor.animation_view_select_key(0, 2, add = true)
+	animation_editor.animation_window_select_key(0, 1)
+	animation_editor.animation_window_select_key(0, 2, add = true)
 
 	before := s.top
-	animation_editor.animation_view_set_key_mode(.Smooth)
+	animation_editor.animation_window_set_key_mode(.Smooth)
 	clip = cast(^anim.AnimationClip)doc.data.data
 	ch := &clip.channels[0]
 	testing.expect_value(t, len(ch.modes), 3)
@@ -275,7 +275,7 @@ test_curve_tools_window_sets_mode_on_selection :: proc(t: ^testing.T) {
 	// A preset over the same selection is one more step, and the keys turn
 	// Free with flat tangents.
 	before = s.top
-	animation_editor.animation_view_apply_preset(.Flat)
+	animation_editor.animation_window_apply_preset(.Flat)
 	ch = &(cast(^anim.AnimationClip)doc.data.data).channels[0]
 	testing.expect_value(t, s.top, before + 1)
 	testing.expect(t, ch.modes[1] == .Free && ch.modes[2] == .Free && ch.modes[0] == .Step, "the selected keys turn Free")

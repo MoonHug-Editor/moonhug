@@ -6,7 +6,7 @@ package core
 // A user setting is a package-level var marked @(user_settings={name="..."}):
 //
 //   @(user_settings={name="Animation"})
-//   anim_view_prefs := Anim_View_Prefs{ends_on_last_frame = false}
+//   anim_window_prefs := Anim_Window_Prefs{ends_on_last_frame = false}
 //
 // The generator loads every marked var at editor start and saves them at
 // shutdown, so a plugin keeps a preference without the editor's own settings

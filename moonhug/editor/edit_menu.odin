@@ -2,10 +2,10 @@ package editor
 
 // The Edit menu's Undo and Redo, and its selection band (Cut..Delete). The band
 // acts on the selection, wherever it is: on the selected files while the
-// project holds the selection (the operations the project view's own
+// project holds the selection (the operations the Project window's own
 // shortcuts run), on the scene objects otherwise, through the installed scene
-// views (session.Scene_Views). The hierarchy's context menu mirrors the band
-// to its top (plugins/engine/editor/scene_views/hierarchy_menu.odin).
+// windows (session.Scene_Windows). The hierarchy's context menu mirrors the band
+// to its top (plugins/engine/editor/scene_windows/hierarchy_menu.odin).
 
 import "moonhug:editor/session"
 import undo "moonhug:editor/undo"

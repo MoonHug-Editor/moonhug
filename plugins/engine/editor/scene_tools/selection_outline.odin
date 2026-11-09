@@ -1,8 +1,8 @@
 package scene_tools
 
 // The selection outline the gizmo pass draws on every selected object, and
-// owner_quads, the per-object view of drawn_quads it shares with the scene
-// view's framing.
+// owner_quads, the per-object view of drawn_quads it shares with the Scene
+// window's framing.
 
 import "core:math/linalg"
 import "moonhug:packages/engine"
@@ -20,7 +20,7 @@ import "moonhug:libs/gizmos"
 // the character deforms independently inside it. The box is a stand-in for a
 // silhouette outline, which is what an editor draws here when it can, and a
 // box at the wrong angle is further from that than nothing — the transform
-// gizmo and the axis cross still mark the selection. The scene view's
+// gizmo and the axis cross still mark the selection. The Scene window's
 // framing uses the posed world bounds, so framing the selection still frames
 // the character where it actually is.
 draw_selection_outline :: proc(tH: engine.Transform_Handle, quads: Drawn_Quads) {

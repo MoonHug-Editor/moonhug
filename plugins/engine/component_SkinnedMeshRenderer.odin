@@ -263,7 +263,7 @@ collect_skinned_meshes :: proc(view: Render_View, out: ^[dynamic]Render_Command)
         if !_skin_bind(smr, mesh, mf.mesh.guid, part) do continue
         // Safe because nothing moves a joint between two collects of one
         // frame: the editor loop runs sim_tick and preview.apply_all before
-        // the scene and game views draw and preview.restore_all after both
+        // the scene and Game windows draw and preview.restore_all after both
         // (editor/main.odin), and the app loop updates, then renders.
         if smr.posed_frame != gfx.frame_index {
             _skin_pose(smr, mesh)

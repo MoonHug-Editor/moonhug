@@ -44,8 +44,8 @@ set_app_menu_title :: proc(title: string) {
 
 // SDL's default menu bar has a Window menu whose Close item carries Cmd+W,
 // and the key equivalent fires performClose on the window before any key
-// event reaches imgui: Cmd+W would quit the editor. The editor's Views
-// keymap uses Ctrl+W (Cmd+W here) to close the focused view, so the item
+// event reaches imgui: Cmd+W would quit the editor. The editor's Window
+// keymap uses Ctrl+W (Cmd+W here) to close the focused window, so the item
 // loses its key. Quit stays Cmd+Q, and the window's close button works.
 drop_window_close_key :: proc() {
     app := NS.Application_sharedApplication()

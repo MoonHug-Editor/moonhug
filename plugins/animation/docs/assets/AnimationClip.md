@@ -10,7 +10,7 @@ A clip is keyframed animation: channels that move transforms and component field
 ## Example
 
 - Assets, Create, Animation makes `New Animation.anim`, an empty clip to edit in the [Animation window](../windows/AnimationWindow.md).
-- A glTF model with animations lists its clips under it in the project view, `UAL1_Standard / Walk_Loop` for instance. A clip field takes them directly.
+- A glTF model with animations lists its clips under it in the Project window, `UAL1_Standard / Walk_Loop` for instance. A clip field takes them directly.
 
 ## Import settings
 
@@ -36,7 +36,7 @@ The settings live in the `.meta` rather than the `.anim` because a clip extracte
 - The mesh importer bakes each of a glTF model's animations to its own sub-asset file beside the model's artifact ([Sub-asset files](/docs/core/AssetPipeline.md#sub-asset-files)), and lists the clips in the model's settings with an id and a name.
 - A clip is named by `{model guid, clip id}`. That is what a clip field stores. A `.anim` is `{its guid, 0}`, so one field takes both.
 - The id is given at the first import and kept across imports by matching the clip's name.
-- In the project view a model expands to its parts and its clips. A clip row drags onto a clip field, and the picker lists clips as `Model / Clip`.
+- In the Project window a model expands to its parts and its clips. A clip row drags onto a clip field, and the picker lists clips as `Model / Clip`.
 - Selecting a clip under a model shows the model's import settings and, below them, that clip's own settings. They live in the clip's entry in the model's `.meta` and bake on Apply.
 - The Preview pane poses the model's skeleton with the clip, playing or scrubbed by a slider. The project grid shows each clip at its midpoint.
 - A clip that disappears from the model, renamed in the modelling tool for instance, stays in the list as an orphan so references to it keep resolving. Its section offers to remap it onto one of the model's current clips, which then takes over its references.

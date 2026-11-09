@@ -25,7 +25,7 @@ Target_Resolver :: struct {
 	scene_alive:      proc(r: core.Scene_Ref) -> bool,
 	scene_mark_dirty: proc(r: core.Scene_Ref),
 	scene_name:       proc(r: core.Scene_Ref) -> string,
-	// Display names for the history view (describe).
+	// Display names for the History window (describe).
 	object_name:      proc(r: core.Scene_Ref, local_id: core.Local_ID) -> (string, bool),
 	target_name:      proc(t: Property_Target) -> (string, bool),
 	asset_path:       proc(guid: core.Asset_GUID) -> (string, bool),

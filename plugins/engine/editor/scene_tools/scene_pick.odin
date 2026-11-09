@@ -1,8 +1,8 @@
 package scene_tools
 
-// Scene-view click picking (plugins/engine/docs/SDL3Renderer.md #7). CPU tests — the quads
-// package renderers draw (sprites, particles: the render commands the scene
-// view collects, so the SAME corners the renderer draws), meshes against
+// Scene window click picking (plugins/engine/docs/SDL3Renderer.md #7). CPU tests — the quads
+// package renderers draw (sprites, particles: the render commands the Scene
+// window collects, so the SAME corners the renderer draws), meshes against
 // their import-time AABB in local space, skinned meshes against the world
 // bounds of the pose they last drew. Nearest hit wins. The editor ignores
 // render layer masks — you can pick anything you can see.
@@ -55,10 +55,10 @@ Scene_Hit :: struct {
 	t:  f32, // along the ray
 }
 
-// The object under the pointer: the first of scene_view_pick_all. px, py in
+// The object under the pointer: the first of scene_window_pick_all. px, py in
 // viewport pixels relative to the scene image's top-left.
-scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transform_Handle, bool) {
-	hits := scene_view_pick_all(view, px, py)
+scene_window_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transform_Handle, bool) {
+	hits := scene_window_pick_all(view, px, py)
 	if len(hits) == 0 do return {}, false
 	return hits[0].tH, true
 }
@@ -67,7 +67,7 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 // takes the first, the pick menu (Cmd + right-click) lists them all. Scene
 // icons (handles.icon) draw over everything, so they come before any
 // geometry, nearest icon first.
-scene_view_pick_all :: proc(view: engine.Render_View, px, py: f32) -> []Scene_Hit {
+scene_window_pick_all :: proc(view: engine.Render_View, px, py: f32) -> []Scene_Hit {
 	ray := engine.render_view_screen_ray(view, px, py)
 	w := engine.ctx_world()
 	icons := make([dynamic]Scene_Hit, context.temp_allocator)
@@ -168,11 +168,11 @@ _add_hit :: proc(out: ^[dynamic]Scene_Hit, h: Scene_Hit) {
 	append(out, h)
 }
 
-// Rubber-band counterpart of scene_view_pick: every enabled renderer (on an
+// Rubber-band counterpart of scene_window_pick: every enabled renderer (on an
 // active-in-hierarchy transform) whose projected bounds intersect the
 // viewport-pixel rect. Temp-allocated. Duplicates are fine (adding to the selection
 // dedups).
-scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> []engine.Transform_Handle {
+scene_window_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> []engine.Transform_Handle {
 	out := make([dynamic]engine.Transform_Handle, context.temp_allocator)
 	w := engine.ctx_world()
 

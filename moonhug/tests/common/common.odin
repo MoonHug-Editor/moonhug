@@ -69,8 +69,8 @@ _register_once :: proc() {
 	registration.register_doc_hooks()
 	registration.register_property_drawers()
 	install_providers()
-	// The asset each view edits (@(view_document)), as the editor registers them.
-	register_view_documents()
+	// The asset each window edits (@(window_document)), as the editor registers them.
+	register_window_documents()
 	// Mirror editor/main.odin: nested_scene_revert_override needs pointer
 	// typeids for primitive field types (position, color, scale, …) so it
 	// can hand a properly-typed `any` to json.unmarshal_any.

@@ -1,10 +1,10 @@
 package gizmos
 
-// Gizmo visibility settings (docs/core/Gizmos.md): the scene view's Gizmos
+// Gizmo visibility settings (docs/core/Gizmos.md): the Scene window's Gizmos
 // toggle and, per component type, which parts of its gizmo hook show.
 //
-// - The scene view's Gizmos toggle shows or hides every gizmo and icon in it.
-//   Handles and the transform gizmo stay in the scene view either way, and so
+// - The Scene window's Gizmos toggle shows or hides every gizmo and icon in it.
+//   Handles and the transform gizmo stay in the Scene window either way, and so
 //   do gameplay shapes (.Game).
 // - Per component type with an @(comp_on_draw_gizmos) hook, whether its icon and
 //   its gizmo show. The gizmo dispatcher applies them around each hook
@@ -21,8 +21,8 @@ Gizmo_Part :: enum {
 	Gizmo,
 }
 
-// The scene view's Gizmos toggle. The game view's is the editor's game_gizmos.
-@(view_menu={view="Scene", label="Gizmos"})
+// The Scene window's Gizmos toggle. The Game window's is the editor's game_gizmos.
+@(window_menu={window="Scene", label="Gizmos"})
 scene_gizmos := true
 
 // The component types with an @(comp_on_draw_gizmos) hook, for the Gizmo Settings
@@ -66,7 +66,7 @@ gizmo_types_hiding :: proc(part: Gizmo_Part) -> [dynamic]string {
 	return out
 }
 
-// The channels the scene view draws: gizmos and icons (.Editor) only with its
+// The channels the Scene window draws: gizmos and icons (.Editor) only with its
 // Gizmos toggle on.
 scene_gizmo_channels :: proc() -> bit_set[core.Gizmo_Channel] {
 	return {.Game, .Outline, .Editor, .Tools} if scene_gizmos else {.Game, .Outline, .Tools}

@@ -21,7 +21,7 @@ _OUT_FILE :: "moonhug/editor/inspector/context_menu_generated.odin"
 
 // Generated files are not committed, so a checkout can still hold the copies
 // older prebuilds wrote elsewhere. They name a registry that is not there and
-// fail the build, so generate removes them.
+// fail the build, so a pre-processor removes them.
 _STALE_FILES := []string{
 	"moonhug/editor/context_menu_generated.odin",
 	"moonhug/packages/engine/editor/scene_views/context_menu_generated.odin",
@@ -41,6 +41,7 @@ ContextMenu_GenComp :: struct {
 
 @(init)
 _register :: proc "contextless" () {
+	db.pre_processor("context_menu/stale", _remove_stale)
 	db.provider("context_menu/provide", provide)
 	db.generator("context_menu/generate", generate)
 }
@@ -141,6 +142,12 @@ generate :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "}\n")
 
 	db.emit(w, _OUT_FILE, strings.to_string(b))
+	return true
+}
+
+// Before the scan, so a stale copy is never parsed and a folder it was the
+// last file of is no package.
+_remove_stale :: proc(w: ^db.World) -> bool {
 	for stale in _STALE_FILES do gen_core.RemoveStaleFile(stale)
 	return true
 }

@@ -49,7 +49,7 @@ The animation plugin plays keyframed clips on a transform hierarchy. A clip anim
 3. Pick a clip in the `clip` field: a `.anim` file, or a clip inside a model (it shows as `Model / Clip`).
 4. Press Play. `play_automatically` is on, so the clip plays from the first frame.
 
-To make a clip of your own: Assets, Create, Animation makes a `.anim` file. Put it in the component's `clip` field, open Window, Animation, arm Record and edit the object.
+To make a clip of your own: Assets, Create, Animation makes a `.anim` file. Put it in the component's `clip` field, open Window, Animation, Animation, arm Record and edit the object.
 
 ## Limits
 

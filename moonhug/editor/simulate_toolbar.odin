@@ -1,0 +1,253 @@
+package editor
+
+// Toolbar and shortcuts for in-editor simulation (docs/core/Simulate.md). The state
+// machine lives in editor/simulate; this file is its toolbar plus the hooks that
+// give it access to editor-root state (selection, phases, settings).
+
+import "core:fmt"
+import "core:strings"
+import im "moonhug:external/odin-imgui"
+import core "moonhug:libs/core"
+import "moonhug:libs/input"
+import "inspector"
+import sim "./simulate"
+import "moonhug:editor/icons"
+import "widgets"
+import "moonhug:editor/keymap"
+
+// Simulate's accent, on every simulate button while a run is active. The rest of
+// the toolbar is theme-neutral.
+SIM_ACCENT         :: im.Vec4{0.85, 0.42, 0.10, 1.00}
+SIM_ACCENT_HOVERED :: im.Vec4{0.95, 0.52, 0.16, 1.00}
+SIM_ACCENT_ACTIVE  :: im.Vec4{0.72, 0.34, 0.06, 1.00}
+
+// The host table is already set (sim_world's EditorInit phase), install keeps it
+// and resolves the persisted host name against it.
+simulate_init :: proc() {
+    sim.install(sim.Hooks{
+        selection_ids    = _sim_selection_ids,
+        selection_clear  = sel_scene_clear,
+        selection_add_id = _sim_selection_add_id,
+        phase            = _sim_fire_phase,
+        host_name_load   = _sim_host_name_load,
+        host_name_store  = _sim_host_name_store,
+    }, sim.hosts())
+}
+
+simulate_shutdown :: proc() {
+    sim.shutdown()
+}
+
+// True when `name` is the active sim host. Generated host-owned phase entries
+// call this (phase_editor_run, phases_generated.odin).
+sim_host_is :: proc(name: string) -> bool {
+    return sim.host_is(name)
+}
+
+// Runs a Play queued by request_start — one call per frame, before the windows.
+sim_start_pending :: proc() {
+    sim.tick_pending()
+}
+
+sim_tick :: proc(dt: f32) {
+    sim.tick(dt)
+}
+
+// A run is in progress (playing or paused).
+sim_is_active :: proc() -> bool {
+    return sim.is_active()
+}
+
+@(private="file")
+_sim_selection_ids :: proc() -> []core.Local_ID {
+    out := make([dynamic]core.Local_ID, context.temp_allocator)
+    for tH in sel_scene_items() {
+        if id, ok := inspector.object_local_id(tH); ok {
+            append(&out, id)
+        }
+    }
+    return out[:]
+}
+
+// The world resolves the id to a selectable object in the restored scene.
+@(private="file")
+_sim_selection_add_id :: proc(scene: core.Scene_Ref, id: core.Local_ID) {
+    if tH, ok := sim.world_select_restored(scene, id); ok {
+        sel_scene_add(tH)
+    }
+}
+
+@(private="file")
+_sim_fire_phase :: proc(p: sim.Phase) {
+    switch p {
+    case .ExitingEditMode:
+        console_clear_on_play()
+        phase_editor_run(.ExitingEditMode)
+    case .EnteredPlayMode:
+        game_window_focus()
+        input.reset_edges() // the Play click is not the game's
+        phase_editor_run(.EnteredPlayMode)
+        // The open scene is live already, no load fires this.
+        phase_editor_run(.SceneLoaded)
+    case .ExitingPlayMode: phase_editor_run(.ExitingPlayMode)
+    case .EnteredEditMode: phase_editor_run(.EnteredEditMode)
+    }
+}
+
+@(private="file")
+_sim_host_name_load :: proc() -> string {
+    return editor_settings.sim_host
+}
+
+@(private="file")
+_sim_host_name_store :: proc(name: string) {
+    if editor_settings.sim_host != "" do delete(editor_settings.sim_host)
+    editor_settings.sim_host = strings.clone(name)
+}
+
+@(menu_item={path="Edit/Play", order=30, shortcut="Ctrl+P", help="Starts the game in the editor, or stops it"})
+simulate_menu_play :: proc() {
+    if sim.is_active() {
+        sim.stop()
+    } else {
+        // Deferred by one frame so editor previews unwind first (see
+        // sim.request_start) — otherwise their restores land after the scene
+        // swap and tracks release at visibly different moments.
+        _leave_edit_mode_previews()
+        sim.request_start()
+    }
+}
+
+// Editor previews pose the world for the render only. They end themselves on
+// ExitingEditMode, but that fires INSIDE start() — after the snapshot — so a
+// preview running when Play is pressed must be told here, a frame ahead.
+@(private = "file")
+_leave_edit_mode_previews :: proc() {
+    phase_editor_run(.ExitingEditMode)
+}
+
+@(menu_item={path="Edit/Pause", order=31, shortcut="Ctrl+Shift+P", help="Pauses the running game, or resumes it"})
+simulate_menu_pause :: proc() {
+    sim.toggle_pause()
+}
+
+// Simulate / Pause / Step, all three always visible and enabled. Pressing Pause
+// or Step while stopped enters a held run. The centre of the toolbar, first.
+@(toolbar={zone="center", order=0})
+_draw_simulate_controls :: proc() {
+    style := im.GetStyle()
+
+    active := sim.is_active()
+    paused := sim.state() == .Paused
+
+    // Slots sized to their widest glyph, so a button keeps its width when its
+    // icon swaps and nothing to the right shifts.
+    pad := style.FramePadding.x * 2
+    sim_slot := im.Vec2{
+        max(im.CalcTextSize(icons.ICON_MD_PLAY_ARROW, nil, false, -1).x,
+            im.CalcTextSize(icons.ICON_MD_STOP, nil, false, -1).x) + pad,
+        0,
+    }
+    pause_slot := im.Vec2{
+        max(im.CalcTextSize(icons.ICON_MD_PAUSE, nil, false, -1).x,
+            im.CalcTextSize(icons.ICON_MD_PLAY_CIRCLE, nil, false, -1).x) + pad,
+        0,
+    }
+
+    _push_sim_button_bg(active)
+    if im.ButtonWithFlags(active \
+        ? icons.ICON_MD_STOP + "###SimToggle" \
+        : icons.ICON_MD_PLAY_ARROW + "###SimToggle", sim_slot) {
+        if active {
+            sim.stop()
+        } else {
+            _leave_edit_mode_previews()
+            sim.request_start()
+        }
+    }
+    _pop_sim_button_bg()
+    widgets.tooltip(keymap.labelled("Stop" if active else "Play", "Edit/Play"))
+
+    im.SameLine(0, style.ItemSpacing.x)
+    _push_sim_button_bg(active)
+    if im.ButtonWithFlags(paused \
+        ? icons.ICON_MD_PLAY_CIRCLE + "###SimPause" \
+        : icons.ICON_MD_PAUSE + "###SimPause", pause_slot) {
+        if active {
+            sim.toggle_pause()
+        } else {
+            sim.start(paused = true)
+        }
+    }
+    _pop_sim_button_bg()
+    widgets.tooltip(keymap.labelled("Resume" if active && paused else "Pause", "Edit/Pause"))
+
+    im.SameLine(0, style.ItemSpacing.x)
+    _push_sim_button_bg(active)
+    if im.Button(icons.ICON_MD_SKIP_NEXT + "###SimStep") {
+        sim.step()
+    }
+    _pop_sim_button_bg()
+    widgets.tooltip("Step Frame")
+}
+
+// Which game Simulate ticks. Always drawn, disabled below two hosts, where it
+// reads out the sole game's name.
+@(toolbar={zone="center", order=10})
+_draw_sim_host_combo :: proc() {
+    host, has_host := sim.active_host()
+    all := sim.hosts()
+
+    preview: cstring = "No sim host"
+    if has_host do preview = strings.clone_to_cstring(host.name, context.temp_allocator)
+
+    im.BeginDisabled(len(all) < 2)
+    im.SetNextItemWidth(_sim_host_combo_width())
+    if im.BeginCombo("##sim_host", preview, {}) {
+        for h, i in all {
+            label := strings.clone_to_cstring(h.name, context.temp_allocator)
+            if im.Selectable(label, i == sim.host_index()) {
+                sim.set_host(i)
+            }
+        }
+        im.EndCombo()
+    }
+    im.EndDisabled()
+    host_tip: cstring
+    switch len(all) {
+    case 0: host_tip = "No runnable package found (a game is a package with main at its root)"
+    case 1: host_tip = fmt.ctprintf("Sim host: %s (only game installed)", host.name)
+    case:   host_tip = "Sim host: which game's code Simulate runs"
+    }
+    widgets.tooltip(host_tip, im.HoveredFlags_AllowWhenDisabled)
+}
+
+// Sized to the widest host name, so switching hosts does not shift the toolbar.
+_sim_host_combo_width :: proc() -> f32 {
+    style := im.GetStyle()
+    w := im.CalcTextSize("No sim host", nil, false, -1).x
+    for h in sim.hosts() {
+        name := strings.clone_to_cstring(h.name, context.temp_allocator)
+        w = max(w, im.CalcTextSize(name, nil, false, -1).x)
+    }
+    return w + style.FramePadding.x * 2 + im.GetFrameHeight()
+}
+
+// `on` tints with the accent, off keeps the theme colours. Every simulate button
+// passes the same condition. Pushes 3 colours: pair with _pop_sim_button_bg.
+_push_sim_button_bg :: proc(on: bool) {
+    style := im.GetStyle()
+    if on {
+        im.PushStyleColorImVec4(.Button, SIM_ACCENT)
+        im.PushStyleColorImVec4(.ButtonHovered, SIM_ACCENT_HOVERED)
+        im.PushStyleColorImVec4(.ButtonActive, SIM_ACCENT_ACTIVE)
+    } else {
+        im.PushStyleColorImVec4(.Button, style.Colors[im.Col.Button])
+        im.PushStyleColorImVec4(.ButtonHovered, style.Colors[im.Col.ButtonHovered])
+        im.PushStyleColorImVec4(.ButtonActive, style.Colors[im.Col.ButtonActive])
+    }
+}
+
+_pop_sim_button_bg :: proc() {
+    im.PopStyleColor(3)
+}

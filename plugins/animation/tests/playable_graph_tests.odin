@@ -393,7 +393,7 @@ test_animation_layers_stack :: proc(t: ^testing.T) {
 	testing.expect(t, len(a.rt_layers) == 2, "two layers exist")
 }
 
-// The editor scrub preview's per-frame cycle (view_animation.odin): refresh
+// The editor scrub preview's per-frame cycle (window_animation.odin): refresh
 // defaults from the live transforms, evaluate at the scrub time, apply, then
 // write the defaults back. The world returns to authored values every frame,
 // and an authored edit made between scrubs becomes the new restore target.

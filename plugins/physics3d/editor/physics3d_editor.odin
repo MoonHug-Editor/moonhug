@@ -1,6 +1,6 @@
 package physics3d_editor
 
-// Collider wireframes in the scene view via the @(comp_on_draw_gizmos) hook — drawn
+// Collider wireframes in the Scene window via the @(comp_on_draw_gizmos) hook — drawn
 // only for objects in the selection (a parent selected counts). The wire geometry
 // lives in the runtime package (packages/physics3d/gizmos.odin), shared with
 // the in-app @(debug_draw) view — here only the selected-only policy and the

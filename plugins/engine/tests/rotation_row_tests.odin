@@ -13,7 +13,7 @@ import "moonhug:editor/undo"
 import "moonhug:packages/engine"
 
 import "core:testing"
-import "moonhug:packages/engine/editor/scene_views"
+import "moonhug:packages/engine/editor/scene_windows"
 
 // Turning Y must not make X and Z jump to a different SPELLING of the same
 // orientation.
@@ -49,9 +49,9 @@ test_rotation_row_euler_spelling_is_stable_through_90 :: proc(t: ^testing.T) {
 	ys := []f32{30, 60, 85, 89, 90, 91, 100, 120}
 	for y in ys {
 		_rot_test_target_y = y
-		scene_views.rotation_row_drive_for_test(a, _rot_test_write_y)
+		scene_windows.rotation_row_drive_for_test(a, _rot_test_write_y)
 
-		cache := scene_views.rotation_euler_cache_for_test()
+		cache := scene_windows.rotation_euler_cache_for_test()
 		// X and Z must stay where the user left them for EVERY step, including
 		// the ones straddling 90.
 		testing.expectf(
@@ -107,8 +107,8 @@ test_rotation_row_multi_records_every_object :: proc(t: ^testing.T) {
 
 	// Drag Y over several frames, then a frame that reports the release.
 	_rot_test_target_y = 25
-	scene_views.rotation_row_drive_for_test(a, _rot_test_write_y)
-	scene_views.rotation_row_drive_for_test(a, _rot_test_write_y)
+	scene_windows.rotation_row_drive_for_test(a, _rot_test_write_y)
+	scene_windows.rotation_row_drive_for_test(a, _rot_test_write_y)
 
 	// Both objects took the edited axis and kept their own X and Z.
 	ea := engine.quat_to_euler_xyz(ta.rotation)
@@ -147,9 +147,9 @@ test_rotation_row_euler_stable_toward_minus_180 :: proc(t: ^testing.T) {
 	ys := []f32{-30, -60, -89, -90, -91, -120, -150, -175, -179, -180}
 	for y in ys {
 		_rot_test_target_y = y
-		scene_views.rotation_row_drive_for_test(a, _rot_test_write_y)
+		scene_windows.rotation_row_drive_for_test(a, _rot_test_write_y)
 
-		cache := scene_views.rotation_euler_cache_for_test()
+		cache := scene_windows.rotation_euler_cache_for_test()
 		testing.expectf(t, abs(cache[0]) < 1,
 			"X drifted to %v while dragging Y to %v", cache[0], y)
 		testing.expectf(t, abs(cache[2]) < 1,
@@ -192,9 +192,9 @@ test_rotation_row_driven_edits_the_objects_own_angles :: proc(t: ^testing.T) {
 	start := [3]f32{10, 70, 30}
 	own := inspector.Driven_Lanes{0, 2}
 	before := s.top
-	testing.expect(t, !scene_views.rotation_own_angles_drive_for_test(a, {15, 70, 30}, start, own, active = true, finished = false), "mid-drag")
-	testing.expect(t, !scene_views.rotation_own_angles_drive_for_test(a, {25, 70, 30}, {15, 70, 30}, own, active = true, finished = false), "mid-drag")
-	testing.expect(t, scene_views.rotation_own_angles_drive_for_test(a, {25, 70, 30}, {25, 70, 30}, own, active = false, finished = true), "the release ends it")
+	testing.expect(t, !scene_windows.rotation_own_angles_drive_for_test(a, {15, 70, 30}, start, own, active = true, finished = false), "mid-drag")
+	testing.expect(t, !scene_windows.rotation_own_angles_drive_for_test(a, {25, 70, 30}, {15, 70, 30}, own, active = true, finished = false), "mid-drag")
+	testing.expect(t, scene_windows.rotation_own_angles_drive_for_test(a, {25, 70, 30}, {25, 70, 30}, own, active = false, finished = true), "the release ends it")
 
 	e := engine.quat_to_euler_xyz(ta.rotation)
 	testing.expectf(t, abs(e.x - 25) < 0.01 && abs(e.y - 20) < 0.01 && abs(e.z - 30) < 0.01, "x edited, own y and z kept, got %v", e)

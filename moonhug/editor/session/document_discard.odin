@@ -1,7 +1,7 @@
 package session
 
 // The confirmation before a Discard, for every place that offers one: a
-// view's tab menu and the Hierarchy's scene menu. Discard cannot be undone,
+// window's tab menu and the Hierarchy's scene menu. Discard cannot be undone,
 // so it always asks.
 
 import "base:runtime"

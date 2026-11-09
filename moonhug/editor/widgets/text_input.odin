@@ -8,7 +8,7 @@ package widgets
 // draws, when an InputText is the active item and Escape was pressed:
 //
 // - The key is locked for the frame, so the field never sees it and neither
-//   do the Escape handlers of other views (scene deselect, filter clears).
+//   do the Escape handlers of other windows (scene deselect, filter clears).
 // - A field that commits on Enter (EnterReturnsTrue: object names, renames)
 //   gets an Enter press queued instead, so it commits and deactivates next
 //   frame like a real Enter.

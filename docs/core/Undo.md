@@ -20,9 +20,9 @@ For components to work cleanly with undo during authoring, the existing rules ar
   - `type_cleanup_T` deallocates the type's data and calls `comp_zero(self)`.
 - Implement `type_on_validate_T` when a value change needs to recompute derived state. It is called after restoring a component field.
 
-## History view
+## History window
 
-`View → History` opens a panel that lists every entry in the stack with its label and a marker for the current `top`. Entries above `top` are "done", entries below are "redo". Double-click a row to jump to that step (walks `apply_undo`/`apply_redo` until the stack's `top` matches). The bottom subview shows selectable, copyable details for the selected entry: `Property_Target` breakdown, old/new JSON for value commands, or the parameters of structural commands.
+`Edit → Undo History` opens a panel that lists every entry in the stack with its label and a marker for the current `top`. Entries above `top` are "done", entries below are "redo". Double-click a row to jump to that step (walks `apply_undo`/`apply_redo` until the stack's `top` matches). The bottom subview shows selectable, copyable details for the selected entry: `Property_Target` breakdown, old/new JSON for value commands, or the parameters of structural commands.
 
 ## Keyboard shortcuts
 
@@ -33,7 +33,7 @@ Ctrl+Z         — undo
 Ctrl+Y         — redo
 Ctrl+Shift+Z   — redo
 
-view_history focused:
+history_window focused:
  - up
  - down
  - enter - restore state up to selected step
@@ -88,13 +88,13 @@ play_begin    — Play starts: until play_end, undo/redo move only through entri
                 recorded in the run (Entry.in_play)
 play_end      — Stop: drops the run's scene entries, keeps its other entries and
                 everything from before Play
-clear         — wipes stack (History view's Clear button only)
+clear         — wipes stack (History window's Clear button only)
 ```
 
 Scene navigation purges instead of clearing: opening a scene, entering/exiting
 a nested scene (edit stack) or unloading calls `purge_scenes`/`purge_scene`,
 so `.mat` edits and project selection steps outlive scene trips. Clicking an
-asset in the project view touches nothing at all. A group is purged whole if
+asset in the Project window touches nothing at all. A group is purged whole if
 ANY sub-command touches the purged scene — groups are atomic, a partial group
 would corrupt the timeline.
 
@@ -307,16 +307,16 @@ disk — Save persists, like unsaved live-preview edits always worked.
 
 A document lives as long as its asset. Save writes to the asset's current path, looked up by guid, so a renamed or moved asset saves where it is now. A file that is gone from disk is never written back. Deleting an asset drops its document and its undo steps (`purge_asset`, through an asset hook on `.Removed`), and the Project Inspector lets go of it. Without that, undo or File/Save would bring the file back without its `.meta`, as a different asset.
 
-Discard reads the document again from its file and drops its undo steps with `purge_asset`, after a confirmation, so it cannot be undone ([Views](Views.md), The asset a view edits).
+Discard reads the document again from its file and drops its undo steps with `purge_asset`, after a confirmation, so it cannot be undone ([Windows](Windows.md), The asset a window edits).
 
 ## Import settings (project inspector, Sprite Editor)
 
-Every document counts its changes in `Asset_Doc.edits`: an editor's edit through `asset_doc_mark_edited`, and every undo and redo through the apply hook. A view that keeps state derived from a document, such as the Animation window's sheet, compares the count and rebuilds on a change instead of rebuilding every frame.
+Every document counts its changes in `Asset_Doc.edits`: an editor's edit through `asset_doc_mark_edited`, and every undo and redo through the apply hook. A window that keeps state derived from a document, such as the Animation window's sheet, compares the count and rebuilds on a change instead of rebuilding every frame.
 
 An asset's import settings are a second kind of asset document (`undo.Doc_Kind.Import_Settings`, `inspector/import_settings_docs.odin`): one per asset, the typed settings from its `.meta`, shared by every editor that shows or edits them. The import settings inspector, the model clip rows and the Sprite Editor all edit the same document, so an edit in one shows in the others at once.
 
 - **Recording.** No editor of the settings writes undo code. `inspector.import_settings_track` compares every settings document shown or edited since the last compare with its baseline JSON (in memory, nothing touches the disk), and turns a change into one whole-document step ("Edit Import Settings"). The main loop asks for a compare only on frames where an edit may have just finished: a widget was let go, a mouse button went up, or a key was pressed. So a drag, a typed name or a Slice button press is one step, and idle frames cost nothing (a compare of a model with 40 clips takes about a quarter of a millisecond). Undo/redo rebuild the document from the step's JSON and move the baseline, so the restore is not recorded again.
-- **Commit.** Apply writes the `.meta` and reimports at the start of the next frame, before any view draws: a reimport frees the asset's GPU textures, which a view drawn earlier in the frame may already have queued for drawing (`asset_pipeline_reimport_later`). File/Save leaves import settings alone. Revert reloads the `.meta` as one undo step, so a Revert can be undone.
+- **Commit.** Apply writes the `.meta` and reimports at the start of the next frame, before any window draws: a reimport frees the asset's GPU textures, which a window drawn earlier in the frame may already have queued for drawing (`asset_pipeline_reimport_later`). File/Save leaves import settings alone. Revert reloads the `.meta` as one undo step, so a Revert can be undone.
 - **Dirty** means "differs from the `.meta`": undoing back to the applied state clears it, and Apply/Revert are live only while it is set.
 - **Reimport.** A reimport can rewrite the `.meta` itself (the model importer adds entries for new clips). A settings document with no unapplied edits then reloads, so the next Apply does not write the old version back.
 - The JSON is marshaled with sorted map keys: a clip's settings are a JSON object, and an unsorted marshal could read as a change.
@@ -345,7 +345,7 @@ commands no-ops.
 
 ### Component inspector — whole-owner serialization
 
-The component field loop (`editor/inspector/view_inspector.odin`) does **not** track per-field targets. Every edit inside a component — top-level field, nested struct field, dynamic-array element, union variant — produces a `Value_Command` whose target is the entire component (offset `0`, component typeid). `old_json` and `new_json` hold the full component payload.
+The component field loop (`editor/inspector/window_inspector.odin`) does **not** track per-field targets. Every edit inside a component — top-level field, nested struct field, dynamic-array element, union variant — produces a `Value_Command` whose target is the entire component (offset `0`, component typeid). `old_json` and `new_json` hold the full component payload.
 
 This is driven by an edit session (see above), opened when the row's gesture starts and closed when it ends.
 
@@ -365,7 +365,7 @@ element so a change in one element doesn't trigger a premature commit in the nex
 Transform fields (`name`, `position`, `rotation`, `scale`) are fixed-layout
 primitives with stable offsets, so their session records the field rather than
 the whole transform. `_wrap_transform_field_override`
-(`plugins/engine/editor/scene_views/view_hierarchy_inspector.odin`) is the bracket, because transform rows
+(`plugins/engine/editor/scene_windows/window_inspector.odin`) is the bracket, because transform rows
 bypass the generic field loop and also record prefab-instance overrides.
 
 ### Driven values
@@ -463,7 +463,7 @@ Most editor code doesn't need to touch the undo API directly:
 - The **component field loop** brackets every registered property drawer, array element, union variant, and enum in a session, so **drawers written to the standard contract get undo for free** — one step per drag, one step per Add/Remove, one step per tag switch, covering every selected object.
 - The **transform field loop** brackets its three rows (`position`, `rotation`, `scale`) the same way. The `name` row uses `edit_begin` / `edit_end`.
 
-When writing editor UI outside these loops (hierarchy view, custom panels, component header checkbox/menus, viewport gizmos), use the ergonomic scope helpers. These collapse the capture → mutate → push flow into one call and handle JSON cleanup on every path.
+When writing editor UI outside these loops (Hierarchy window, custom panels, component header checkbox/menus, viewport gizmos), use the ergonomic scope helpers. These collapse the capture → mutate → push flow into one call and handle JSON cleanup on every path.
 
 ### Value edits
 
@@ -577,7 +577,7 @@ drawer(comp_ptr, comp_tid, label)
 
 Without an owner the inspector's rows open no session at all — the edit writes
 memory and records nothing. The Tween Graph's side panel
-(`packages/app/editor/tween_view.odin`) is the reference example.
+(`packages/app/editor/window_tween_graph.odin`) is the reference example.
 
 ### Low-level API
 
@@ -596,6 +596,6 @@ undo.purge_scenes(undo.get())       // all scenes, before a single-scene load
 
 - Capacity is 128 entries. Overflow drops the oldest.
 - Undoing an asset edit replaces the whole document instance. The old instance's nested allocations live until editor shutdown (same lifetime the pre-registry reload-on-click had). Asset docs have no eviction — `.mat`-scale files only.
-- File operations in the project view (rename/move/delete files) are not undoable — Unity doesn't undo these either. Delete asks for confirmation first and lists the files, since undo can't bring them back (they go to the OS Trash).
+- File operations in the Project window (rename/move/delete files) are not undoable — Unity doesn't undo these either. Delete asks for confirmation first and lists the files, since undo can't bring them back (they go to the OS Trash).
 - Structural commands capture full subtree JSON on delete/remove. Large subtrees produce large entries.
 - Component inspector edits serialize the whole component per step. Components with large dynamic arrays produce correspondingly large entries. In practice the inspector is not the hot path, so this is acceptable.

@@ -1,16 +1,16 @@
 package thumbnails
 
-// Asset thumbnails for the project view's grid mode and the inspector's
+// Asset thumbnails for the Project window's grid mode and the inspector's
 // Preview pane. GPU-resident cache keyed by guid, invalidated by the asset
 // db's file stamp, backed by a disk cache under library/thumbnails so
 // thumbnails survive sessions. The cache names no asset type: renderers
 // register per extension (register, register_sub), and the engine's live in
 // plugins/engine/editor/previews.
 //
-// Generation is budgeted: the project view REQUESTS a thumbnail for each
+// Generation is budgeted: the Project window REQUESTS a thumbnail for each
 // visible cell (get), misses queue, and tick handles a few per frame. A valid
 // disk entry uploads straight to a texture, everything else renders. The tick
-// runs at the top of the frame, BEFORE any view draws, so a renderer that
+// runs at the top of the frame, BEFORE any window draws, so a renderer that
 // spawns content for its picture tears it down before the frame's visible
 // rendering.
 //
@@ -95,7 +95,7 @@ _Thumb_File_Header :: struct #packed {
 @(private = "file") _sub_renderers: map[string]Renderer
 
 // The renderer for assets with extension `ext` (".png"). The asset gets a
-// thumbnail in the project view's grid.
+// thumbnail in the Project window's grid.
 register :: proc(ext: string, render: Renderer) {
 	context.allocator = runtime.default_allocator()
 	_renderers[strings.clone(ext)] = render
@@ -155,7 +155,7 @@ _thumb_lookup :: proc(path: string, sub: core.Local_ID) -> (id: rawptr, ok: bool
 	return nil, false
 }
 
-// Budgeted generation, called once per frame before any view draws (the frame
+// Budgeted generation, called once per frame before any window draws (the frame
 // command buffer must be live, no pass active).
 tick :: proc() {
 	if !_thumb_pruned {

@@ -14,7 +14,7 @@ package widgets
 //     ambient value around the element's draw, and tooltip() reads it.
 //   - HAND-DRAWN, nothing registered it: "built-in" and the file:line of the
 //     tooltip call itself, from #caller_location. Free, compile-time, and it
-//     means a toolbar button drawn straight in view_toolbar.odin is one hover
+//     means a toolbar button drawn straight in window_toolbar.odin is one hover
 //     from its source the same as a registered one.
 //
 // This file lives in widgets because widgets imports nothing from the editor,

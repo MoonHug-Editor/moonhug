@@ -82,7 +82,7 @@ v2 added the submesh table; stale v1 artifacts fail the magic check and
 `mesh_load` reimports from source automatically.
 
 The AABB is computed at import and kept CPU-side by the mesh cache — it's
-what makes scene-view picking and the selection outline cheap (no runtime
+what makes Scene window picking and the selection outline cheap (no runtime
 vertex data on the CPU).
 
 ## Runtime

@@ -1,7 +1,7 @@
 package scene_tools
 
 // The Volume component in the editor (plugins/engine/component_Volume.odin):
-// its box in the scene view, and an inspector that edits each override
+// its box in the Scene window, and an inspector that edits each override
 // through the step's own settings drawer, the one the Render Pipeline
 // window uses, so a volume's block looks and edits like the pipeline's.
 

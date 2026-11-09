@@ -186,7 +186,7 @@ test_sprite_sort_group_survives_scene_load :: proc(t: ^testing.T) {
 
 // Child refs at nested-scene/variant boundaries carry pptr-only refs (runtime
 // handles are json:"-" and not always fixed up). The tree pass must resolve
-// them like the hierarchy view does, or grouped sprites silently degrade to
+// them like the Hierarchy window does, or grouped sprites silently degrade to
 // ungrouped orphan keys and groups interleave.
 @(test)
 test_sprite_sort_group_reaches_children_with_stale_handles :: proc(t: ^testing.T) {

@@ -15,7 +15,7 @@ _ENGINE_EDITOR_PKG_PATH :: "moonhug/packages/engine/editor"
 _ENGINE_IMPORT          :: "moonhug:packages/engine"
 _COMPONENTS_OUT_FILE     :: _ENGINE_PKG_PATH + "/components_generated.odin"
 _SCENE_OUT_FILE          :: _ENGINE_PKG_PATH + "/scene_generated.odin"
-_COMPONENT_MENU_OUT_FILE :: _ENGINE_EDITOR_PKG_PATH + "/scene_views/menu_component_generated.odin"
+_COMPONENT_MENU_OUT_FILE :: _ENGINE_EDITOR_PKG_PATH + "/scene_windows/menu_component_generated.odin"
 
 ComponentEntry :: struct {
 	type_name:       string,
@@ -51,6 +51,7 @@ PoolableEntry :: struct {
 
 @(init)
 _register_components :: proc "contextless" () {
+	db.pre_processor("components/stale", _remove_stale_menu_files)
 	db.provider("components/provide", components_provide)
 	db.generator("components/generate", components_generate)
 	db.generator("components/scene", generate_scene_file)
@@ -335,10 +336,20 @@ _free_data :: proc(data: ^_ComponentData) {
 	delete(data.poolable_entries)
 }
 
-// Generated files are not committed, so a checkout can still hold the copy an
-// older prebuild wrote into the editor root. It names procs that no longer
-// live there and fails the editor build, so generate removes it.
-_STALE_MENU_FILE :: "moonhug/editor/menu_component_generated.odin"
+// Generated files are not committed, so a checkout can still hold the copies
+// older prebuilds wrote elsewhere: the editor root, and the scene_views
+// package that is now scene_windows. They name procs that no longer live
+// there and fail the editor build, so a pre-processor removes them before the
+// scan, which then sees no scene_views package.
+_STALE_MENU_FILES := []string{
+	"moonhug/editor/menu_component_generated.odin",
+	_ENGINE_EDITOR_PKG_PATH + "/scene_views/menu_component_generated.odin",
+}
+
+_remove_stale_menu_files :: proc(w: ^db.World) -> bool {
+	for stale in _STALE_MENU_FILES do gen_core.RemoveStaleFile(stale)
+	return true
+}
 
 generate_component_menus :: proc(w: ^db.World) -> bool {
 	data := _collect_data(w)
@@ -347,7 +358,7 @@ generate_component_menus :: proc(w: ^db.World) -> bool {
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
-	strings.write_string(&b, "package scene_views\n\n")
+	strings.write_string(&b, "package scene_windows\n\n")
 	fmt.sbprintf(&b, "import engine \"%s\"\n", _ENGINE_IMPORT)
 	strings.write_string(&b, "import \"moonhug:editor/menu\"\n\n")
 
@@ -375,7 +386,7 @@ generate_component_menus :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "}\n\n")
 
 	// The add itself lives in hand-written code beside it
-	// (editor/scene_views/component_add.odin) —
+	// (editor/scene_windows/component_add.odin) —
 	// it has to handle prefab-instance additions, which is real logic rather
 	// than boilerplate worth generating.
 	strings.write_string(&b, "_component_menu_add :: proc(key: engine.TypeKey) {\n")
@@ -383,7 +394,6 @@ generate_component_menus :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "}\n")
 
 	db.emit(w, _COMPONENT_MENU_OUT_FILE, strings.to_string(b))
-	if os.exists(_STALE_MENU_FILE) do _ = os.remove(_STALE_MENU_FILE)
 	return true
 }
 

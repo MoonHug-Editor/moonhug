@@ -121,9 +121,9 @@ _restore_depth_test :: proc(prev: bool) {
 	_s.depth_test = prev
 }
 
-// Who the shapes are for: .Game (default) shows in the game view and the scene
-// view. The editor records its @(comp_on_draw_gizmos) procs into .Editor for the
-// scene view and into .Editor_Game for the game view, so their code never
+// Who the shapes are for: .Game (default) shows in the Game window and the Scene
+// window. The editor records its @(comp_on_draw_gizmos) procs into .Editor for the
+// Scene window and into .Editor_Game for the Game window, so their code never
 // calls this.
 @(deferred_out = _restore_channel)
 with_channel :: proc(channel: core.Gizmo_Channel) -> core.Gizmo_Channel {
@@ -215,7 +215,7 @@ _buffer :: proc() -> ^core.Gizmo_Buffer {
 // --- Views --------------------------------------------------------------------
 
 // The view pixel-sized shapes measure against (helper_pixel, helper_project).
-// The scene view sets it before its hooks run.
+// The Scene window sets it before its hooks run.
 set_view :: proc(view: core.Render_View) {
 	_s.view = view
 	_s.has_view = true
@@ -457,7 +457,7 @@ labels :: proc(channels: bit_set[core.Gizmo_Channel]) -> []core.Gizmo_Label {
 }
 
 // Drops this frame's shapes of `channels`, so a view can record them again
-// with its own camera: each Scene view copy records .Outline, .Editor and
+// with its own camera: each Scene window copy records .Outline, .Editor and
 // .Tools.
 clear_channels :: proc(channels: bit_set[core.Gizmo_Channel]) {
 	core.gizmo_buffer_clear_channels(_buffer(), channels)
@@ -529,7 +529,7 @@ _tri :: proc(b: ^_Batch, a, c, d: [3]f32) {
 // of the editor's icon font, or a texture asset) in a square `size_px`
 // pixels wide, over `backdrop` (a disc, alpha 0 for none). `color` tints a
 // symbol or glyph and multiplies a texture. Each view draws it facing its own
-// camera, so it faces the game camera in the game view too. The scene view
+// camera, so it faces the game camera in the Game window too. The Scene window
 // selects `owner` on a click inside it. For components with nothing else to
 // click (lights, cameras, audio sources): handles.icon draws the editor's.
 icon :: proc(pos: [3]f32, size_px: f32, owner: core.Transform_Handle, image: core.Gizmo_Icon_Image, color: [4]f32, backdrop := [4]f32{}) {
@@ -556,7 +556,7 @@ helper_icon_space :: proc(v: core.Render_View, pos: [3]f32, size_px: f32) -> mat
 	}
 }
 
-// A label at a point. Views that draw text show it (the scene view today):
+// A label at a point. Views that draw text show it (the Scene window today):
 // always readable, never depth-tested. `offset_px` moves it on screen after
 // projecting, e.g. a few pixels below a line.
 label :: proc(pos: [3]f32, text: string, align := [2]f32{0, 0}, rotated := false, offset_px := [2]f32{0, 0}) {

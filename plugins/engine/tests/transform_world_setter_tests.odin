@@ -1,7 +1,7 @@
 package engine_tests
 
 // transform_set_world_position/rotation round-trips under rotated + scaled
-// parents — the math the scene-view gizmos stand on.
+// parents — the math the Scene window gizmos stand on.
 
 import "core:math"
 import "core:testing"

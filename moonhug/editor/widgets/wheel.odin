@@ -1,6 +1,6 @@
 package widgets
 
-// Mouse wheel with one axis at a time, for views where the wheel means two
+// Mouse wheel with one axis at a time, for windows where the wheel means two
 // different things (zoom on one axis, pan on the other).
 //
 // A trackpad reports both axes during a single swipe, so a gesture that is
@@ -18,7 +18,7 @@ Wheel_Axis :: enum u8 {
 	Horizontal,
 }
 
-// Per-view state. Zero value is "no gesture in progress".
+// Per-window state. Zero value is "no gesture in progress".
 Wheel_Lock :: struct {
 	axis: Wheel_Axis,
 	idle: f32, // seconds the wheel has been quiet
@@ -29,7 +29,7 @@ Wheel_Lock :: struct {
 WHEEL_GESTURE_IDLE :: f32(0.25)
 
 // This frame's wheel with only the locked axis non-zero. Call once per frame
-// per view, whether or not the view is hovered, so the gesture times out even
+// per window, whether or not the window is hovered, so the gesture times out even
 // while the pointer is elsewhere; ignore the result when not hovered.
 wheel_dominant :: proc(lock: ^Wheel_Lock) -> (vertical, horizontal: f32) {
 	io := im.GetIO()

@@ -654,7 +654,7 @@ _record_test_shown: bool
 @(private = "file")
 _record_clip_shown :: proc() -> bool {
 	if _pv.clip == {} do return false
-	return _record_test_shown || wnd.is_open(ANIMATION_VIEW)
+	return _record_test_shown || wnd.is_open(ANIMATION_WINDOW)
 }
 
 // `has_row`: the shown clip has a row for the field. `keyable`: the clip has

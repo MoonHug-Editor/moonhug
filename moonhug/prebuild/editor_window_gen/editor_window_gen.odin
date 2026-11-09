@@ -1,6 +1,6 @@
 package editor_window_gen
 
-// editor_window_gen: plugin-declared editor windows (docs/core/Views.md).
+// editor_window_gen: plugin-declared editor windows (docs/core/Windows.md).
 //
 //   @(editor_window={id="physics2d", title="Physics 2D", width=420, height=240})
 //   draw_physics_debug :: proc() { ... }   // window CONTENT only
@@ -28,7 +28,7 @@ WindowEntry :: struct {
 	name:        string, // draw proc
 	closed:      string, // the proc that frees an instance's state, "" for none
 	canvas:      bool,   // drawn edge to edge, without padding or scrollbars
-	lock:        string, // "instance" or "shared": the view has a padlock (editor/view_lock.odin), "" for none
+	lock:        string, // "instance" or "shared": the window has a padlock (editor/window_lock.odin), "" for none
 	width:       int,
 	height:      int,
 	source_pkg:  string,

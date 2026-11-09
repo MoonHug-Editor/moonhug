@@ -1,12 +1,12 @@
 package viewport
 
-// The scene view's tool mode: the tool (Q W E R T), the gizmo space and the
+// The Scene window's tool mode: the tool (Q W E R T), the gizmo space and the
 // gizmo pivot. The shell sets them from its overlays and keys, the engine's
 // transform tool reads them.
 
 import "moonhug:editor/handles"
 
-// The scene view's tool (handles.Tool): Q selection only, W E R the
+// The Scene window's tool (handles.Tool): Q selection only, W E R the
 // transform gizmo, T the selection's own handles in place of the gizmo.
 Gizmo_Mode :: handles.Tool
 

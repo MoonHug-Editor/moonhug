@@ -2,7 +2,7 @@ package scene_tools
 
 // The context @(comp_on_draw_gizmos) and @(comp_on_scene_handles) procs get for each
 // instance (the generated dispatchers call gizmo_context): its selection state
-// and the scene view's tool.
+// and the Scene window's tool.
 //
 // The dispatchers ask for every instance with a hook, every frame, so the
 // answer is a lookup. gizmo_marks_rebuild, which the gizmo pass calls right

@@ -5,7 +5,7 @@ package animation_tests
 // A cache entry outlives the call that created it, so it must not be allocated
 // from whatever allocator the caller happened to be running under. The Playable
 // Graph window builds the authored shape into TEMP memory
-// (editor/view_playable_graph.odin), and that build asks every entry's clip for
+// (editor/window_playable_graph.odin), and that build asks every entry's clip for
 // its length and wrap — so a clip first loaded through that window landed its
 // channels in the frame's temp arena. free_all reclaimed them at the end of the
 // frame, the cache kept the entry, and every later load handed out the dangling

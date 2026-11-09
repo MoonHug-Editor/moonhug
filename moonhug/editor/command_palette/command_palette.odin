@@ -6,7 +6,7 @@ package command_palette
 // - Commands are the mode with no prefix. Window/Command Palette opens it.
 // - Every other mode is declared with @(command_palette_mode) and picked by
 //   the prefix the text starts with: `#` assets, `@` scene objects, `:`
-//   views.
+//   windows.
 //   Each mode has a command, Command Palette/<name>, that opens the palette
 //   with its prefix typed.
 // - `?`, typed alone, lists the modes with their chords
@@ -19,9 +19,9 @@ package command_palette
 //
 // A modal widget like the dialog: it owns the keyboard while it is open, so
 // its own keys are read here, and its empty modal keymap on the stack keeps
-// every other binding quiet. The view focused when it opened stays the
+// every other binding quiet. The window focused when it opened stays the
 // focused one while it is open, so a command's enabled state and its run are
-// for that view.
+// for that window.
 
 import "base:runtime"
 import "core:slice"
@@ -43,7 +43,7 @@ Row :: struct {
 	disabled: bool,   // drawn dimmed and never run: a command that cannot run now
 	reason:   string, // why a disabled row cannot run, drawn on the second line in place of help, "" for none
 	// The row's identity for the mode's run proc, and for the recently run
-	// rows: an asset path, a view key, a command id. "" for a row that is
+	// rows: an asset path, a window key, a command id. "" for a row that is
 	// never ranked as recent.
 	key:      string,
 	data:     rawptr, // the same for a mode that keeps a pointer: a command, a handle in temp memory
@@ -92,9 +92,9 @@ KEYMAP :: "Command Palette Modes"
 @(private = "file")
 _pal: struct {
 	open_request: bool,
-	// The view focused when the palette opened: it stays the focused one for
+	// The window focused when the palette opened: it stays the focused one for
 	// the rows the palette lists and runs. Owned, "" for none.
-	view:         string,
+	window:       string,
 	shown:        bool, // the popup was open last frame: its keymap is pushed
 	search:       [128]byte,
 	// The search text was set from code: the field takes it on its next
@@ -230,15 +230,15 @@ mode_for :: proc(text: string) -> (m: ^Mode, query: string) {
 	return m, strings.trim_space(query)
 }
 
-// Opens the palette with `prefix` typed, "" for commands. The view focused
+// Opens the palette with `prefix` typed, "" for commands. The window focused
 // now stays the focused one while it is open.
 open :: proc(prefix := "") {
 	_pal.open_request = true
 	_set_text(prefix)
-	view := ""
-	if w := wnd.focused(); w != nil do view = strings.clone(w.key, runtime.default_allocator())
-	delete(_pal.view, runtime.default_allocator())
-	_pal.view = view
+	window := ""
+	if w := wnd.focused(); w != nil do window = strings.clone(w.key, runtime.default_allocator())
+	delete(_pal.window, runtime.default_allocator())
+	_pal.window = window
 }
 
 @(private = "file")
@@ -260,7 +260,7 @@ menu_open :: proc() {
 popup_keymap :: proc(km: ^keymap.Keymap) {
 }
 
-// Frees the modes and the palette's state, after the views and before the
+// Frees the modes and the palette's state, after the windows and before the
 // keymaps shut down.
 shutdown :: proc() {
 	context.allocator = runtime.default_allocator()
@@ -273,8 +273,8 @@ shutdown :: proc() {
 	_recent_clear()
 	delete(_recent)
 	_recent = nil
-	delete(_pal.view)
-	_pal.view = ""
+	delete(_pal.window)
+	_pal.window = ""
 }
 
 // Replaces the recently run rows with `list`, from the editor settings at
@@ -604,7 +604,7 @@ _search_callback :: proc "c" (data: ^im.InputTextCallbackData) -> i32 {
 	return 0
 }
 
-// Drawn from the main loop after the views, like the dialog.
+// Drawn from the main loop after the windows, like the dialog.
 draw :: proc() {
 	km := keymap.find("Command Palette")
 	if _pal.open_request {
@@ -622,9 +622,9 @@ draw :: proc() {
 		return
 	}
 	defer im.EndPopup()
-	// The view below acts as the focused one while the palette is open, so
-	// a command's enabled state and its run see it (View/Close).
-	if _pal.view != "" do wnd.focused_hold(wnd.find(_pal.view))
+	// The window below acts as the focused one while the palette is open, so
+	// a command's enabled state and its run see it (Window/Close).
+	if _pal.window != "" do wnd.focused_hold(wnd.find(_pal.window))
 	if !_pal.shown {
 		_pal.shown = true
 		if km != nil do keymap.push(km)
@@ -689,18 +689,18 @@ draw :: proc() {
 		top := make([]f32, len(rows) + 1, context.temp_allocator)
 		for r, i in rows do top[i + 1] = top[i] + _row_height(r, line) + gap
 		base := im.GetCursorPosY()
-		scroll, view := im.GetScrollY(), im.GetWindowHeight()
+		scroll, visible_h := im.GetScrollY(), im.GetWindowHeight()
 		// The highlight moved by key comes into view, from the next frame.
 		if h := _pal.highlight; _pal.moved && h < len(rows) {
 			if base + top[h] < scroll + style.WindowPadding.y {
 				im.SetScrollY(max(base + top[h] - style.WindowPadding.y, 0))
-			} else if base + top[h + 1] - gap > scroll + view - style.WindowPadding.y {
-				im.SetScrollY(base + top[h + 1] - gap + style.WindowPadding.y - view)
+			} else if base + top[h + 1] - gap > scroll + visible_h - style.WindowPadding.y {
+				im.SetScrollY(base + top[h + 1] - gap + style.WindowPadding.y - visible_h)
 			}
 		}
 		first := 0
 		for first < len(rows) && base + top[first + 1] <= scroll do first += 1
-		for i := first; i < len(rows) && base + top[i] < scroll + view; i += 1 {
+		for i := first; i < len(rows) && base + top[i] < scroll + visible_h; i += 1 {
 			im.SetCursorPosY(base + top[i])
 			im.PushIDInt(i32(i))
 			if _draw_row(rows[i], ts, i == _pal.highlight, i % 2 == 1, line, icon_w) {
@@ -708,7 +708,7 @@ draw :: proc() {
 			}
 			im.PopID()
 		}
-		// The rows below the view still count for the scrollbar.
+		// The rows below the window still count for the scrollbar.
 		if len(rows) > 0 {
 			im.SetCursorPosY(base + top[len(rows)] - gap)
 			im.Dummy({0, 0})
@@ -941,8 +941,8 @@ _commands_list :: proc(query: string, rows: ^[dynamic]Row) {
 	for cmd in keymap.commands() {
 		if !keymap.in_palette(cmd) do continue
 		// The name, and the id only for a term that reads as one (it has a
-		// dot): ids carry package names, scene_views, that would match
-		// "view" everywhere.
+		// dot): ids carry package names, scene_windows, that would match
+		// "window" everywhere.
 		hit := true
 		for term, i in ts {
 			if matches(cmd.name, ts[i:i + 1]) do continue

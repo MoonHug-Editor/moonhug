@@ -1,12 +1,12 @@
 ---
 title: "Handles"
-description: "Immediate-mode scene-view handles for editor code that draw through gizmos, report hover and turn drags into offsets"
+description: "Immediate-mode Scene window handles for editor code that draw through gizmos, report hover and turn drags into offsets"
 weight: 160
 tags: ["handles", "gizmos", "editor"]
-path: editor/scene-view
+path: editor/scene-window
 ---
 
-`editor/handles` is the scene-view interaction layer for editor code and package editors: immediate-mode handles that draw themselves through `libs/gizmos` (docs/core/Gizmos.md), report hover, and turn a mouse drag into an offset on a plane. The transform tool (W E R), the mhgui rect tool, the physics collider bounds, lights, audio sources and particle shapes use it.
+`editor/handles` is the Scene window interaction layer for editor code and package editors: immediate-mode handles that draw themselves through `libs/gizmos` (docs/core/Gizmos.md), report hover, and turn a mouse drag into an offset on a plane. The transform tool (W E R), the mhgui rect tool, the physics collider bounds, lights, audio sources and particle shapes use it.
 
 ## Where handles live
 
@@ -21,8 +21,8 @@ rect_transform_handles :: proc(rt: ^engine.RectTransform, ctx: handles.Gizmo_Con
 }
 ```
 
-- It runs every frame in the scene view, in every tool, for each object that is selected itself (not for the children of a selected parent). gizmos_gen emits the `__scene_handles` dispatcher.
-- What it records goes to the scene-only `.Tools` channel, drawn over every gizmo, so handles are never covered by another component's drawing and never show in the game view.
+- It runs every frame in the Scene window, in every tool, for each object that is selected itself (not for the children of a selected parent). gizmos_gen emits the `__scene_handles` dispatcher.
+- What it records goes to the scene-only `.Tools` channel, drawn over every gizmo, so handles are never covered by another component's drawing and never show in the Game window.
 - `ctx.tool` says which tool is active. The Handles tool (T, after Q W E R) hides the transform gizmo, so the parts that only make sense without it go behind `ctx.tool == .Handles`.
 - All of the selection's handles are live together: handle ids must be unique per handle, and priorities decide who gets the pointer where handles overlap. The transform gizmo's parts use `PRIO_TOOL`, below every other handle, so a component's own handle wins the click over it.
 - Drawing that is not interactive (an outline) belongs in `@(comp_on_draw_gizmos)` (docs/core/Gizmos.md).
@@ -44,14 +44,14 @@ d := handles.box_bounds(handles.id_of(h), &center, &size)
 
 ## Frame
 
-The editor's gizmo pass calls `handles.frame_begin(view, input)` once per frame with the scene view's camera, before the handle hooks run (docs/core/Gizmos.md, Recording). No render pass needs to be open. `handles.Input` carries what handles read from the user:
+The editor's gizmo pass calls `handles.frame_begin(view, input)` once per frame with the Scene window's camera, before the handle hooks run (docs/core/Gizmos.md, Recording). No render pass needs to be open. `handles.Input` carries what handles read from the user:
 
-- `mouse` in scene image pixels, `hovered` when the pointer is over the view
+- `mouse` in scene image pixels, `hovered` when the pointer is over the window
 - `down` and `clicked` for the left button
 - `alt` and `shift`
 - `snap` and `snap_angle`: the move step (world units) and the rotate step (radians) while snapping is on (the Snap popup's toggle, flipped by holding Ctrl or Cmd), else 0
 
-Handles never read imgui themselves, so a test drives them with a scripted `Input` (tests/common/handles_driver.odin). The scene view asks `handles.consumes_mouse()` before click picking and before starting a box select, so a hot or dragged handle never selects through.
+Handles never read imgui themselves, so a test drives them with a scripted `Input` (tests/common/handles_driver.odin). The Scene window asks `handles.consumes_mouse()` before click picking and before starting a box select, so a hot or dragged handle never selects through.
 
 ## Handles
 
@@ -81,7 +81,7 @@ The hot handle is picked when a frame begins, before any hook runs. Each handle 
 
 One handle is active at a time. It stays active while the mouse is down and is dropped when its owner stops calling.
 
-- `consumes_mouse()` is true while a handle is hovered or dragged. The scene view picks and box-selects only when it is false.
+- `consumes_mouse()` is true while a handle is hovered or dragged. The Scene window picks and box-selects only when it is false.
 - `dragging()` is true while a handle is dragged. `end_drag()` ends the drag now, with no release frame, for a caller whose drag lost its target (the transform tool on a mode switch).
 
 ## Snapping
@@ -160,7 +160,7 @@ audio_source_gizmos :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) {
 ```
 
 - A click inside the badge selects `owner`, over any geometry, since icons draw over everything. Box select takes an icon whose center is inside the rect.
-- Icons are gizmos (the `.Editor` channel, `.Editor_Game` for the game view): handles and the transform gizmo draw over them, and the game view shows them with its Gizmos toggle. Each view draws them facing its own camera.
+- Icons are gizmos (the `.Editor` channel, `.Editor_Game` for the Game window): handles and the transform gizmo draw over them, and the Game window shows them with its Gizmos toggle. Each window draws them facing its own camera.
 - An owner inactive in the hierarchy gets no icon.
 - Built in: lights (a bulb in the light's color), cameras, audio sources (a speaker), particle systems (the "snowing" glyph, `'\ue80f'`).
 - Glyphs rasterize once per codepoint (`GLYPH_PX`, 64) from the font the editor hands over at startup (`icon_font_set`). A codepoint the font does not have fails loudly. `glyph_bitmap` returns a glyph's pixels.
@@ -179,7 +179,7 @@ Plain shapes and labels come from `libs/gizmos` (docs/core/Gizmos.md). Handles a
 
 ## Picking providers
 
-The scene view picks icons, sprites, meshes and UI graphics itself: a click takes the nearest hit along the ray (an icon under the pointer first), and box select takes everything the rect touches. UI graphics are any graphic a package registers with `engine.canvas_graphic_register` (the mhgui Image, the text plugin's Text), so a package's UI needs no picking code.
+The Scene window picks icons, sprites, meshes and UI graphics itself: a click takes the nearest hit along the ray (an icon under the pointer first), and box select takes everything the rect touches. UI graphics are any graphic a package registers with `engine.canvas_graphic_register` (the mhgui Image, the text plugin's Text), so a package's UI needs no picking code.
 
 `handles.pick_register(Pick_Provider{click, band})` adds a package's other selectable shapes. Both procs are required, so a shape that takes a click also takes a box select:
 

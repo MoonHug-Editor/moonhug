@@ -447,12 +447,26 @@ _run_stage :: proc(w: ^World, systems: []System, stage: Stage) -> bool {
 	return true
 }
 
+@(private = "file")
+_has_odin :: proc(dir: string) -> bool {
+	handle, err := os.open(dir)
+	if err != nil do return false
+	defer os.close(handle)
+	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+	if rerr != nil do return false
+	for e in entries do if e.type != .Directory && strings.has_suffix(e.name, ".odin") do return true
+	return false
+}
+
 // _scan parses every package once and creates one DeclInfo entity per top-level
 // declaration. Files are walked in sorted path order so entity creation order -
 // and thus every generator's tie-breaking - is reproducible.
 @(private)
 _scan :: proc(w: ^World) -> bool {
 	for pkg_path in _packages {
+		// A pre-processor may have removed the last file of a folder, a stale
+		// generated copy, so a folder with no .odin file left is no package.
+		if !_has_odin(pkg_path) do continue
 		pkg, ok := gen_core.ParsePackage(pkg_path)
 		if !ok do return false
 

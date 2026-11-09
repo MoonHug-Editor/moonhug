@@ -1,6 +1,6 @@
 package editor
 
-// The command palette modes of the shell (docs/core/Keymaps.md): assets and views.
+// The command palette modes of the shell (docs/core/Keymaps.md): assets and windows.
 // The engine plugin adds scene objects.
 
 import "core:slice"
@@ -10,11 +10,11 @@ import core "moonhug:libs/core"
 import "moonhug:editor/command_palette"
 import wnd "moonhug:editor/window"
 
-// Every asset file by name with its Project view icon, its folder beside it,
+// Every asset file by name with its Project window icon, its folder beside it,
 // sorted by name. A term
 // with a slash matches the path, so `#ui/` lists a folder's assets. Enter
-// does what a double-click on the asset in the Project view does: it selects
-// it and opens its document, a scene in the Scene view.
+// does what a double-click on the asset in the Project window does: it selects
+// it and opens its document, a scene in the Scene window.
 @(command_palette_mode={name="Assets", prefix="#", run=command_palette_assets_run, shortcut="Ctrl+Shift+A", help="Finds an asset by name or folder and opens it"})
 command_palette_assets :: proc(query: string, rows: ^[dynamic]command_palette.Row) {
 	ts := command_palette.terms(query)
@@ -44,11 +44,11 @@ command_palette_assets_run :: proc(row: command_palette.Row) {
 	_project_open_file(row.key)
 }
 
-// Every view by its label and icon, the open ones marked, sorted by label: an open
-// view comes forward, in its Workspace frame when it is in one, and a closed
+// Every window by its label and icon, the open ones marked, sorted by label: an open
+// window comes forward, in its Workspace frame when it is in one, and a closed
 // one opens as the Window menu opens it.
-@(command_palette_mode={name="Views", prefix=":", run=command_palette_views_run, help="Brings a view forward, or opens a closed one"})
-command_palette_views :: proc(query: string, rows: ^[dynamic]command_palette.Row) {
+@(command_palette_mode={name="Windows", prefix=":", run=command_palette_windows_run, help="Brings a window forward, or opens a closed one"})
+command_palette_windows :: proc(query: string, rows: ^[dynamic]command_palette.Row) {
 	ts := command_palette.terms(query)
 	for r in wnd.registered() {
 		open := wnd.instances(r.id)
@@ -67,11 +67,11 @@ command_palette_views :: proc(query: string, rows: ^[dynamic]command_palette.Row
 	})
 }
 
-command_palette_views_run :: proc(row: command_palette.Row) {
+command_palette_windows_run :: proc(row: command_palette.Row) {
 	w := wnd.find(row.key)
 	switch {
 	case w == nil:      wnd.open(row.key)
-	case w.host != "": workspace_view_reveal(w.host, w.key)
+	case w.host != "": workspace_window_reveal(w.host, w.key)
 	case:               wnd.focus(w)
 	}
 }

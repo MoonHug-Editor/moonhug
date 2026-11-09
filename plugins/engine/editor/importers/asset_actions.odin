@@ -1,6 +1,6 @@
 package importers
 
-// The engine's asset actions for the project view: opening a scene, opening
+// The engine's asset actions for the Project window: opening a scene, opening
 // it additively, and writing a scene variant. Installed through
 // @(provider_install).
 

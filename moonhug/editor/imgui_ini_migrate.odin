@@ -1,7 +1,7 @@
 package editor
 
 // imgui saves a window's placement under the text after "###" in its title:
-// the built-in views keep their old names there, so their entries carry over
+// the built-in windows keep their old names there, so their entries carry over
 // as they are. Plugin windows changed from their title to their id when the
 // titles gained icons ("<icon> Sequencer###sequencer"), so an imgui.ini from
 // before names them by title. Renaming those entries in place, before imgui

@@ -1,8 +1,8 @@
 package editor_tests
 
-// Project Inspector instances (inspector/project_inspector_window.odin): each
-// instance has its own state and lock, and shows what session.view_asset
-// names for it, as every view with a lock reads its target: the project
+// Project Inspector instances (inspector/window_project_inspector.odin): each
+// instance has its own state and lock, and shows what session.window_asset
+// names for it, as every window with a lock reads its target: the project
 // selection, or its lock's asset while it is locked. A closed instance's
 // state goes with it.
 
@@ -25,7 +25,7 @@ test_project_inspector_instances_show_the_selection_or_their_lock :: proc(t: ^te
 	testing.expect(t, second != nil, "another instance opens")
 	if second == nil do return
 	defer {
-		session.view_lock_set(PI, false)
+		session.window_lock_set(PI, false)
 		editor.sel_proj_clear()
 		wnd.close(second.key)
 		wnd.close(PI)
@@ -37,17 +37,17 @@ test_project_inspector_instances_show_the_selection_or_their_lock :: proc(t: ^te
 	testing.expect(t, first_data != nil && second_data != nil && first_data != second_data, "each instance has its own state")
 
 	editor.sel_proj_only(A)
-	testing.expect_value(t, session.view_asset(PI).path, A)
-	testing.expect_value(t, session.view_asset(second.key).path, A)
+	testing.expect_value(t, session.window_asset(PI).path, A)
+	testing.expect_value(t, session.window_asset(second.key).path, A)
 
-	session.view_lock_set(second.key, true)
+	session.window_lock_set(second.key, true)
 	editor.sel_proj_only(B)
-	testing.expect_value(t, session.view_asset(PI).path, B)
-	testing.expect_value(t, session.view_asset(second.key).path, A)
+	testing.expect_value(t, session.window_asset(PI).path, B)
+	testing.expect_value(t, session.window_asset(second.key).path, A)
 
 	// Unlocked, it shows the selection again.
-	session.view_lock_set(second.key, false)
-	testing.expect_value(t, session.view_asset(second.key).path, B)
+	session.window_lock_set(second.key, false)
+	testing.expect_value(t, session.window_asset(second.key).path, B)
 
 	key := second.key
 	wnd.close(key)

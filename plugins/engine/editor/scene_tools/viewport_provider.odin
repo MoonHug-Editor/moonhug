@@ -13,9 +13,9 @@ install_viewport_provider :: proc() {
 	viewport.set_provider({
 		render              = _vp_render,
 		object_bounds       = _vp_object_bounds,
-		pick                = scene_view_pick,
+		pick                = scene_window_pick,
 		pick_all            = _vp_pick_all,
-		band_query          = scene_view_band_query,
+		band_query          = scene_window_band_query,
 		outline             = scene_outline,
 		tools_frame         = scene_tools_frame,
 		tools_consume_mouse = scene_tools_consume_mouse,
@@ -37,14 +37,14 @@ _vp_render :: proc(target: ^gfx.Render_Target, view: engine.Render_View, graph: 
 
 @(private = "file")
 _vp_pick_all :: proc(view: engine.Render_View, px, py: f32) -> []engine.Transform_Handle {
-	hits := scene_view_pick_all(view, px, py)
+	hits := scene_window_pick_all(view, px, py)
 	out := make([]engine.Transform_Handle, len(hits), context.temp_allocator)
 	for h, i in hits do out[i] = h.tH
 	return out
 }
 
 // The game camera's view at this size: the highest-order camera, the one the
-// game view renders last.
+// Game window renders last.
 @(private = "file")
 _vp_game_view :: proc(width, height: f32) -> (engine.Render_View, bool) {
 	cam := engine.camera_active()

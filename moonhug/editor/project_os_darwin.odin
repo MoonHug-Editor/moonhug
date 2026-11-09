@@ -1,6 +1,6 @@
 package editor
 
-// macOS file-manager integration for the project view: move-to-Trash
+// macOS file-manager integration for the Project window: move-to-Trash
 // (recoverable, Finder-native — never a permanent delete) and reveal-in-
 // Finder. Same objc pattern as dock_icon_darwin.odin; other platforms
 // compile project_os_stub.odin.

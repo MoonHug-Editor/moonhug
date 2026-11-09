@@ -17,7 +17,7 @@ import core "moonhug:libs/core"
 import "moonhug:libs/log"
 import "moonhug:libs/gizmos"
 
-WINDOW_TITLE :: "MoonHug Editor"
+MAIN_WINDOW_TITLE :: "MoonHug Editor"
 VERSION :: #load("../version", string)
 
 // The version file ends in a newline: the number alone.
@@ -25,9 +25,9 @@ version_text :: proc() -> string {
 	return strings.trim_space(VERSION)
 }
 
-// The OS window's title and the app menu's: the editor and its version.
-window_title :: proc() -> string {
-	return fmt.tprintf("%s %s", WINDOW_TITLE, version_text())
+// The main window's title and the app menu's: the editor and its version.
+main_window_title :: proc() -> string {
+	return fmt.tprintf("%s %s", MAIN_WINDOW_TITLE, version_text())
 }
 
 // Per-DEVELOPER editor state, never committed (Unity's UserSettings): window
@@ -55,26 +55,26 @@ EditorSettings :: struct {
     show_game:                bool,
     has_window_state:         bool,                     // open_window_ids and show_game are saved: false on a first run
     scene_overlays:           [dynamic]Overlay_Setting, // dockable overlay placement (dock.odin)
-    grid:                     Grid_Settings,            // scene grid (view_scene.odin)
-    snap:                     Snap_Settings,            // gizmo snapping (view_scene.odin)
-    run_config:               string,                   // Play button's selected run config (view_toolbar.odin), "pkg/name"
+    grid:                     Grid_Settings,            // scene grid (window_scene.odin)
+    snap:                     Snap_Settings,            // gizmo snapping (window_scene.odin)
+    run_config:               string,                   // Play button's selected run config (window_toolbar.odin), "pkg/name"
     sim_host:                 string,                   // Simulate's host package name (simulate.odin), e.g. "app"
     project_settings_tab:     string,                   // Project Settings window's selected section (project_settings.odin)
-    project_zoom:             f32,                      // project view zoom: 0 = list, >0 = thumbnail grid (view_project.odin)
-    scene_ortho:              bool,                     // scene view projection (view_scene.odin)
-    scene_2d:                 bool,                     // scene view 2D mode (view_scene.odin)
-    scene_mode:               core.View_Mode,           // scene view shading mode (view_scene.odin)
-    game_size_index:          int,                      // game view size list entry (view_game.odin)
-    game_scale:               f32,                      // game view zoom (view_game.odin)
-    game_size_flipped:        bool,                     // game view size width/height swap (view_game.odin)
-    game_gizmos:              bool,                     // game view Gizmos toggle (view_game.odin)
-    game_stats:               bool,                     // game view Stats panel (view_game.odin)
-    scene_gizmos_off:         bool,                     // scene view Gizmos toggle, inverted so an older file keeps it on (gizmos.scene_gizmos)
+    project_zoom:             f32,                      // Project window zoom: 0 = list, >0 = thumbnail grid (window_project.odin)
+    scene_ortho:              bool,                     // Scene window projection (window_scene.odin)
+    scene_2d:                 bool,                     // Scene window 2D mode (window_scene.odin)
+    scene_mode:               core.View_Mode,           // Scene window shading mode (window_scene.odin)
+    game_size_index:          int,                      // Game window size list entry (window_game.odin)
+    game_scale:               f32,                      // Game window zoom (window_game.odin)
+    game_size_flipped:        bool,                     // Game window size width/height swap (window_game.odin)
+    game_gizmos:              bool,                     // Game window Gizmos toggle (window_game.odin)
+    game_stats:               bool,                     // Game window Stats panel (window_game.odin)
+    scene_gizmos_off:         bool,                     // Scene window Gizmos toggle, inverted so an older file keeps it on (gizmos.scene_gizmos)
     gizmo_icon_px:            f32,                      // gizmo settings' Icon Size, 0 = the default
     gizmo_hidden_icons:       [dynamic]string,          // component types whose icon the gizmo settings hide
     gizmo_hidden_gizmos:      [dynamic]string,          // component types whose gizmo the gizmo settings hide
     selection:                Persisted_Selection,      // the selection at quit (selection_persist.odin)
-    view_locks:               [dynamic]Persisted_View_Lock, // every locked view (view_lock.odin, selection_persist.odin)
+    window_locks:               [dynamic]Persisted_Window_Lock, // every locked window (window_lock.odin, selection_persist.odin)
     command_palette_recent:   []command_palette.Recent, // each palette mode's recently run rows, newest first
     command_args:             map[string]string,        // each command with arguments' last values, JSON by command id (adjust_last.odin)
 }

@@ -77,7 +77,7 @@ property_drawer_SpriteRenderer_inspector :: proc(ctx: ^inspector.Ctx) {
 // --- Import settings step: the Sprite Editor button --------------------------
 // Unity's shape: the texture importer inspector carries a Sprite Editor
 // button, the slicing itself happens in the dedicated window
-// (sprite_editor_window.odin) with its own Apply/Revert.
+// (window_sprite_editor.odin) with its own Apply/Revert.
 @(property_drawer={type=engine.TextureSettings, order="middle"})
 property_drawer_TextureSettings_slicer :: proc(ctx: ^inspector.Ctx) {
 	inspector.draw(ctx) // Apply + the reflected TextureSettings

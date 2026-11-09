@@ -1,9 +1,9 @@
 package editor
 
-// Docking: the main dockspace (with a Unity-style default layout built via
-// DockBuilder on first run / View->Reset Layout) and dockable view overlays
-// modeled on Unity's Scene View overlays:
-// - overlays dock to the view's corners/edges or float anywhere inside it
+// Docking: the main dockspace (with a default layout built via DockBuilder on
+// first run / Window->Reset Layout) and dockable overlays inside a window, such
+// as the Scene window's:
+// - overlays dock to the window's corners/edges or float anywhere inside it
 // - drag by the grip handle; drop zones highlight while dragging
 // - docking to the left/right edge turns the overlay vertical
 // Overlay placement persists in editor_settings (anchor + normalized float pos).
@@ -22,12 +22,12 @@ import "moonhug:editor/widgets"
 _dock_layout_reset: bool
 
 // The main dockspace's node id, set each frame by draw_dockspace: the root of
-// the dock tree the MCP view tools walk (mcp_views.odin).
+// the dock tree the MCP window tools walk (mcp_window_tools.odin).
 dock_space_id: im.ID
 
 // Host window under the main toolbar holding the central dockspace. Builds the
 // default layout when the dockspace node has no saved state (fresh imgui.ini)
-// or a reset was requested. Must run before any dockable view's Begin().
+// or a reset was requested. Must run before any dockable window's Begin().
 draw_dockspace :: proc() {
 	vp := im.GetMainViewport()
 	toolbar_h := toolbar_height()
@@ -43,7 +43,7 @@ draw_dockspace :: proc() {
 			_dock_layout_reset = false
 			_dock_build_default_layout(dockspace_id, size)
 		}
-		// While a view is maximized the dockspace keeps its nodes and shows
+		// While a window is maximized the dockspace keeps its nodes and shows
 		// nothing (maximize.odin).
 		hidden := maximize_is_on()
 		im.DockSpace(dockspace_id, im.Vec2{0, 0}, {.KeepAliveOnly} if hidden else {}, nil)
@@ -87,17 +87,17 @@ _dock_build_default_layout :: proc(dockspace_id: im.ID, size: im.Vec2) {
 
 // Rebuild the default layout next frame. Also shows the windows the layout
 // docks, so a reset never produces empty nodes.
-@(menu_item={path="Window/Reset Layout", order=20, shortcut="", help="Puts the views back in the default layout"})
-view_reset_layout_menu :: proc() {
+@(menu_item={path="Window/Reset Layout", order=20, shortcut="", help="Puts the windows back in the default layout"})
+window_reset_layout_menu :: proc() {
 	_dock_layout_reset = true
 	wnd.open_saved({"Scene", "Hierarchy", "Inspector", "Project", "Project Inspector", "Console", "Output", "History", "Animation", "Playable Graph"})
 	menu.show_game = true
 }
 
 // ---------------------------------------------------------------------------
-// Dockable view overlays (Unity Scene View overlays)
+// Dockable overlays inside a window, such as the Scene window's
 
-OVERLAY_MARGIN :: f32(8)     // gap between a docked overlay and the view edge
+OVERLAY_MARGIN :: f32(8)     // gap between a docked overlay and the window edge
 OVERLAY_SPACING :: f32(6)    // gap between overlays stacked in one zone
 OVERLAY_PAD :: f32(4)        // background padding around overlay content
 OVERLAY_DROP_BAND :: f32(48) // px from an edge that counts as a floating dock drop
@@ -107,7 +107,7 @@ BAR_PAD :: f32(3)            // gap between a strip's items and its edges
 OVERLAY_BUTTON_SIZE :: f32(24)
 OVERLAY_GRIP_THICK :: f32(12)
 
-// Float and the corners draw OVER the view image (Unity's floating overlays).
+// Float and the corners draw OVER the window image (Unity's floating overlays).
 // The four Bar_* anchors are Unity's docked toolbars: a strip along that edge
 // that reserves its own space, so the image shrinks instead of being covered.
 Overlay_Anchor :: enum u8 {
@@ -158,7 +158,7 @@ Overlay :: struct {
 	id:         cstring,
 	items:      [dynamic]Overlay_Item, // kept sorted by order
 	anchor:     Overlay_Anchor,
-	float_pos:  [2]f32,  // 0..1 inside the view rect, top-left of content
+	float_pos:  [2]f32,  // 0..1 inside the window rect, top-left of content
 	size:       im.Vec2, // content size measured last frame ({0,0} first frame)
 	items_size: im.Vec2, // the items alone, measured last frame — zero WIDTH
 	                     // (all items empty) hides the overlay's chrome entirely
@@ -207,8 +207,8 @@ overlay_set_transparent :: proc(overlay_id: cstring) {
 	}
 }
 
-// Adds an item to a scene view overlay, the panels the user drags between the
-// view's edges, corners and strips.
+// Adds an item to a Scene window overlay, the panels the user drags between the
+// window's edges, corners and strips.
 //
 // Items with the same `id` share one overlay and sort by `order`. The proc takes
 // `vertical: bool`, true when the overlay sits in a side strip, and calls
@@ -247,7 +247,7 @@ overlays_shutdown :: proc() {
 	_overlays = nil
 }
 
-// True while an overlay owns the mouse — the scene view's click-to-pick must
+// True while an overlay owns the mouse — the Scene window's click-to-pick must
 // not select through overlay buttons.
 overlay_wants_mouse :: proc() -> bool {
 	return _overlay_mouse_over
@@ -288,8 +288,8 @@ overlays_capture_settings :: proc() {
 // are ever non-zero.
 _bar_thickness: [Overlay_Anchor]f32
 
-// How much room the toolbar strips take from the view, in pixels: left,
-// right, top, bottom. The view subtracts these before sizing its image, so
+// How much room the toolbar strips take from the window, in pixels: left,
+// right, top, bottom. The window subtracts these before sizing its image, so
 // the strips sit beside the image instead of over it. Sizes come from the
 // previous frame, so a strip that gains its first overlay costs one frame to
 // settle — the same rule the overlays themselves use.
@@ -299,7 +299,7 @@ overlay_bar_insets :: proc() -> (left, right, top, bottom: f32) {
 }
 
 // Measure the strips for this frame from last frame's overlay sizes. Call
-// BEFORE the view sizes its image; overlays_draw refreshes the sizes after.
+// BEFORE the window sizes its image; overlays_draw refreshes the sizes after.
 // A strip is only as thick as the items themselves plus BAR_PAD, so it hugs
 // the buttons instead of reserving a full overlay panel's worth of chrome.
 overlays_measure_bars :: proc() {
@@ -322,14 +322,14 @@ overlays_measure_bars :: proc() {
 	}
 }
 
-// Draw all overlays inside the current window over the view image rect
-// [view_min, view_max]. Call after the view image item, inside the same window.
+// Draw all overlays inside the current window over the window image rect
+// [view_min, view_max]. Call after the window image item, inside the same window.
 // [bar_min, bar_max] is the FULL content rect including the strip space that
 // overlay_bar_insets took out of the image.
-overlays_draw :: proc(view_min, view_max: im.Vec2, bar_min := im.Vec2{}, bar_max := im.Vec2{}) {
+overlays_draw :: proc(area_min, area_max: im.Vec2, bar_min := im.Vec2{}, bar_max := im.Vec2{}) {
 	_overlay_host = im.GetCurrentWindowRead().ID_
 	_overlay_mouse_over = false
-	if view_max.x - view_min.x < 1 || view_max.y - view_min.y < 1 do return
+	if area_max.x - area_min.x < 1 || area_max.y - area_min.y < 1 do return
 
 	mp := im.GetMousePos()
 
@@ -353,12 +353,12 @@ overlays_draw :: proc(view_min, view_max: im.Vec2, bar_min := im.Vec2{}, bar_max
 
 	// Toolbar strips: the band between the full content rect and the image.
 	// Drawn before the overlays so their buttons sit on top of the strip.
-	bmin := bar_min.x == 0 && bar_min.y == 0 ? view_min : bar_min
-	bmax := bar_max.x == 0 && bar_max.y == 0 ? view_max : bar_max
+	bmin := bar_min.x == 0 && bar_min.y == 0 ? area_min : bar_min
+	bmax := bar_max.x == 0 && bar_max.y == 0 ? area_max : bar_max
 	// Top and bottom strips win the corners: they span the full width, and the
 	// side strips run only between them.
 	sides_min_y := bmin.y + _bar_thickness[.Bar_Top]
-	_overlay_draw_bars(bmin, bmax, view_min, view_max)
+	_overlay_draw_bars(bmin, bmax, area_min, area_max)
 
 	dragging_any := false
 	for &ov in _overlays {
@@ -383,22 +383,22 @@ overlays_draw :: proc(view_min, view_max: im.Vec2, bar_min := im.Vec2{}, bar_max
 		} else {
 			switch ov.anchor {
 			case .Top_Left:
-				pos = {view_min.x + OVERLAY_MARGIN + zone_cursor[.Top_Left], view_min.y + OVERLAY_MARGIN}
+				pos = {area_min.x + OVERLAY_MARGIN + zone_cursor[.Top_Left], area_min.y + OVERLAY_MARGIN}
 				zone_cursor[.Top_Left] += full.x + OVERLAY_SPACING
 			case .Top_Right:
-				pos = {view_max.x - OVERLAY_MARGIN - full.x - zone_cursor[.Top_Right], view_min.y + OVERLAY_MARGIN}
+				pos = {area_max.x - OVERLAY_MARGIN - full.x - zone_cursor[.Top_Right], area_min.y + OVERLAY_MARGIN}
 				zone_cursor[.Top_Right] += full.x + OVERLAY_SPACING
 			case .Bottom_Left:
-				pos = {view_min.x + OVERLAY_MARGIN + zone_cursor[.Bottom_Left], view_max.y - OVERLAY_MARGIN - full.y}
+				pos = {area_min.x + OVERLAY_MARGIN + zone_cursor[.Bottom_Left], area_max.y - OVERLAY_MARGIN - full.y}
 				zone_cursor[.Bottom_Left] += full.x + OVERLAY_SPACING
 			case .Bottom_Right:
-				pos = {view_max.x - OVERLAY_MARGIN - full.x - zone_cursor[.Bottom_Right], view_max.y - OVERLAY_MARGIN - full.y}
+				pos = {area_max.x - OVERLAY_MARGIN - full.x - zone_cursor[.Bottom_Right], area_max.y - OVERLAY_MARGIN - full.y}
 				zone_cursor[.Bottom_Right] += full.x + OVERLAY_SPACING
 			case .Left:
-				pos = {view_min.x + OVERLAY_MARGIN, view_min.y + OVERLAY_MARGIN + zone_cursor[.Left]}
+				pos = {area_min.x + OVERLAY_MARGIN, area_min.y + OVERLAY_MARGIN + zone_cursor[.Left]}
 				zone_cursor[.Left] += full.y + OVERLAY_SPACING
 			case .Right:
-				pos = {view_max.x - OVERLAY_MARGIN - full.x, view_min.y + OVERLAY_MARGIN + zone_cursor[.Right]}
+				pos = {area_max.x - OVERLAY_MARGIN - full.x, area_min.y + OVERLAY_MARGIN + zone_cursor[.Right]}
 				zone_cursor[.Right] += full.y + OVERLAY_SPACING
 			// Strips position the ITEMS directly (no panel padding, no
 			// margin) so the strip stays as thin as its buttons. Side strips
@@ -418,8 +418,8 @@ overlays_draw :: proc(view_min, view_max: im.Vec2, bar_min := im.Vec2{}, bar_max
 				pos = {bmin.x + BAR_PAD + zone_cursor[.Bar_Bottom], bmax.y - BAR_PAD - ov.items_size.y}
 				zone_cursor[.Bar_Bottom] += bar_run + OVERLAY_SPACING
 			case .Float:
-				span := view_max - view_min - full
-				pos = view_min + {ov.float_pos.x * max(span.x, 0), ov.float_pos.y * max(span.y, 0)}
+				span := area_max - area_min - full
+				pos = area_min + {ov.float_pos.x * max(span.x, 0), ov.float_pos.y * max(span.y, 0)}
 			}
 			// pos is background top-left in zone math; shift to content.
 			// Strips already positioned their content directly.
@@ -433,15 +433,15 @@ overlays_draw :: proc(view_min, view_max: im.Vec2, bar_min := im.Vec2{}, bar_max
 		//
 		// Only the near edges bound an ANCHORED overlay. Bounding the far
 		// edges too pushed a wide one back inward — a zone whose overlays
-		// outgrow the view then stacked them on top of each other, which
+		// outgrow the window then stacked them on top of each other, which
 		// reads as damage rather than as running out of room. Overflowing
 		// past the far edge is the honest picture, and imgui clips it to the
 		// window. A FLOATER still clamps both ways: its position is stored
 		// normalized, so a resize could otherwise strand it out of reach.
 		// Strip overlays measure against the whole content rect, since their
 		// strip lies outside the image.
-		cmin := overlay_anchor_is_bar(ov.anchor) && !dragging ? bmin : view_min
-		cmax := overlay_anchor_is_bar(ov.anchor) && !dragging ? bmax : view_max
+		cmin := overlay_anchor_is_bar(ov.anchor) && !dragging ? bmin : area_min
+		cmax := overlay_anchor_is_bar(ov.anchor) && !dragging ? bmax : area_max
 		if ov.anchor == .Float && !dragging {
 			pos.x = math.round(clamp(pos.x, cmin.x + OVERLAY_PAD, max(cmax.x - full.x + OVERLAY_PAD, cmin.x + OVERLAY_PAD)))
 			pos.y = math.round(clamp(pos.y, cmin.y + OVERLAY_PAD, max(cmax.y - full.y + OVERLAY_PAD, cmin.y + OVERLAY_PAD)))
@@ -460,10 +460,10 @@ overlays_draw :: proc(view_min, view_max: im.Vec2, bar_min := im.Vec2{}, bar_max
 				ov.anchor = _overlay_zone_from_pos(mp, bmin, bmax)
 				if ov.anchor == .Float {
 					full = ov.size + {OVERLAY_PAD * 2, OVERLAY_PAD * 2}
-					span := view_max - view_min - full
+					span := area_max - area_min - full
 					ov.float_pos = {
-						span.x > 0 ? clamp((pos.x - OVERLAY_PAD - view_min.x) / span.x, 0, 1) : 0,
-						span.y > 0 ? clamp((pos.y - OVERLAY_PAD - view_min.y) / span.y, 0, 1) : 0,
+						span.x > 0 ? clamp((pos.x - OVERLAY_PAD - area_min.x) / span.x, 0, 1) : 0,
+						span.y > 0 ? clamp((pos.y - OVERLAY_PAD - area_min.y) / span.y, 0, 1) : 0,
 					}
 				}
 			}
@@ -607,43 +607,43 @@ _overlay_item_tooltip :: proc(tip: cstring) -> cstring {
 	return fmt.ctprintf("%s\nid=\"%s\", order=%d", tip, _overlay_item_ctx.overlay_id, _overlay_item_ctx.order)
 }
 
-// Which zone a drop at mp lands in: edge bands split at the view's midpoint
+// Which zone a drop at mp lands in: edge bands split at the window's midpoint
 // for top/bottom (so corners fall out naturally), left/right take the middle
 // sections, everything else floats.
-_overlay_zone_from_pos :: proc(mp, view_min, view_max: im.Vec2) -> Overlay_Anchor {
-	if mp.x < view_min.x || mp.x > view_max.x || mp.y < view_min.y || mp.y > view_max.y do return .Float
-	mid_x := (view_min.x + view_max.x) * 0.5
+_overlay_zone_from_pos :: proc(mp, area_min, area_max: im.Vec2) -> Overlay_Anchor {
+	if mp.x < area_min.x || mp.x > area_max.x || mp.y < area_min.y || mp.y > area_max.y do return .Float
+	mid_x := (area_min.x + area_max.x) * 0.5
 	b := OVERLAY_DROP_BAND
 	// Outermost band on each side is the docked toolbar strip; the floating
 	// corner and side zones sit just inside it. Top and bottom are tested
 	// FIRST and span the full width, matching how those strips take the
 	// corners when drawn; the side bands then run only between them.
-	if mp.y < view_min.y + BAR_DROP_BAND_TB do return .Bar_Top
-	if mp.y > view_max.y - BAR_DROP_BAND_TB do return .Bar_Bottom
-	if mp.x < view_min.x + BAR_DROP_BAND do return .Bar_Left
-	if mp.x > view_max.x - BAR_DROP_BAND do return .Bar_Right
-	if mp.y < view_min.y + BAR_DROP_BAND_TB + b do return mp.x < mid_x ? .Top_Left : .Top_Right
-	if mp.y > view_max.y - BAR_DROP_BAND_TB - b do return mp.x < mid_x ? .Bottom_Left : .Bottom_Right
-	if mp.x < view_min.x + BAR_DROP_BAND + b do return .Left
-	if mp.x > view_max.x - BAR_DROP_BAND - b do return .Right
+	if mp.y < area_min.y + BAR_DROP_BAND_TB do return .Bar_Top
+	if mp.y > area_max.y - BAR_DROP_BAND_TB do return .Bar_Bottom
+	if mp.x < area_min.x + BAR_DROP_BAND do return .Bar_Left
+	if mp.x > area_max.x - BAR_DROP_BAND do return .Bar_Right
+	if mp.y < area_min.y + BAR_DROP_BAND_TB + b do return mp.x < mid_x ? .Top_Left : .Top_Right
+	if mp.y > area_max.y - BAR_DROP_BAND_TB - b do return mp.x < mid_x ? .Bottom_Left : .Bottom_Right
+	if mp.x < area_min.x + BAR_DROP_BAND + b do return .Left
+	if mp.x > area_max.x - BAR_DROP_BAND - b do return .Right
 	return .Float
 }
 
-_overlay_zone_rect :: proc(zone: Overlay_Anchor, view_min, view_max: im.Vec2) -> (rmin, rmax: im.Vec2, ok: bool) {
-	mid_x := (view_min.x + view_max.x) * 0.5
+_overlay_zone_rect :: proc(zone: Overlay_Anchor, area_min, area_max: im.Vec2) -> (rmin, rmax: im.Vec2, ok: bool) {
+	mid_x := (area_min.x + area_max.x) * 0.5
 	b := OVERLAY_DROP_BAND
 	// Inner rect: everything the strip bands leave over.
 	k := BAR_DROP_BAND
 	ktb := BAR_DROP_BAND_TB
-	imin := im.Vec2{view_min.x + k, view_min.y + ktb}
-	imax := im.Vec2{view_max.x - k, view_max.y - ktb}
+	imin := im.Vec2{area_min.x + k, area_min.y + ktb}
+	imax := im.Vec2{area_max.x - k, area_max.y - ktb}
 	switch zone {
 	// Top and bottom span the full width and take the corners; the sides run
 	// between them (the same split the drawn strips use).
-	case .Bar_Top:      return view_min, {view_max.x, view_min.y + ktb}, true
-	case .Bar_Bottom:   return {view_min.x, view_max.y - ktb}, view_max, true
-	case .Bar_Left:     return {view_min.x, imin.y}, {view_min.x + k, imax.y}, true
-	case .Bar_Right:    return {view_max.x - k, imin.y}, {view_max.x, imax.y}, true
+	case .Bar_Top:      return area_min, {area_max.x, area_min.y + ktb}, true
+	case .Bar_Bottom:   return {area_min.x, area_max.y - ktb}, area_max, true
+	case .Bar_Left:     return {area_min.x, imin.y}, {area_min.x + k, imax.y}, true
+	case .Bar_Right:    return {area_max.x - k, imin.y}, {area_max.x, imax.y}, true
 	case .Top_Left:     return imin, {mid_x, imin.y + b}, true
 	case .Top_Right:    return {mid_x, imin.y}, {imax.x, imin.y + b}, true
 	case .Bottom_Left:  return {imin.x, imax.y - b}, {mid_x, imax.y}, true
@@ -657,11 +657,11 @@ _overlay_zone_rect :: proc(zone: Overlay_Anchor, view_min, view_max: im.Vec2) ->
 
 // While an overlay drags: faint fill on every dock zone, accent on the one
 // under the cursor (DockingPreview, same color imgui uses for window docking).
-_overlay_draw_drop_zones :: proc(mp, view_min, view_max: im.Vec2) {
+_overlay_draw_drop_zones :: proc(mp, area_min, area_max: im.Vec2) {
 	dl := im.GetWindowDrawList()
-	hot := _overlay_zone_from_pos(mp, view_min, view_max)
+	hot := _overlay_zone_from_pos(mp, area_min, area_max)
 	for zone in Overlay_Anchor {
-		rmin, rmax, ok := _overlay_zone_rect(zone, view_min, view_max)
+		rmin, rmax, ok := _overlay_zone_rect(zone, area_min, area_max)
 		if !ok do continue
 		alpha: f32 = zone == hot ? 0.5 : 0.12
 		im.DrawList_AddRectFilled(dl, rmin, rmax, im.GetColorU32(.DockingPreview, alpha), 3)

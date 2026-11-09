@@ -4,12 +4,12 @@ package animation_editor
 // instead of once per frame: the rows (sheet_rows.odin), each property's
 // channels, and what each channel resolves to on its component. It rebuilds
 // when the document's edit count (inspector.Asset_Doc.edits, bumped by every
-// edit, undo and redo), the clip, or the view's collapse and expand state
-// (_Anim_View.view_gen) changes. A clip inside a model has no document and
+// edit, undo and redo), the clip, or the window's collapse and expand state
+// (_Anim_Window.window_gen) changes. A clip inside a model has no document and
 // never changes, so its model is built once.
 //
 // Slices into a model stay readable for the rest of the frame after a
-// rebuild: a replaced model waits in _Anim_View.sheets_old and is freed at
+// rebuild: a replaced model waits in _Anim_Window.sheets_old and is freed at
 // the start of the next draw. So code that took `rows` before a menu edited
 // the clip reads stale but valid memory until it refreshes.
 //
@@ -39,7 +39,7 @@ _Sheet :: struct {
 	clip:     ^anim.AnimationClip,
 	doc:      ^inspector.Asset_Doc,
 	edits:    u64,
-	view_gen: u64,
+	window_gen: u64,
 	nch:      int,
 	base:     [^]anim.Animation_Channel, // the clip's channel storage at build time, compared, never read
 	rows:     [dynamic]Sheet_Row,
@@ -82,7 +82,7 @@ _pv_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) -> ^_She
 
 @(private = "file")
 _sheet_current :: proc(s: ^_Sheet, doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) -> bool {
-	if s.clip != clip || s.nch != len(clip.channels) || s.view_gen != _av.view_gen do return false
+	if s.clip != clip || s.nch != len(clip.channels) || s.window_gen != _av.window_gen do return false
 	if doc == nil do return s.doc == nil
 	return s.doc == doc && s.edits == doc.edits
 }
@@ -93,7 +93,7 @@ _sheet_build :: proc(s: ^_Sheet, doc: ^inspector.Asset_Doc, clip: ^anim.Animatio
 	s.clip = clip
 	s.doc = doc
 	s.edits = doc != nil ? doc.edits : 0
-	s.view_gen = _av.view_gen
+	s.window_gen = _av.window_gen
 	s.nch = len(clip.channels)
 	s.base = raw_data(clip.channels[:])
 	n := len(clip.channels)
@@ -156,7 +156,7 @@ _sheet_free :: proc(s: ^_Sheet) {
 }
 
 // Frees the models replaced during the last frame.
-_sheets_old_free :: proc(av: ^_Anim_View) {
+_sheets_old_free :: proc(av: ^_Anim_Window) {
 	for &old in av.sheets_old do _sheet_free(&old)
 	clear(&av.sheets_old)
 }
@@ -194,7 +194,7 @@ _pv_meta :: proc(ch: ^anim.Animation_Channel) -> _Ch_Meta {
 
 // --- Selection across edits ---------------------------------------------------------
 
-_sel_snap_clear :: proc(av: ^_Anim_View) {
+_sel_snap_clear :: proc(av: ^_Anim_Window) {
 	context.allocator = runtime.default_allocator()
 	for snap in av.sel_snap do delete(snap.chan)
 	clear(&av.sel_snap)

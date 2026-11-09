@@ -56,13 +56,13 @@ _input: struct {
 
 	// The game's screen: mouse_position is relative to it and viewport_size
 	// is what games measure the screen with. The whole window by default
-	// (platform sets it every frame); the editor sets it to the Game view's
+	// (platform sets it every frame); the editor sets it to the Game window's
 	// image instead, in which case the platform leaves it alone.
 	viewport_pos:    [2]f32,
 	viewport_size:   [2]f32,
 	viewport_custom: bool,
 	// Application focus (core.application_is_focused, docs/core/Simulate.md):
-	// the window's focus standalone, the Game view's in the editor, which
+	// the window's focus standalone, the Game window's in the editor, which
 	// sets it itself (focus_custom). Game reads report nothing while the
 	// application is unfocused and inside the game scope; the editor's own
 	// reads sit outside the scope. The raw state keeps tracking, so a key
@@ -134,7 +134,7 @@ mouse_in_viewport :: proc() -> bool {
 }
 
 // set_app_focused is the host's statement of application focus (the editor:
-// the Game view during a run). Set every frame or on change, only a change
+// the Game window during a run). Set every frame or on change, only a change
 // does anything: losing focus freezes the mouse where it was and drops the
 // fixed-tick edges nothing consumed; gaining it seeds them from this frame's
 // edges, so the click that gives focus reaches the game like in Unity while
@@ -176,7 +176,7 @@ _apply_app_focus :: proc(on: bool) {
 
 // set_game_scope marks the stretch of the frame where the focus gate applies
 // to reads. A standalone app sets it once; the editor opens it around the
-// simulation tick and closes it after, so its own views read freely.
+// simulation tick and closes it after, so its own windows read freely.
 set_game_scope :: proc(on: bool) {
 	_input.game_scope = on
 }
@@ -209,8 +209,8 @@ _mouse_pos :: proc() -> [2]f32 {
 
 // A mouse position SDL reports in the coordinates of window `window_id`, in
 // the attached window's coordinates. The two differ for the editor's floating
-// views, which are windows of their own: a game view floating beside the main
-// window gets its mouse in the same coordinates as when docked.
+// windows: a Game window floating beside the main window gets its mouse in
+// the same coordinates as when docked.
 @(private)
 _in_main_window :: proc(window_id: sdl.WindowID, x, y: f32) -> [2]f32 {
 	if _window == nil || window_id == 0 || window_id == sdl.GetWindowID(_window) do return {x, y}
@@ -338,8 +338,8 @@ apply_event :: proc(e: ^sdl.Event) {
 		_platform_app_focus(true)
 	case .WINDOW_FOCUS_LOST:
 		_input.dbg_focus_lost += 1
-		// Focus moving to another window of this app (an editor floating
-		// view) keeps the app focused: SDL already names the new window.
+		// Focus moving to another window of this app (a floating editor
+		// window) keeps the app focused: SDL already names the new window.
 		if sdl.GetKeyboardFocus() != nil do return
 		_input.is_focused = false
 		_platform_app_focus(false)

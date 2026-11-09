@@ -87,7 +87,7 @@ frame_buffer_push :: proc(fb: ^Frame_Buffer, bytes: []u8) {
 	append(&fb.data, ..bytes)
 }
 
-// The returned payload is a view into the buffer, valid until the next push
+// The returned payload is a window into the buffer, valid until the next push
 // or next call — consume (parse/copy) before continuing. malformed=true means
 // the peer violated the protocol (oversized/zero frame): close the connection.
 frame_buffer_next :: proc(fb: ^Frame_Buffer) -> (payload: []u8, ok: bool, malformed: bool) {

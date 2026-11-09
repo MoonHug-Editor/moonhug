@@ -1,6 +1,6 @@
 package mhgui_editor
 
-// Editor half of mhgui: the GameObject > UI menu, scene-view picking of UI
+// Editor half of mhgui: the GameObject > UI menu, Scene window picking of UI
 // rects, and the rect tool drawn on the selected RectTransform (built on
 // editor/handles, docs/core/Handles.md). Each menu action and each drag is one
 // undo step.
@@ -19,7 +19,7 @@ import mhgui "moonhug:packages/mhgui"
 
 @(private = "file") _NONE :: engine.Transform_Handle{}
 
-// The canvas plane in the scene view.
+// The canvas plane in the Scene window.
 @(private = "file") _PLANE_NORMAL :: [3]f32{0, 0, 1}
 
 // Rect tool colors: the rect and its handles, the anchors, the pivot ring.
@@ -157,7 +157,7 @@ property_drawer_Image_inspector :: proc(ctx: ^inspector.Ctx) {
 
 // --- Canvas outline --------------------------------------------------------------------
 
-// Every canvas shows its rect in the scene view, selected or not, so the UI
+// Every canvas shows its rect in the Scene window, selected or not, so the UI
 // space is visible next to the world.
 @(comp_on_draw_gizmos={component=Canvas})
 comp_on_draw_gizmos_Canvas :: proc(c: ^engine.Canvas, ctx: handles.Gizmo_Context) {

@@ -262,7 +262,7 @@ test_missing_artifacts_are_reported_once :: proc(t: ^testing.T) {
 	}
 }
 
-// The project view lists a model's sub-assets through the ONE model provider
+// The Project window lists a model's sub-assets through the ONE model provider
 // (plugins/engine/editor/mesh_editor): its parts, then its clips. The failure it
 // guards: a second provider for .glb replaced this one, and the clips never
 // showed while the parts did.
@@ -333,7 +333,7 @@ test_model_clip_list_refreshes_after_reimport :: proc(t: ^testing.T) {
 	if !ok do return
 	model := engine.Asset_GUID(raw)
 
-	// Read before the clips exist, the way the project view does at startup.
+	// Read before the clips exist, the way the Project window does at startup.
 	before := engine.mesh_clips(model)
 	testing.expect(t, len(before) == 0, "no clips before the first import")
 

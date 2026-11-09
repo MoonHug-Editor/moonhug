@@ -70,7 +70,7 @@ _Input_Result :: struct {
 	step:    int,
 	type:    string,
 	mouse:   [2]f32, // imgui's mouse position that frame, editor points
-	window:  string, // the frontmost view window under it, "" outside every view (owned)
+	window:  string, // the frontmost editor window under it, "" outside every window (owned)
 	hovered: bool,   // an item was hovered
 	active:  bool,   // an item was active: held, or being edited
 }
@@ -223,12 +223,12 @@ mcp_tool_input :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	return MCP_DEFERRED, {}
 }
 
-// The title of the frontmost view window under `p` (screen coordinates), or "".
+// The title of the frontmost editor window under `p` (screen coordinates), or "".
 @(private = "file")
 _input_window_under :: proc(p: [2]f32) -> string {
-	// ctx.Windows is back to front, and _view_windows keeps that order.
+	// ctx.Windows is back to front, and _imgui_windows keeps that order.
 	found := ""
-	for w in _view_windows() {
+	for w in _imgui_windows() {
 		if !((w.Active || w.WasActive) && !w.Hidden) do continue
 		if p.x < w.Pos.x || p.y < w.Pos.y || p.x >= w.Pos.x + w.Size.x || p.y >= w.Pos.y + w.Size.y do continue
 		found, _ = mcp_window_title_id(string(w.Name))
@@ -345,7 +345,7 @@ _Item_Match :: struct {
 })
 mcp_tool_item_rect :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	query, _ := params["window"].(json.String)
-	w, err := _find_view(query)
+	w, err := _find_window(query)
 	if err.code != "" do return "", err
 	label, _ := params["label"].(json.String)
 	label = strings.trim_space(label)

@@ -17,7 +17,7 @@ package user_settings_gen
 // or <config dir>/MoonHug/quick_help.json for a @(system_settings).
 // `tab` is optional. With it the setting is also a tab of the Settings window,
 // labelled `tab` and drawn the same as a @(project_settings) tab. Without it
-// a view edits the setting through its own menu (@(view_menu)).
+// a window edits the setting through its own menu (@(window_menu)).
 //
 //   generate - moonhug/editor/user_settings_generated.odin:
 //              _load_user_settings() and _save_user_settings(), one call per

@@ -200,7 +200,7 @@ The READ half is the libs package `moonhug:libs/assets`, which the game and the 
 - `@(asset_on_changed={ext="mat"})` on a proc named `asset_on_changed_<name>` (`moonhug/libs/assets/asset_hooks.odin`): runs when an asset changes on disk, with its guid, its path and an `Asset_Change`: `.Modified` (the scan found a created or modified source, before the import), `.Removed` (the asset left the project, never for a rename or move), `.Reimported` (the pipeline rebuilt the artifact). `ext` filters by extension, with or without the dot, absent = every asset. The generated registration adds every hook at init, and only the editor fires them. The material, shader, texture and mesh caches drop entries there, the shader hot reload reimports an edited `.glsl` on `.Modified`, and the editor drops a removed asset's open document and its undo steps on `.Removed`.
 - `Importer_Desc.artifacts`: every artifact file an importer wrote for one source, so the pipeline moves fan-out files (mesh parts and clips) with the main artifact. `assets.artifact_files` lists the main artifact and every fan-out beside it.
 
-The project view opens assets through `asset_pipeline.Asset_Actions` (`open`, `open_additive`, `create_variant`), which `plugins/engine/editor/importers` installs at EditorInit: a scene loads and becomes active. A package opens its own asset type in its own editor with `asset_open_handler_add(ext, proc)`, which a double click or Enter on the asset runs before the installed `open` (the shadergraph plugin opens `.shadergraph` this way).
+The Project window opens assets through `asset_pipeline.Asset_Actions` (`open`, `open_additive`, `create_variant`), which `plugins/engine/editor/importers` installs at EditorInit: a scene loads and becomes active. A package opens its own asset type in its own editor with `asset_open_handler_add(ext, proc)`, which a double click or Enter on the asset runs before the installed `open` (the shadergraph plugin opens `.shadergraph` this way).
 
 An importable asset whose `.meta` has no `settings` block (one written by hand) shows the importer's default settings in the inspector (`import_settings_or_default`), and Apply writes them to the meta.
 
@@ -212,7 +212,7 @@ Seams connect the halves, all installed at the editor's ImportersInit and nil in
 ## UX
 
 Per ImporterSettings struct of each type:
-    - when file of supported extension is selected in project view, resolve property drawer to show settings in project inspector view, with apply button at top
+    - when file of supported extension is selected in Project window, resolve property drawer to show settings in Project Inspector window, with apply button at top
     - when pressing apply it should reimport resource
 
 *.asset and *.scene files keep special inspector behavior for now

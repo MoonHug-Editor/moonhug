@@ -8,7 +8,7 @@ path: engine/rendering
 
 ## What it is
 
-A render pipeline is an asset that describes one frame: which render steps run, in which order, with which settings. The project renders through one pipeline (Project Settings > Rendering, the essentials plugin's `Default.renderpipeline` when unset). A camera names a slot of it (`Camera.slot`, `Main` by default) and renders through that slot's lane. The editor's scene view renders through the `Editor` slot when the pipeline declares one, `Main` otherwise.
+A render pipeline is an asset that describes one frame: which render steps run, in which order, with which settings. The project renders through one pipeline (Project Settings > Rendering, the essentials plugin's `Default.renderpipeline` when unset). A camera names a slot of it (`Camera.slot`, `Main` by default) and renders through that slot's lane. The editor's Scene window renders through the `Editor` slot when the pipeline declares one, `Main` otherwise.
 
 ## The asset
 
@@ -28,16 +28,16 @@ Window > Rendering > Render Pipeline shows one slot at a time, picked by the tab
 - **Selecting a pass** (its header or a cell) tints the rows it reads, the rows it writes and the rows it changes in place in three colors. **Selecting a row** outlines it, and its tooltip names its writers and readers.
 - **Editing:** drag a header onto another to reorder or move a pass between the frame lane and the slot, right-click a header to insert before or after it, mute it, open its code or remove it. The tabs add, rename and remove slots.
 
-The pane on the right holds three sections, each shown or hidden by its toolbar button (Selected Pass, Resource List, Pass List). Its width and the split between the selected pass and the lists drag like the Project view's panes, and both are saved per developer:
+The pane on the right holds three sections, each shown or hidden by its toolbar button (Selected Pass, Resource List, Pass List). Its width and the split between the selected pass and the lists drag like the Project window's panes, and both are saved per developer:
 
-- **The pass:** its summary, its inputs as their writers left them and its outputs as it left them, as thumbnails from the running frame, "Show in scene view" per output, its settings, mute, open code, remove, its port bindings, and what it drew (objects, meshes, materials, textures: a click selects the object or pings the asset).
+- **The pass:** its summary, its inputs as their writers left them and its outputs as it left them, as thumbnails from the running frame, "Show in Scene window" per output, its settings, mute, open code, remove, its port bindings, and what it drew (objects, meshes, materials, textures: a click selects the object or pings the asset).
 - **Resource List** and **Pass List:** every row and column with its details, searchable. The Filter button hides scratch resources (written by one pass and read by none, such as bloom's blur textures), the `scene` row and muted passes.
 
-Each pipeline opens its own instance of the window, from the pipeline's Open Render Pipeline button, and Window > Rendering > Render Pipeline opens the active pipeline's. An instance edits its pipeline's shared asset document, the same one the Project Inspector shows ([Views](../../../docs/core/Views.md)). Edits render as they are made (`render_pipeline_preview`), undo is one step per edit, and a save reimports the asset.
+Each pipeline opens its own instance of the window, from the pipeline's Open Render Pipeline button, and Window > Rendering > Render Pipeline opens the active pipeline's. An instance edits its pipeline's shared asset document, the same one the Project Inspector shows ([Windows](../../../docs/core/Windows.md)). Edits render as they are made (`render_pipeline_preview`), undo is one step per edit, and a save reimports the asset.
 
 ## Inspecting a frame
 
-While the window draws, the engine captures the slot it shows (`render_inspect_request`): the scene view's run of that slot, or the first camera's when the scene view renders another slot, and the frame lane whenever it runs. After each step it copies every target the step took into a thumbnail, so an in-place target like `hdr` has one image per pass that drew into it, each as that pass left it. It also records what each step drew. A `Depth` target, and a color target a step drew only the depth of (the depth prepass), show their depth as grey, near white (`gfx.draw_depth_view`). "Show in scene view" copies one pass's target at full size and draws it over the scene view's image at the end of the view's run. A closed window costs nothing. While the window looks at a step before `scene_taa` (the selected one, or the one shown in the scene view), the captured run draws with the steady camera: images drawn before the resolve go through the jittered camera and would move up to half a pixel each frame. Selecting `scene_taa` or a later step brings the jitter back.
+While the window draws, the engine captures the slot it shows (`render_inspect_request`): the Scene window's run of that slot, or the first camera's when the Scene window renders another slot, and the frame lane whenever it runs. After each step it copies every target the step took into a thumbnail, so an in-place target like `hdr` has one image per pass that drew into it, each as that pass left it. It also records what each step drew. A `Depth` target, and a color target a step drew only the depth of (the depth prepass), show their depth as grey, near white (`gfx.draw_depth_view`). "Show in Scene window" copies one pass's target at full size and draws it over the Scene window's image at the end of the view's run. A closed window costs nothing. While the window looks at a step before `scene_taa` (the selected one, or the one shown in the Scene window), the captured run draws with the steady camera: images drawn before the resolve go through the jittered camera and would move up to half a pixel each frame. Selecting `scene_taa` or a later step brings the jitter back.
 
 ## Ports
 
@@ -48,11 +48,11 @@ A sequence with named ports carries the same information as a wired node graph: 
 ## Lanes
 
 - The **frame lane** holds per-frame steps (`frame=true`): the spot and point lights' shadow atlas, a probe. Each runs once per frame and world, right before that world's first lane, with the frame's target pool. A frame that renders two worlds (the scene, and an asset preview's) runs them for each, so a preview's lights never serve the scene's views.
-- A **slot lane** holds per-view steps. A slot runs once per view that names it: every camera with that slot, the scene view for `Editor`. Each run has its own `Render_Ctx` and the view's target pool.
+- A **slot lane** holds per-view steps. A slot runs once per view that names it: every camera with that slot, the Scene window for `Editor`. Each run has its own `Render_Ctx` and the view's target pool.
 
 The default pipeline: frame lane `environment_pass`, `shadow_atlas`, `reflection_probes_pass`, `Main` lane `shadow_cascades`, `scene_ssao` (muted), `scene_ssr` (muted), `scene_opaque`, `scene_sky`, `scene_copy`, `scene_under`, `scene_transparent`, `motion_vectors`, `scene_taa`, `postfx_motion_blur` (muted), `postfx_dof` (muted), `postfx_exposure` (muted), `postfx_bloom`, `postfx_tonemap`, `scene_over`, `final_blit`. `scene_over` draws the gizmos and the app's debug draw onto the finished image after the post chain, so exposure, bloom and tonemapping leave their colours alone, and depth-tests them against the scene's depth. A pipeline that puts it earlier gets post effects on the gizmos too.
 
-`depth_prepass` is installed but not in the default pipeline. Placed before `scene_opaque`, it draws the opaque meshes' depth first (alpha-clipped ones through their caster) and `scene_opaque` keeps that depth, so each covered pixel is shaded once. It costs a second pass over the geometry, so it pays off with expensive materials and heavy overdraw on a GPU-bound frame. The scene view's debug modes skip it.
+`depth_prepass` is installed but not in the default pipeline. Placed before `scene_opaque`, it draws the opaque meshes' depth first (alpha-clipped ones through their caster) and `scene_opaque` keeps that depth, so each covered pixel is shaded once. It costs a second pass over the geometry, so it pays off with expensive materials and heavy overdraw on a GPU-bound frame. The Scene window's debug modes skip it.
 
 ## Steps
 
@@ -109,7 +109,7 @@ Limits:
 - a sample counts as occluded where the depth at its pixel is in front of it, weighted down the further that surface lies outside the radius, so a near object does not darken a far wall
 - two blur passes, across and down, smooth the noise without crossing an object's edge (taps at a different depth count less)
 - `intensity` (default 1) scales the occluded fraction. `direct` (default 0.25) is how much of the occlusion also darkens direct light: 0 shades only the environment's light, as the physics says, a little more grounds objects
-- the scene view's debug modes skip it
+- the Scene window's debug modes skip it
 - the result is the `ssao` target: red the factor for the environment's light (the open fraction), blue the factor for the lights' (`direct` of the occlusion), green the view depth
 
 ## Reflection probes
@@ -126,7 +126,7 @@ Limits:
 - the colour at the hit comes from last frame's opaque image: the `scene_color` target `scene_copy` left in the pool, read through last frame's camera. The step warns once when the lane has no `scene_copy`. A view that skipped a frame or changed size reflects nothing that frame. The copy is taken before `scene_under`, so the editor's grid is not mirrored
 - the confidence fades over `edge_fade` of the screen toward its edges (default 0.1), over the last third of the ray's length, and for a ray turning toward the camera, since the screen holds little of what it sees. A ray that leaves the screen, hits a back face or finds nothing reflects nothing, and the environment's reflection stays
 - the result is the `ssr` target, premultiplied (rgb the colour times the confidence, alpha the confidence) with mip levels: a lit draw reads it blurrier the rougher the surface (`screen_reflection` in the surface template) and fades it out between roughness 0.5 and 0.8, where one mirror ray no longer stands for the surface's wide lobe
-- the scene view's debug modes skip it. Transparent surfaces reflect the environment only: the normals pass skips them. A hand-written world shader that ignores the normals flag writes its colour there instead, and reflects wrongly
+- the Scene window's debug modes skip it. Transparent surfaces reflect the environment only: the normals pass skips them. A hand-written world shader that ignores the normals flag writes its colour there instead, and reflects wrongly
 
 ## Volumes
 
@@ -134,9 +134,9 @@ A `Volume` component (Rendering > Volume) is a place where steps run with other 
 
 - a global volume applies to every view. A local one applies to a view whose camera is inside its box (`size`, around the transform, scaled by it), fading in over `blend_distance` world units outside the box, so a walk through the edge eases from one look to the other. With no blend distance it switches at the edge
 - `weight` is how much of the overrides apply at full strength. `priority` orders volumes that overlap: a higher priority blends in later, over the lower ones
-- each frame, for each view, the pipeline's settings for a step are moved toward each active volume's override by its weight at the camera (`settings_blend`): numbers interpolate, and switches, enums and assets take the override's value once the weight passes a half. The scene view follows at its own camera. Frame steps (the shadow atlas) keep the pipeline's settings
+- each frame, for each view, the pipeline's settings for a step are moved toward each active volume's override by its weight at the camera (`settings_blend`): numbers interpolate, and switches, enums and assets take the override's value once the weight passes a half. The Scene window follows at its own camera. Frame steps (the shadow atlas) keep the pipeline's settings
 - an override is stored as JSON in the scene. One that no longer matches its step's settings (the struct changed) is ignored with one warning
-- the scene view draws a selected volume's box, and the outer box its blend reaches
+- the Scene window draws a selected volume's box, and the outer box its blend reaches
 
 ## Validation at load
 
@@ -155,6 +155,6 @@ A camera naming a slot the pipeline lacks renders through `Main` with one warnin
 - `plugins/engine/render_inspect.odin`: the frame capture the window reads
 - `plugins/engine/render_steps.odin`, `render_shadow.odin`: the engine's steps
 - `plugins/engine/gen/render_step_gen.odin`: the prebuild checks and registrations
-- `plugins/engine/editor/render_pipeline_view`: the window
+- `plugins/engine/editor/window_render_pipeline`: the window
 - `plugins/essentials/assets/rendering/Default.renderpipeline`: the default
 - [SDL3 Renderer](SDL3Renderer.md): the gfx seam below

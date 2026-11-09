@@ -6,7 +6,7 @@ package core
 // gates on it and input cannot import engine.
 
 // Unity's Application.isFocused. Standalone it is the window's focus; in the
-// editor it is the Game view's focus during a run. The host (platform or
+// editor it is the Game window's focus during a run. The host (platform or
 // editor) writes it through libs/input, which also freezes the mouse and
 // filters the fixed-tick edges on the change. Reads start true so a game
 // that runs before the first focus event is not blind.

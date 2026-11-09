@@ -1,6 +1,6 @@
 package engine_gen
 
-// gizmos_gen: the scene-view gizmo and handles hooks (docs/core/Gizmos.md,
+// gizmos_gen: the Scene window gizmo and handles hooks (docs/core/Gizmos.md,
 // docs/core/Handles.md).
 //
 //   @(comp_on_draw_gizmos={component=BoxCollider2D})   // drawing, every enabled instance
@@ -204,7 +204,7 @@ gizmos_generate :: proc(w: ^db.World) -> bool {
 
 	strings.write_string(&b, "// Called by the editor's gizmo pass every frame: every enabled instance.\n")
 	_write_dispatcher(&b, "__draw_gizmos", rows[:], .Draw)
-	strings.write_string(&b, "\n// Called by the editor's gizmo pass every frame while the scene view is on screen, in every tool: selected instances only.\n")
+	strings.write_string(&b, "\n// Called by the editor's gizmo pass every frame while the Scene window is on screen, in every tool: selected instances only.\n")
 	_write_dispatcher(&b, "__scene_handles", rows[:], .Handles)
 
 	// The component types with a gizmo hook, for the gizmo settings rows.

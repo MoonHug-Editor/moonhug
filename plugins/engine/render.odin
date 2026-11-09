@@ -2,9 +2,9 @@ package engine
 
 // Camera + render-command pipeline on the gfx package (plugins/engine/docs/SDL3Renderer.md).
 // Cameras collect per-frame command lists (temp allocator) from the world's
-// renderer pools and execute them through gfx draws. The editor scene view
+// renderer pools and execute them through gfx draws. The editor Scene window
 // reuses the SAME collect/execute path with its own (non-component) camera,
-// so game view and scene view render identically by construction.
+// so Game window and Scene window render identically by construction.
 
 import gfx "moonhug:libs/gfx"
 import "base:runtime"
@@ -15,8 +15,8 @@ import "core:slice"
 PIXELS_PER_UNIT :: 100.0
 
 // Unity's CameraType: which surface a view renders. Collectors differentiate
-// — the particles edit preview draws in scene views but never in an
-// edit-mode game view.
+// — the particles edit preview draws in Scene windows but never in an
+// edit-mode Game window.
 
 // Alpha-blended commands sort by a lexicographic multi-level key — collectors
 // build it (sprite layout: packages/sprites/sprite_sort.odin). 8 levels is
@@ -243,7 +243,7 @@ _apply_scene_light :: proc() {
 	if n > 0 do gfx.set_lights(buf[:n], ambient)
 }
 
-// The scene view's debug modes (core.View_Mode): what one surface draws as.
+// The Scene window's debug modes (core.View_Mode): what one surface draws as.
 WIREFRAME_COLOR :: [4]f32{0.85, 0.85, 0.85, 1}
 OVERDRAW_LAYER  :: [4]f32{1, 1, 1, 0.12} // each surface adds this much, so brighter = more overdraw
 
@@ -641,7 +641,7 @@ render_world_cameras :: proc(target: ^gfx.Render_Target = nil, overlay: proc() =
 }
 
 // Renders one editor view of the world into `target` through the pipeline
-// slot `slot` (the scene view asks for Editor and gets Main when the
+// slot `slot` (the Scene window asks for Editor and gets Main when the
 // pipeline declares no such slot), with the shell's grid under the scene and
 // its gizmos over it. The commands are collected here, so the caller never
 // sees them.

@@ -124,10 +124,10 @@ test_keymap_window_before_global :: proc(t: ^testing.T) {
 	testing.expect_value(t, _km_log[0], "A")
 }
 
-// The branch resolves innermost first: the focused view, then the view
+// The branch resolves innermost first: the focused window, then the window
 // hosting it, then the editor-wide keymaps.
 @(test)
-test_keymap_host_between_view_and_global :: proc(t: ^testing.T) {
+test_keymap_host_between_window_and_global :: proc(t: ^testing.T) {
 	_km_setup()
 	defer _km_teardown()
 	_km_commands()

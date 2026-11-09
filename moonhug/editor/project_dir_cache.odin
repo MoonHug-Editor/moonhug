@@ -1,6 +1,6 @@
 package editor
 
-// Cached directory listings for the project view. Both panes used to hit the
+// Cached directory listings for the Project window. Both panes used to hit the
 // filesystem EVERY FRAME — draw_file_list re-read + re-sorted the current
 // folder, draw_directory_tree re-read every open tree folder, and
 // _project_dir_has_subdir re-scanned per visible node — with a sort
@@ -57,7 +57,7 @@ project_dir_listing :: proc(path: string) -> (entries: []Project_Dir_Entry, ok: 
 }
 
 // Counts invalidations, for caches built from the same tree (the Project
-// view's search hits): a different number means they are stale.
+// window's search hits): a different number means they are stale.
 _dir_cache_gen: u64
 
 project_dir_cache_gen :: proc() -> u64 {

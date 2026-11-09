@@ -25,7 +25,7 @@ Hook :: struct {
 }
 
 // Work a window does once per frame whatever its copies show, before the
-// views draw: the Animation window's transport runs here, so two copies do
+// windows draw: the Animation window's transport runs here, so two copies do
 // not advance the playhead twice.
 Frame_Hook :: struct {
 	frame: proc(),
@@ -46,7 +46,7 @@ register_frame :: proc(hook: Frame_Hook) {
 	append(&_frames, hook)
 }
 
-// Once per frame, before the views draw and the scene/game render.
+// Once per frame, before the windows draw and the scene/game render.
 frame_all :: proc() {
 	for f in _frames {
 		if f.frame != nil do f.frame()

@@ -38,7 +38,7 @@ import "moonhug:libs/log"
 import "moonhug:libs/serialization"
 
 // The slot a camera renders through when it names none, and the slot the
-// editor's scene view prefers (falling back to MAIN_SLOT).
+// editor's Scene window prefers (falling back to MAIN_SLOT).
 MAIN_SLOT   :: "Main"
 EDITOR_SLOT :: "Editor"
 
@@ -601,7 +601,7 @@ _lane_run :: proc(slot: string, lane: []Pipeline_Instance, ctx: ^Render_Ctx, ins
 	return true
 }
 
-// Whether the active pipeline declares the slot (the scene view asks for
+// Whether the active pipeline declares the slot (the Scene window asks for
 // Editor and takes Main otherwise, without a warning).
 render_pipeline_has_slot :: proc(slot: string) -> bool {
 	return slot in render_pipeline_active().slots

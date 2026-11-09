@@ -1,20 +1,20 @@
 package editor_tests
 
-// The project view's path bar: the current folder as clickable segments.
+// The Project window's path bar: the current folder as clickable segments.
 
 import "moonhug:editor"
 import "core:testing"
 
 // ---------------------------------------------------------------------------
-// Project view path bar (project_path_segments): the current folder as
+// Project window path bar (project_path_segments): the current folder as
 // segments, root first, each carrying the path it navigates to. Package roots
 // show the package name under the Packages node, never the raw package folder.
 
-// project_path_segments stops at projectViewData.rootPath, which the editor
+// project_path_segments stops at projectWindowData.rootPath, which the editor
 // sets at init; these tests set it directly instead of starting a UI.
 @(private = "file")
 _with_project_root :: proc() {
-	editor.projectViewData.rootPath = "assets"
+	editor.projectWindowData.rootPath = "assets"
 }
 
 @(test)

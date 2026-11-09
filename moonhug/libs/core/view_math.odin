@@ -8,7 +8,7 @@ import "core:math/linalg"
 
 View_Kind :: enum u8 {
 	Game,      // a scene Camera component
-	SceneView, // the editor's scene view
+	SceneView, // the Scene window's camera
 	Preview,   // thumbnails and inspector previews
 }
 

@@ -3,8 +3,8 @@ package simulate
 // In-editor simulation: tick the open scene in place, then roll it back.
 // See docs/core/Simulate.md.
 //
-// Logic only, with no imgui or view dependency, so tests and tools drive a
-// simulation without the editor root. Toolbar: editor/simulate_view.odin.
+// Logic only, with no imgui or window dependency, so tests and tools drive a
+// simulation without the editor root. Toolbar: editor/simulate_toolbar.odin.
 //
 // The world being simulated is a provider (world.odin): the engine captures
 // and restores its scenes and runs the fixed ticks.
@@ -139,7 +139,7 @@ start_pending :: proc() -> bool {
     return _pending_start
 }
 
-// One call per editor frame, before the views draw: runs a queued start.
+// One call per editor frame, before the windows draw: runs a queued start.
 tick_pending :: proc() {
     if !_pending_start do return
     _pending_start = false

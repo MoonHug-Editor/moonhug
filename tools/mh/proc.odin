@@ -25,7 +25,7 @@ IGNORE_ATTRS :: "-ignore-unknown-attributes"
 // Only this check, not full -vet: -vet-shadowing fires on `if x, ok := v.(T)`
 // chains, where each branch reopens `ok` in its own scope, which is the
 // idiomatic spelling and appears throughout the inspector and scene code.
-// -vet-cast is also out — it reports the transmute in view_animation.odin as
+// -vet-cast is also out — it reports the transmute in window_animation.odin as
 // unneeded, but Asset_GUID is a distinct [16]u8 and Odin has no cast for that.
 VET :: "-vet-unused"
 

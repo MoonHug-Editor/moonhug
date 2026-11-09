@@ -1,6 +1,6 @@
 package physics2d_editor
 
-// Collider outlines in the scene view via the @(comp_on_draw_gizmos) hook — drawn
+// Collider outlines in the Scene window via the @(comp_on_draw_gizmos) hook — drawn
 // only for objects in the selection (a parent selected counts). The outline
 // geometry lives in the runtime package (packages/physics2d/gizmos.odin),
 // shared with the in-app @(debug_draw) view — here only the selected-only

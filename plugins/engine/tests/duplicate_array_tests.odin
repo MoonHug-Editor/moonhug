@@ -10,7 +10,7 @@ import "moonhug:editor"
 import "moonhug:editor/keymap"
 import "moonhug:editor/undo"
 import "moonhug:packages/engine"
-import "moonhug:packages/engine/editor/scene_views"
+import "moonhug:packages/engine/editor/scene_windows"
 
 // The object of the scene named `name`, {} when there is none.
 @(private = "file")
@@ -41,7 +41,7 @@ test_duplicate_array_offset_moves_in_place :: proc(t: ^testing.T) {
 	defer editor.adjust_last_close()
 	defer keymap.command_remove("t.duplicate_array")
 
-	c := keymap.command_add_args("Edit/Duplicate Array", scene_views.edit_duplicate_array, scene_views.Duplicate_Array_Args{count = 3, offset = {1, 0, 0}}, update = scene_views.duplicate_array_update, id = "t.duplicate_array")
+	c := keymap.command_add_args("Edit/Duplicate Array", scene_windows.edit_duplicate_array, scene_windows.Duplicate_Array_Args{count = 3, offset = {1, 0, 0}}, update = scene_windows.duplicate_array_update, id = "t.duplicate_array")
 	w := engine.ctx_world()
 	a := engine.transform_new("A")
 	editor.sel_scene_only(a)
@@ -59,7 +59,7 @@ test_duplicate_array_offset_moves_in_place :: proc(t: ^testing.T) {
 
 	// A new offset, twice as on a drag: the same copies move, nothing is made
 	// again, and the run stays one undo step.
-	args := (^scene_views.Duplicate_Array_Args)(c.args)
+	args := (^scene_windows.Duplicate_Array_Args)(c.args)
 	for y in ([]f32{2, 3}) {
 		args.offset = {0, y, 0}
 		testing.expect(t, editor.adjust_last_apply_edit())

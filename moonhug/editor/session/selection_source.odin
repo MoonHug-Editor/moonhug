@@ -1,8 +1,8 @@
 package session
 
-// The shell state the engine's tools and views read and change: the scene
-// selection, what the inspector shows, the project view's active path and folder,
-// and the game view's aspect. The editor owns all of it and sets this at start.
+// The shell state the engine's tools and windows read and change: the scene
+// selection, what the inspector shows, the Project window's active path and folder,
+// and the Game window's aspect. The editor owns all of it and sets this at start.
 
 import core "moonhug:libs/core"
 import "base:runtime"
@@ -17,7 +17,7 @@ Selection_Source :: struct {
 	top_level:        proc() -> []core.Transform_Handle,
 	// The active object (the last selected one still alive), or {}.
 	active:           proc() -> core.Transform_Handle,
-	// The game view's aspect ratio, false while it has no render target.
+	// The Game window's aspect ratio, false while it has no render target.
 	game_aspect:      proc() -> (f32, bool),
 	// Selection edits. `select_only` replaces the selection, `select_add` and
 	// `select_toggle` keep the rest, `select_clear` empties it.
@@ -28,21 +28,21 @@ Selection_Source :: struct {
 	is_selected:      proc(tH: core.Transform_Handle) -> bool,
 	// Drops handles whose objects no longer exist.
 	prune:            proc(),
-	// What view `view` shows (its key), through its lock (view_lock.odin):
+	// What window `window` shows (its key), through its lock (window_lock.odin):
 	// the objects and assets its lock holds, or the selection, kept items
 	// included. Whether it is locked, lock or unlock it, and whether its lock
 	// holds nothing that resolves now.
-	view_objects:      proc(view: string) -> []core.Transform_Handle,
-	view_object:       proc(view: string) -> core.Transform_Handle,
-	view_assets:       proc(view: string) -> []View_Asset,
-	view_locked:       proc(view: string) -> bool,
-	view_lock_set:     proc(view: string, locked: bool),
-	view_lock_missing: proc(view: string) -> bool,
-	// The scene view frames the selection.
+	window_objects:      proc(window: string) -> []core.Transform_Handle,
+	window_object:       proc(window: string) -> core.Transform_Handle,
+	window_assets:       proc(window: string) -> []Window_Asset,
+	window_locked:       proc(window: string) -> bool,
+	window_lock_set:     proc(window: string, locked: bool),
+	window_lock_missing: proc(window: string) -> bool,
+	// The Scene window frames the selection.
 	frame_selected:   proc(),
-	// The project view's active path, "" when none.
+	// The Project window's active path, "" when none.
 	project_active:   proc() -> string,
-	// The folder the project view shows, where Assets/Create writes.
+	// The folder the Project window shows, where Assets/Create writes.
 	project_dir:      proc() -> string,
 }
 

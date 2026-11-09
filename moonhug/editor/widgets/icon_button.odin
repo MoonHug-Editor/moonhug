@@ -1,6 +1,6 @@
 package widgets
 
-// Icon buttons, in the shared package so every view gets the same look and
+// Icon buttons, in the shared package so every window gets the same look and
 // the same centering.
 //
 // A glyph is NOT centered by passing it as the button's label: imgui centers

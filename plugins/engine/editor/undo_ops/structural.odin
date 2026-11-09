@@ -357,7 +357,7 @@ scene_find_component_by_local_id :: proc(s: ^engine.Scene, id: engine.Local_ID) 
 	return {}, false
 }
 
-// The history view's indent, two spaces per depth level.
+// The History window's indent, two spaces per depth level.
 @(private)
 _indent :: proc(depth: int) -> string {
 	b: strings.Builder

@@ -82,9 +82,9 @@ ICON_MD_SETTINGS      :: "\ue8b8"   // settings
 ICON_MD_PALETTE       :: "\ue40a"   // palette (.mat material asset)
 ICON_MD_CODE          :: "\ue86f"   // code (.glsl shader asset)
 ICON_MD_REFRESH       :: "\ue5d5"   // refresh
-ICON_MD_ACCOUNT_TREE  :: "\ue97a"   // account_tree (node graph; also in app_editor's tween view)
+ICON_MD_ACCOUNT_TREE  :: "\ue97a"   // account_tree (node graph; also in the Tween Graph window)
 
-// Scene view overlays (dock.odin)
+// Scene window overlays (dock.odin)
 ICON_MD_DRAG_INDICATOR :: "\ue945"   // drag_indicator (overlay grip handle, vertical dots)
 ICON_MD_DRAG_HANDLE    :: "\ue25d"   // drag_handle (overlay grip handle, horizontal bars)
 ICON_MD_OPEN_WITH      :: "\ue89f"   // open_with (move tool)
@@ -98,7 +98,7 @@ ICON_MD_TRIP_ORIGIN    :: "\ue57b"   // trip_origin (gizmo at active pivot)
 ICON_MD_CENTER_FOCUS   :: "\ue3dc"   // filter_center_focus (gizmo at selection center)
 
 // Workspace
-ICON_MD_SPACE_DASHBOARD :: "\ue66b"   // space_dashboard (workspace view)
+ICON_MD_SPACE_DASHBOARD :: "\ue66b"   // space_dashboard (Workspace window)
 ICON_MD_MAP             :: "\ue55b"   // map (workspace mini-map toggle)
 
 // Windows
@@ -117,9 +117,9 @@ ICON_MD_EXTENSION      :: "\ue87b" // extension (plugin windows without an icon 
 ICON_MD_CROP           :: "\ue3be" // crop (Sprite Editor)
 ICON_MD_CROP_FREE      :: "\ue3c2" // crop_free (Handles tool)
 ICON_MD_KEYBOARD       :: "\ue312" // keyboard (Input Debug)
-ICON_MD_SCREEN_ROTATION :: "\ue1c1" // screen_rotation (Game view size flip)
+ICON_MD_SCREEN_ROTATION :: "\ue1c1" // screen_rotation (Game window size flip)
 
-// The built-in views' window titles: icon, name, and the name again after
+// The built-in windows' titles: icon, name, and the name again after
 // ###. imgui hashes only the text after ### and saves settings under it, so
 // the id is the plain name it always was and saved layouts carry over.
 // Every place that names a window (Begin, the dock layout, focus requests)

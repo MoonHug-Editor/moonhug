@@ -23,7 +23,7 @@ package tests_common
 
 import "moonhug:editor/inspector"
 import "moonhug:packages/engine"
-import "moonhug:packages/engine/editor/scene_views"
+import "moonhug:packages/engine/editor/scene_windows"
 
 // One frame of a gesture, as the row would observe it.
 Frame :: struct {
@@ -153,5 +153,5 @@ frame_button_click :: proc() -> Frame {
 // Sets up peers from a selection, the way the inspector does before drawing.
 // Returns the previous peers so the caller can restore them.
 row_set_peers :: proc(active: engine.Transform_Handle, sel: []engine.Transform_Handle) -> []inspector.Multi_Peer {
-	return inspector.multi_set_peers(scene_views.multi_transform_peers(active, sel))
+	return inspector.multi_set_peers(scene_windows.multi_transform_peers(active, sel))
 }

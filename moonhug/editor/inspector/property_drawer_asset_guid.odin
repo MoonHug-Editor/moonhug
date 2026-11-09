@@ -38,7 +38,7 @@ property_drawer_Asset_GUID :: proc(ctx: ^Ctx) {
     if picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double, &dropped, &dropped_pptr, &dropped_pptr_ok) {
         im.OpenPopup(popup_id)
     }
-    // Single click: ping (project view navigates to + selects the asset).
+    // Single click: ping (Project window navigates to + selects the asset).
     // Double click: OPEN it (scene loads, .asset goes to the inspector).
     if value_double && has_value {
         core.inspector_request_open_asset(guid_ptr^)

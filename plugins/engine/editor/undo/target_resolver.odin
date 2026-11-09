@@ -112,7 +112,7 @@ _scene_name :: proc(r: engine.Scene_Ref) -> string {
 	return filepath.stem(s.path)
 }
 
-// The selectable object a selection item names, for the history view.
+// The selectable object a selection item names, for the History window.
 _object_name :: proc(r: engine.Scene_Ref, local_id: engine.Local_ID) -> (string, bool) {
 	sc := engine.sm_scene_find_by_session_id(r.id)
 	if sc == nil do return "", false
@@ -124,7 +124,7 @@ _object_name :: proc(r: engine.Scene_Ref, local_id: engine.Local_ID) -> (string,
 }
 
 // The object a pooled target edits (the owner, for a component), for the
-// history view. Found through _pooled_base, so it survives a recreated object.
+// History window. Found through _pooled_base, so it survives a recreated object.
 _target_name :: proc(t: shell.Property_Target) -> (string, bool) {
 	w := engine.ctx_world()
 	if w == nil do return "", false

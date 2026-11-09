@@ -1,6 +1,6 @@
 package window
 
-// Plugin-openable editor windows (docs/core/Views.md). A window is DECLARED with
+// Plugin-openable editor windows (docs/core/Windows.md). A window is DECLARED with
 // @(editor_window={id, title, icon, width, height, closed}) on its
 // content-draw proc, which prebuild registers here, and OPENED by id, usually
 // from a @(menu_item) proc.
@@ -52,7 +52,7 @@ Window :: struct {
 	used:   u64,   // when it was last clicked in or opened: the highest is last(id)
 	drawn:  u64,   // the draw pass it was last drawn in, so draw_all skips what draw(id) drew
 	ran:    u64,   // the draw pass its draw proc last ran in: visible as a window, or drawn by its host
-	// The key of the view that hosts it (a workspace view), "" for a window
+	// The key of the window that hosts it (a Workspace window), "" for a window
 	// of its own. A hosted instance never draws as a window: its host draws
 	// its content (draw_content) where it places it. Owned.
 	host:    string,
@@ -75,7 +75,7 @@ _Registered :: struct {
 	closed:       Close_Proc, // frees an instance's `data`, nil when the window keeps none
 	default_size: im.Vec2, // {} = imgui's default
 	canvas:       bool,    // edge to edge: no window padding, no scrollbars, the wheel stays with the content
-	lock:         Lock_Mode, // the view's padlock (@(editor_window) lock, editor/view_lock.odin)
+	lock:         Lock_Mode, // the window's padlock (@(editor_window) lock, editor/window_lock.odin)
 	// The @(editor_window) that declared it, with its file and line, as
 	// rendered by the generator. Shown on the tab's menu button with debug tooltips on.
 	origin:       string,
@@ -88,16 +88,16 @@ _pass: u64                 // draw passes so far: draw_all ends one
 _use_count: u64            // clicks and opens so far, for Window.used
 
 // Asked before a closed instance goes: true keeps it open. The editor
-// installs one that asks before a view holding unapplied edits closes
-// (view_close_prompt.odin). nil closes every instance.
+// installs one that asks before a window holding unapplied edits closes
+// (window_close_prompt.odin). nil closes every instance.
 close_guard: proc(w: ^Window) -> bool
 
 // Asked when open or open_another makes an instance while a hosted
 // instance's content draws, and when open shows an instance that is hosted.
 // `opener` is the hosted instance drawing then (nil for none), `w` the
 // instance, `created` whether open made it. A hook that hosts `w` keeps it
-// out of the dock. The workspace view installs one: a window opened from a
-// frame's view opens chained to that frame, and one already in a frame is
+// out of the dock. The Workspace window installs one: a window opened from a
+// frame's window opens chained to that frame, and one already in a frame is
 // shown there.
 host_hook: proc(opener, w: ^Window, created: bool)
 
@@ -123,20 +123,20 @@ _focused_frame: i32
 // `id` identifies it, and its instances, in imgui.ini. `title` and `icon` (a
 // Material Symbols name without ICON_MD_) label its plain instance's tab,
 // `width` and `height` size an instance's first appearance. `closed` frees
-// an instance's state. `lock` gives the view a padlock in its tab bar, which
-// the shell draws (editor/view_lock.odin): "instance" for a lock per
-// instance, "shared" for one lock all its instances share. A locked view
-// reads what to show from session.view_objects / view_assets. Open it with
+// an instance's state. `lock` gives the window a padlock in its tab bar, which
+// the shell draws (editor/window_lock.odin): "instance" for a lock per
+// instance, "shared" for one lock all its instances share. A locked window
+// reads what to show from session.window_objects / window_assets. Open it with
 // window.open, usually from a @(menu_item).
 //
 // Called by the generated _register_editor_windows (editor_window_gen). The
 // imgui window name is "<icon> <label>###<key>": the icon and label show, the
 // key stays the imgui id whatever they are.
 @(extension_point={attribute="editor_window", target="proc", fields="id title icon width height closed canvas lock"})
-// Whether a view has a padlock, and whose lock it is:
+// Whether a window has a padlock, and whose lock it is:
 //   - None: no padlock
 //   - Instance: each instance locks on its own, by its key
-//   - Shared: every instance shares one lock, by the window's id: for a view
+//   - Shared: every instance shares one lock, by the window's id: for a window
 //     whose instances show one state (the Animation window's preview)
 Lock_Mode :: enum u8 {
 	None,
@@ -174,7 +174,7 @@ lock_mode :: proc(id: string) -> Lock_Mode {
 
 // Every registered window's plain title, id and icon, for imgui.ini
 // migration (the ini names a window "###<id>" now that titles carry icons)
-// and for lists of views.
+// and for lists of windows.
 Title_Id :: struct {
 	title: string,
 	id:    string,
@@ -217,13 +217,13 @@ open_saved :: proc(keys: []string) {
 @(private = "file")
 _Closed :: struct {
 	key:  string, // owned
-	host: string, // the view that hosted it, "" for a window of its own. Owned
+	host: string, // the window that hosted it, "" for a window of its own. Owned
 	node: im.ID,  // the dock node it was in, 0 when floating or hosted
 	tab:  int,    // its place in that node's tab bar, -1 for none
 }
 
-// Puts a reopened instance back into the view that hosted it when it closed
-// (a Workspace view's frame), true when it did. The shell installs it. A
+// Puts a reopened instance back into the window that hosted it when it closed
+// (a Workspace window's frame), true when it did. The shell installs it. A
 // reopened instance it refuses gets a window of its own.
 reopen_hook: proc(w: ^Window, host: string) -> bool
 @(private = "file")
@@ -250,7 +250,7 @@ _remember_closed :: proc(w: ^Window) {
 	}
 	c := _Closed{key = strings.clone(w.key), host = strings.clone(w.host), node = w.dock, tab = -1}
 	if w.host == "" && w.dock != 0 {
-		if node := im.DockBuilderGetNode(w.dock); node != nil do c.tab = _tab_index(node, session.view_title(_title(w)))
+		if node := im.DockBuilderGetNode(w.dock); node != nil do c.tab = _tab_index(node, session.window_title(_title(w)))
 	}
 	append(&_closed, c)
 }
@@ -289,7 +289,7 @@ _restore_tab_place :: proc(w: ^Window) {
 		w.reorder_tab = -1
 		return
 	}
-	cur := _tab_index(node, session.view_title(_title(w)))
+	cur := _tab_index(node, session.window_title(_title(w)))
 	if cur < 0 do return
 	if cur != w.reorder_tab {
 		tabs := ([^]im.TabItem)(node.TabBar.Tabs.Data)
@@ -367,8 +367,8 @@ hovered :: proc() -> ^Window {
 
 // The open instance whose window or a child window has imgui's focus this
 // frame or the last, nil for none (a popup, the menu bar, a dialog, the
-// background). The keymap resolver asks it for the view a key goes to: the
-// clicked view, never the hovered one.
+// background). The keymap resolver asks it for the window a key goes to: the
+// clicked window, never the hovered one.
 focused :: proc() -> ^Window {
 	if _focused == nil || _focused_frame < im.GetFrameCount() - 1 do return nil
 	for w in _windows do if w == _focused && w.open do return w
@@ -376,8 +376,8 @@ focused :: proc() -> ^Window {
 }
 
 // Marks `w` as the focused instance for the rest of this frame, while a
-// widget over the views acts for the view below it: the command palette
-// lists and runs commands for the view focused when it opened.
+// widget over the windows acts for the window below it: the command palette
+// lists and runs commands for the window focused when it opened.
 focused_hold :: proc(w: ^Window) {
 	if w == nil do return
 	_focused = w
@@ -438,7 +438,7 @@ find :: proc(key: string) -> ^Window {
 }
 
 // The origin of the window an instance key belongs to, for debug tooltips.
-// Unknown keys (a built-in view, which is not a registered window) answer "".
+// Unknown keys (a built-in window, which is not a registered window) answer "".
 origin_of :: proc(key: string) -> string {
 	id, _, _ := _parse_key(key)
 	for &r in _registry {
@@ -454,7 +454,7 @@ is_open :: proc(id: string) -> bool {
 }
 
 // Draws the open instances of the window declared under `id` now, for a
-// window that has to draw at a set point of the frame (the Scene view, inside
+// window that has to draw at a set point of the frame (the Scene window, inside
 // the preview pose). draw_all then skips them.
 draw :: proc(id: string) {
 	for i := 0; i < len(_windows); i += 1 {
@@ -463,7 +463,7 @@ draw :: proc(id: string) {
 	}
 }
 
-// One call per editor frame, after the views that draw at a set point.
+// One call per editor frame, after the windows that draw at a set point.
 // Removal happens here, the frame after the close button flips `open`.
 // Instances draw in the order they opened, so an earlier one has its place
 // when a later one looks for a sibling to dock beside.
@@ -494,11 +494,11 @@ draw_all :: proc() {
 //   host_open gets nil while that host goes on claiming it.
 // - At the end of draw_all, a hosted instance no host claimed in the pass
 //   gets its own window back (host_release), unless its host did not draw
-//   at all (a hidden tab), which keeps what it holds. So a view is never
+//   at all (a hidden tab), which keeps what it holds. So a window is never
 //   hosted and drawn by nobody: a host that closed, shows another
-//   workspace, or dropped the view's frame lets it go.
+//   workspace, or dropped the window's frame lets it go.
 
-// The instance whose key is `key`, hosted by the view `host`: an open one
+// The instance whose key is `key`, hosted by the window `host`: an open one
 // moves there, a missing one opens from the key (`id`, `id/<asset guid>`,
 // `id/<n>`). It claims the instance for this draw pass. nil when the key
 // names no registered window, or an asset that is gone, or when another host
@@ -539,14 +539,14 @@ _release_unclaimed :: proc() {
 	for w in _windows {
 		if !w.open || w.host == "" || w.claimed == _pass + 1 do continue
 		if h := find(w.host); h != nil && h.ran != _pass + 1 do continue
-		// A workspace changes no layout outside its own view, so a view it
+		// A workspace changes no layout outside its own window, so a window it
 		// let go of closes instead of getting a window of its own.
 		host_release(w)
 		w.open = false
 	}
 }
 
-// The open instances the view `host` hosts (temp).
+// The open instances the window `host` hosts (temp).
 hosted_by :: proc(host: string, allocator := context.temp_allocator) -> []^Window {
 	out := make([dynamic]^Window, allocator)
 	for w in _windows do if w.open && w.host == host do append(&out, w)
@@ -589,19 +589,19 @@ draw_content :: proc(w: ^Window) {
 	}
 }
 
-// Any click on a view's content focuses it, so the keys go there next. imgui
+// Any click on a window's content focuses it, so the keys go there next. imgui
 // focuses on a left click only, a right click just closes popups: the Scene
-// view's right-button flythrough would start in an unfocused view. A click
+// window's right-button flythrough would start in an unfocused window. A click
 // in a child window that already has the focus is left alone.
 @(private = "file")
 _focus_on_click :: proc() {
 	if !im.IsWindowFocused({.ChildWindows}) do im.SetWindowFocus()
 }
 
-// The drag-and-drop type of a view's tab dragged out of its tab bar. The
+// The drag-and-drop type of a window's tab dragged out of its tab bar. The
 // payload is the instance key's bytes, so any drop target can read it
 // (tab_payload_key).
-TAB_PAYLOAD :: "VIEW_TAB"
+TAB_PAYLOAD :: "WINDOW_TAB"
 
 // Sets the dragged tab's payload, between BeginDragDropSource and
 // EndDragDropSource. imgui copies the key.
@@ -624,7 +624,7 @@ is_canvas :: proc(w: ^Window) -> bool {
 // The instance's tab title, "<icon> <label>###<key>" with the star while its
 // asset has unsaved changes, for a host's tab bar.
 title :: proc(w: ^Window) -> cstring {
-	return session.view_title(_title(w))
+	return session.window_title(_title(w))
 }
 
 // The instance's label without icon or key: the window's title for the
@@ -651,7 +651,7 @@ state :: proc(w: ^Window, init: $T) -> ^T {
 }
 
 // The open instance of the window declared under `id` that was clicked in
-// or opened last, nil when none is open. Code outside a view that needs one
+// or opened last, nil when none is open. Code outside a window that needs one
 // of its instances (a menu action, the bridge) acts on this one.
 last :: proc(id: string) -> ^Window {
 	best: ^Window
@@ -678,16 +678,16 @@ _draw_instance :: proc(w: ^Window) {
 		im.SetNextWindowFocus()
 		_focus_request = nil
 	}
-	// NoCollapse matches every view: no collapse triangle when the window
+	// NoCollapse matches every window: no collapse triangle when the window
 	// floats. A star on the tab while the instance's asset has unsaved
-	// changes. A canvas view's padding is popped right after Begin, so the
+	// changes. A canvas window's padding is popped right after Begin, so the
 	// tooltips and popups raised over it keep theirs.
 	flags: im.WindowFlags = {.NoCollapse}
 	if r.canvas {
 		flags += {.NoScrollbar, .NoScrollWithMouse}
 		im.PushStyleVarImVec2(.WindowPadding, im.Vec2{0, 0})
 	}
-	visible := im.Begin(session.view_title(_title(w)), &w.open, flags)
+	visible := im.Begin(session.window_title(_title(w)), &w.open, flags)
 	if r.canvas do im.PopStyleVar()
 	if visible {
 		if im.IsWindowHovered(im.HoveredFlags_ChildWindows) {
@@ -752,7 +752,7 @@ _create :: proc(ri: int, asset: core.Asset_GUID, key := "") -> ^Window {
 	case asset == {}: w.key = strings.clone(r.id)
 	case:             w.key = fmt.aprintf("%s/%s", r.id, uuid.to_string(uuid.Identifier(asset), context.temp_allocator))
 	}
-	if asset != {} do session.view_asset_set(w.key, asset)
+	if asset != {} do session.window_asset_set(w.key, asset)
 	_use_count += 1
 	w.used = _use_count
 	append(&_windows, w)
@@ -771,7 +771,7 @@ _destroy :: proc(i: int) {
 		w.data = nil
 	}
 	// An instance reopened under the same key keeps the mapping.
-	if w.asset != {} && find(w.key) == nil do session.view_asset_clear(w.key)
+	if w.asset != {} && find(w.key) == nil do session.window_asset_clear(w.key)
 	if _focus_request == w do _focus_request = nil
 	ordered_remove(&_windows, i)
 	context.allocator = runtime.default_allocator()

@@ -71,7 +71,7 @@ import_settings_doc_get :: proc(path: string) -> ^Asset_Doc {
 
 // Apply: writes the document into the .meta and reimports at the start of the
 // next frame (asset_pipeline_reimport_later): the reimport frees the asset's
-// GPU textures, which a view drawn earlier in this frame may have queued for
+// GPU textures, which a window drawn earlier in this frame may have queued for
 // drawing. The document stays, now equal to the .meta.
 import_settings_apply :: proc(doc: ^Asset_Doc) -> bool {
 	context.allocator = doc_alloc()
@@ -126,7 +126,7 @@ asset_on_changed_import_settings :: proc(guid: core.Asset_GUID, path: string, ch
 	_import_settings_rebaseline(doc)
 }
 
-// Once per frame, after every view drew. With `check` set (the main loop's
+// Once per frame, after every window drew. With `check` set (the main loop's
 // "an edit may have just finished", true in tests), a document shown or edited
 // since the last compare whose JSON differs from its baseline becomes one undo
 // step. Without it nothing is compared, and the shown documents wait for the

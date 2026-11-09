@@ -906,7 +906,7 @@ PLUGIN_DOC_UNKNOWN_WEIGHT :: 1000
 
 // A folder is a section of the sidebar only with an `_index.md`, so each
 // group folder a page was placed in gets one, titled after the folder
-// ("scene-view" is "Scene View"). A page mounted as the folder's own
+// ("render-steps" is "Render Steps"). A page mounted as the folder's own
 // `_index.md` replaces it. Written into the home folder, which is mounted at
 // the content root after docs_write_home cleared it.
 docs_write_group_indexes :: proc(groups: []string) -> bool {

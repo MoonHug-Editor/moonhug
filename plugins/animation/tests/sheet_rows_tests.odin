@@ -395,13 +395,13 @@ test_retarget_object_row_is_one_undo_step :: proc(t: ^testing.T) {
 
 	before := s.top
 	// Spaces around the typed path are trimmed.
-	testing.expect(t, animation_editor.animation_view_retarget("Body/Arm", "  Armature/node_2 "), "the retarget applies")
+	testing.expect(t, animation_editor.animation_window_retarget("Body/Arm", "  Armature/node_2 "), "the retarget applies")
 	testing.expect_value(t, _sr_targets(doc), [4]string{"Armature/node_2", "", "Armature/node_2", "Leg"})
 	testing.expect_value(t, s.top, before + 1)
 
 	// Nothing to change: no undo step.
-	testing.expect(t, !animation_editor.animation_view_retarget("Armature/node_2", "Armature/node_2"), "the same path changes nothing")
-	testing.expect(t, !animation_editor.animation_view_retarget("Nobody", "Other"), "a target without channels changes nothing")
+	testing.expect(t, !animation_editor.animation_window_retarget("Armature/node_2", "Armature/node_2"), "the same path changes nothing")
+	testing.expect(t, !animation_editor.animation_window_retarget("Nobody", "Other"), "a target without channels changes nothing")
 	testing.expect_value(t, s.top, before + 1)
 
 	testing.expect(t, undo.apply_undo(s), "undo")
@@ -410,7 +410,7 @@ test_retarget_object_row_is_one_undo_step :: proc(t: ^testing.T) {
 	testing.expect_value(t, _sr_targets(doc), [4]string{"Armature/node_2", "", "Armature/node_2", "Leg"})
 
 	// The animated object's own row retargets too, to a child path.
-	testing.expect(t, animation_editor.animation_view_retarget("", "Body"), "the root row retargets")
+	testing.expect(t, animation_editor.animation_window_retarget("", "Body"), "the root row retargets")
 	testing.expect_value(t, _sr_targets(doc), [4]string{"Armature/node_2", "Body", "Armature/node_2", "Leg"})
 }
 
@@ -468,7 +468,7 @@ test_retarget_refuses_a_lane_with_two_rows :: proc(t: ^testing.T) {
 	if !testing.expect(t, doc != nil && doc.data.id == typeid_of(anim.AnimationClip), "the full clip loads as a document") do return
 	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0, armed = false)
 	before := s.top
-	testing.expect(t, !animation_editor.animation_view_retarget("A", "B"), "two rows on every lane of B: refused")
+	testing.expect(t, !animation_editor.animation_window_retarget("A", "B"), "two rows on every lane of B: refused")
 	testing.expect_value(t, len((cast(^anim.AnimationClip)doc.data.data).channels), 2)
 	testing.expect_value(t, targets(doc), [2]string{"A", "B"})
 	testing.expect_value(t, s.top, before)
@@ -476,7 +476,7 @@ test_retarget_refuses_a_lane_with_two_rows :: proc(t: ^testing.T) {
 	doc = inspector.asset_doc_get(masked)
 	if !testing.expect(t, doc != nil && doc.data.id == typeid_of(anim.AnimationClip), "the masked clip loads as a document") do return
 	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0, armed = false)
-	testing.expect(t, animation_editor.animation_view_retarget("A", "B"), "x on A and z on B: applied")
+	testing.expect(t, animation_editor.animation_window_retarget("A", "B"), "x on A and z on B: applied")
 	testing.expect_value(t, len((cast(^anim.AnimationClip)doc.data.data).channels), 2)
 	testing.expect_value(t, targets(doc), [2]string{"B", "B"})
 	_, ok := anim.animation_clip_validate(cast(^anim.AnimationClip)doc.data.data)
@@ -503,7 +503,7 @@ test_retarget_keeps_collapsed_and_expanded_rows :: proc(t: ^testing.T) {
 	undo.set_asset_apply(inspector.asset_doc_apply_json)
 	undo.set_asset_doc_lookup(inspector.asset_doc_payload_ptr)
 	defer {
-		animation_editor.animation_view_rows_clear()
+		animation_editor.animation_window_rows_clear()
 		animation_editor.animation_record_reset()
 		inspector.asset_docs_shutdown()
 		engine.asset_db_shutdown()
@@ -518,16 +518,16 @@ test_retarget_keeps_collapsed_and_expanded_rows :: proc(t: ^testing.T) {
 
 	arm_pos := animation_editor.sheet_channel_key(&clip.channels[0], context.temp_allocator)
 	leg := animation_editor.sheet_channel_key(&clip.channels[3], context.temp_allocator)
-	animation_editor.animation_view_toggle_collapsed("Body/Arm")
-	animation_editor.animation_view_toggle_expanded(arm_pos)
-	animation_editor.animation_view_toggle_expanded(leg)
+	animation_editor.animation_window_toggle_collapsed("Body/Arm")
+	animation_editor.animation_window_toggle_expanded(arm_pos)
+	animation_editor.animation_window_toggle_expanded(leg)
 
-	testing.expect(t, animation_editor.animation_view_retarget("Body/Arm", "Armature/node_2"), "the retarget applies")
+	testing.expect(t, animation_editor.animation_window_retarget("Body/Arm", "Armature/node_2"), "the retarget applies")
 	moved := animation_editor.sheet_channel_key(&clip.channels[0], context.temp_allocator)
-	testing.expect(t, animation_editor.animation_view_is_collapsed("Armature/node_2"), "the collapse follows the row")
-	testing.expect(t, !animation_editor.animation_view_is_collapsed("Body/Arm"), "the old path keeps no collapse")
-	testing.expect(t, animation_editor.animation_view_is_expanded(moved), "the expanded vector row follows the row")
-	testing.expect(t, !animation_editor.animation_view_is_expanded(arm_pos), "the old key is gone")
-	testing.expect(t, animation_editor.animation_view_is_expanded(leg), "another target keeps its state")
+	testing.expect(t, animation_editor.animation_window_is_collapsed("Armature/node_2"), "the collapse follows the row")
+	testing.expect(t, !animation_editor.animation_window_is_collapsed("Body/Arm"), "the old path keeps no collapse")
+	testing.expect(t, animation_editor.animation_window_is_expanded(moved), "the expanded vector row follows the row")
+	testing.expect(t, !animation_editor.animation_window_is_expanded(arm_pos), "the old key is gone")
+	testing.expect(t, animation_editor.animation_window_is_expanded(leg), "another target keeps its state")
 }
 

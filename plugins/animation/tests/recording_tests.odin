@@ -1152,7 +1152,7 @@ test_delete_key_on_a_split_row_removes_every_lane_key :: proc(t: ^testing.T) {
 }
 
 // The clip document counts its changes: a recorded edit and its undo each
-// bump Asset_Doc.edits, so a view that derives state from the clip rebuilds.
+// bump Asset_Doc.edits, so a window that derives state from the clip rebuilds.
 @(test)
 test_record_and_undo_bump_document_edits :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
@@ -1612,21 +1612,21 @@ test_driven_row_edits_the_objects_own_lanes :: proc(t: ^testing.T) {
 
 // --- The window's lock ---------------------------------------------------------------
 
-// The Animation window uses the shared view lock (the editor's view_lock.odin),
+// The Animation window uses the shared window lock (the editor's window_lock.odin),
 // as the inspectors do. Locking takes the selection, even an object with no
 // Animation component while the window last showed another object: the
 // window shows nothing for it, then its editor once it gets a component,
 // whatever is selected. Unlocked, the window follows the selection again.
 // Deleting the locked object leaves the lock waiting for it.
 @(test)
-test_animation_view_lock_takes_the_selection_before_its_component :: proc(t: ^testing.T) {
+test_animation_window_lock_takes_the_selection_before_its_component :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	s := common.setup_undo(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown_undo(tc, s)
 	VIEW :: "Animation"
-	defer session.view_lock_set(VIEW, false)
+	defer session.window_lock_set(VIEW, false)
 	defer animation_editor.animation_record_reset()
 	defer session.select_clear()
 
@@ -1637,24 +1637,24 @@ test_animation_view_lock_takes_the_selection_before_its_component :: proc(t: ^te
 	// The window showed the box, then the helmet was selected and locked.
 	animation_editor.animation_record_arm(box, {}, 0, armed = false)
 	session.select_only(helmet)
-	session.view_lock_set(VIEW, true)
-	testing.expect(t, session.view_locked(VIEW), "locked")
+	session.window_lock_set(VIEW, true)
+	testing.expect(t, session.window_locked(VIEW), "locked")
 	session.select_only(box)
-	testing.expect_value(t, animation_editor.animation_view_target(), engine.Transform_Handle{})
+	testing.expect_value(t, animation_editor.animation_window_target(), engine.Transform_Handle{})
 
 	engine.transform_add_comp(helmet, .Animation)
-	testing.expect_value(t, animation_editor.animation_view_target(), helmet)
+	testing.expect_value(t, animation_editor.animation_window_target(), helmet)
 
-	session.view_lock_set(VIEW, false)
-	testing.expect_value(t, animation_editor.animation_view_target(), box)
+	session.window_lock_set(VIEW, false)
+	testing.expect_value(t, animation_editor.animation_window_target(), box)
 
 	// Deleting the locked object leaves the lock waiting for it: the window
 	// shows nothing and says the object is missing, the lock stays.
 	session.select_only(helmet)
-	session.view_lock_set(VIEW, true)
+	session.window_lock_set(VIEW, true)
 	session.select_only(box)
 	engine.transform_destroy(helmet)
-	testing.expect_value(t, animation_editor.animation_view_target(), engine.Transform_Handle{})
-	testing.expect(t, session.view_locked(VIEW), "the lock waits for its object")
-	testing.expect(t, session.view_lock_missing(VIEW), "and says it is missing")
+	testing.expect_value(t, animation_editor.animation_window_target(), engine.Transform_Handle{})
+	testing.expect(t, session.window_locked(VIEW), "the lock waits for its object")
+	testing.expect(t, session.window_lock_missing(VIEW), "and says it is missing")
 }

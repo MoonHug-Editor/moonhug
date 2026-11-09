@@ -8,11 +8,11 @@ package editor
 // JSON envelope, token auth from the bridge file).
 //
 // This file holds the transport and the shell's own tools (console, menus,
-// dialogs, settings, screenshots, the project view). The tools that read or
+// dialogs, settings, screenshots, the Project window). The tools that read or
 // edit the world are the engine's, in plugins/engine/editor/mcp_tools.
 //
-// Screenshots complete across frames: the tick runs BEFORE views draw, so a
-// view's render target still holds the PREVIOUS frame's submitted contents —
+// Screenshots complete across frames: the tick runs BEFORE windows draw, so a
+// window's render target still holds the PREVIOUS frame's submitted contents —
 // downloadable immediately (gfx.rt_download_begin), fence polled per tick,
 // response sent when the pixels land. Full-resolution PNG goes to
 // library/screenshots, a ≤max_size thumbnail rides the wire as base64.
@@ -47,7 +47,7 @@ _MCP_DEFAULT_IMAGE_MAX :: 640
 _Mcp_Shot :: struct {
 	id:       i64,
 	dl:       ^gfx.Texture_Download,
-	view:     string,
+	target:   string,
 	max_size: int,
 	crop:     [4]i32, // x, y, width, height in the image's pixels, width 0 = all
 }
@@ -59,7 +59,7 @@ _Mcp_Window_Shot :: struct {
 	id:       i64,
 	max_size: int,
 	wanted:   bool,
-	crop:     [4]i32, // view=window: that window's rectangle, width 0 = the whole editor
+	crop:     [4]i32, // target=window: that window's rectangle, width 0 = the whole editor
 }
 
 @(private = "file") _mcp: struct {
@@ -451,18 +451,18 @@ mcp_tool_batch :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 		ran, failed, ran < len(raw), strings.to_string(b)), {}
 }
 
-@(mcp_tool={description="Every invokable editor menu path, actions and toggles alike, including per-view menus addressed View/<view>/<label>. invoke_menu fires any of them: an action runs, a toggle flips and the reply says which way it landed."})
+@(mcp_tool={description="Every invokable editor menu path, actions and toggles alike, including per-window menus addressed Window Menu/<window>/<label>. invoke_menu fires any of them: an action runs, a toggle flips and the reply says which way it landed."})
 mcp_tool_list_menus :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
-	// The main menu and the per-view menus are separate registries, so a
+	// The main menu and the per-window menus are separate registries, so a
 	// listing that showed only one would hide half the editor's commands.
 	paths := make([dynamic]string, context.temp_allocator)
 	append(&paths, ..menu.collect_invokable_paths())
-	append(&paths, ..view_menu_paths())
+	append(&paths, ..window_menu_paths())
 	return mcp.tool_ok(paths[:])
 }
 
 @(mcp_tool={
-	description="Open a scene file as the active scene — same flow as double-clicking it in the project view (unloads every loaded scene first).",
+	description="Open a scene file as the active scene — same flow as double-clicking it in the Project window (unloads every loaded scene first).",
 	param_path="string:Scene path relative to the project root, e.g. packages/app/assets/demo_prefabs/bullet.scene",
 })
 mcp_tool_open_scene :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
@@ -473,7 +473,7 @@ mcp_tool_open_scene :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 	if _, gok := assets.asset_db_get_guid(string(path)); !gok {
 		return mcp.tool_fail("not_found", "no asset at %q", string(path))
 	}
-	// The project view's own flow, then the engine's active document.
+	// The Project window's own flow, then the engine's active document.
 	_project_activate_file(string(path))
 	active, aok := session.document_active_path()
 	if !aok do return mcp.tool_fail("load_failed", "scene did not load")
@@ -481,7 +481,7 @@ mcp_tool_open_scene :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 }
 
 @(mcp_tool={
-	description="Ping an asset in the project view — reveal its folder and flash it, the same as clicking a scene title or a Ref field value. Navigating the project view also renders thumbnails for the revealed folder. Pass select to also make it the active file, which is what Assets menu actions like Extract Assets act on.",
+	description="Ping an asset in the Project window — reveal its folder and flash it, the same as clicking a scene title or a Ref field value. Navigating the Project window also renders thumbnails for the revealed folder. Pass select to also make it the active file, which is what Assets menu actions like Extract Assets act on.",
 	param_path="string:Asset path relative to the project root",
 	param_select="boolean:Also select it, so Assets menu actions target it",
 })
@@ -525,7 +525,7 @@ mcp_tool_invoke_menu :: proc(id: i64, params: json.Object) -> (string, Mcp_Error
 	path, has := params["path"].(json.String)
 	if !has do return mcp.tool_fail("bad_request", "missing path")
 	ok, state := menu.invoke_path(path)
-	if !ok do ok, state = view_menu_invoke(path)
+	if !ok do ok, state = window_menu_invoke(path)
 	if !ok {
 		return mcp.tool_fail("menu_unavailable", "%q not found, not invokable, or disabled — see list_menus", path)
 	}
@@ -571,14 +571,16 @@ mcp_tool_dialog :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 // --- Screenshot ------------------------------------------------------------------
 
 @(mcp_tool={
-	description="Capture a view's render target (previous frame). Full PNG saved to library/screenshots, downscaled copy returned inline as an image. Costs context — prefer text tools unless the question is visual.",
-	param_view="string:scene (default), game, editor for the whole editor window including the inspector and other panels, or window for one window of the editor (with window=)",
-	param_window="string:With view=window: the window's title or id (window_list)",
+	description="Capture a window's render target (previous frame). Full PNG saved to library/screenshots, downscaled copy returned inline as an image. Costs context — prefer text tools unless the question is visual.",
+	param_target="string:scene (default), game, editor for the whole editor window including the inspector and other panels, or window for one window of the editor (with window=)",
+	param_window="string:With target=window: the window's title or id (window_list)",
 	param_max_size="integer:Inline image longest edge in pixels (default 640)",
 })
 mcp_tool_screenshot :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
-	view, _ := params["view"].(json.String)
-	if view == "" do view = "scene"
+	// A call with the parameter's old name gets an error, not a Scene capture.
+	if _, old := params["view"]; old do return mcp.tool_fail("bad_request", "screenshot takes target, not view: scene, game, editor or window")
+	target, _ := params["target"].(json.String)
+	if target == "" do target = "scene"
 	max_size := int(mcp.json_int(params, "max_size", _MCP_DEFAULT_IMAGE_MAX))
 
 	// The shot completes frames later, after this frame's temp allocations
@@ -589,14 +591,14 @@ mcp_tool_screenshot :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 	// bridge tick runs before it. So the request is queued and serviced at the
 	// end of this frame (mcp_bridge_capture_frame). Nothing outside the editor's
 	// own window exists in a swapchain image, so there is nothing else to leak.
-	if view == "editor" {
+	if target == "editor" {
 		_mcp.pending_window_shot = _Mcp_Window_Shot{
 			id = id, max_size = max(max_size, 16), wanted = true,
 		}
 		return MCP_DEFERRED, {} // answered once the frame's image is copied
 	}
-	// One window: the editor capture cropped to its rectangle (mcp_views.odin).
-	if view == "window" {
+	// One window: the editor capture cropped to its rectangle (mcp_window_tools.odin).
+	if target == "window" {
 		query, _ := params["window"].(json.String)
 		rect, _, err := mcp_window_capture_rect(query)
 		if err.code != "" do return "", err
@@ -607,23 +609,23 @@ mcp_tool_screenshot :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 	}
 
 	rt: ^gfx.Render_Target
-	switch view {
+	switch target {
 	case "scene":
 		rt = _sv.rt
-		view = "scene"
+		target = "scene"
 	case "game":
 		rt = game_rt
-		view = "game"
+		target = "game"
 	case:
-		return mcp.tool_fail("bad_request", "view must be scene, game, editor or window")
+		return mcp.tool_fail("bad_request", "target must be scene, game, editor or window")
 	}
 	if rt == nil || rt.width < 2 || rt.height < 2 {
-		return mcp.tool_fail("view_not_available", "%s view has not rendered yet", view)
+		return mcp.tool_fail("window_not_available", "%s window has not rendered yet", target)
 	}
 	dl := gfx.rt_download_begin(rt)
 	if dl == nil do return mcp.tool_fail("readback_failed", "could not begin GPU readback")
 
-	append(&_mcp.shots, _Mcp_Shot{id = id, dl = dl, view = view, max_size = max(max_size, 16)})
+	append(&_mcp.shots, _Mcp_Shot{id = id, dl = dl, target = target, max_size = max(max_size, 16)})
 	return MCP_DEFERRED, {} // _mcp_poll_shots responds when the pixels land
 }
 
@@ -653,7 +655,7 @@ mcp_bridge_capture_frame :: proc() {
 		_mcp_respond_error(req.id, "capture_failed", "could not read the window capture")
 		return
 	}
-	append(&_mcp.shots, _Mcp_Shot{id = req.id, dl = dl, view = req.crop.z > 0 ? "window" : "editor", max_size = req.max_size, crop = req.crop})
+	append(&_mcp.shots, _Mcp_Shot{id = req.id, dl = dl, target = req.crop.z > 0 ? "window" : "editor", max_size = req.max_size, crop = req.crop})
 }
 
 @(private = "file")
@@ -716,7 +718,7 @@ _mcp_finish_shot :: proc(shot: _Mcp_Shot, pixels: []u8, w, h: int) {
 	os.make_directory("library")
 	os.make_directory(_MCP_SCREENSHOT_DIR)
 	_mcp.shot_counter += 1
-	path := fmt.tprintf("%s/%s_%03d.png", _MCP_SCREENSHOT_DIR, shot.view, _mcp.shot_counter)
+	path := fmt.tprintf("%s/%s_%03d.png", _MCP_SCREENSHOT_DIR, shot.target, _mcp.shot_counter)
 	full_png := _mcp_png_encode(pixels, w, h)
 	if full_png == nil {
 		_mcp_respond_error(shot.id, "encode_failed", "PNG encode failed")

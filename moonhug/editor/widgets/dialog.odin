@@ -16,7 +16,7 @@ package widgets
 // - While a dialog is open it owns the keyboard: every keyboard and gamepad
 //   key is locked to the dialog at the start of each frame
 //   (dialog_frame_begin), so imgui answers no for them to every other caller.
-//   No shortcut, view or tool needs to check for an open dialog. The mouse
+//   No shortcut, window or tool needs to check for an open dialog. The mouse
 //   stays free, so the buttons and the title bar still take clicks.
 // - Actions take no arguments. Odin procs carry no closure, so a dialog's
 //   state lives in the caller's file-level variables. One dialog is open at a

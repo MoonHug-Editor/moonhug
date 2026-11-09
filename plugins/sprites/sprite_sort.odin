@@ -79,8 +79,8 @@ _sprite_sort_visit :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, vi
 	}
 
 	// Child refs may carry stale/empty runtime handles at nested-scene and
-	// variant boundaries (handles are json:"-"); resolve like the hierarchy
-	// view does — against the child's own scene when it has one — or missed
+	// variant boundaries (handles are json:"-"); resolve like the Hierarchy
+	// window does — against the child's own scene when it has one — or missed
 	// subtrees silently fall back to ungrouped orphan keys.
 	sc := t.scene != nil ? t.scene : scene
 	for child in t.children {

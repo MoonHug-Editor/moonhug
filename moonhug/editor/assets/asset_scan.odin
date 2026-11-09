@@ -19,7 +19,7 @@ import "moonhug:libs/log"
 // against file_state, and process only the deltas — new assets get metas +
 // registration, changed scene assets re-index, deleted assets unregister and
 // their orphaned metas are removed. Renames arrive as delete+create; the meta
-// travels with the file (project view moves it), so the guid stays stable.
+// travels with the file (Project window moves it), so the guid stays stable.
 // A changed asset, its source or its .meta, is reimported here when it has an
 // importer, so the editor matches the files after a git checkout or an edit
 // in another program. The import's freshness check (mtime, size, settings

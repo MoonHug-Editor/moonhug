@@ -1,6 +1,6 @@
 package engine_tests
 
-// The scene-view handles (editor/handles): the geometry they rest on, and
+// The Scene window handles (editor/handles): the geometry they rest on, and
 // drags replayed frame by frame through the real handle procs
 // (tests/common/handles_driver.odin).
 

@@ -4,7 +4,7 @@ import "base:runtime"
 import "core:path/filepath"
 import "core:strings"
 
-// Asset actions: what the project view does to an asset beyond the database,
+// Asset actions: what the Project window does to an asset beyond the database,
 // such as opening its document. The shell declares the procs, a plugin
 // installs them at EditorInit (the engine opens scenes). Every wrapper is
 // nil-safe and reports false when nothing is installed.
@@ -37,7 +37,7 @@ asset_open :: proc(path: string) -> bool {
 }
 
 // Registers the editor that opens assets with extension `ext` (".shadergraph"):
-// what a double click or Enter on the asset in the Project view runs. One
+// what a double click or Enter on the asset in the Project window runs. One
 // handler per extension, a later registration replaces an earlier one.
 asset_open_handler_add :: proc(ext: string, handler: proc(path: string) -> bool) {
 	context.allocator = runtime.default_allocator()

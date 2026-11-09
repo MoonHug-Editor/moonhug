@@ -35,7 +35,7 @@ To build and run the editor, see [Install, Build and Run](docs/general/InstallBu
 ## UX Features
 - Editor development happens through features
   - Each feature provides specific UX solution with optional extensibility
-  - At high level, UX features are built around window views, assets and/or components
+  - At high level, UX features are built around windows, assets and/or components
 
 #### Contribution
 
@@ -85,9 +85,9 @@ For more details see [Architecture](docs/core/Architecture.md)
 - dynamic menus - @(menu_dynamic={path="File/Recent Scenes"}) on a proc makes a submenu whose items the proc draws each frame it is open, for item sets that only exist at runtime. Recent Scenes uses it. Nothing inside one can be listed, invoked by path or bound to a key, so it is the escape hatch and @(menu_item) stays the form.
 - clips inside a model - a glTF model's animations play without extraction: the importer bakes them beside the mesh parts, each gets its own guid in the model's meta, and a clip field names one like any `.anim`. Nothing but the model and its meta is committed ([Animation clip](plugins/animation/docs/assets/AnimationClip.md)).
 - documentation site - `mh docs` builds a static site into builds/docs from docs/general, docs/core and each plugin's own docs/ folder, tagged and read from the file system with no server. docs/reference is generated on every build: one page per attribute listing everything registered through it, and one `odin doc` page per engine and editor package.
-- view tab bar and menu - every dock node's tab bar carries the visible view's toolbar items, then a ⋮ menu. Any package adds to either: @(view_tab_bar={view="Animation", order=0}) on a proc draws a widget, @(view_menu={view="Animation", label="..."}) on a proc is an action and on a bool variable a toggle, with `checked=`/`enabled=` like menu_item.
+- window tab bar and menu - every dock node's tab bar carries the visible window's toolbar items, then a ⋮ menu. Any package adds to either: @(window_tab_bar={window="Animation", order=0}) on a proc draws a widget, @(window_menu={window="Animation", label="..."}) on a proc is an action and on a bool variable a toggle, with `checked=`/`enabled=` like menu_item.
 
-- scene view overlays - Unity-style dockable overlays (drag the grip to dock to view edges or float), extensible via @(scene_overlay={id="...", order=0}) on a proc that draws IMGUI; item tooltips end with the overlay id and order
+- Scene window overlays - Unity-style dockable overlays (drag the grip to dock to window edges or float), extensible via @(scene_overlay={id="...", order=0}) on a proc that draws IMGUI; item tooltips end with the overlay id and order
 
 - Project Settings window (Edit ▸ Project Settings…) - Unity-style section list + inspector pane, extensible via @(project_settings={name="Tab"}) on a package-level settings struct var; values persist to ProjectSettings/*.json, read by editor and game, edits undoable (see [Plugins](docs/core/Plugins.md))
 
@@ -101,28 +101,28 @@ For more details see [Architecture](docs/core/Architecture.md)
 - [Tweens](plugins/tween/docs/Tweens.md)
 - [Reference Handles](plugins/engine/docs/ReferenceHandles.md)
 - [Object Picker](docs/core/ObjectPicker.md) - Unity-style reference picker: Scene/Project tabs, search, ping, project picks filtered by root component or file extension
-- [SDL3 Renderer](plugins/engine/docs/SDL3Renderer.md) - SDL3 + SDL_GPU rendering (Metal-native), per-camera render commands, scene view picking + selection outline + move/rotate/scale gizmos
+- [SDL3 Renderer](plugins/engine/docs/SDL3Renderer.md) - SDL3 + SDL_GPU rendering (Metal-native), per-camera render commands, Scene window picking + selection outline + move/rotate/scale gizmos
 - [Meshes](plugins/engine/docs/Meshes.md) - glTF import with per-material submeshes, MeshFilter/MeshRenderer components
 - [Materials](plugins/engine/docs/Materials.md) - Material assets (built-in unlit/lit shaders + texture/color) on MeshRenderer AND SpriteRenderer, custom .glsl shaders with hot reload + property blocks + multi-texture rows, PBR/specular sample shaders (camera position + world position available to fragment shaders), directional/point/spot Light components (up to 8 per pass), live-editing inspector
 - [SpriteRenderer](plugins/sprites/docs/SpriteRenderer.md)
 - [Text](plugins/text/docs/Text.md) - TextMeshPro-shaped text plugin for the canvas tree: font files import into a signed-distance-field atlas, an SDF material shader gives outline, underlay shadow, dilation and softness, sharp at any size, backend-neutral layout with a swappable glyph source
-- [Handles](docs/core/Handles.md) - scene-view interaction layer for editor and package editors: immediate-mode drag handles on a plane or a line, bounds composites (box, sphere, capsule), snapping, overlay drawing, one drag = one undo step, picking providers
+- [Handles](docs/core/Handles.md) - Scene window interaction layer for editor and package editors: immediate-mode drag handles on a plane or a line, bounds composites (box, sphere, capsule), snapping, overlay drawing, one drag = one undo step, picking providers
 - [GUI](plugins/mhgui/docs/Gui.md) - canvas tree in the engine (Canvas, RectTransform anchors/pivot layout, CanvasRenderer, CanvasScaler, rect walk with layout providers), mhgui plugin package for the graphics (Image, sprite or solid color), LayoutGroup (row/column/grid), the render collector and the rect tool on editor/handles
 - [Unity Conveniences](docs/general/UnityConveniences.md)
-- [Multiselection](docs/core/Multiselection.md) - cmd/shift selection in hierarchy, scene view and project; rubber-band box select; gizmo moves/rotates/scales the whole selection (Pivot/Center toggle); set-wide delete/duplicate/toggle-active as one undo step; multiedit of shared components with Unity's mixed-value indicators
+- [Multiselection](docs/core/Multiselection.md) - cmd/shift selection in hierarchy, Scene window and project; rubber-band box select; gizmo moves/rotates/scales the whole selection (Pivot/Center toggle); set-wide delete/duplicate/toggle-active as one undo step; multiedit of shared components with Unity's mixed-value indicators
 - [Crash Journal](docs/general/CrashJournal.md) - signal-safe crash log with a symbolized stack and a breadcrumb of what the editor was doing (`logs/crash_<pid>.log`)
 - [MCP Bridge](docs/core/McpBridge.md) - agent access to the running editor (scene dumps, menu invocation) over MCP, zero external dependencies
 - [Undo](docs/core/Undo.md) - editor undo feature
-- [Views](docs/core/Views.md) - editor windows and the attributes that extend views: view menus, tab bar widgets, the asset a view edits with Save, Discard, the dirty star and the quit prompt, scene view overlays, the editor toolbar
+- [Windows](docs/core/Windows.md) - editor windows and the attributes that extend windows: window menus, tab bar widgets, the asset a window edits with Save, Discard, the dirty star and the quit prompt, Scene window overlays, the editor toolbar
 - [Simulate](docs/core/Simulate.md) - play the open scene inside the editor with everything still inspectable: Simulate/Pause/Step controls, snapshot+restore on stop, sim-host dropdown picking which game's update code runs. Separate from the Play button, which builds and launches the game as its own process
 
-### Views
-  - inspector view - edit selected object in scene
+### Windows
+  - Inspector window - edit selected object in scene
   - project inspector - preview and edit selected asset in project
-  - hierarchy view - shows scene tree
-  - project view - left pane is folder tree, right pane is selected folder contents. Unity-style zoom slider bottom right — minimum is the list, above it a thumbnail grid (image/material/scene previews rendered on demand, budgeted per frame, cached by guid + file stamp, persisted under library/thumbnails across sessions)
-  - console view
-  - scene view - view and edit scene contents. Perspective/orthographic toggle and axis views from the scene gizmo (top-right), a 2D button for a fixed front view with pan-only navigation, F frames the selection (UI rects and canvases included)
+  - Hierarchy window - shows scene tree
+  - Project window - left pane is folder tree, right pane is selected folder contents. Unity-style zoom slider bottom right — minimum is the list, above it a thumbnail grid (image/material/scene previews rendered on demand, budgeted per frame, cached by guid + file stamp, persisted under library/thumbnails across sessions)
+  - Console window
+  - Scene window - view and edit scene contents. Perspective/orthographic toggle and axis views from the scene gizmo (top-right), a 2D button for a fixed front view with pan-only navigation, F frames the selection (UI rects and canvases included)
 
 - custom drawers
   - custom property drawers - via @(property_drawer=...) on proc
@@ -144,7 +144,7 @@ For more details see [Architecture](docs/core/Architecture.md)
 - sprite atlas (batching): a .spriteatlas asset packs slices from many textures into one atlas artifact, sprite_quad redirects texture + uvs through the atlas mapping — renderers and scenes untouched. PPtr sprite references are the mapping key
 
 - spline package: a path through space, the spatial counterpart to the engine's scalar `Curve`
-  - a Spline component holding control points, edited in the scene view through the handles layer
+  - a Spline component holding control points, edited in the Scene window through the handles layer
   - sampling by parameter and by arc length
   - consumers decide what a path means: move a transform along it, aim a camera, place objects at intervals
   - first consumer: a sequencer track that drives a transform along a spline

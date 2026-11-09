@@ -120,107 +120,107 @@ test_menu_listing_is_deterministic :: proc(t: ^testing.T) {
 	for p, i in first do testing.expect_value(t, p, second[i])
 }
 
-// --- Per-view menu and tab bar (editor/view_chrome.odin) ---------------------
+// --- Per-window menu and tab bar (editor/window_chrome.odin) ---------------------
 //
-// View items live in their own registry, not the main menu tree. That must not
+// Window items live in their own registry, not the main menu tree. That must not
 // make them unreachable: anything driving the editor from outside addresses
-// them as "View/<view>/<label>".
+// them as "Window Menu/<window>/<label>".
 
-@(private = "file") _view_flag: bool
-@(private = "file") _view_ran: int
-@(private = "file") _view_act :: proc(view: session.View) { _view_ran += 1 }
-@(private = "file") _view_flip :: proc(view: session.View) { _view_flag = !_view_flag }
-@(private = "file") _view_is_flipped :: proc(view: session.View) -> bool { return _view_flag }
-@(private = "file") _view_never :: proc(view: session.View) -> bool { return false }
+@(private = "file") _window_flag: bool
+@(private = "file") _window_ran: int
+@(private = "file") _window_act :: proc(window: session.Window_Ref) { _window_ran += 1 }
+@(private = "file") _window_flip :: proc(window: session.Window_Ref) { _window_flag = !_window_flag }
+@(private = "file") _window_is_flipped :: proc(window: session.Window_Ref) -> bool { return _window_flag }
+@(private = "file") _window_never :: proc(window: session.Window_Ref) -> bool { return false }
 
 @(private = "file")
-_view_fixture :: proc() {
-	editor.view_chrome_shutdown()
-	_view_flag = false
-	_view_ran = 0
-	editor.view_menu_add_toggle("Console", "Clear on Play", &_view_flag)
-	editor.view_menu_add_action("Console", "Reset", _view_act)
-	editor.view_menu_add_action("Console", "Never", _view_act, 0, _view_never)
-	editor.view_tab_bar_add_item("Output", _view_act, 0)
+_window_fixture :: proc() {
+	editor.window_chrome_shutdown()
+	_window_flag = false
+	_window_ran = 0
+	editor.window_menu_add_toggle("Console", "Clear on Play", &_window_flag)
+	editor.window_menu_add_action("Console", "Reset", _window_act)
+	editor.window_menu_add_action("Console", "Never", _window_act, 0, _window_never)
+	editor.window_tab_bar_add_item("Output", _window_act, 0)
 }
 
 @(test)
-test_view_menu_paths_are_addressable :: proc(t: ^testing.T) {
-	_view_fixture()
-	defer editor.view_chrome_shutdown()
+test_window_menu_paths_are_addressable :: proc(t: ^testing.T) {
+	_window_fixture()
+	defer editor.window_chrome_shutdown()
 
-	paths := editor.view_menu_paths()
-	testing.expect(t, _has(paths, "View/Console/Clear on Play"), "a toggle is addressable")
-	testing.expect(t, _has(paths, "View/Console/Reset"), "an action is addressable")
+	paths := editor.window_menu_paths()
+	testing.expect(t, _has(paths, "Window Menu/Console/Clear on Play"), "a toggle is addressable")
+	testing.expect(t, _has(paths, "Window Menu/Console/Reset"), "an action is addressable")
 }
 
 @(test)
-test_view_menu_invoke_matches_clicking :: proc(t: ^testing.T) {
-	_view_fixture()
-	defer editor.view_chrome_shutdown()
+test_window_menu_invoke_matches_clicking :: proc(t: ^testing.T) {
+	_window_fixture()
+	defer editor.window_chrome_shutdown()
 
-	ok, state := editor.view_menu_invoke("View/Console/Clear on Play")
+	ok, state := editor.window_menu_invoke("Window Menu/Console/Clear on Play")
 	testing.expect(t, ok && state, "a toggle flips and reports where it landed")
-	testing.expect(t, _view_flag)
-	_, state2 := editor.view_menu_invoke("View/Console/Clear on Play")
+	testing.expect(t, _window_flag)
+	_, state2 := editor.window_menu_invoke("Window Menu/Console/Clear on Play")
 	testing.expect(t, !state2, "flipping again puts it back")
 
-	act, _ := editor.view_menu_invoke("View/Console/Reset")
+	act, _ := editor.window_menu_invoke("Window Menu/Console/Reset")
 	testing.expect(t, act)
-	testing.expect_value(t, _view_ran, 1)
+	testing.expect_value(t, _window_ran, 1)
 
 	// An action carrying a tick predicate is a toggle whose state lives
 	// elsewhere, so invoking it reports that state rather than a flat false.
-	editor.view_menu_add_action("Console", "Ticked", _view_flip, 0, nil, _view_is_flipped)
-	_, ticked := editor.view_menu_invoke("View/Console/Ticked")
+	editor.window_menu_add_action("Console", "Ticked", _window_flip, 0, nil, _window_is_flipped)
+	_, ticked := editor.window_menu_invoke("Window Menu/Console/Ticked")
 	testing.expect(t, ticked, "an action with checked reports its state")
-	_, unticked := editor.view_menu_invoke("View/Console/Ticked")
+	_, unticked := editor.window_menu_invoke("Window Menu/Console/Ticked")
 	testing.expect(t, !unticked, "and reports it again after flipping back")
 
 	// The enabled predicate is honored, so a disabled item refuses rather than
 	// running quietly.
-	off, _ := editor.view_menu_invoke("View/Console/Never")
-	testing.expect(t, !off, "a disabled view item refuses")
-	testing.expect_value(t, _view_ran, 1)
+	off, _ := editor.window_menu_invoke("Window Menu/Console/Never")
+	testing.expect(t, !off, "a disabled window item refuses")
+	testing.expect_value(t, _window_ran, 1)
 }
 
 @(test)
-test_view_menu_invoke_rejects_unknown :: proc(t: ^testing.T) {
-	_view_fixture()
-	defer editor.view_chrome_shutdown()
+test_window_menu_invoke_rejects_unknown :: proc(t: ^testing.T) {
+	_window_fixture()
+	defer editor.window_chrome_shutdown()
 
-	no_view, _ := editor.view_menu_invoke("View/Nope/Reset")
-	testing.expect(t, !no_view, "an unknown view does not invoke")
-	no_label, _ := editor.view_menu_invoke("View/Console/Nope")
+	no_window, _ := editor.window_menu_invoke("Window Menu/Nope/Reset")
+	testing.expect(t, !no_window, "an unknown window does not invoke")
+	no_label, _ := editor.window_menu_invoke("Window Menu/Console/Nope")
 	testing.expect(t, !no_label, "an unknown label does not invoke")
 	// A main-menu path must fall through to the main menu, not be swallowed.
-	not_view, _ := editor.view_menu_invoke("Edit/Undo")
-	testing.expect(t, !not_view, "a path without the View prefix is not ours")
+	not_window, _ := editor.window_menu_invoke("Edit/Undo")
+	testing.expect(t, !not_window, "a path without the Window Menu prefix is not ours")
 }
 
 // The menu and the toolbar are separate registries: an item registered for one
 // must not show up in the other.
 @(test)
-test_view_menu_and_toolbar_do_not_mix :: proc(t: ^testing.T) {
-	_view_fixture()
-	defer editor.view_chrome_shutdown()
+test_window_menu_and_toolbar_do_not_mix :: proc(t: ^testing.T) {
+	_window_fixture()
+	defer editor.window_chrome_shutdown()
 
 	// A toolbar item is not a menu path — it draws a widget, it has no label
 	// to invoke by.
-	paths := editor.view_menu_paths()
-	for p in paths do testing.expect(t, !strings.has_prefix(p, "View/Output/"), "a toolbar item is not a menu path")
+	paths := editor.window_menu_paths()
+	for p in paths do testing.expect(t, !strings.has_prefix(p, "Window Menu/Output/"), "a toolbar item is not a menu path")
 
-	// And a view whose only items are menu items reserves no toolbar width.
-	testing.expect_value(t, editor.view_tab_bar_width(session.view_of("Console")), f32(0))
+	// And a window whose only items are menu items reserves no toolbar width.
+	testing.expect_value(t, editor.window_tab_bar_width(session.window_ref_of("Console")), f32(0))
 }
 
 // The id keys the registry and the imgui ini, so it is the text after ###.
 @(test)
-test_view_chrome_id_is_the_ini_key :: proc(t: ^testing.T) {
-	testing.expect_value(t, editor.view_id_of(icons.TITLE_CONSOLE), "Console")
-	testing.expect_value(t, editor.view_id_of(icons.TITLE_PROJECT_INSPECTOR), "Project Inspector")
+test_window_chrome_id_is_the_ini_key :: proc(t: ^testing.T) {
+	testing.expect_value(t, editor.window_id_of(icons.TITLE_CONSOLE), "Console")
+	testing.expect_value(t, editor.window_id_of(icons.TITLE_PROJECT_INSPECTOR), "Project Inspector")
 	// A title written without the marker still keys something stable.
-	testing.expect_value(t, editor.view_id_of("Plain"), "Plain")
+	testing.expect_value(t, editor.window_id_of("Plain"), "Plain")
 }
 
 // --- User settings (libs/core/user_settings.odin) -------------------------------
@@ -238,7 +238,7 @@ _Prefs :: struct {
 
 @(test)
 test_user_settings_round_trip :: proc(t: ^testing.T) {
-	NAME :: "Test View"
+	NAME :: "Test Window"
 	defer os.remove(engine.user_settings_file(NAME))
 
 	written := _Prefs{flag = true, count = 7, ratio = 0.25}
@@ -255,7 +255,7 @@ test_user_settings_round_trip :: proc(t: ^testing.T) {
 test_user_settings_missing_file_keeps_defaults :: proc(t: ^testing.T) {
 	defaults := _Prefs{flag = true, count = 3, ratio = 1}
 	v := defaults
-	testing.expect(t, !engine.user_settings_load("No Such View At All", &v), "a missing file reports false")
+	testing.expect(t, !engine.user_settings_load("No Such Window At All", &v), "a missing file reports false")
 	// ... and changes nothing.
 	testing.expect_value(t, v, defaults)
 }
@@ -264,7 +264,7 @@ test_user_settings_missing_file_keeps_defaults :: proc(t: ^testing.T) {
 // setting has a file to edit, and never overwrites one that exists.
 @(test)
 test_user_settings_create_writes_only_a_missing_file :: proc(t: ^testing.T) {
-	NAME :: "Test Create View"
+	NAME :: "Test Create Window"
 	defer os.remove(core.user_settings_file(NAME))
 	os.remove(core.user_settings_file(NAME))
 
@@ -286,25 +286,25 @@ test_user_settings_create_writes_only_a_missing_file :: proc(t: ^testing.T) {
 @(test)
 test_user_settings_file_slug :: proc(t: ^testing.T) {
 	testing.expect_value(t, engine.user_settings_file("Animation"), "UserSettings/animation.json")
-	testing.expect_value(t, engine.user_settings_file("Test View"), "UserSettings/test_view.json")
+	testing.expect_value(t, engine.user_settings_file("Test Window"), "UserSettings/test_window.json")
 }
 
-// A view menu IS a menu tree, so a path with slashes nests instead of becoming
+// A window menu IS a menu tree, so a path with slashes nests instead of becoming
 // a label with slashes in it. The flat list this replaced could not do it, and
-// nothing in view_chrome implements nesting — it comes from the menu package.
+// nothing in window_chrome implements nesting — it comes from the menu package.
 @(test)
-test_view_menu_supports_submenus :: proc(t: ^testing.T) {
-	editor.view_chrome_shutdown()
-	defer editor.view_chrome_shutdown()
-	_view_ran = 0
-	editor.view_menu_add_action("Console", "Export/As PNG", _view_act)
+test_window_menu_supports_submenus :: proc(t: ^testing.T) {
+	editor.window_chrome_shutdown()
+	defer editor.window_chrome_shutdown()
+	_window_ran = 0
+	editor.window_menu_add_action("Console", "Export/As PNG", _window_act)
 
-	paths := editor.view_menu_paths()
-	testing.expect(t, _has(paths, "View/Console/Export/As PNG"), "a nested item addresses by its full path")
+	paths := editor.window_menu_paths()
+	testing.expect(t, _has(paths, "Window Menu/Console/Export/As PNG"), "a nested item addresses by its full path")
 	// The submenu itself is a container, not something to invoke.
-	testing.expect(t, !_has(paths, "View/Console/Export"), "the parent submenu is not invokable")
+	testing.expect(t, !_has(paths, "Window Menu/Console/Export"), "the parent submenu is not invokable")
 
-	ok, _ := editor.view_menu_invoke("View/Console/Export/As PNG")
+	ok, _ := editor.window_menu_invoke("Window Menu/Console/Export/As PNG")
 	testing.expect(t, ok)
-	testing.expect_value(t, _view_ran, 1)
+	testing.expect_value(t, _window_ran, 1)
 }

@@ -239,11 +239,11 @@ _sub_emitters_rows :: proc(ps: ^particles.ParticleSystem) {
 
 // --- Edit-mode playback --------------------------------------------------------
 //
-// Unity's scene-view particle preview: the inspected EFFECT plays in edit
+// Unity's Scene window particle preview: the inspected EFFECT plays in edit
 // mode — the whole ParticleSystem hierarchy from its root, so child systems
 // and sub-emitter targets simulate too, and selecting a child previews the
 // effect it belongs to. The wrapper ticks it while it draws (selection
-// change restarts the effect), the scene-view overlay shows the Particle
+// change restarts the effect), the Scene window overlay shows the Particle
 // Effect panel and clears the preview when the inspector stops drawing the
 // system. Play/simulate owns playback — the preview stands down while
 // playing.
@@ -371,7 +371,7 @@ particles_effect_overlay :: proc(vertical: bool) {
 		return
 	}
 	// The inspector stopped drawing it — selection moved on: clear the
-	// preview so no frozen particles linger in the scene view.
+	// preview so no frozen particles linger in the Scene window.
 	if im.GetFrameCount() - _ep_frame > 1 {
 		_ep_reset_effect(ps)
 		_ep_owner = {}

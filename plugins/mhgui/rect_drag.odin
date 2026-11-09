@@ -2,7 +2,7 @@ package mhgui
 
 import "moonhug:packages/engine"
 
-// Rect tool edits on a RectTransform (the scene-view gizmo in editor/, the
+// Rect tool edits on a RectTransform (the Scene window gizmo in editor/, the
 // tests here). Pure: they touch only the component's fields.
 
 // Moves the rect by `delta` canvas units.

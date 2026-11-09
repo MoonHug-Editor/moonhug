@@ -426,7 +426,7 @@ test_authored_graph_matches_the_tree :: proc(t: ^testing.T) {
 	testing.expect(t, b.children[0].pos <= b.children[1].pos, "children come out sorted by position")
 }
 
-// The editor's edit-mode state preview (view_animation.odin `_pv_entry_tick`)
+// The editor's edit-mode state preview (window_animation.odin `_pv_entry_tick`)
 // poses through the same three procs the driver uses, on a graph it built
 // itself with animation_graph_build_authored. The editor package is not linked
 // into tests, so this exercises that path directly: light the blend's chain,

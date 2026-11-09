@@ -1,6 +1,6 @@
 package editor_tests
 
-// The editor is a generic shell (dock, views, menus, inspector reflection,
+// The editor is a generic shell (dock, windows, menus, inspector reflection,
 // undo stack, settings, console, MCP) standing on the libs, and the
 // engine is a plugin like any other (plugins/engine, its editor half in
 // plugins/engine/editor). The rule: no hand-written file under moonhug/editor,

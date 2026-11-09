@@ -1,11 +1,11 @@
 package handles
 
-// Interactive scene-view handles for editor code and package editors
+// Interactive Scene window handles for editor code and package editors
 // (docs/core/Handles.md). Immediate mode, keyed by caller ids like imgui: a handle
 // proc draws itself (through libs/gizmos), reports hover, and when the user
 // drags it, reports the drag as an offset on a plane. The editor's gizmo pass
-// publishes the scene view's frame (view, pointer, keys) before the handle
-// hooks run, and the scene view asks `consumes_mouse` before picking or
+// publishes the Scene window's frame (view, pointer, keys) before the handle
+// hooks run, and the Scene window asks `consumes_mouse` before picking or
 // box-selecting.
 //
 // - Positions and normals are in the current gizmos space (in_local_space,
@@ -28,7 +28,7 @@ import core "moonhug:libs/core"
 import "moonhug:libs/gizmos"
 import "moonhug:editor/keymap"
 
-// The scene view's tool: Q W E R T. viewport.gizmo_mode holds it, and
+// The Scene window's tool: Q W E R T. viewport.gizmo_mode holds it, and
 // gizmo and handles hooks read it from their context.
 Tool :: enum {
 	Picker,    // Q: selection only
@@ -44,7 +44,7 @@ Gizmo_State :: enum {
 	In_Selection, // it or an ancestor is selected
 }
 
-// Adds interactive scene view handles for every instance of a component.
+// Adds interactive Scene window handles for every instance of a component.
 //
 // `component` is the type. The proc takes the component and this context and
 // calls the handles API (docs/core/Handles.md). Drawing that does not react to
@@ -72,11 +72,11 @@ DOT_HOVER_PX :: f32(8)
 // component's own handle takes the click where the two overlap.
 PRIO_TOOL :: -10
 
-// The pointer and keys a frame's handles read. The scene view fills it from
+// The pointer and keys a frame's handles read. The Scene window fills it from
 // imgui, tests from a script.
 Input :: struct {
 	mouse:   [2]f32, // viewport pixels, scene image top-left origin
-	hovered: bool,   // the scene view has the pointer
+	hovered: bool,   // the Scene window has the pointer
 	down:    bool,   // the left button is held
 	clicked: bool,   // the left button went down this frame
 	alt:     bool,
@@ -137,7 +137,7 @@ Drag :: struct {
 // handles, so it lives here.
 rect_raw_edit: bool
 
-// The editor's gizmo pass calls this once per frame for the scene view,
+// The editor's gizmo pass calls this once per frame for the Scene window,
 // before the handle hooks. It picks this frame's hot handle from the shapes
 // the handles recorded last frame. Nothing needs a render pass open.
 frame_begin :: proc(view: core.Render_View, input: Input) {
@@ -161,7 +161,7 @@ frame_begin :: proc(view: core.Render_View, input: Input) {
 	clear(&_shapes)
 }
 
-// True while a handle is hovered or dragged: the scene view then neither
+// True while a handle is hovered or dragged: the Scene window then neither
 // picks nor starts a box select.
 consumes_mouse :: proc() -> bool {
 	return (_hot != 0 && _hot_seen) || _active != 0
@@ -798,7 +798,7 @@ quad :: proc(id: u64, c: [4][3]f32, normal: [3]f32) -> Drag {
 // --- Scene picking providers -----------------------------------------------------------
 
 // A package's selectable shapes that are neither renderers nor UI graphics
-// (the scene view picks those itself). Both procs are required, so a shape
+// (the Scene window picks those itself). Both procs are required, so a shape
 // that takes a click also takes a box select.
 Pick_Provider :: struct {
 	// The nearest hit along `ray`: (transform, ray parameter). The editor's

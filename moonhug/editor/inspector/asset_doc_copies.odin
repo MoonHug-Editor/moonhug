@@ -1,6 +1,6 @@
 package inspector
 
-// Working copies (docs/core/Views.md): an editor that applies its edits all
+// Working copies (docs/core/Windows.md): an editor that applies its edits all
 // at once loads a copy of what it edits, an asset's file or its import
 // settings (the .meta), and works on it through a handle. Nothing else sees
 // the copy until Apply writes it to the file, and the asset's shared document
@@ -11,9 +11,9 @@ package inspector
 //   copy shown or edited since the last compare with its baseline, and turns
 //   a change into one step on the one undo queue, which names the copy by its
 //   handle.
-// - A copy is an open document of the view that holds it (session.Document
-//   view, asset_doc_owner.odin): its tab carries the star, its menu, File/Save
-//   and the quit prompt apply or discard it, and the view asks before it
+// - A copy is an open document of the window that holds it (session.Document
+//   window, asset_doc_owner.odin): its tab carries the star, its menu, File/Save
+//   and the quit prompt apply or discard it, and the window asks before it
 //   closes with unapplied edits.
 // - Close drops the copy and its undo steps. Handles are never reused, so a
 //   closed one finds nothing.
@@ -38,7 +38,7 @@ Asset_Doc_Copy :: struct {
 	guid:     core.Asset_GUID,
 	kind:     undo.Doc_Kind, // .File: the asset's file, .Import_Settings: its .meta
 	path:     string, // owned
-	view:     string, // owned, the view that holds the copy, "" for none
+	window:   string, // owned, the window that holds the copy, "" for none
 	data:     any,    // the copy's value. Undo replaces it, so fetch it each frame
 	dirty:    bool,   // differs from the file on disk
 	touched:  bool,   // shown or edited since the last compare
@@ -53,10 +53,10 @@ _copies: map[Doc_Copy]^Asset_Doc_Copy
 _copy_count: u64
 
 // Opens a working copy of the asset at `path`: of its file (.File) or of its
-// import settings (.Import_Settings), loaded from disk. `view` is the key of
-// the view that holds it, for its tab and its close prompt. 0 when the asset
+// import settings (.Import_Settings), loaded from disk. `window` is the key of
+// the window that holds it, for its tab and its close prompt. 0 when the asset
 // or its file cannot be read.
-asset_doc_copy_open :: proc(path: string, kind: undo.Doc_Kind, view := "") -> Doc_Copy {
+asset_doc_copy_open :: proc(path: string, kind: undo.Doc_Kind, window := "") -> Doc_Copy {
 	context.allocator = doc_alloc()
 	raw, ok := assets.asset_db_get_guid(path)
 	if !ok do return 0
@@ -69,7 +69,7 @@ asset_doc_copy_open :: proc(path: string, kind: undo.Doc_Kind, view := "") -> Do
 		guid    = core.Asset_GUID(raw),
 		kind    = kind,
 		path    = strings.clone(path),
-		view    = strings.clone(view),
+		window    = strings.clone(window),
 		data    = data,
 		touched = true,
 	}
@@ -153,7 +153,7 @@ asset_doc_copy_close :: proc(h: Doc_Copy) {
 	free(c)
 }
 
-// Once per frame, after every view drew, with the same `check` as
+// Once per frame, after every window drew, with the same `check` as
 // import_settings_track: a copy shown or edited since the last compare whose
 // value differs from its baseline becomes one undo step.
 asset_doc_copies_track :: proc(check: bool) {
@@ -289,7 +289,7 @@ _copy_label :: proc(c: ^Asset_Doc_Copy) -> string {
 _copy_free_fields :: proc(c: ^Asset_Doc_Copy) {
 	context.allocator = doc_alloc()
 	delete(c.path)
-	delete(c.view)
+	delete(c.window)
 	delete(c.baseline)
 	delete(c.disk)
 }

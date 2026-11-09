@@ -61,7 +61,7 @@ Assets live on disk and are shared by every scene that references them, so they 
 
 **Undo history from the run.** Edits made while simulating are undoable while the run lasts, and their scene steps are dropped on Stop: they describe objects and values Stop replaces. Asset edits made during the run stay, with their undo steps, since Stop does not roll assets back.
 
-While the run lasts, undo and redo move only through the run's own steps. Steps from before Simulate are locked (dimmed in the History view as "before Play"): undoing one would change the running scene, not the snapshot Stop restores, and the stack would stop matching the scene it describes. After Stop they work again on the restored scene.
+While the run lasts, undo and redo move only through the run's own steps. Steps from before Simulate are locked (dimmed in the History window as "before Play"): undoing one would change the running scene, not the snapshot Stop restores, and the stack would stop matching the scene it describes. After Stop they work again on the restored scene.
 
 ## Why it is safe
 
@@ -109,17 +109,17 @@ Every generated dispatcher is emitted *per host* under a fixed name, unambiguous
 
 Changing host while a simulation runs stops it first, since ticking a scene with another game's update set is not a meaningful state.
 
-Pause stops the ticking without leaving the simulation, so views keep drawing and the inspector keeps working on a frozen world. Step then advances that frozen world one tick at a time.
+Pause stops the ticking without leaving the simulation, so windows keep drawing and the inspector keeps working on a frozen world. Step then advances that frozen world one tick at a time.
 
 ## Input
 
-Application focus (`engine.application_is_focused`, Unity's Application.isFocused, stored in `libs/core` so every layer can ask) gates the game's input. Standalone it is the window's focus. In the editor it is the Game view's focus during a run: Play focuses the view (and brings its tab forward), a click on the view's image focuses it, a click anywhere else in the editor unfocuses it. `main.odin` sets `input.set_app_focused` every frame from that and opens `input.set_game_scope` around the simulation tick, so keys and mouse buttons read as released to the game while the editor's own views, reading outside the scope, are unaffected. A standalone app sets the scope once for the whole frame.
+Application focus (`engine.application_is_focused`, Unity's Application.isFocused, stored in `libs/core` so every layer can ask) gates the game's input. Standalone it is the window's focus. In the editor it is the Game window's focus during a run: Play focuses the window (and brings its tab forward), a click on the window's image focuses it, a click anywhere else in the editor unfocuses it. `main.odin` sets `input.set_app_focused` every frame from that and opens `input.set_game_scope` around the simulation tick, so keys and mouse buttons read as released to the game while the editor's own windows, reading outside the scope, are unaffected. A standalone app sets the scope once for the whole frame.
 
 Losing focus freezes the mouse position where it was, so nothing in the game follows the cursor, and drops the fixed-tick edges nothing consumed. Gaining focus seeds the fixed-tick edges from the current frame, so the click that gives focus reaches the game like in Unity, while clicks from before it do not. Entering play mode drops every pending edge, so the Play click itself never reaches the first tick. The raw state keeps tracking underneath: a key held across the gap reads as down once focus returns. The focus decision is made at the start of the frame, before the tick.
 
 Standalone, the click that gives the window focus is delivered to the game as a click as well (SDL's focus click-through hint). While the window has focus the mouse position follows the cursor outside the window too (the platform reads the global cursor after the frame's events), as a windowed game expects when aiming. Relative mouse mode is exempt.
 
-The Game view's image is the game's screen. Every frame the view hands its window rectangle to `input.set_viewport`: `input.mouse_position` is relative to that rectangle and `input.viewport_size` is its size, which is also the render target's size. Games unproject with those two, never with the window size. Standalone, the platform sets the viewport to the window.
+The Game window's image is the game's screen. Every frame the window hands its window rectangle to `input.set_viewport`: `input.mouse_position` is relative to that rectangle and `input.viewport_size` is its size, which is also the render target's size. Games unproject with those two, never with the window size. Standalone, the platform sets the viewport to the window.
 
 ## Limits
 
@@ -164,8 +164,8 @@ Subscribers owned by a runnable package run only when that package is the active
 ```
 editor/simulate/simulate.odin    state machine: start/stop/pause/step, host selection
 editor/simulate/world.odin       Simulate_World, the provider for the world being simulated
-editor/simulate_view.odin        toolbar, shortcuts, and the hooks into editor state
+editor/simulate_toolbar.odin        toolbar, shortcuts, and the hooks into editor state
 plugins/engine/editor/sim_world/ the engine's Simulate_World: snapshot, scene set, host table
 ```
 
-The state machine is a subpackage with no imgui, view or engine dependencies, so tests and tools drive a simulation without the editor root. Editor-owned state (selection, phase dispatch, the persisted host name) arrives through `simulate.Hooks`, where an unset hook is a no-op. The world arrives through `simulate.Simulate_World`, which the engine installs at EditorInit (and `tests/common` for the test binary): `capture` and `restore` take and apply the snapshot (the active scene plus the loaded scene set), `select_restored` resolves a selected id in the restored scene. Ticking needs no world: the host's `tick` is the game's own generated proc. With no world installed a run captures nothing.
+The state machine is a subpackage with no imgui, window or engine dependencies, so tests and tools drive a simulation without the editor root. Editor-owned state (selection, phase dispatch, the persisted host name) arrives through `simulate.Hooks`, where an unset hook is a no-op. The world arrives through `simulate.Simulate_World`, which the engine installs at EditorInit (and `tests/common` for the test binary): `capture` and `restore` take and apply the snapshot (the active scene plus the loaded scene set), `select_restored` resolves a selected id in the restored scene. Ticking needs no world: the host's `tick` is the game's own generated proc. With no world installed a run captures nothing.

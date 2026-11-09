@@ -3,18 +3,18 @@ package session
 // Open documents: the files loaded for editing, edited or not. An owner is
 // the code that holds loaded copies, not a file type, and it reports what it
 // holds when asked, so nothing here can go stale. The owners:
-// - scenes, the scene manager's (plugins/engine/editor/scene_views/scene_documents.odin)
+// - scenes, the scene manager's (plugins/engine/editor/scene_windows/scene_documents.odin)
 // - asset documents, the inspector's, every serialized asset type
-//   (editor/inspector/asset_doc_owner.odin). Every view that edits an asset
+//   (editor/inspector/asset_doc_owner.odin). Every window that edits an asset
 //   shares its one document.
 // An editor with its own working copy of a file, applied at once, would add
 // a third.
 //
 // What uses them:
 // - File ▸ Save saves every dirty document.
-// - A view names the asset it edits (@(view_document)). Its tab menu offers
+// - A window names the asset it edits (@(window_document)). Its tab menu offers
 //   Save and Discard for that asset's document, and its title carries a star
-//   while the document is dirty (view_title).
+//   while the document is dirty (window_title).
 // - The project window marks dirty files with a star.
 // - Quitting with dirty documents asks first (editor/quit_prompt.odin).
 //
@@ -37,9 +37,9 @@ Document :: struct {
 	// Discard can run now. False for a scene with no file or while a
 	// simulation runs.
 	can_discard: bool,
-	// The view that holds it, an editor's working copy, which closing that
-	// view would lose. "" for a document any view may show.
-	view:        string,
+	// The window that holds it, an editor's working copy, which closing that
+	// window would lose. "" for a document any window may show.
+	window:      string,
 }
 
 Document_Owner :: struct {
@@ -52,27 +52,27 @@ Document_Owner :: struct {
 	discard: proc(key: rawptr),
 }
 
-// A view as the attribute procs that extend it see it (docs/core/Views.md):
-// @(view_document), @(view_menu) actions and their predicates, @(view_tab_bar)
-// widgets. Several instances of one window are several views of one id.
-View :: struct {
+// A window as the attribute procs that extend it see it (docs/core/Windows.md):
+// @(window_document), @(window_menu) actions and their predicates, @(window_tab_bar)
+// widgets. Several instances of one window are several windows of one id.
+Window_Ref :: struct {
 	key: string, // the text after ### in its title: "Inspector", or "shader_graph/<guid>" for a window instance
-	id:  string, // the view's id, the key up to its first `/`
+	id:  string, // the window's id, the key up to its first `/`
 }
 
-// The view `key` names.
-view_of :: proc(key: string) -> View {
+// The window `key` names.
+window_ref_of :: proc(key: string) -> Window_Ref {
 	id := key
 	if slash := strings.index_byte(key, '/'); slash >= 0 do id = key[:slash]
 	return {key = key, id = id}
 }
 
-// The asset the view edits right now, {} when it edits none.
-View_Document_Proc :: proc(view: View) -> core.Asset_GUID
+// The asset the window edits right now, {} when it edits none.
+Window_Document_Proc :: proc(window: Window_Ref) -> core.Asset_GUID
 
 @(private = "file") _owners: [dynamic]Document_Owner
-@(private = "file") _view_documents: map[string]View_Document_Proc
-@(private = "file") _view_assets: map[string]core.Asset_GUID // window instance key -> the asset it is open for
+@(private = "file") _window_documents: map[string]Window_Document_Proc
+@(private = "file") _window_assets: map[string]core.Asset_GUID // window instance key -> the asset it is open for
 
 // Registers the code that holds loaded copies of some files. Called once per
 // owner from a @(provider_install) proc.
@@ -82,15 +82,15 @@ document_owner_add :: proc(o: Document_Owner) {
 	append(&_owners, o)
 }
 
-// Names the asset the view with id `view` edits (the text after ### in its
-// title). The generated registrations call it, one per @(view_document) proc
-// (prebuild/view_chrome_gen): the editor's _register_view_chrome and the
-// tests' register_view_documents.
-@(extension_point={attribute="view_document", target="proc", fields="view"})
-view_document_add :: proc(view: string, p: View_Document_Proc) {
+// Names the asset the window with id `window` edits (the text after ### in its
+// title). The generated registrations call it, one per @(window_document) proc
+// (prebuild/window_chrome_gen): the editor's _register_window_chrome and the
+// tests' register_window_documents.
+@(extension_point={attribute="window_document", target="proc", fields="window"})
+window_document_add :: proc(window: string, p: Window_Document_Proc) {
 	context.allocator = runtime.default_allocator()
-	if view in _view_documents do panic(fmt.tprintf("view %q names its document twice", view))
-	_view_documents[strings.clone(view)] = p
+	if window in _window_documents do panic(fmt.tprintf("window %q names its document twice", window))
+	_window_documents[strings.clone(window)] = p
 }
 
 // Every open document.
@@ -122,31 +122,31 @@ document_find :: proc(owner: string, key: rawptr) -> (Document, bool) {
 // A window instance opened for an asset (editor/window) edits that asset.
 // The window registry sets it when the instance opens and clears it when it
 // closes. `key` is the instance's id, the text after ### in its title.
-view_asset_set :: proc(key: string, asset: core.Asset_GUID) {
+window_asset_set :: proc(key: string, asset: core.Asset_GUID) {
 	context.allocator = runtime.default_allocator()
-	if key not_in _view_assets do _view_assets[strings.clone(key)] = asset
+	if key not_in _window_assets do _window_assets[strings.clone(key)] = asset
 }
 
-view_asset_clear :: proc(key: string) {
+window_asset_clear :: proc(key: string) {
 	context.allocator = runtime.default_allocator()
-	if key not_in _view_assets do return
-	k, _ := delete_key(&_view_assets, key)
+	if key not_in _window_assets do return
+	k, _ := delete_key(&_window_assets, key)
 	delete(k)
 }
 
-// The document the view `key` edits, the text after ### in its title. A
+// The document the window `key` edits, the text after ### in its title. A
 // window instance opened for an asset edits that asset. Otherwise the
-// view's @(view_document) proc names it, the view being the key up to its
+// window's @(window_document) proc names it, the window being the key up to its
 // first `/`. ok=false when it edits none.
-view_document :: proc(key: string) -> (Document, bool) {
-	// A working copy the view holds names itself.
-	for d in documents(context.temp_allocator) do if d.view == key do return d, true
-	guid, opened_for := _view_assets[key]
+window_document :: proc(key: string) -> (Document, bool) {
+	// A working copy the window holds names itself.
+	for d in documents(context.temp_allocator) do if d.window == key do return d, true
+	guid, opened_for := _window_assets[key]
 	if !opened_for {
-		view := view_of(key)
-		p, has := _view_documents[view.id]
+		window := window_ref_of(key)
+		p, has := _window_documents[window.id]
 		if !has do return {}, false
-		guid = p(view)
+		guid = p(window)
 	}
 	if guid == {} do return {}, false
 	for d in documents(context.temp_allocator) do if d.guid == guid do return d, true
@@ -202,14 +202,14 @@ documents_dirty_paths :: proc(allocator := context.temp_allocator) -> map[string
 	return out
 }
 
-// `title` with a star before its ### while the view's document is dirty.
+// `title` with a star before its ### while the window's document is dirty.
 // imgui keys the window, its dock place and the saved layout on the text
-// after ###, so the star never moves the view.
-view_title :: proc(title: cstring) -> cstring {
+// after ###, so the star never moves the window.
+window_title :: proc(title: cstring) -> cstring {
 	s := string(title)
 	i := strings.last_index(s, "###")
 	if i < 0 do return title
-	d, ok := view_document(s[i + 3:])
+	d, ok := window_document(s[i + 3:])
 	if !ok || !d.dirty do return title
 	return strings.clone_to_cstring(fmt.tprintf("%s *%s", s[:i], s[i:]), context.temp_allocator)
 }

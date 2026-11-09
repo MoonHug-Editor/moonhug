@@ -7,7 +7,7 @@ package keymap
 // window or the whole editor, and is active by a rule. Every frame the
 // resolver walks the active keymaps, most specific first, and runs the
 // command of the first binding whose chord is pressed and whose command is
-// enabled. Views read no keys themselves.
+// enabled. Windows read no keys themselves.
 //
 // Key source: imgui's events. A press goes through im.Shortcut with global
 // routing, so a text field, an open dialog or any other key owner wins as it
@@ -16,8 +16,8 @@ package keymap
 //
 // Order and ownership, every frame:
 // - no resolution while a modal popup is open
-// - the keymaps of the focused view, by priority, highest first
-// - then the keymaps of the view hosting it, the same way
+// - the keymaps of the focused window, by priority, highest first
+// - then the keymaps of the window hosting it, the same way
 // - then the keymaps with no window, by priority, highest first
 // - one press runs one command: a chord a command took is done for the frame
 // - a disabled command does not take its chord: the next binding may
@@ -27,14 +27,14 @@ package keymap
 //   one that resolves while it is on top: the flythrough's keys while the
 //   camera flies. It takes every key, bound or not.
 // - while a text field is being typed in, or the game runs in a focused
-//   Game view, only chords with Ctrl, Alt or Super resolve: a plain key or
+//   Game window, only chords with Ctrl, Alt or Super resolve: a plain key or
 //   a Shift chord is the field's or the game's
 //
 // The focused branch comes through `focused_path`, which the shell installs
-// from the window registry: the focused view, then the view hosting it (a
-// Workspace view), innermost first. There is no hover focus: a key goes to
-// the clicked view. A setting may later swap the source for the hovered
-// view's branch, which is the whole of Blender's model.
+// from the window registry: the focused window, then the window hosting it (a
+// Workspace window), innermost first. There is no hover focus: a key goes to
+// the clicked window. A setting may later swap the source for the hovered
+// window's branch, which is the whole of Blender's model.
 //
 // Registries pin the default allocator: declarations register at startup and
 // live for the session.
@@ -152,7 +152,7 @@ _by_name: map[string]^Command
 @(private = "file")
 _keymaps: [dynamic]^Keymap
 
-// The ids of the focused branch, innermost first: the focused view's window,
+// The ids of the focused branch, innermost first: the focused window,
 // then its host's, empty for none. The shell installs it from the window
 // registry; tests set it directly. Temp.
 focused_path: proc() -> []string
@@ -164,7 +164,7 @@ Key_Source :: struct {
 	// Whether a modal popup owns the frame: nothing resolves then.
 	modal:   proc() -> bool,
 	// Whether plain keys belong to something else this frame, a text field
-	// being typed in or the game running in a focused Game view: only chords
+	// being typed in or the game running in a focused Game window: only chords
 	// with Ctrl, Alt or Super resolve then.
 	text:    proc() -> bool,
 }
@@ -504,7 +504,7 @@ add :: proc(name: string, window: string, fill: proc(km: ^Keymap), active: proc(
 	if fill != nil do fill(km)
 	_overrides_apply(km)
 	_sort()
-	// A keymap registered after startup, a view's at runtime: its conflicts
+	// A keymap registered after startup, a window's at runtime: its conflicts
 	// are logged now, the startup ones went out with log_conflicts.
 	if _started do log_conflicts(km)
 	return km
@@ -539,7 +539,7 @@ keymaps :: proc() -> []^Keymap {
 // Binds `chord` ("Ctrl+S", "W", "Shift+Space", "LeftShift") to the command
 // named `command` in `km`. `mac` is the chord on macOS when it differs, so
 // a platform's default is data beside the other's, as a keybinding rule
-// with a `mac` field is: the Project view opens on Enter and on Cmd+Down
+// with a `mac` field is: the Project window opens on Enter and on Cmd+Down
 // there. A chord that does not parse is a declaration error: it panics
 // with the keymap's origin.
 bind :: proc(km: ^Keymap, chord: string, command: string, held := false, repeat := false, mac := "") {
@@ -709,7 +709,7 @@ _resolve :: proc(b: ^Binding) -> ^Command {
 }
 
 // Resolves this frame's keys. Called once per frame from the main loop after
-// the imgui frame starts and before the views draw, so a command's effect
+// the imgui frame starts and before the windows draw, so a command's effect
 // shows the same frame.
 frame :: proc() {
 	_frame += 1
@@ -723,7 +723,7 @@ frame :: proc() {
 		_resolve_keymap(top, typing, &taken)
 		return
 	}
-	// Innermost level first, the editor-wide keymaps last: a view's binding
+	// Innermost level first, the editor-wide keymaps last: a window's binding
 	// beats its host's, which beats a global one, for the same chord.
 	for level in 0 ..= len(path) {
 		id := path[level] if level < len(path) else ""
@@ -951,7 +951,7 @@ parse_key :: proc(lower: string) -> (key: im.Key, ok: bool) {
 // config folder, machine-wide, since shortcuts are the developer's, not the
 // project's. An override for a keymap that is not registered stays in the
 // file and applies the moment that keymap registers, so a plugin turned off
-// and on, or a view that registers its keymap at runtime, keeps the user's
+// and on, or a window that registers its keymap at runtime, keeps the user's
 // bindings.
 
 // The override file as loaded and edited: keymap -> command -> chord texts.

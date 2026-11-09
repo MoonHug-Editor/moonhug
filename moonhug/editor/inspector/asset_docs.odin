@@ -36,7 +36,7 @@ Asset_Doc :: struct {
     data:  any,
     dirty: bool,   // .File: edited since last save. .Import_Settings: differs from the .meta
     // Counts every change to `data`: an editor's edit (asset_doc_mark_edited)
-    // and an undo or redo (asset_doc_apply_json). A view that keeps anything
+    // and an undo or redo (asset_doc_apply_json). A window that keeps anything
     // derived from the document compares it to rebuild.
     edits: u64,
 
@@ -228,7 +228,7 @@ asset_doc_apply_json :: proc(guid: core.Asset_GUID, kind: undo.Doc_Kind, json_by
     return true
 }
 
-// An editor changed `doc.data`: dirty, and one more edit for the views that
+// An editor changed `doc.data`: dirty, and one more edit for the windows that
 // derive state from it.
 asset_doc_mark_edited :: proc(doc: ^Asset_Doc) {
     doc.dirty = true
@@ -268,7 +268,7 @@ _doc_replace :: proc(doc: ^Asset_Doc, fresh: any, dirty: bool) {
     doc.data = fresh
     doc.edits += 1 // a new value: undo, redo, discard
     doc.dirty = dirty
-    // The inspector may be showing this doc — repoint its view.
+    // The inspector may be showing this doc — repoint its window.
     for data in _all_data() do if data.doc == doc do data.fileData = doc.data
     asset_doc_changed(doc)
 }
@@ -313,7 +313,7 @@ doc_data_release :: proc(data: any) {
 }
 
 // A replaced instance waits a frame before doc_data_release: the replacement
-// happens mid-frame (a Revert button, an undo from the history view, a
+// happens mid-frame (a Revert button, an undo from the History window, a
 // reimport) while a funnel step above the button still holds the old
 // pointer in its Ctx for the rest of the draw.
 @(private = "file")

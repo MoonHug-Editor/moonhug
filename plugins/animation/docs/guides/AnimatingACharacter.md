@@ -9,7 +9,7 @@ This guide builds what the `animation_sample` ships: an imported character with 
 
 ## 1. Bring in the character
 
-Import a glTF model that has animations, such as the essentials plugin's `meshes/characters/UAL1_Standard.glb`. In the project view the model expands to its parts and its clips. The clips play from the model as they are, with nothing to extract.
+Import a glTF model that has animations, such as the essentials plugin's `meshes/characters/UAL1_Standard.glb`. In the Project window the model expands to its parts and its clips. The clips play from the model as they are, with nothing to extract.
 
 Drag the model into the scene.
 
@@ -28,7 +28,7 @@ In the component's States tree:
 
 ## 4. Try it in edit mode
 
-- Press a state's play button. The character plays the state in the scene view without the game running.
+- Press a state's play button. The character plays the state in the Scene window without the game running.
 - Play Locomotion and drag its value: the character moves from walking to running, with the footfalls kept together.
 
 ## 5. Drive it from code

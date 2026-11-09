@@ -60,7 +60,7 @@ turret_aim :: proc(tank: ^Tank) {
     if cam == nil do return
 
     // Mouse ray intersected with the z=0 gameplay plane. The viewport is the
-    // game's screen: the window standalone, the Game view in the editor.
+    // game's screen: the window standalone, the Game window in the editor.
     ray := engine.camera_screen_ray(cam, input.mouse_position(), input.viewport_size())
     if math.abs(ray.direction.z) < 1e-6 do return
     hit_t := -ray.origin.z / ray.direction.z

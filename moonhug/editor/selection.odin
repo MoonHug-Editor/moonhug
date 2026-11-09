@@ -14,10 +14,10 @@ package editor
 // the other set, and the selection keeps it for them, both ways alike:
 // sel_scene_inspected falls back to the objects the project selection took
 // over (_sel_scene_last), sel_proj_inspected to the assets the scene
-// selection took over (_sel_proj_last). A view lock takes both
-// (view_lock.odin). An explicit clear of a set empties its kept items too.
+// selection took over (_sel_proj_last). A window lock takes both
+// (window_lock.odin). An explicit clear of a set empties its kept items too.
 //
-// Project selection keeps projectViewData.selectedFile as the ACTIVE path
+// Project selection keeps projectWindowData.selectedFile as the ACTIVE path
 // (all pre-multiselect code reads it); the set here follows it.
 //
 // All of it is editor-wide state that outlives the call that changes it, so
@@ -61,7 +61,7 @@ _sel_take_scene :: proc() {
 		append(&_sel_proj_last, .._sel_proj[:])
 		clear(&_sel_proj)
 	}
-	if projectViewData.selectedFile != "" do _project_set_active("")
+	if projectWindowData.selectedFile != "" do _project_set_active("")
 }
 
 // Selecting a project item deselects every scene object, which the Inspector
@@ -198,7 +198,7 @@ sel_scene_toggle :: proc(tH: core.Transform_Handle) {
 }
 
 // Drop handles whose objects no longer exist (deleted, scene unloaded).
-// Views call this once per frame before reading the selection.
+// Windows call this once per frame before reading the selection.
 sel_scene_prune :: proc() {
 	context.allocator = runtime.default_allocator()
 	for i := 0; i < len(_sel_scene); {
@@ -284,7 +284,7 @@ _sel_proj_last_clear :: proc() {
 	clear(&_sel_proj_last)
 }
 
-// The assets the project views show: the project selection, or, while the
+// The assets the Project windows show: the project selection, or, while the
 // scene holds the selection, the assets it took over.
 sel_proj_inspected :: proc() -> []Proj_Sel {
 	if len(_sel_proj) > 0 do return _sel_proj[:]
@@ -308,7 +308,7 @@ sel_proj_is_sub :: proc(path: string, sub_id: core.Local_ID) -> bool {
 }
 
 // Select-only. Callers go through _project_set_selected (which keeps
-// projectViewData.selectedFile — the active path — in sync).
+// projectWindowData.selectedFile — the active path — in sync).
 sel_proj_only :: proc(path: string, sub_id: core.Local_ID = 0) {
 	context.allocator = runtime.default_allocator()
 	sel_proj_clear()
@@ -353,7 +353,7 @@ sel_proj_items :: proc() -> []string {
 	return out[:]
 }
 
-// The full selection, sub-assets included (undo capture, views).
+// The full selection, sub-assets included (undo capture, windows).
 sel_proj_entries :: proc() -> []Proj_Sel {
 	return _sel_proj[:]
 }

@@ -11,7 +11,7 @@ import "moonhug:packages/engine"
 
 @(phase={key=EditorInit, order=1, mode=Editor})
 shadergraph_inspector_install :: proc() {
-	// A double click or Enter on a .shadergraph in the Project view opens it.
+	// A double click or Enter on a .shadergraph in the Project window opens it.
 	asset_pipeline.asset_open_handler_add(".shadergraph", _open_from_project)
 }
 

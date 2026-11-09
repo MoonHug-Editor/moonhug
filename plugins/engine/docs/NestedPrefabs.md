@@ -212,7 +212,7 @@ Unity-style "prefab mode": double-click / `>` a nested scene to **open its sourc
 
 - **Enter opens the source asset itself.** Clicking `>` on a nested-scene host resolves that host's `NestedScene.source_prefab` GUID → path (`asset_db_get_path`) and opens that `.scene` as the editing target. Edits there save to the prefab file and propagate to instances (existing `prefab_propagate`), exactly like editing the asset directly. (This is NOT instance-override isolation; it edits the shared prefab.)
 - **Single active scene, replace model.** Entering **unloads** the current scene and loads the source scene (`scene_load_single_path`). Going up reloads the parent. The hierarchy shows exactly one scene at a time. (Matches Unity leaving the main scene to enter prefab mode.)
-- **Editor-only stack.** A `[dynamic]Scene_Edit_Frame` lives in the editor (view_hierarchy/app state), not the engine. Each frame stores what's needed to restore the parent on pop: the parent scene's path/guid, and the selection to restore. The engine is unchanged except using the existing load-by-path helpers.
+- **Editor-only stack.** A `[dynamic]Scene_Edit_Frame` lives in the editor (hierarchy_window/app state), not the engine. Each frame stores what's needed to restore the parent on pop: the parent scene's path/guid, and the selection to restore. The engine is unchanged except using the existing load-by-path helpers.
 
 Stack frame:
 ```
@@ -226,7 +226,7 @@ Scene_Edit_Frame { path: string, guid: Asset_GUID }   // the scene that was open
 
 **Cycle guard — never push self/an ancestor.** If the scene being entered is already open or already present in the stack (its guid matches the current scene or any frame), do NOT push a frame — just `scene_load_single_path` to (re)load it. A prefab can't meaningfully contain itself, so this should not occur, but if it does the stack stays finite instead of looping. (Normal case — entering a *different* nested scene — pushes a frame as usual.)
 
-**Opening from the project panel clears the stack.** Double-clicking a `.scene` in the project view is a fresh navigation, so it resets the edit stack to empty (it's not a "child of" the previously-entered scene). Expose an editor proc (e.g. `hierarchy_edit_stack_clear()`) that `view_project`'s open path calls.
+**Opening from the project panel clears the stack.** Double-clicking a `.scene` in the Project window is a fresh navigation, so it resets the edit stack to empty (it's not a "child of" the previously-entered scene). Expose an editor proc (e.g. `hierarchy_edit_stack_clear()`) that `project_window`'s open path calls.
 
 ### Changes propagation
 On save, for the saved prefab's GUID:
@@ -267,7 +267,7 @@ A **variant** is a scene asset that is a NestedScene over a base prefab — *bas
 
 - **Save** (`scene_save` + `_collect_variant_added_subtree`): `nested_scene_is_root_variant(s, ns)` — a native NS hosted by `s.root` — is written with `transform_parent: 0` and no host breadcrumb; the base content (nested-owned descendants of the native root) is never emitted; only the variant's additions are written, parent-pinned to the base root source lid; `sf.root` = base root source lid. The base root's own COMPONENTS are marked nested-owned at resolve so overrides on them (e.g. `SpriteRenderer.color`) are captured like child overrides.
 - **Override capture** (`_capture_overrides_to_native`, `_chain_baked_base_for_ns`): the diff BASELINE is the prefab RESOLVED (`_prefab_resolved_bytes`), not its raw file — so editing a nested variant's content diffs against the variant's flattened (base+overrides+additions) form and captures the change as an override on the host NS. For a flat prefab the resolved bytes are the raw bytes, so regular nested prefabs are unaffected.
-- **Create Variant** (`scene_create_variant_file` + editor `create_scene_variant`): right-click a `.scene` in the project view → **Create ▸ Scene Variant** writes `<name>_Variant.scene` alongside the original (a root NS over the base, empty overrides, `root` = base root lid), refreshes AssetDB to mint its `.meta`, and opens it.
+- **Create Variant** (`scene_create_variant_file` + editor `create_scene_variant`): right-click a `.scene` in the Project window → **Create ▸ Scene Variant** writes `<name>_Variant.scene` alongside the original (a root NS over the base, empty overrides, `root` = base root lid), refreshes AssetDB to mint its `.meta`, and opens it.
 
 **Status:** complete. Runtime instantiate of a variant by guid works (bakes root+overrides via `_prefab_resolved_bytes` into a single JSON, cached and instantiated). Apply/Revert from the inspector works on variant content including the variant root.
 

@@ -1,6 +1,6 @@
 package scene_tools
 
-// The scene view's transform tool (W E R): a caller of the move, rotate and
+// The Scene window's transform tool (W E R): a caller of the move, rotate and
 // scale handles (editor/handles/transform_handles.odin). The handles own the
 // pointer, the drawing and the drag math. The tool owns what a drag does:
 //
@@ -84,7 +84,7 @@ _gizmo_targets: [dynamic]_Gizmo_Target
 _gizmo_edit: undo.Edit_Session
 
 // True while the gizmo or a handle owns the mouse (hot or dragging): the
-// scene view then neither picks nor starts a box select, so grabs never
+// Scene window then neither picks nor starts a box select, so grabs never
 // select through.
 scene_tools_consume_mouse :: proc() -> bool {
 	return handles.consumes_mouse()

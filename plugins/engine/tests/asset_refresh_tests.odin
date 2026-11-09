@@ -77,7 +77,7 @@ test_refresh_reimports_an_asset_whose_meta_changed_on_disk :: proc(t: ^testing.T
 }
 
 // The scan records which entries are folders, so a lookup needs no file
-// system call (the Project view's search asks for every hit). A folder made
+// system call (the Project window's search asks for every hit). A folder made
 // later shows up as one after the next refresh, and an unchanged folder does
 // not read as changed.
 @(test)

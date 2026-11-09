@@ -239,7 +239,7 @@ test_gizmo_overlay_solids_keep_camera_facing_faces :: proc(t: ^testing.T) {
 // What a gizmo or handles hook is told: the selected object is Selected, Active
 // and In_Selection, its child only In_Selection (a parent selected counts, the
 // way collider wires show for a selected parent), an unrelated object nothing.
-// The tool is the scene view's.
+// The tool is the Scene window's.
 @(test)
 test_gizmo_context_selection_state :: proc(t: ^testing.T) {
 	tc := new(TestCtx)
@@ -260,7 +260,7 @@ test_gizmo_context_selection_state :: proc(t: ^testing.T) {
 
 	p := scene_tools.gizmo_context(parent)
 	testing.expect(t, p.state == {.Selected, .Active, .In_Selection}, "the selected object")
-	testing.expect(t, p.tool == .Handles, "the scene view's tool")
+	testing.expect(t, p.tool == .Handles, "the Scene window's tool")
 	testing.expect(t, scene_tools.gizmo_context(child).state == {.In_Selection}, "a child of the selection")
 	testing.expect(t, scene_tools.gizmo_context(other).state == {}, "outside the selection")
 }
@@ -319,12 +319,12 @@ _count :: proc(tc: ^TestCtx, ch: engine.Gizmo_Channel) -> int {
 	return len(_prims(tc, ch = ch, depth_tested = true)) + len(_prims(tc, ch = ch, depth_tested = false))
 }
 
-// The pass records the gizmo hooks while only the game view shows gizmos, so
-// the game view has them with the scene view closed. The scene-only tools
-// (outline, handles) need the scene view on screen, and nothing records while
-// neither view shows gizmos.
+// The pass records the gizmo hooks while only the Game window shows gizmos, so
+// the Game window has them with the Scene window closed. The scene-only tools
+// (outline, handles) need the Scene window on screen, and nothing records while
+// neither window shows gizmos.
 @(test)
-test_gizmo_pass_records_for_the_game_view_alone :: proc(t: ^testing.T) {
+test_gizmo_pass_records_for_the_game_window_alone :: proc(t: ^testing.T) {
 	tc := new(TestCtx)
 	defer free(tc)
 	setup(tc)
@@ -340,7 +340,7 @@ test_gizmo_pass_records_for_the_game_view_alone :: proc(t: ^testing.T) {
 
 	prev_rt := editor.game_rt
 	defer editor.game_rt = prev_rt
-	rt := gfx.Render_Target{width = 800, height = 600} // the game view's size, no GPU needed
+	rt := gfx.Render_Target{width = 800, height = 600} // the Game window's size, no GPU needed
 	editor.game_rt = &rt
 
 	cam_t := engine.transform_new("Camera")
@@ -349,11 +349,11 @@ test_gizmo_pass_records_for_the_game_view_alone :: proc(t: ^testing.T) {
 	cam.enabled = true
 	editor.sel_scene_only(cam_t)
 
-	editor._sv.view_size = {} // no Scene view on screen: it rendered no image
+	editor._sv.view_size = {} // no Scene window on screen: it rendered no image
 	menu.show_game = true
 	editor.game_gizmos = true
 	editor.gizmo_pass()
-	testing.expect(t, _count(tc, .Editor_Game) > 0, "the selected camera's frustum records for the game view")
+	testing.expect(t, _count(tc, .Editor_Game) > 0, "the selected camera's frustum records for the Game window")
 	testing.expect_value(t, _count(tc, .Editor), 0)
 	testing.expect_value(t, _count(tc, .Tools), 0)
 
@@ -428,11 +428,11 @@ test_icon_picking :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(gizmos.icons({.Game, .Editor, .Tools})), 1)
 
 	at, _ := gizmos.helper_project_in(v, {1, 0, 0})
-	picked, ok := scene_tools.scene_view_pick(v, at.x + 5, at.y)
+	picked, ok := scene_tools.scene_window_pick(v, at.x + 5, at.y)
 	testing.expect(t, ok && picked == lamp, "a click inside the icon picks the light")
-	_, ok = scene_tools.scene_view_pick(v, at.x + 40, at.y)
+	_, ok = scene_tools.scene_window_pick(v, at.x + 40, at.y)
 	testing.expect(t, !ok, "outside the icon, nothing")
-	band := scene_tools.scene_view_band_query(v, at - 10, at + 10)
+	band := scene_tools.scene_window_band_query(v, at - 10, at + 10)
 	testing.expect(t, len(band) == 1 && band[0] == lamp, "box select takes it")
 	gizmos.frame_end()
 }
@@ -514,7 +514,7 @@ test_gizmo_settings_hide_per_type :: proc(t: ^testing.T) {
 		gizmos.gizmo_type_set("Light", .Icon, true)
 		gizmos.gizmo_type_set("Light", .Gizmo, true)
 	}
-	editor._sv.view_size = {} // no Scene view on screen: it rendered no image
+	editor._sv.view_size = {} // no Scene window on screen: it rendered no image
 	menu.show_game = true
 	editor.game_gizmos = true
 	prev_rt := editor.game_rt
@@ -553,7 +553,7 @@ test_gizmo_settings_hide_per_type :: proc(t: ^testing.T) {
 	gizmos.frame_end()
 }
 
-// The scene view's Gizmos toggle: off, it draws no gizmos or icons and picks
+// The Scene window's Gizmos toggle: off, it draws no gizmos or icons and picks
 // no icon, and keeps gameplay shapes, the outline and tools.
 @(test)
 test_scene_gizmos_toggle :: proc(t: ^testing.T) {
@@ -575,12 +575,12 @@ test_scene_gizmos_toggle :: proc(t: ^testing.T) {
 		scene_tools.comp_on_draw_gizmos_Light(l, handles.Gizmo_Context{})
 	}
 	at, _ := gizmos.helper_project_in(v, {0, 0, 0})
-	_, ok := scene_tools.scene_view_pick(v, at.x, at.y)
+	_, ok := scene_tools.scene_window_pick(v, at.x, at.y)
 	testing.expect(t, ok, "the icon picks with gizmos on")
 
 	gizmos.scene_gizmos = false
 	testing.expect(t, gizmos.scene_gizmo_channels() == {.Game, .Outline, .Tools}, "no .Editor channel")
-	_, ok = scene_tools.scene_view_pick(v, at.x, at.y)
+	_, ok = scene_tools.scene_window_pick(v, at.x, at.y)
 	testing.expect(t, !ok, "a hidden icon does not pick")
 	gizmos.frame_end()
 }
@@ -689,7 +689,7 @@ test_gizmo_key :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(tc.uc.gizmos.groups), 0)
 }
 
-// --- Gizmo pass: the scene view branch, game view labels ------------------------------------
+// --- Gizmo pass: the Scene window branch, Game window labels ------------------------------------
 
 // A Scene copy records the selection outline into .Outline and, in the copy
 // the handles run in, the transform gizmo into .Tools, right before its
@@ -725,7 +725,7 @@ test_scene_copy_records_tools :: proc(t: ^testing.T) {
 	testing.expect(t, _count(tc, .Outline) > 0, "the outline records into .Outline")
 	testing.expect(t, _count(tc, .Tools) > 0, "the transform gizmo records into .Tools")
 	f := handles.frame()
-	testing.expect(t, f.valid && f.view.width == 800 && f.view.height == 600, "the handles frame is the scene view's")
+	testing.expect(t, f.valid && f.view.width == 800 && f.view.height == 600, "the handles frame is the Scene window's")
 	testing.expectf(t, linalg.length(f.view.cam_pos - [3]f32{0, 0, 10}) < 1e-3, "with the scene camera, got %v", f.view.cam_pos)
 	gizmos.frame_end()
 }
@@ -734,7 +734,7 @@ test_scene_copy_records_tools :: proc(t: ^testing.T) {
 // render target's pixels onto the image (zoom, letterbox), plus its offset.
 // Off the image, none.
 @(test)
-test_game_view_label_position :: proc(t: ^testing.T) {
+test_game_window_label_position :: proc(t: ^testing.T) {
 	v := handles_test_view() // 800x600, the origin at its center
 	l := engine.Gizmo_Label{pos = {0, 0, 0}, offset_px = {3, -2}}
 	p, ok := editor.game_label_pos(v, {5, 5}, {400, 300}, l)
@@ -744,7 +744,7 @@ test_game_view_label_position :: proc(t: ^testing.T) {
 	testing.expect(t, !ok, "off the image")
 }
 
-// With both views showing gizmos, the @(comp_on_draw_gizmos) procs record once per
+// With both windows showing gizmos, the @(comp_on_draw_gizmos) procs record once per
 // camera: a pixel-sized gizmo (a directional light's rays) is built for each
 // view's own camera, three times bigger for a game camera three times farther.
 @(test)
@@ -767,10 +767,10 @@ test_gizmos_record_per_camera :: proc(t: ^testing.T) {
 		editor._sv.cam_target = prev_target
 		editor.game_rt = prev_rt
 	}
-	// The scene view, its camera 10 away.
+	// The Scene window, its camera 10 away.
 	editor._sv.cam_pos = {0, 0, 10}
 	editor._sv.cam_target = {0, 0, 0}
-	// The game view showing gizmos, its camera 30 away.
+	// The Game window showing gizmos, its camera 30 away.
 	menu.show_game = true
 	editor.game_gizmos = true
 	rt := gfx.Render_Target{width = 800, height = 600}
@@ -790,8 +790,8 @@ test_gizmos_record_per_camera :: proc(t: ^testing.T) {
 	editor.gizmo_pass()
 	editor.scene_gizmos_record(editor.scene_render_view(800, 600))
 	scene, game := _extent(tc, .Editor), _extent(tc, .Editor_Game)
-	testing.expect(t, scene > 0 && game > 0, "both views recorded the rays")
-	testing.expectf(t, game > scene * 2, "each built for its own camera: %v in the scene view, %v in the game view", scene, game)
+	testing.expect(t, scene > 0 && game > 0, "both windows recorded the rays")
+	testing.expectf(t, game > scene * 2, "each built for its own camera: %v in the Scene window, %v in the Game window", scene, game)
 	gizmos.frame_end()
 }
 
@@ -841,7 +841,7 @@ test_scene_copies_record_their_own_gizmos :: proc(t: ^testing.T) {
 	testing.expect_value(t, handles.frame().view.width, 800)
 
 	// Another copy, its camera 30 away.
-	other := editor.Scene_View{cam_pos = {0, 0, 30}, cam_target = {0, 0, 0}, cam_dist = 30}
+	other := editor.Scene_Window{cam_pos = {0, 0, 30}, cam_target = {0, 0, 0}, cam_dist = 30}
 	editor._sv = &other
 	editor.scene_gizmos_record(editor.scene_render_view(640, 480))
 	far := _extent(tc, .Editor)

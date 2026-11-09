@@ -44,7 +44,7 @@ MenuNode :: struct {
 	shortcut:      string,
 	shortcut_cstr: cstring,
 	// The main menu item's command id (editor/keymap): the shortcut it shows
-	// is the "Menu" keymap's live binding, overrides included. "" for a view
+	// is the "Menu" keymap's live binding, overrides included. "" for a window
 	// menu's item.
 	command:       string,
 	kind:          MenuEntryKind,
@@ -56,13 +56,13 @@ MenuNode :: struct {
 	// each set the state and each report whether they are the current one.
 	checked:       proc() -> bool,
 	draw:          proc(), // Dynamic: emits the submenu's items, called while it is open
-	// A view menu's action and predicates take the view they act for
-	// (view_chrome.odin), set instead of `action`, `enabled` and `checked`.
-	// The tree's draw and invoke pass that view down.
-	view_action:   proc(view: session.View),
-	view_enabled:  proc(view: session.View) -> bool,
-	view_checked:  proc(view: session.View) -> bool,
-	view_draw:     proc(view: session.View), // a view menu's Dynamic, set instead of `draw`
+	// A window menu's action and predicates take the window they act for
+	// (window_chrome.odin), set instead of `action`, `enabled` and `checked`.
+	// The tree's draw and invoke pass that window down.
+	window_action:   proc(window: session.Window_Ref),
+	window_enabled:  proc(window: session.Window_Ref) -> bool,
+	window_checked:  proc(window: session.Window_Ref) -> bool,
+	window_draw:     proc(window: session.Window_Ref), // a window menu's Dynamic, set instead of `draw`
 	children:      [dynamic]^MenuNode,
 	order:         int, // sort key (lower = earlier); ORDER_DEFAULT when unspecified
 	// The @(menu_item) that created this node, with its file and line, as
@@ -75,8 +75,8 @@ MenuNode :: struct {
 // is a one-line wrapper that passes it to the tree_* proc of the same name.
 //
 // The tree is a PARAMETER rather than a hidden global because there is more
-// than one menu: each view has its own (view_chrome.odin), shown in its tab
-// bar's popup. A view menu is the same tree, the same node kinds and the same
+// than one menu: each window has its own (window_chrome.odin), shown in its tab
+// bar's popup. A window menu is the same tree, the same node kinds and the same
 // drawing — only the root differs — so submenus, ordering, separators,
 // `checked`, `enabled` and invoke-by-path work there without a second
 // implementation that would drift from this one.
@@ -106,7 +106,7 @@ _NodeOrder :: struct {
 }
 
 // _sort_children_by_order sorts node's children by top_order[path] (lower = earlier), then recurs into submenus.
-// parent_path is the path to node (e.g. "" for root, "View" for View's children). Keys are "ParentPath/ChildName".
+// parent_path is the path to node (e.g. "" for root, "Window" for Window's children). Keys are "ParentPath/ChildName".
 _sort_children_by_order :: proc(node: ^MenuNode, parent_path: string, top_order: map[string]int) {
 	children := &node.children
 	if len(children) <= 1 do return
@@ -131,7 +131,7 @@ _sort_children_by_order :: proc(node: ^MenuNode, parent_path: string, top_order:
 	}
 }
 
-// sort_top_menu sorts menu nodes at every level by top_order (lower = left). Keys are paths, e.g. "File", "View", "View/Theme".
+// sort_top_menu sorts menu nodes at every level by top_order (lower = left). Keys are paths, e.g. "File", "Window", "Window/Theme".
 // Call after all add_menu_*. Caller allocates and defers delete of the map.
 sort_top_menu :: proc(top_order: map[string]int) {
 	_sort_children_by_order(_menu_root, "", top_order)
@@ -158,13 +158,13 @@ draw_menu_subtree :: proc(path: string) {
 	_draw_menu_children(_get_or_create_path(_menu_root, path))
 }
 
-// Draws every item under `root`. A view's menu is a whole tree rather than a
+// Draws every item under `root`. A window's menu is a whole tree rather than a
 // subtree of the main one, so it draws from its root.
-// Draws a tree's items into an open menu. A view menu passes the view its
+// Draws a tree's items into an open menu. A window menu passes the window its
 // items act for.
-tree_draw :: proc(root: ^MenuNode, view := session.View{}) -> (drew: bool) {
+tree_draw :: proc(root: ^MenuNode, window := session.Window_Ref{}) -> (drew: bool) {
 	if root == nil || len(root.children) == 0 do return false
-	_draw_menu_children(root, view)
+	_draw_menu_children(root, window)
 	return true
 }
 
@@ -248,15 +248,15 @@ tree_add_item :: proc(root: ^MenuNode, path: string, shortcut: string, action: p
 	node.origin = origin
 }
 
-// A view menu's action: the action and its predicates take the view they act
-// for (view_chrome.odin).
-tree_add_view_item :: proc(root: ^MenuNode, path: string, action: proc(view: session.View), order: int = ORDER_DEFAULT, enabled: proc(view: session.View) -> bool = nil, checked: proc(view: session.View) -> bool = nil, origin := "") {
+// A window menu's action: the action and its predicates take the window they act
+// for (window_chrome.odin).
+tree_add_window_item :: proc(root: ^MenuNode, path: string, action: proc(window: session.Window_Ref), order: int = ORDER_DEFAULT, enabled: proc(window: session.Window_Ref) -> bool = nil, checked: proc(window: session.Window_Ref) -> bool = nil, origin := "") {
 	node := _get_or_create_path(root, path)
 	node.kind = .Action
 	node.order = order
-	node.view_action = action
-	node.view_enabled = enabled
-	node.view_checked = checked
+	node.window_action = action
+	node.window_enabled = enabled
+	node.window_checked = checked
 	node.origin = origin
 }
 
@@ -307,11 +307,11 @@ tree_add_dynamic :: proc(root: ^MenuNode, path: string, draw: proc(), order: int
 	node.origin = origin
 }
 
-// A view menu's Dynamic: `draw` gets the view the menu is drawn for.
-tree_add_view_dynamic :: proc(root: ^MenuNode, path: string, draw: proc(view: session.View), order: int = ORDER_DEFAULT, origin := "") {
+// A window menu's Dynamic: `draw` gets the window the menu is drawn for.
+tree_add_window_dynamic :: proc(root: ^MenuNode, path: string, draw: proc(window: session.Window_Ref), order: int = ORDER_DEFAULT, origin := "") {
 	node := _get_or_create_path(root, path)
 	node.kind = .Dynamic
-	node.view_draw = draw
+	node.window_draw = draw
 	node.order = order
 	node.origin = origin
 }
@@ -361,7 +361,7 @@ tree_find :: proc(root: ^MenuNode, path: string) -> ^MenuNode {
 _node_invokable :: proc(node: ^MenuNode) -> bool {
 	if node == nil do return false
 	#partial switch node.kind {
-	case .Action: return node.action != nil || node.view_action != nil
+	case .Action: return node.action != nil || node.window_action != nil
 	case .Toggle: return node.value != nil
 	}
 	return false
@@ -376,17 +376,17 @@ invoke_path :: proc(path: string) -> (ok: bool, state: bool) {
 	return tree_invoke(_menu_root, path)
 }
 
-tree_invoke :: proc(root: ^MenuNode, path: string, view := session.View{}) -> (ok: bool, state: bool) {
+tree_invoke :: proc(root: ^MenuNode, path: string, window := session.Window_Ref{}) -> (ok: bool, state: bool) {
 	node := tree_find(root, path)
 	if !_node_invokable(node) do return false, false
-	if !_node_enabled(node, view) do return false, false
+	if !_node_enabled(node, window) do return false, false
 	#partial switch node.kind {
 	case .Action:
-		_node_run(node, view)
+		_node_run(node, window)
 		// An action with a tick predicate IS a toggle or a radio option, so
 		// the reply says where it landed — without it a caller that cannot see
 		// the menu learns nothing from invoking one.
-		if node.checked != nil || node.view_checked != nil do return true, _node_ticked(node, view)
+		if node.checked != nil || node.window_checked != nil do return true, _node_ticked(node, window)
 	case .Toggle:
 		node.value^ = !node.value^
 		return true, node.value^
@@ -402,8 +402,8 @@ collect_invokable_paths :: proc(allocator := context.temp_allocator) -> []string
 	return tree_collect(_menu_root, "", allocator)
 }
 
-// Every invokable path under `root`, each prefixed with `prefix` — a view menu
-// passes "View/<view>" so its items address the same way main-menu ones do.
+// Every invokable path under `root`, each prefixed with `prefix` — a window menu
+// passes "Window Menu/<window>" so its items address the same way main-menu ones do.
 tree_collect :: proc(root: ^MenuNode, prefix := "", allocator := context.temp_allocator) -> []string {
 	if root == nil do return nil
 	out := make([dynamic]string, allocator)
@@ -501,7 +501,7 @@ _MENU_CHORDS_SHOWN :: 2
 
 // The shortcut an item shows: the "Menu" keymap's bindings for its command,
 // so an override shows in the menu, the first _MENU_CHORDS_SHOWN of them.
-// An item without a command (a view menu's) shows the declared one.
+// An item without a command (a window menu's) shows the declared one.
 @(private = "file")
 _menu_shortcut_label :: proc(node: ^MenuNode) -> cstring {
 	if node.command != "" {
@@ -552,30 +552,30 @@ _menu_command_enabled :: proc(data: rawptr) -> bool {
 	return _node_enabled((^MenuNode)(data))
 }
 
-_node_enabled :: proc(node: ^MenuNode, view := session.View{}) -> bool {
-	if node.view_enabled != nil do return node.view_enabled(view)
+_node_enabled :: proc(node: ^MenuNode, window := session.Window_Ref{}) -> bool {
+	if node.window_enabled != nil do return node.window_enabled(window)
 	return node.enabled == nil || node.enabled()
 }
 
-_node_ticked :: proc(node: ^MenuNode, view: session.View) -> bool {
-	if node.view_checked != nil do return node.view_checked(view)
+_node_ticked :: proc(node: ^MenuNode, window: session.Window_Ref) -> bool {
+	if node.window_checked != nil do return node.window_checked(window)
 	return node.checked != nil && node.checked()
 }
 
-_node_run :: proc(node: ^MenuNode, view: session.View) {
-	if node.view_action != nil {
-		node.view_action(view)
+_node_run :: proc(node: ^MenuNode, window: session.Window_Ref) {
+	if node.window_action != nil {
+		node.window_action(window)
 	} else if node.action != nil {
 		node.action()
 	}
 }
 
-_draw_menu_children :: proc(node: ^MenuNode, view := session.View{}) {
+_draw_menu_children :: proc(node: ^MenuNode, window := session.Window_Ref{}) {
 	for child in node.children {
-		_draw_menu_child(child, view)
+		_draw_menu_child(child, window)
 	}
 }
-_draw_menu_child :: proc(child: ^MenuNode, view := session.View{}) {
+_draw_menu_child :: proc(child: ^MenuNode, window := session.Window_Ref{}) {
 	switch child.kind {
 	case .Separator:
 		im.Separator()
@@ -585,9 +585,9 @@ _draw_menu_child :: proc(child: ^MenuNode, view := session.View{}) {
 		// "last item" is inside the child window.
 		prev := widgets.ui_origin_push(child.origin)
 		defer widgets.ui_origin_pop(prev)
-		if im.BeginMenu(child.name_cstr, _node_enabled(child, view)) {
+		if im.BeginMenu(child.name_cstr, _node_enabled(child, window)) {
 			if child.draw != nil do child.draw()
-			if child.view_draw != nil do child.view_draw(view)
+			if child.window_draw != nil do child.window_draw(window)
 			im.EndMenu()
 		} else {
 			widgets.tooltip("", im.HoveredFlags_AllowWhenDisabled)
@@ -595,7 +595,7 @@ _draw_menu_child :: proc(child: ^MenuNode, view := session.View{}) {
 	case .Submenu, .Action, .Toggle:
 		if child.kind == .Submenu || len(child.children) > 0 {
 			if im.BeginMenu(child.name_cstr, true) {
-				_draw_menu_children(child, view)
+				_draw_menu_children(child, window)
 				im.EndMenu()
 			}
 		} else {
@@ -606,14 +606,14 @@ _draw_menu_child :: proc(child: ^MenuNode, view := session.View{}) {
 			#partial switch child.kind {
 			case .Action:
 				shortcut_label := _menu_shortcut_label(child)
-				ticked := _node_ticked(child, view)
-				if im.MenuItem(child.name_cstr, shortcut_label, ticked, _node_enabled(child, view)) {
-					_node_run(child, view)
+				ticked := _node_ticked(child, window)
+				if im.MenuItem(child.name_cstr, shortcut_label, ticked, _node_enabled(child, window)) {
+					_node_run(child, window)
 				}
 				_menu_item_tooltip(child)
 			case .Toggle:
 				if child.value != nil {
-					im.MenuItemBoolPtr(child.name_cstr, _menu_shortcut_label(child), child.value, _node_enabled(child, view))
+					im.MenuItemBoolPtr(child.name_cstr, _menu_shortcut_label(child), child.value, _node_enabled(child, window))
 					_menu_item_tooltip(child)
 				}
 			}

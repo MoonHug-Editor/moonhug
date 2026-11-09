@@ -3,7 +3,7 @@ package core
 // Inspector state the editor's packages share without importing each other:
 // the read-only depth, the nested-scene host a drawer is editing under, the
 // active and inspected selection, and one-slot request mailboxes. A drawer
-// posts "select this", "ping that", "open this asset", and the view that owns
+// posts "select this", "ping that", "open this asset", and the window that owns
 // the answer takes the request once per frame. Transform_Handle here is an
 // object id, not a scene-tree walk.
 
@@ -25,17 +25,17 @@ InspectorState :: struct {
     // selection, which creation menus parent under.
     inspected_scene_tH:    Transform_Handle,
     // Cross-package selection request: subpackages (e.g. inspector) post a
-    // transform here; the editor's hierarchy view picks it up next frame and
+    // transform here; the editor's Hierarchy window picks it up next frame and
     // applies it to its own selection state. {} means "no pending request".
     pending_select_tH:     Transform_Handle,
     // Ping (reveal + highlight flash, does NOT change selection) — the
-    // hierarchy view consumes it. {} means "no pending request".
+    // Hierarchy window consumes it. {} means "no pending request".
     pending_ping_tH:       Transform_Handle,
-    // Same channel shape for assets: the project view navigates to and
+    // Same channel shape for assets: the Project window navigates to and
     // selects the asset ("ping"). {} means "no pending request".
     pending_ping_asset:    Asset_GUID,
     pending_select_asset:  Asset_GUID,
-    // Open request: the project view navigates AND activates the asset
+    // Open request: the Project window navigates AND activates the asset
     // (opens scenes, loads .asset into the inspector).
     pending_open_asset:    Asset_GUID,
 }
@@ -94,7 +94,7 @@ inspector_inspected_selection :: proc() -> Transform_Handle {
 }
 
 // Posts a cross-package "select this transform" request. The editor's
-// hierarchy view consumes it via `inspector_take_pending_select` once per
+// Hierarchy window consumes it via `inspector_take_pending_select` once per
 // frame. Calling repeatedly within the same frame keeps the latest request.
 inspector_request_select :: proc(tH: Transform_Handle) {
     _inspector.pending_select_tH = tH
@@ -123,8 +123,8 @@ inspector_take_pending_ping :: proc() -> (Transform_Handle, bool) {
 }
 
 // Posts a cross-package "select this asset" request: reveal it AND make it the
-// project view's active file, without the activation an open would do. Menu
-// actions that read `projectViewData.selectedFile` — Extract Assets, Create
+// Project window's active file, without the activation an open would do. Menu
+// actions that read `projectWindowData.selectedFile` — Extract Assets, Create
 // Scene Variant — act on it afterwards.
 inspector_request_select_asset :: proc(guid: Asset_GUID) {
     _inspector.pending_select_asset = guid
@@ -137,7 +137,7 @@ inspector_take_pending_select_asset :: proc() -> (Asset_GUID, bool) {
     return guid, true
 }
 
-// Posts a cross-package "ping this asset" request; the project view consumes
+// Posts a cross-package "ping this asset" request; the Project window consumes
 // it and navigates to / selects the asset.
 inspector_request_ping_asset :: proc(guid: Asset_GUID) {
     _inspector.pending_ping_asset = guid
@@ -150,7 +150,7 @@ inspector_take_pending_ping_asset :: proc() -> (Asset_GUID, bool) {
     return guid, true
 }
 
-// Posts an "open this asset" request; the project view navigates to it AND
+// Posts an "open this asset" request; the Project window navigates to it AND
 // activates it (double-click semantics: open scene / load into inspector).
 inspector_request_open_asset :: proc(guid: Asset_GUID) {
     _inspector.pending_open_asset = guid

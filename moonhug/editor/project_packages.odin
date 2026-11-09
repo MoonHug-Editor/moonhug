@@ -1,6 +1,6 @@
 package editor
 
-// Packages section of the project view (docs/core/Plugins.md). Each installed
+// Packages section of the Project window (docs/core/Plugins.md). Each installed
 // package's assets/ folder is an ADDITIONAL ROOT, the same concept as the
 // Assets root: label = package name, path = packages/<name>/assets. The
 // Packages node and the package rows are special the way the Assets root is —
@@ -23,7 +23,7 @@ Project_Package :: struct {
 }
 
 // Installed packages via the dir cache (500ms TTL — same freshness as the
-// rest of the project view). Temp-allocated.
+// rest of the Project window). Temp-allocated.
 project_packages_list :: proc() -> []Project_Package {
 	entries, ok := project_dir_listing(_PROJECT_PACKAGES_PATH)
 	if !ok do return nil
@@ -59,7 +59,7 @@ project_package_root_name :: proc(path: string) -> string {
 // Roots (Assets, Packages, each package) are structural: no rename, no file
 // ops on the row itself. Mirrors the existing Assets-root guard.
 project_path_is_protected :: proc(path: string) -> bool {
-	return path == projectViewData.rootPath ||
+	return path == projectWindowData.rootPath ||
 	       path == _PROJECT_PACKAGES_PATH ||
 	       project_path_is_package_root(path)
 }
@@ -68,15 +68,15 @@ project_path_is_protected :: proc(path: string) -> bool {
 // parent is the Packages node (never the raw package folder, which would
 // expose code to the file list), and the Packages node is a top.
 _project_parent_dir :: proc(path: string) -> (parent: string, ok: bool) {
-	if path == projectViewData.rootPath || path == _PROJECT_PACKAGES_PATH do return "", false
+	if path == projectWindowData.rootPath || path == _PROJECT_PACKAGES_PATH do return "", false
 	if project_path_is_package_root(path) do return _PROJECT_PACKAGES_PATH, true
 	if i := strings.last_index(path, "/"); i > 0 {
 		return path[:i], true
 	}
-	return projectViewData.rootPath, true
+	return projectWindowData.rootPath, true
 }
 
-// One segment of the project view's path bar: the label to show and the path
+// One segment of the Project window's path bar: the label to show and the path
 // to go to. ("Path bar", not breadcrumb — engine's breadcrumb_* is the
 // nested-scene host anchor and unrelated.)
 Project_Path_Segment :: struct {

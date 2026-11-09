@@ -26,7 +26,7 @@ with `@(canvas_layout)` on the layout proc.
   without a camera it behaves as overlay. World Space: the node's
   RectTransform gives the size around its pivot, the node's transform places
   it, one canvas unit per world unit, drawn by every camera. Canvases stack by
-  `sort_order`. The scene view shows all three where they sit in the world.
+  `sort_order`. The Scene window shows all three where they sit in the world.
 - **RectTransform** — the layout component, in canvas pixels with a bottom-left
   origin. `anchor_min` / `anchor_max` pick a sub-rect of the parent rect,
   `size_delta` adds to that span (equal anchors give a fixed size, spread
@@ -37,8 +37,8 @@ with `@(canvas_layout)` on the layout proc.
   Space modes exist. The node's Transform rotation
   and scale apply around the pivot and compose down the hierarchy: a rotated
   panel rotates its children. A rotation around X or Y tilts the rect out of
-  the canvas plane; the Game view draws the overlay orthographically, so the
-  tilt shows as foreshortening, and the scene view shows the depth. The rect
+  the canvas plane; the Game window draws the overlay orthographically, so the
+  tilt shows as foreshortening, and the Scene window shows the depth. The rect
   itself is still resolved in the parent's unrotated space, so anchors and
   layout keep their meaning. A node without a RectTransform passes its
   parent's rect through.
@@ -49,7 +49,7 @@ with `@(canvas_layout)` on the layout proc.
   `reference_resolution` units, scaled to fit the screen; `match` 0 fits the
   reference width, 1 the height, in between blends logarithmically. Without
   a scaler one canvas unit is one screen pixel. Rects, the rect tool and the
-  scene view all work in canvas units; the Game view maps them to pixels.
+  Scene window all work in canvas units; the Game window maps them to pixels.
 - **LayoutGroup** — lays out the node's RectTransform children in a row, a
   column or a grid, with padding, spacing and a child alignment. A laid-out
   child's anchors and anchored position are ignored: its size is its
@@ -97,7 +97,7 @@ a second door into it, so one call moves a bullet or a health bar:
   point, in the parent's space, like localPosition under a RectTransform.
   Z passes through as depth.
 - `transform_world_position` and `transform_set_world_position` work on the
-  canvas plane, the world space the scene view shows (one unit per canvas
+  canvas plane, the world space the Scene window shows (one unit per canvas
   unit, canvas bottom-left at the origin).
 - The move gizmo and the Transform inspector's Position row go through
   these procs on UI nodes, and record `anchored_position` for undo. The
@@ -106,19 +106,19 @@ a second door into it, so one call moves a bullet or a health bar:
 
 ## Drawing
 
-The engine's canvas collector runs for Game views and the scene view. Per
+The engine's canvas collector runs for Game windows and the Scene window. Per
 enabled canvas it resolves every active node's rect in hierarchy order
 (parents before children, siblings in order) and, for each node with an
 enabled CanvasRenderer and a registered graphic, emits one `Draw_Quad` per
 quad the graphic populates, in the graphic's color and material.
 
-- **Game views**: quads sit on a plane just inside the view's near plane,
+- **Game windows**: quads sit on a plane just inside the view's near plane,
   with the rect's pixel corners unprojected through the view, so they land on
   exactly those pixels for any camera and nothing in the scene passes the
   depth test in front of them.
-- **Scene view**: the canvas is a world rect with its bottom-left at the
+- **Scene window**: the canvas is a world rect with its bottom-left at the
   origin in the XY plane, one world unit per canvas unit, sized like the
-  last Game view (1920x1080 before one has drawn). This is where the rect
+  last Game window (1920x1080 before one has drawn). This is where the rect
   tool lives.
 
 Sort keys use layer 127, the top of the transparent range, then the canvas
@@ -166,8 +166,8 @@ Image creates a RectTransform + CanvasRenderer + Image node under the selection 
 the selection sits in a canvas, else under a new canvas. Each is one undo
 step.
 
-Clicking a UI rect in the scene view selects it, and the rubber band selects
-every graphic whose rect it touches, in any canvas mode (the scene view's own
+Clicking a UI rect in the Scene window selects it, and the rubber band selects
+every graphic whose rect it touches, in any canvas mode (the Scene window's own
 UI picking, docs/core/Handles.md). The selected RectTransform shows the rect tool, built on
 `editor/handles`: the rect outline (white with a dark line just inside, so
 it reads on light images too), corner dots and the whole edges as resize
@@ -188,7 +188,7 @@ undo step. A rect a LayoutGroup lays out shows a dimmer outline and no
 handles, and its inspector greys Pos X, Pos Y, Width and Height under the
 notice "Some values driven by LayoutGroup".
 
-The RectTransform inspector (`plugins/engine/editor/scene_views/view_rect_transform.odin`) has Unity's
+The RectTransform inspector (`plugins/engine/editor/scene_windows/rect_transform_drawer.odin`) has Unity's
 layout for a single UI node, and the Transform section is hidden for it:
 
 - The anchor preset button opens the 4 by 4 grid (left, center, right,

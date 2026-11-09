@@ -19,7 +19,7 @@ package animation_editor
 //   lane follows it, x to w. A Lane row's `ch` is the channel that animates
 //   its lane: the row's own channel when joined, the lane's channel when
 //   split. A disabled lane has no row. Collapsed is the default.
-// - The view maps between sheet rows and channel indices only through
+// - The window maps between sheet rows and channel indices only through
 //   sheet_rows, sheet_group_channels and sheet_row_of_channel. A channel
 //   index is never a row index.
 
@@ -100,7 +100,7 @@ sheet_target_channels :: proc(clip: ^anim.AnimationClip, target: string, allocat
 	return out[:]
 }
 
-// What identifies a channel across edits, for a view's per-row state (the
+// What identifies a channel across edits, for a window's per-row state (the
 // expanded vector rows): target, then the transform path or the component and
 // field. A channel index shifts when a row is removed, this does not. The
 // channels of a split row share it.

@@ -87,7 +87,7 @@ render_depth_prime :: proc(ctx: ^Render_Ctx, hdr: ^gfx.Render_Target) {
 // keeps the depth instead of clearing it, so each covered pixel is shaded
 // once instead of once per mesh drawn over it. It costs a second pass over
 // the geometry, so it pays off with expensive materials and heavy overdraw,
-// and the Default pipeline leaves it out. The scene view's debug modes draw
+// and the Default pipeline leaves it out. The Scene window's debug modes draw
 // without it: a wireframe has to show what lies behind the front surface.
 @(render_step={summary="the opaque meshes' depth before shading, so each pixel is shaded once", reads="scene", writes="hdr:HDR*"})
 depth_prepass :: proc(ctx: ^Render_Ctx) {

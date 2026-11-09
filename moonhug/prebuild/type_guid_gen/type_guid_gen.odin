@@ -499,7 +499,7 @@ _generate_create_asset_menus :: proc(entries: []_TypeGuidRow, w: ^db.World) -> b
 		// The command's help names the asset by its menu title.
 		title := e.create_menu_name[strings.last_index_byte(e.create_menu_name, '/') + 1:]
 		fmt.sbprintf(&b, "\tmenu.add_menu_item(%q, \"\", __create_asset__%s, %d, origin = %q, help = %q)\n",
-			menu_path, e.type_name, e.create_order, e.create_origin, fmt.tprintf("Creates a new %s asset in the Project view's open folder", title))
+			menu_path, e.type_name, e.create_order, e.create_origin, fmt.tprintf("Creates a new %s asset in the Project window's open folder", title))
 		delete(menu_path)
 	}
 	strings.write_string(&b, "}\n")

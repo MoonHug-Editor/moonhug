@@ -1,6 +1,6 @@
 ---
 title: "SpriteRenderer"
-description: "The SpriteRenderer component with the texture cache, scene view rendering, the asset guid drawer and sprite sorting"
+description: "The SpriteRenderer component with the texture cache, Scene window rendering, the asset guid drawer and sprite sorting"
 weight: 10
 tags: ["sprites", "rendering", "components"]
 ---
@@ -12,7 +12,7 @@ engine/
   components.odin           ← SpriteRenderer component definition
 
 editor/
-  view_scene.odin           ← billboard rendering in scene view
+  window_scene.odin           ← billboard rendering in Scene window
   inspector/
     property_drawer_asset_guid.odin  ← Asset_GUID field drawer
 ```
@@ -66,7 +66,7 @@ transform_get_or_add_comp(tH, engine.SpriteRenderer)
 
 ---
 
-## 3 — Scene view rendering
+## 3 — Scene window rendering
 
 During `render_scene_rt`, after the grid and axis lines, `draw_sprite_renderers` iterates every alive slot in the `sprite_renderers` pool:
 
@@ -88,7 +88,7 @@ Sprites always face the camera (billboard mode). Size is derived from the textur
 Any serializable struct field of type `Asset_GUID` gets the asset reference drawer automatically. The drawer:
 
 1. Resolves the GUID to a filename via `asset_db_get_path` and displays it as a button (or "None" if empty)
-2. Accepts drag-and-drop from the project view (`ASSET_PATH` payload) — dropping an asset sets the GUID
+2. Accepts drag-and-drop from the Project window (`ASSET_PATH` payload) — dropping an asset sets the GUID
 3. Shows an **X** clear button when a value is assigned
 
 ---

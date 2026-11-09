@@ -1,10 +1,10 @@
 package editor
 
-// Floating windows: a view dragged outside the main window gets its own OS
-// window (Dear ImGui multi-viewports, `io.ConfigFlags` .ViewportsEnable, set
+// Floating windows: an editor window dragged outside the main window floats on its own
+// (Dear ImGui multi-viewports, `io.ConfigFlags` .ViewportsEnable, set
 // in main.odin). The SDL3 platform backend creates, moves and closes those
 // windows and routes their input, and the SDLGPU3 renderer backend draws and
-// presents each one with its own command buffer. A view dragged back over the
+// presents each one with its own command buffer. A window dragged back over the
 // main window merges into it again.
 //
 // The Odin binding does not declare the two calls that drive the windows each
@@ -64,10 +64,10 @@ _render_floating_window :: proc "c" (vp: ^im.Viewport, render_arg: rawptr) {
 	_ = sdl.SubmitGPUCommandBuffer(cmd)
 }
 
-// Creates, moves, resizes and closes the OS windows of floating views, then
+// Creates, moves, resizes and closes the floating windows, then
 // draws and presents them. Called after every imgui frame is rendered and the
 // main window presented: imgui asserts on the next frame when a frame skips it.
-// The scene and game views' images, drawn into the main window's command
+// The scene and Game windows' images, drawn into the main window's command
 // buffer, are finished by then, since one GPU queue runs submissions in order.
 imgui_platform_windows :: proc() {
 	if .ViewportsEnable not_in im.GetIO().ConfigFlags do return

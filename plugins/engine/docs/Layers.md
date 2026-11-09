@@ -83,7 +83,7 @@ Pass flags are not layers: they say which passes draw a renderer, whatever view 
 - `cast_shadows`: On casts with its materials' face culling, Off never casts, Double_Sided casts with no face culling (a one-sided leaf plane still shadows from behind), Shadows_Only casts and draws in no colour, depth prepass, normals or probe pass
 - `reflections`: Hidden leaves the renderer out of every reflection probe capture, so a mirror inside a probe's box does not reflect itself
 
-A view's `pass` (`core.View_Pass`: Color, Shadow, Probe) tells the mesh collectors which flags to honour (`render_pass_includes`). Camera and editor views are Color, the shadow casters' view is Shadow, a probe capture's views are Probe. Scene view picking tests the renderers themselves, so a Shadows_Only mesh still picks.
+A view's `pass` (`core.View_Pass`: Color, Shadow, Probe) tells the mesh collectors which flags to honour (`render_pass_includes`). Camera and editor views are Color, the shadow casters' view is Shadow, a probe capture's views are Probe. Scene window picking tests the renderers themselves, so a Shadows_Only mesh still picks.
 
 ## The picker
 

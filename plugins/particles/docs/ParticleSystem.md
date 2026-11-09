@@ -174,8 +174,8 @@ sprites in the shared transparent pass.
 
 ## Gizmos
 
-The selected system draws its emission shape as wireframe lines in the scene
-view — cone base + spread silhouette, sphere/hemisphere circles, circle,
+The selected system draws its emission shape as wireframe lines in the Scene
+window — cone base + spread silhouette, sphere/hemisphere circles, circle,
 edge line, box, point cross (`editor/particles_gizmos.odin`, the
 `@(comp_on_draw_gizmos)` hook, for systems in the selection).
 
@@ -186,19 +186,19 @@ drag is one undo step.
 
 ## Edit-mode preview
 
-The inspected EFFECT plays in edit mode, like Unity's scene-view particle
+The inspected EFFECT plays in edit mode, like Unity's Scene window particle
 preview: the whole ParticleSystem hierarchy from its root ticks every frame
 the inspector draws — child systems and sub-emitter targets simulate too,
 and selecting a child previews the effect it belongs to. Selecting a
-different system restarts the effect, deselecting clears it. The scene
-view's Particle Effect overlay shows Play/Pause, Restart, Stop, a scope
+different system restarts the effect, deselecting clears it. The Scene
+window's Particle Effect overlay shows Play/Pause, Restart, Stop, a scope
 dropdown (Root plays the whole effect, Self & Children the inspected
 subtree, Self the system alone — in Self scope a sub-emitter target plays
 its own timeline and the system's own sub-emitters stay quiet, full
 isolation) and the playback time + scoped
 particle count. Play/simulate owns playback — the preview
 stands down while playing. `system_reset` clears live state for the restart.
-The preview renders in every view, game view included — with several scenes
+The preview renders in every window, Game window included — with several scenes
 open, every enabled camera renders a pass (camera stacking), so a second
 scene's camera shows the preview too.
 

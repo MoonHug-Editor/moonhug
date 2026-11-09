@@ -71,7 +71,7 @@ main :: proc() {
     win_w, win_h, win_x, win_y := load_editor_settings()
     has_saved_settings := win_w > 0 && win_h > 0
     // Window starts hidden so saved geometry applies before first present.
-    if !gfx.init(strings.clone_to_cstring(window_title(), context.temp_allocator), has_saved_settings ? win_w : 800, has_saved_settings ? win_h : 600, show = false) {
+    if !gfx.init(strings.clone_to_cstring(main_window_title(), context.temp_allocator), has_saved_settings ? win_w : 800, has_saved_settings ? win_h : 600, show = false) {
         fmt.eprintln("gfx init failed (is SDL3 installed? brew install sdl3)")
         return
     }
@@ -100,8 +100,8 @@ main :: proc() {
     // frames during startup): the plugin window declarations, then the saved
     // window placement renamed onto the windows' current ids.
     _register_editor_windows()
-    // Keys go to the clicked view (window/window.odin focused), never the
-    // hovered one, then to the view hosting it.
+    // Keys go to the clicked window (window/window.odin focused), never the
+    // hovered one, then to the window hosting it.
     keymap.focused_path = proc() -> []string {
         w := wnd.focused()
         if w == nil do return nil
@@ -110,21 +110,21 @@ main :: proc() {
         if h := wnd.find(w.host); h != nil do append(&path, h.id)
         return path[:]
     }
-    // While the game runs in a focused Game view, plain keys are the game's,
+    // While the game runs in a focused Game window, plain keys are the game's,
     // as they are a text field's while it is typed in.
     keymap.key_source.text = proc() -> bool {
-        return im.GetIO().WantTextInput || (sim_is_active() && game_view_focused)
+        return im.GetIO().WantTextInput || (sim_is_active() && game_window_focused)
     }
     migrate_imgui_ini()
     defer im.DestroyContext(ctx)
 
-    // Docking (drag window title bars to dock/undock), and floating views in
-    // their own OS windows when dragged outside the main window
+    // Docking (drag window title bars to dock/undock), and floating windows
+    // when dragged outside the main window
     // (imgui_viewports.odin).
     io := im.GetIO()
     io.ConfigFlags += {.DockingEnable, .ViewportsEnable}
-    // A view dragged out alone keeps a tab bar instead of a title bar, so it
-    // carries the tab menu button (dock_tab_menu.odin) like a docked view.
+    // A window dragged out alone keeps a tab bar instead of a title bar, so it
+    // carries the tab menu button (dock_tab_menu.odin) like a docked window.
     io.ConfigDockingAlwaysTabBar = true
 
     // Load UI fonts (default text font + merged Material Symbols icons). Must run
@@ -190,10 +190,10 @@ main :: proc() {
     simulate_init()
     defer simulate_shutdown()
     // Reopen what was open last session — declarations must exist first. A
-    // first run opens the views the default layout docks, the Game view
+    // first run opens the windows the default layout docks, the Game window
     // included (menu.show_game defaults on).
     wnd.open_saved(editor_settings.open_window_ids[:])
-    wnd.close_guard = view_close_guard
+    wnd.close_guard = window_close_guard
     if !editor_settings.has_window_state {
         wnd.open_saved({"Scene", "Hierarchy", "Inspector", "Project", "Project Inspector", "Console", "Output"})
     }
@@ -235,7 +235,7 @@ main :: proc() {
             if dock_icon_pending {
                 dock_icon_pending = false
                 set_dock_icon("../EditorIcon.png") // cwd was normalized to moonhug/ at startup
-                set_app_menu_title(window_title())
+                set_app_menu_title(main_window_title())
                 drop_window_close_key()
             }
         }
@@ -249,16 +249,16 @@ main :: proc() {
         // from clicks, picking, pending-select and undo restore alike.
         selection_publish()
 
-        // Reimports an Apply asked for last frame, before any view draws: a
+        // Reimports an Apply asked for last frame, before any window draws: a
         // reimport frees the asset's GPU textures (editor/assets/import.odin).
         asset_pipeline.asset_pipeline_reimport_pending()
 
-        // Thumbnail generation before ANY view draws: scene previews spawn and
+        // Thumbnail generation before ANY window draws: scene previews spawn and
         // destroy live content within this call, so nothing leaks into the
         // frame's visible rendering (editor/thumbnails).
         thumbnails.tick()
 
-        // Agent bridge: before views draw, so screenshot readbacks see the
+        // Agent bridge: before windows draw, so screenshot readbacks see the
         // PREVIOUS frame's submitted render targets (mcp_bridge.odin).
         mcp_bridge_tick()
 
@@ -273,17 +273,17 @@ main :: proc() {
         // (widgets/dialog.odin).
         widgets.dialog_frame_begin()
         widgets.text_input_escape_frame() // Escape commits text fields (widgets/text_input.odin)
-        // Agent layout changes, before the dockspace and the views draw
-        // (mcp_views.odin).
+        // Agent layout changes, before the dockspace and the windows draw
+        // (mcp_window_tools.odin).
         mcp_bridge_window_ops()
 
         menu.draw_menu_bar()
         draw_tool_bar()
-        // Dockspace host under the toolbar; must precede the dockable views'
+        // Dockspace host under the toolbar; must precede the dockable windows'
         // Begin() calls (dock.odin — builds the default layout on first run).
         draw_dockspace()
 
-        // Every key binding resolves here, before the views draw
+        // Every key binding resolves here, before the windows draw
         // (editor/keymap): menu shortcuts, the scene tools, the flythrough.
         keymap.frame()
 
@@ -293,29 +293,29 @@ main :: proc() {
         // (sim.request_start).
         sim_start_pending()
 
-        // Advance the in-editor simulation before the views draw, so hierarchy,
+        // Advance the in-editor simulation before the windows draw, so hierarchy,
         // inspector and scene all show the same frame. Placed AFTER the toolbar
         // so a Stop pressed this frame takes effect before the tick, never
         // ticking a scene that is already being torn down.
-        // The game reads input only while the Game view has focus
-        // (view_game.odin); editor views read it unblocked.
-        // Application focus for the game is the Game view's focus during a
-        // run (view_game.odin); the tick is the game scope, editor views
+        // The game reads input only while the Game window has focus
+        // (window_game.odin); editor windows read it unblocked.
+        // Application focus for the game is the Game window's focus during a
+        // run (window_game.odin); the tick is the game scope, editor windows
         // read outside it.
-        game_view_frame_begin()
+        game_window_frame_begin()
         // Gameplay gizmos measure against the game camera: the sim draws them
-        // once, and the game view is the one they are for (docs/core/Gizmos.md).
+        // once, and the Game window is the one they are for (docs/core/Gizmos.md).
         if v, ok := _game_gizmo_view(); ok do gizmos.set_view(v)
-        input.set_app_focused(!sim_is_active() || game_view_focused)
+        input.set_app_focused(!sim_is_active() || game_window_focused)
         input.set_game_scope(true)
         sim_tick(gfx.delta_time())
         input.set_game_scope(false)
 
-        // ImGui UI. The views are window instances, drawn with the other
+        // ImGui UI. The windows are window instances, drawn with the other
         // windows (wnd.draw_all). Their per-frame bookkeeping runs here,
         // whether or not one is visible.
-        session.scene_views_frame_begin()
-        view_locks_prune()
+        session.scene_windows_frame_begin()
+        window_locks_prune()
         project_inspectors_follow()
 
         project_frame_begin()
@@ -328,14 +328,14 @@ main :: proc() {
         // apply here, restore right after, so every other consumer of the
         // world this frame (saves, undo, inspector) sees authored values.
         preview.apply_all()
-        // Handles and gizmo hooks record once per frame, before any view
-        // renders: every view draws the same shapes (gizmo_pass.odin).
+        // Handles and gizmo hooks record once per frame, before any window
+        // renders: every window draws the same shapes (gizmo_pass.odin).
         gizmo_pass()
         wnd.draw("Scene")
-        scene_views_render_hosted()
+        scene_windows_render_hosted()
 
         if menu.show_game {
-            draw_game_view()
+            draw_game_window()
         }
         preview.restore_all()
 
@@ -362,15 +362,15 @@ main :: proc() {
         inspector.asset_doc_copies_track(may_finish)
 
         // Selection undo steps (Unity model): diff selection against the
-        // frame's baseline after all views handled input.
+        // frame's baseline after all windows handled input.
         selection_undo_track()
 
-        // The tab menu button on views floating outside the dockspace, now
+        // The tab menu button on windows floating outside the dockspace, now
         // that their hosts have begun this frame.
         tab_menu_draw_floating()
-        maximize_after_views()
+        maximize_after_windows()
 
-        // Render. Scene/game views already encoded their offscreen passes
+        // Render. Scene/Game windows already encoded their offscreen passes
         // into this frame's command buffer during the UI calls above; imgui's
         // copy passes (PrepareDrawData) must come BEFORE the swapchain render
         // pass, and its draw happens inside it (pass_end callback).
@@ -419,24 +419,24 @@ editor_init :: proc() {
     phase_editor_run(.ImportersInit)
     clip.init()
     inspector.selected_sub = _inspected_sub
-    init_project_view()
+    init_project_window()
     progress.report("Scanning assets")
     asset_pipeline.asset_pipeline_init()
     assets.asset_db_init("assets")
     asset_pipeline.asset_pipeline_import_all()
-    init_scene_view()
-    init_game_view()
+    init_scene_window()
+    init_game_window()
     setup_menu_items()
 
     return
 
     setup_menu_items :: proc() {
         _register_menu_items()
-        _register_view_chrome()
+        _register_window_chrome()
         _load_user_settings() // @(user_settings) vars -> UserSettings/*.json
         _load_system_settings() // @(system_settings) vars -> <config dir>/MoonHug/*.json
         register_create_asset_menus()
-        session.scene_views_register_menus()
+        session.scene_windows_register_menus()
 
         top_order := make(map[string]int)
         defer delete(top_order)
@@ -449,7 +449,7 @@ editor_init :: proc() {
         top_order["GameObject"] = 10 // creation band also mirrors into the hierarchy popup
         top_order["Component"] = 15
         top_order["Tools"] = 20 // plugin/tooling menu items (e.g. packages)
-        // Window menu sits before Help (Unity). Submenus first: General,
+        // The Window menu sits before Help. Submenus first: General,
         // then domain groups (Animation), separator at -7, Theme, Reset
         // Layout (item order 20).
         top_order["Window"] = 25
@@ -462,7 +462,7 @@ editor_init :: proc() {
 }
 
 // The scenes to reopen, resolved once at startup. The main loop loads ONE
-// per frame after the first full frame presented — views and dock layout
+// per frame after the first full frame presented — windows and dock layout
 // are ready, each scene appears on the next frame, and the UI never blanks
 // behind a blocking load.
 _pending_scene_loads: [dynamic]string
@@ -485,14 +485,14 @@ load_next_pending_scene :: proc() {
     path := _pending_scene_loads[0]
     ordered_remove(&_pending_scene_loads, 0)
     defer delete(path)
-    // No pumped frames here — an overlay-only frame would blank the views.
+    // No pumped frames here — an overlay-only frame would blank the windows.
     progress_overlay_frame_scope(true)
     defer progress_overlay_frame_scope(false)
     asset_pipeline.asset_open_additive(path)
 }
 
 // Drawn as part of the NORMAL frame while scene loads are pending — the
-// views stay visible behind it.
+// windows stay visible behind it.
 draw_pending_scene_overlay :: proc() {
     if len(_pending_scene_loads) == 0 do return
     vp := im.GetMainViewport()
@@ -513,13 +513,13 @@ draw_pending_scene_overlay :: proc() {
 @(phase={key=core.Phase.EditorShutdown, order=0, mode=Editor})
 editor_shutdown :: proc() {
     join_play_thread()
-    shutdown_game_view()
-    shutdown_scene_view()
+    shutdown_game_window()
+    shutdown_scene_window()
     assets.asset_db_shutdown()
     inspector.shutdown_registries()
-    session.scene_views_shutdown()
+    session.scene_windows_shutdown()
     selection_shutdown()
-    shutdown_project_view()
+    shutdown_project_window()
     clip.shutdown()
     _save_user_settings()
     _save_system_settings()
@@ -529,10 +529,10 @@ editor_shutdown :: proc() {
     command_palette.shutdown()
     keymap.shutdown()
     delete(keymap.overrides_path)
-    view_chrome_shutdown()
-    view_locks_shutdown()
+    window_chrome_shutdown()
+    window_locks_shutdown()
     maximize_shutdown()
-    workspace_view_shutdown()
+    workspace_window_shutdown()
     log.info("Editor Shutdown")
     log.shutdown()
 }
@@ -540,16 +540,16 @@ editor_shutdown :: proc() {
 // Creates a prefab variant of the currently-selected scene asset, written
 // alongside it as "<name>_Variant.scene". Registered into the same menu system
 // as "Create/Scene", so it appears in the project panel's right-click menu and
-// the top Assets menu. Acts on projectViewData.selectedFile (the asset the user
+// the top Assets menu. Acts on projectWindowData.selectedFile (the asset the user
 // last clicked); no-op with a console note if no .scene is selected.
 @(menu_item={path="Assets/Create/Scene Variant", order=-10, shortcut="", help="Creates a variant of the selected scene next to it"})
 scene_create_variant_menu :: proc() {
-	if !strings.has_suffix(projectViewData.selectedFile, ".scene") {
+	if !strings.has_suffix(projectWindowData.selectedFile, ".scene") {
 		fmt.println("[Editor] Create Scene Variant: select a .scene asset first")
 		return
 	}
 	// selectedFile holds the FULL path (search results span folders).
-	create_scene_variant(projectViewData.selectedFile)
+	create_scene_variant(projectWindowData.selectedFile)
 }
 
 @(menu_separator={path="Assets/Create", order=-9})

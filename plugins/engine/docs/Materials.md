@@ -13,11 +13,11 @@ asset conventions as everything else — a JSON file under `assets/` with a
 
 ## Authoring
 
-- **Create**: project view → `Assets/Create/Material` → writes
+- **Create**: Project window → `Assets/Create/Material` → writes
   `New Material.mat` into the current folder.
 - **Edit**: click the `.mat` file — it opens in the Project Inspector
   (shader dropdown, texture picker, color). Edits render **live** in the
-  scene/game views; **Save** persists them (unsaved edits revert on the next
+  scene/Game windows; **Save** persists them (unsaved edits revert on the next
   editor run).
 - **Assign**: add entries to a MeshRenderer's `materials` list (one per
   submesh — see [Meshes](Meshes.md)) via drag or the picker (filtered to
@@ -28,7 +28,7 @@ white, lit — the fallback, not an error. A sprite or other quad without a
 material stays unlit, so 2D art is never shaded by accident. A new material
 starts as Lit.
 
-**Extract from glTF**: select a `.glb`/`.gltf` in the project view →
+**Extract from glTF**: select a `.glb`/`.gltf` in the Project window →
 right-click → `Extract Textures & Material`. Embedded images are written as
 plain files next to the model (`<model>_<image>.png/jpg`) and one `.mat`
 per glTF material is created with its slots wired — albedo into `texture`,

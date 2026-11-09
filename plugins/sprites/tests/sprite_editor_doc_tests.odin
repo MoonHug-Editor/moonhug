@@ -51,7 +51,7 @@ _fixture :: proc(t: ^testing.T) -> (engine.Asset_GUID, bool) {
 // its value.
 @(private = "file")
 _copy :: proc() -> ^inspector.Asset_Doc_Copy {
-	d, ok := session.view_document(sprites_editor.SPRITE_EDITOR)
+	d, ok := session.window_document(sprites_editor.SPRITE_EDITOR)
 	if !ok do return nil
 	return (^inspector.Asset_Doc_Copy)(d.key)
 }
@@ -88,7 +88,7 @@ test_sprite_editor_edits_reach_the_meta_only_on_apply :: proc(t: ^testing.T) {
 	testing.expect(t, c != nil && _slices(c.data) == 1 && c.dirty, "the copy holds the new slice, unapplied")
 	shared := inspector.import_settings_doc_get(_PNG)
 	testing.expect(t, _slices(shared.data) == 0, "the shared import settings see nothing yet")
-	d, has := session.view_document(sprites_editor.SPRITE_EDITOR)
+	d, has := session.window_document(sprites_editor.SPRITE_EDITOR)
 	testing.expect(t, has && d.dirty, "the Sprite Editor's tab names its unapplied copy")
 
 	// Undo and redo step through the copy, on the one queue.
@@ -146,16 +146,16 @@ test_sprite_editor_asks_before_closing_with_unapplied_edits :: proc(t: ^testing.
 	if w == nil do return
 
 	// Cancel: the window and its edits stay.
-	testing.expect(t, editor.view_close_guard(w), "a close with unapplied edits is held")
+	testing.expect(t, editor.window_close_guard(w), "a close with unapplied edits is held")
 	testing.expect(t, widgets.dialog_is_open(), "it asks")
 	widgets.dialog_choose(2) // Cancel
 	testing.expect(t, wnd.find(sprites_editor.SPRITE_EDITOR) != nil, "the window stays")
 	testing.expect(t, _copy() != nil && _copy().dirty, "the edits are still there")
 
 	// Apply: the edits reach the .meta and the window closes.
-	testing.expect(t, editor.view_close_guard(w), "asked again")
+	testing.expect(t, editor.window_close_guard(w), "asked again")
 	widgets.dialog_choose(0) // Apply
-	testing.expect(t, editor.view_close_guard(w) == false, "nothing unapplied holds it now")
+	testing.expect(t, editor.window_close_guard(w) == false, "nothing unapplied holds it now")
 	wnd.draw_all() // the closed window goes, and its copy with it
 	testing.expect(t, wnd.find(sprites_editor.SPRITE_EDITOR) == nil, "the window closed")
 	testing.expect(t, _copy() == nil, "the copy closed with it")

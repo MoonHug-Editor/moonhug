@@ -1,14 +1,14 @@
 package workspace
 
-// Workspaces (docs/core/Views.md): a canvas you pan, holding frames, each a
-// group of view tabs at a rectangle. The workspace view draws them
-// (editor/workspace_view.odin). This package holds what a workspace is and
+// Workspaces (docs/core/Windows.md): a canvas you pan, holding frames, each a
+// group of window tabs at a rectangle. The Workspace window draws them
+// (editor/window_workspace.odin). This package holds what a workspace is and
 // where workspaces come from, and needs no engine, so a plugin can add a
 // source of its own.
 //
-// - A workspace has a unique id, which the workspace view remembers, a name
-//   and its frames. A frame names its views by window instance key (`id`,
-//   `id/<asset guid>`, `id/<n>`), so a hosted view reopens from it.
+// - A workspace has a unique id, which the Workspace window remembers, a name
+//   and its frames. A frame names its windows by window instance key (`id`,
+//   `id/<asset guid>`, `id/<n>`), so a hosted window reopens from it.
 // - Frames form trees of any depth: a frame with a parent sits right of it,
 //   under its earlier siblings and their children, and moves with it
 //   (layout). Trees keep apart: one that overlaps another moves away.
@@ -16,7 +16,7 @@ package workspace
 //   makes new ones. User settings and project settings are built in (this
 //   file), each in its own file. A provider's list may change: one that keeps
 //   workspaces in a scene shows its scene's while that scene is open, so
-//   their ids come and go from the workspace view's list.
+//   their ids come and go from the Workspace window's list.
 // - Everything outlives frames, so it lives on the default allocator.
 
 import "base:runtime"
@@ -30,7 +30,7 @@ import "moonhug:libs/log"
 Workspace :: struct {
 	id:         string, // owned, unique across providers
 	name:       string, // owned
-	pan:        [2]f32, // the canvas offset: where its origin sits in the view
+	pan:        [2]f32, // the canvas offset: where its origin sits in the window
 	frames:     [dynamic]Frame,
 	next_frame: u32,    // the next frame id: ids are never reused, so a new frame takes nothing from a removed one
 }
@@ -110,7 +110,7 @@ changed :: proc(ws: ^Workspace) {
 }
 
 // Moves the workspace `ws` to the provider `to` (an index into providers),
-// keeping its id, name and frames: a Workspace view showing it goes on
+// keeping its id, name and frames: a Workspace window showing it goes on
 // showing it. False when it is there already, or a provider cannot.
 move_to :: proc(ws: ^Workspace, to: int) -> bool {
 	e, ok := find(ws.id)
@@ -148,7 +148,7 @@ new_id :: proc() -> string {
 	return uuid.to_string(uuid.generate_v4())
 }
 
-// Adds a frame holding the view `key` at `rect`, chained to the frame
+// Adds a frame holding the window `key` at `rect`, chained to the frame
 // `parent` (an id, 0 for none, any frame), and returns its id. A parent no
 // frame has is none.
 frame_add :: proc(ws: ^Workspace, key: string, rect: [4]f32, parent: u32 = 0) -> u32 {
@@ -650,25 +650,25 @@ shutdown :: proc() {
 	context.allocator = runtime.default_allocator()
 	file_store_free(&_user)
 	file_store_free(&_project)
-	for k, s in _views.by_key {
+	for k, s in _windows.by_key {
 		delete(k)
 		delete(s.workspace)
 		free(s)
 	}
-	delete(_views.by_key)
-	_views = {}
+	delete(_windows.by_key)
+	_windows = {}
 }
 
-// --- What each Workspace view remembers ------------------------------------
+// --- What each Workspace window remembers ------------------------------------
 
-// What a Workspace view copy remembers between sessions, by its key
+// What a Workspace window copy remembers between sessions, by its key
 // ("workspace", "workspace/2"). In the user's settings. Zero is the default.
-View_Settings :: struct {
+Window_Settings :: struct {
 	workspace: string, // owned, the id of the workspace it shows
 	minimap:   Minimap,
 }
 
-// The mini-map's place in the view: attached to a corner or a side of the
+// The mini-map's place in the window: attached to a corner or a side of the
 // canvas, moved from there by `offset`, at `size` (0 is the default size).
 Minimap :: struct {
 	hidden: bool,
@@ -689,59 +689,59 @@ Anchor :: enum {
 }
 
 @(private = "file")
-_views: struct {
+_windows: struct {
 	loaded: bool,
-	by_key: map[string]^View_Settings, // owned keys and settings
+	by_key: map[string]^Window_Settings, // owned keys and settings
 }
 
 @(private = "file")
-_VIEWS_PATH :: "UserSettings/workspace_views.json"
+_WINDOWS_PATH :: "UserSettings/workspace_windows.json"
 
-// The settings of the Workspace view `view`, made on first use. Call
-// view_settings_save after changing them.
-view_settings :: proc(view: string) -> ^View_Settings {
-	_views_load()
-	if s, has := _views.by_key[view]; has do return s
+// The settings of the Workspace window `window`, made on first use. Call
+// window_settings_save after changing them.
+window_settings :: proc(window: string) -> ^Window_Settings {
+	_windows_load()
+	if s, has := _windows.by_key[window]; has do return s
 	context.allocator = runtime.default_allocator()
-	s := new(View_Settings)
-	_views.by_key[strings.clone(view)] = s
+	s := new(Window_Settings)
+	_windows.by_key[strings.clone(window)] = s
 	return s
 }
 
-view_settings_save :: proc() {
-	out := make(map[string]View_Settings, len(_views.by_key), context.temp_allocator)
-	for k, s in _views.by_key do out[k] = s^
+window_settings_save :: proc() {
+	out := make(map[string]Window_Settings, len(_windows.by_key), context.temp_allocator)
+	for k, s in _windows.by_key do out[k] = s^
 	bytes, err := json.marshal(out, {pretty = true, spec = .JSON, sort_maps_by_key = true}, context.temp_allocator)
-	if err == nil do _ = os.write_entire_file(_VIEWS_PATH, bytes)
+	if err == nil do _ = os.write_entire_file(_WINDOWS_PATH, bytes)
 }
 
-// The id of the workspace the view `view` shows, "" for none.
-view_selection :: proc(view: string) -> string {
-	return view_settings(view).workspace
+// The id of the workspace the window `window` shows, "" for none.
+window_selection :: proc(window: string) -> string {
+	return window_settings(window).workspace
 }
 
-view_select :: proc(view: string, id: string) {
-	s := view_settings(view)
+window_select :: proc(window: string, id: string) {
+	s := window_settings(window)
 	if s.workspace == id do return
 	delete(s.workspace, runtime.default_allocator())
 	s.workspace = strings.clone(id, runtime.default_allocator())
-	view_settings_save()
+	window_settings_save()
 }
 
 @(private = "file")
-_views_load :: proc() {
-	if _views.loaded do return
-	_views.loaded = true
+_windows_load :: proc() {
+	if _windows.loaded do return
+	_windows.loaded = true
 	context.allocator = runtime.default_allocator()
-	bytes, err := os.read_entire_file(_VIEWS_PATH, context.temp_allocator)
+	bytes, err := os.read_entire_file(_WINDOWS_PATH, context.temp_allocator)
 	if err != nil do return
 	if !json.is_valid(bytes) do return // json.unmarshal loops forever on some truncated files
-	file: map[string]View_Settings
+	file: map[string]Window_Settings
 	defer delete(file)
 	if json.unmarshal(bytes, &file) != nil do return
 	for k, s in file {
-		p := new(View_Settings)
+		p := new(Window_Settings)
 		p^ = s
-		_views.by_key[k] = p
+		_windows.by_key[k] = p
 	}
 }

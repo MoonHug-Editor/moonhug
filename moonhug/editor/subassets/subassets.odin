@@ -3,7 +3,7 @@ package subassets
 // Sub-asset providers for the project window (Unity's expandable assets: a
 // sliced texture unfolds to its sprites, a model to its meshes). A package's
 // editor half registers a provider for its extensions at EditorInit; the
-// project view asks the registry, so the editor root never imports the
+// Project window asks the registry, so the editor root never imports the
 // package. A sub-asset is addressed as PPtr{asset guid, local_id} — the id
 // comes from the provider (persistent, minted by the asset's importer). The
 // clip sampler below is the same kind of seam for a model's clips.
@@ -21,7 +21,7 @@ Sub_Asset :: struct {
 	kind: string,
 	// Optional grid-cell preview: an imgui texture id plus this sub-asset's
 	// uv rect within it, and its pixel size for aspect-fit. nil image = the
-	// project view draws the type glyph.
+	// Project window draws the type glyph.
 	image:    rawptr,
 	uv0, uv1: [2]f32,
 	size:     [2]f32,

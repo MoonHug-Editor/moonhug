@@ -3,10 +3,10 @@ package editor
 // The editor's gizmo recording (docs/core/Gizmos.md), after the sim tick and
 // inside the preview pose:
 //
-// - gizmo_pass, once per frame before any view draws: it picks the Scene copy
+// - gizmo_pass, once per frame before any window draws: it picks the Scene copy
 //   the handles run in (_scene_handles_update) and records every
 //   @(comp_on_draw_gizmos) proc into .Editor_Game with the game camera, for
-//   the game view when its Gizmos toggle is on.
+//   the Game window when its Gizmos toggle is on.
 // - scene_gizmos_record, in each Scene copy right before its render: the
 //   selection outline into .Outline and the @(comp_on_draw_gizmos) procs into
 //   .Editor, with that copy's camera, so pixel sizes and camera-facing parts
@@ -16,7 +16,7 @@ package editor
 //   frame's gizmos and render. Channels draw in order, so where shapes
 //   coincide the gizmos paint over the outline and the handles over both.
 //
-// With several views showing gizmos the gizmo procs run once per view each
+// With several windows showing gizmos the gizmo procs run once per window each
 // frame. The gizmo settings apply per component type.
 
 import "base:runtime"
@@ -30,10 +30,10 @@ import "moonhug:editor/session"
 import "moonhug:libs/gizmos"
 
 // Draws gizmos for every enabled instance of a component, each frame, in the
-// scene view.
+// Scene window.
 //
 // `component` is the type. The proc takes the component and a
-// handles.Gizmo_Context and draws through the gizmos API. The scene view's
+// handles.Gizmo_Context and draws through the gizmos API. The Scene window's
 // Gizmos menu shows or hides them per type. Anything that reacts to the mouse
 // belongs in @(comp_on_scene_handles).
 @(extension_point={attribute="comp_on_draw_gizmos", target="proc", fields="component"})
@@ -41,9 +41,9 @@ gizmo_pass :: proc() {
 	sel_scene_prune()
 	viewport.marks_rebuild()
 	_scene_handles_update()
-	// The gizmo procs with the game camera, for the game view: each view gets
+	// The gizmo procs with the game camera, for the Game window: each window gets
 	// gizmos built for its own camera, pixel sizes included. With no camera
-	// the game view shows none.
+	// the Game window shows none.
 	if menu.show_game && game_gizmos {
 		if v, ok := _game_gizmo_view(); ok {
 			gizmos.with_view(v)
@@ -101,8 +101,8 @@ scene_gizmos_record :: proc(view: core.Render_View) {
 	}
 }
 
-// The game view's camera view at its last size: the highest-order camera, the
-// one the game view renders last.
+// The Game window's camera view at its last size: the highest-order camera, the
+// one the Game window renders last.
 @(private)
 _game_gizmo_view :: proc() -> (core.Render_View, bool) {
 	if game_rt == nil || game_rt.width < 1 || game_rt.height < 1 do return {}, false
@@ -123,9 +123,9 @@ _gizmo_snap_angle :: proc() -> f32 {
 	return math.to_radians(max(snap_settings.angle, 1))
 }
 
-// What the engine's tools and views read and change of the shell: the scene
-// selection, the inspected objects, the project's active path and the game
-// view's aspect. Set at start, so the editor and the test binary both have it.
+// What the engine's tools and windows read and change of the shell: the scene
+// selection, the inspected objects, the project's active path and the Game
+// window's aspect. Set at start, so the editor and the test binary both have it.
 @(init, private = "file")
 _install_selection_source :: proc "contextless" () {
 	context = runtime.default_context()
@@ -143,14 +143,14 @@ _install_selection_source :: proc "contextless" () {
 		select_clear     = sel_scene_clear,
 		is_selected      = sel_scene_is,
 		prune            = sel_scene_prune,
-		view_objects      = view_objects,
-		view_object       = view_object,
-		view_assets       = view_assets,
-		view_locked       = view_locked,
-		view_lock_set     = view_lock_set,
-		view_lock_missing = view_lock_missing,
+		window_objects      = window_objects,
+		window_object       = window_object,
+		window_assets       = window_assets,
+		window_locked       = window_locked,
+		window_lock_set     = window_lock_set,
+		window_lock_missing = window_lock_missing,
 		frame_selected   = scene_frame_selected,
-		project_active   = proc() -> string { return projectViewData.selectedFile },
+		project_active   = proc() -> string { return projectWindowData.selectedFile },
 		project_dir      = proc() -> string { return _pv.current_path },
 	})
 }

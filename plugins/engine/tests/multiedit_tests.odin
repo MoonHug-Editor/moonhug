@@ -6,12 +6,12 @@ import "moonhug:packages/engine"
 
 import "base:runtime"
 import "core:testing"
-import "moonhug:packages/engine/editor/scene_views"
+import "moonhug:packages/engine/editor/scene_windows"
 
 // Peers for every selected transform except the active one.
 @(private)
 _peers_for :: proc(active: engine.Transform_Handle, sel: []engine.Transform_Handle) -> []inspector.Multi_Peer {
-	return scene_views.multi_transform_peers(active, sel)
+	return scene_windows.multi_transform_peers(active, sel)
 }
 
 @(private)
@@ -50,7 +50,7 @@ test_multi_common_components_intersects_by_type :: proc(t: ^testing.T) {
 	engine.transform_add_comp(b, .Light)
 
 	sel := []engine.Transform_Handle{a, b}
-	common := scene_views.multi_common_components(a, sel)
+	common := scene_windows.multi_common_components(a, sel)
 
 	// Only the shared type survives — Camera is missing on B.
 	testing.expect_value(t, len(common), 1)
@@ -81,7 +81,7 @@ test_multi_common_components_matches_duplicates_by_ordinal :: proc(t: ^testing.T
 	_, b_ptr := engine.transform_add_comp(b, .Camera)
 
 	sel := []engine.Transform_Handle{a, b}
-	common := scene_views.multi_common_components(a, sel)
+	common := scene_windows.multi_common_components(a, sel)
 
 	testing.expect_value(t, len(common), 1)
 	if len(common) != 1 do return
@@ -402,16 +402,16 @@ test_multi_selection_editable_includes_prefab_content :: proc(t: ^testing.T) {
 
 	a := engine.transform_new("A")
 	b := engine.transform_new("B")
-	testing.expect(t, scene_views.multi_selection_editable({a, b}), "plain objects multi-edit")
+	testing.expect(t, scene_windows.multi_selection_editable({a, b}), "plain objects multi-edit")
 
 	// A single object is not a multi-selection.
-	testing.expect(t, !scene_views.multi_selection_editable({a}), "one object is not multi")
+	testing.expect(t, !scene_windows.multi_selection_editable({a}), "one object is not multi")
 
 	// Prefab content no longer disqualifies the selection.
 	w := engine.ctx_world()
 	tb := engine.pool_get(&w.transforms, engine.Handle(b))
 	tb.nested_owned = true
-	testing.expect(t, scene_views.multi_selection_editable({a, b}), "prefab content multi-edits too")
+	testing.expect(t, scene_windows.multi_selection_editable({a, b}), "prefab content multi-edits too")
 }
 
 // Selecting two objects must not, by itself, change either of them.

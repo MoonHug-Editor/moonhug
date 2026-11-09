@@ -2,7 +2,7 @@ package text_editor
 
 // Editor half of text: the font importer (editor-side, like audio's), the
 // GameObject > UI > Text menu, the Text inspector's text area and style
-// toggles, and scene-view picking of text rects.
+// toggles, and Scene window picking of text rects.
 
 import "core:strings"
 import im "moonhug:external/odin-imgui"

@@ -4,12 +4,12 @@ package engine
 // (plugins/engine/docs/RenderPipeline.md "Inspecting a frame"): for every
 // placed step, a thumbnail of each target it wrote, as it was right after
 // the step ran, and the objects, meshes, materials and textures it drew.
-// Optionally one step's output replaces the scene view's image.
+// Optionally one step's output replaces the Scene window's image.
 //
 // Nothing happens unless the window asked this frame or the one before
 // (render_inspect_request), so a closed window costs nothing. The window
-// names one slot. The scene view's run of that slot is captured, or the
-// first camera's when the scene view renders another slot. The frame lane is
+// names one slot. The Scene window's run of that slot is captured, or the
+// first camera's when the Scene window renders another slot. The frame lane is
 // captured whenever its steps run.
 //
 // The capture copies each target a step took (render_target) right after
@@ -42,11 +42,11 @@ _inspect: struct {
 	slot:       string, // owned, the slot the window shows
 	requested:  u64,    // gfx.frame_index + 1 of the last request
 	selected:   i32,    // the step the window selected (entry id), 0 = none
-	scene_done: u64,    // gfx.frame_index + 1 when the scene view's run was captured
+	scene_done: u64,    // gfx.frame_index + 1 when the Scene window's run was captured
 	pool:       gfx.Target_Pool, // thumbnails, "<id>/<target>"
 	steps:      map[i32]Inspect_Step,
 	recording:  ^Inspect_Step,   // the step running in a captured run
-	show_id:    i32,             // 0 = off: the step whose output the scene view shows
+	show_id:    i32,             // 0 = off: the step whose output the Scene window shows
 	show_name:  string,          // owned, the target of it shown
 	shown:      u64,             // gfx.frame_index + 1 of the last copy of the shown output
 }
@@ -80,7 +80,7 @@ render_inspect_thumb :: proc(id: i32, target: string) -> ^gfx.Render_Target {
 	return gfx.pool_find(&_inspect.pool, _thumb_key(id, target))
 }
 
-// Shows step `id`'s `target` in the scene view instead of its final image.
+// Shows step `id`'s `target` in the Scene window instead of its final image.
 // id 0 turns it off.
 render_inspect_show :: proc(id: i32, target: string) {
 	context.allocator = runtime.default_allocator()
@@ -89,7 +89,7 @@ render_inspect_show :: proc(id: i32, target: string) {
 	_inspect.show_name = id != 0 ? strings.clone(target) : ""
 }
 
-// The step and target the scene view shows, and whether it did last frame
+// The step and target the Scene window shows, and whether it did last frame
 // (false when that step did not take the target).
 render_inspect_showing :: proc() -> (id: i32, target: string, shown: bool) {
 	return _inspect.show_id, _inspect.show_name, _inspect.shown != 0 && _inspect.shown + 1 >= gfx.frame_index + 1
@@ -97,8 +97,8 @@ render_inspect_showing :: proc() -> (id: i32, target: string, shown: bool) {
 
 // --- The run's side, called by render_pipeline_run --------------------------
 
-// Whether this run of `slot` is the one captured: the scene view's always,
-// a camera's when the scene view has not been captured this frame.
+// Whether this run of `slot` is the one captured: the Scene window's always,
+// a camera's when the Scene window has not been captured this frame.
 _inspect_lane_begins :: proc(slot: string, ctx: ^Render_Ctx) -> bool {
 	if !render_inspect_active() || slot != _inspect.slot do return false
 	if ctx.scene_view {
@@ -122,7 +122,7 @@ _inspect_step_begins :: proc(id: i32) {
 	_inspect.recording = n
 }
 
-// Whether the step the window looks at (the one shown in the scene view, else
+// Whether the step the window looks at (the one shown in the Scene window, else
 // the selected one) is among `steps`: the captured run holds the camera
 // steady while it lies before the TAA resolve, since its images are drawn
 // through the jittered camera and would move up to half a pixel each frame.
@@ -134,7 +134,7 @@ _inspect_looks_at :: proc(steps: []Pipeline_Instance) -> bool {
 }
 
 // After it: one thumbnail per target it took, and the full-size copy the
-// scene view shows when this is the shown step.
+// Scene window shows when this is the shown step.
 _inspect_step_ends :: proc(id: i32, pool: ^gfx.Target_Pool) {
 	context.allocator = runtime.default_allocator()
 	n := _inspect.recording
@@ -192,7 +192,7 @@ _inspect_step_skipped :: proc(id: i32) {
 	}
 }
 
-// At the end of the scene view's run: the shown step's output over the
+// At the end of the Scene window's run: the shown step's output over the
 // view's image.
 _inspect_lane_ends :: proc(ctx: ^Render_Ctx) {
 	if !ctx.scene_view || _inspect.show_id == 0 || ctx.target == nil do return

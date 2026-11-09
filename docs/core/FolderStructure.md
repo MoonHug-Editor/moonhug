@@ -20,7 +20,7 @@ moonhug/                    ← the editor's project
   external/                 ← third-party code. MoonHug's own packages are in libs/
   library/                  ← derived-data cache (see Library below). Safe to delete, rebuilt on the next run
   ProjectSettings/          ← settings about the PROJECT, committed: mcp.json and one <slug>.json per @(project_settings) tab
-  UserSettings/             ← per-developer editor state, never committed (relative to the project directory, found from the working directory at startup or named with `--project=<dir>`, so another project keeps its own): window layout, open scenes, the selection and the view locks at quit. Safe to delete, the editor writes defaults on the next run
+  UserSettings/             ← per-developer editor state, never committed (relative to the project directory, found from the working directory at startup or named with `--project=<dir>`, so another project keeps its own): window layout, open scenes, the selection and the window locks at quit. Safe to delete, the editor writes defaults on the next run
 
 The editor also keeps settings outside the repo, the same for every project on the machine: `MoonHug/` in the OS config folder, `~/Library/Application Support/MoonHug/` on macOS. It holds `shortcuts.json`, the shortcut overrides, and one `<slug>.json` per `@(system_settings)`.
 
@@ -35,7 +35,7 @@ Everything under `library/` is derived data — never a source of truth, safe to
 
 - `library/artifacts/<xx>/<key>.bin` - import artifacts, **content-addressed**: the 128-bit key hashes every input that shapes the importer's output — source bytes, import settings, the importer's version constant, the artifact format version. Invalidation is automatic (any changed input is a different key), toggling a setting back is a cache hit on the old artifact instead of a re-import, and keys are machine-independent (a shared team cache stays possible). `<xx>` is the key's first two hex chars (fan-out layout)
 - `library/artifact_db.json` - the index: guid → current artifact key + source file stamp + settings hash, so an unchanged file costs one stat per scan, never a rehash
-- `library/thumbnails/<xx>/<guid>.thumb` - project view thumbnails (raw RGBA + a stamp header), guid-keyed so a changed asset overwrites its entry in place. Written asynchronously after generation (fence-polled GPU readback, no sync stalls), loaded instead of re-rendering on the next session. Deleted assets' entries are pruned at editor startup
+- `library/thumbnails/<xx>/<guid>.thumb` - Project window thumbnails (raw RGBA + a stamp header), guid-keyed so a changed asset overwrites its entry in place. Written asynchronously after generation (fence-polled GPU readback, no sync stalls), loaded instead of re-rendering on the next session. Deleted assets' entries are pruned at editor startup
 - `library/state_cache/` - editor session state (the Play button's live-scene snapshot)
 - garbage collection runs with the import pass: artifact files no index entry references are deleted
 - importers carry a version constant (`_importer_version`) — bump it when an importer's output changes and exactly its artifacts re-import, nothing else

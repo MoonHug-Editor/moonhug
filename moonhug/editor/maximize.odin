@@ -1,23 +1,23 @@
 package editor
 
-// Maximize (Shift+Space, and Maximize in a view's tab menu): the view under
+// Maximize (Shift+Space, and Maximize in a window's tab menu): the window under
 // the mouse, or the one whose tab menu it is, fills the dockspace's area, and
 // the same shortcut or menu item puts it back where it was. No main menu item:
-// a menu is clicked with the mouse away from every view. The dock layout
+// a menu is clicked with the mouse away from every window. The dock layout
 // stays as it is:
 // - The main dockspace keeps its nodes but shows nothing (KeepAliveOnly), so
-//   every docked view hides and stays docked.
-// - The view docks into a second dockspace over the same area, which gives it
+//   every docked window hides and stays docked.
+// - The window docks into a second dockspace over the same area, which gives it
 //   its tab, and tab_menu_draw_floating gives it its tab-bar widgets and its
 //   ⋮ menu, as it does every dock tree but the main one.
-// - A hidden placeholder holds the node the view left: imgui deletes a node
+// - A hidden placeholder holds the node the window left: imgui deletes a node
 //   when its last window leaves, and the split would close. Back in its node,
-//   the view takes its tab's place again and the placeholder leaves.
-// - imgui.ini is written first and not saved while a view is maximized, so a
+//   the window takes its tab's place again and the placeholder leaves.
+// - imgui.ini is written first and not saved while a window is maximized, so a
 //   quit then keeps the layout as it was.
 // - A floating dock tree takes the rect of a window that comes back to it as
 //   its only one, here the maximize area: its rect is put back after.
-// - A view in a Workspace view's frame has no window of its own: it gets one
+// - A window in a Workspace window's frame has no window of its own: it gets one
 //   while maximized, its frame shows that it is away, and it goes back to its
 //   frame after, shown there.
 
@@ -35,12 +35,12 @@ _MAX_PLACEHOLDER :: "###maximize_placeholder"
 @(private = "file")
 _max: struct {
 	// Enter and Leave take effect at the next draw_dockspace, Unplace after
-	// that frame's views, Focus at the frame after.
+	// that frame's windows, Focus at the frame after.
 	state:      enum {None, Enter, On, Leave, Unplace, Focus},
-	name:       cstring, // owned, "###<key>": the view's imgui window by its id, whatever its label shows
-	key:        string,  // owned, its view key (_MAX_GAME for the Game view)
-	node:       im.ID,   // the dock node it left, 0 for a frame's view
-	host:       string,  // owned, the Workspace view whose frame it left, "" for a docked view
+	name:       cstring, // owned, "###<key>": the window's imgui window by its id, whatever its label shows
+	key:        string,  // owned, its window key (_MAX_GAME for the Game window)
+	node:       im.ID,   // the dock node it left, 0 for a frame's window
+	host:       string,  // owned, the Workspace window whose frame it left, "" for a docked window
 	tab:        int,     // its tab's place in that node, -1 for unknown
 	float_root: im.ID,   // the floating dock tree it left, 0 for the main dockspace
 	float_rect: [2]im.Vec2, // that tree's position and size
@@ -48,30 +48,30 @@ _max: struct {
 	ini:        cstring, // io.IniFilename while saving is paused
 }
 
-// The Game view's key: it is no registered window.
+// The Game window's key: it is no registered window.
 @(private = "file")
 _MAX_GAME :: "Game"
 
-// Puts the maximized view back, or maximizes the view under the mouse. The
-// Views keymap binds it to Shift+Space (dock_tab_menu.odin).
-@(command={name="View/Maximize", help="Fills the editor with the view under the mouse, or puts the maximized view back"})
-view_maximize :: proc() {
+// Puts the maximized window back, or maximizes the window under the mouse. The
+// Window keymap binds it to Shift+Space (dock_tab_menu.odin).
+@(command={name="Window/Maximize", help="Fills the editor with the window under the mouse, or puts the maximized window back"})
+window_maximize :: proc() {
 	if _max.state == .On {
 		_max.state = .Leave
 		return
 	}
-	if key, ok := _max_hovered_view(); ok do maximize_view(key)
+	if key, ok := _max_hovered_window(); ok do maximize_window(key)
 }
 
-// Whether the view `key` is the one maximized: its tab menu's Maximize is
+// Whether the window `key` is the one maximized: its tab menu's Maximize is
 // checked.
-maximize_view_is :: proc(key: string) -> bool {
+maximize_window_is :: proc(key: string) -> bool {
 	return maximize_is_on() && _max.key == key
 }
 
-// Maximizes the view `key` (_MAX_GAME for the Game view), or puts it back
+// Maximizes the window `key` (_MAX_GAME for the Game window), or puts it back
 // when it is the one maximized.
-maximize_view :: proc(key: string) {
+maximize_window :: proc(key: string) {
 	#partial switch _max.state {
 	case .On:
 		if _max.key == key do _max.state = .Leave
@@ -81,14 +81,14 @@ maximize_view :: proc(key: string) {
 		host: string
 		if key == _MAX_GAME {
 			if !menu.show_game do return
-			name, dock = string(icons.TITLE_GAME), game_view_hover.dock
+			name, dock = string(icons.TITLE_GAME), game_window_hover.dock
 		} else {
 			w := wnd.find(key)
 			if w == nil do return
 			name, dock, host = fmt.tprintf("###%s", key), w.dock, w.host
 		}
 		if host != "" {
-			// A frame's view: a window of its own until it goes back.
+			// A frame's window: a window of its own until it goes back.
 			w := wnd.find(key)
 			_max.host = strings.clone(host, runtime.default_allocator())
 			wnd.host_release(w)
@@ -109,20 +109,20 @@ maximize_view :: proc(key: string) {
 	}
 }
 
-// The key of the frame's view that is maximized, "" for none: its frame
-// leaves it be until it comes back (workspace_view.odin).
+// The key of the frame's window that is maximized, "" for none: its frame
+// leaves it be until it comes back (window_workspace.odin).
 @(private)
 maximize_key :: proc() -> string {
 	if _max.host == "" || !maximize_is_on() do return ""
 	return _max.key
 }
 
-// Whether a view is maximized: the main dockspace shows nothing.
+// Whether a window is maximized: the main dockspace shows nothing.
 maximize_is_on :: proc() -> bool {
 	return _max.state == .Enter || _max.state == .On
 }
 
-// From draw_dockspace, right after the main dockspace and before any view.
+// From draw_dockspace, right after the main dockspace and before any window.
 maximize_frame :: proc(pos, size: im.Vec2) {
 	#partial switch _max.state {
 	case .Enter:
@@ -141,7 +141,7 @@ maximize_frame :: proc(pos, size: im.Vec2) {
 		_max.focus_next = true
 		_max.state = .On
 	case .On:
-		// A closed view puts the layout back.
+		// A closed window puts the layout back.
 		game := _max.key == _MAX_GAME
 		if (!game && wnd.find(_max.key) == nil) || (game && !menu.show_game) {
 			_max.state = .Leave
@@ -175,7 +175,7 @@ maximize_frame :: proc(pos, size: im.Vec2) {
 	}
 }
 
-// Frees what a maximized view holds, at editor shutdown.
+// Frees what a maximized window holds, at editor shutdown.
 maximize_shutdown :: proc() {
 	delete(_max.name, runtime.default_allocator())
 	delete(_max.key, runtime.default_allocator())
@@ -183,26 +183,26 @@ maximize_shutdown :: proc() {
 	_max = {}
 }
 
-// From the main loop after the views: the view is back in its node, so the
+// From the main loop after the windows: the window is back in its node, so the
 // placeholder leaves it.
-maximize_after_views :: proc() {
+maximize_after_windows :: proc() {
 	if _max.state != .Unplace do return
 	im.DockBuilderDockWindow(_MAX_PLACEHOLDER, 0)
 	_max.state = .Focus
 }
 
-// The view back in the node or the frame it left, and imgui.ini saving again.
+// The window back in the node or the frame it left, and imgui.ini saving again.
 @(private = "file")
 _max_restore :: proc() {
 	if _max.host != "" {
 		// Out of the maximize dockspace, then hosted again: its window goes.
 		im.DockBuilderDockWindow(_max.name, 0)
 		if w := wnd.find(_max.key); w == nil {
-			workspace_view_forget(_max.host, _max.key) // closed while maximized
+			workspace_window_forget(_max.host, _max.key) // closed while maximized
 		} else if wnd.find(_max.host) != nil && wnd.host_open(_max.key, _max.host) != nil {
-			workspace_view_reveal(_max.host, _max.key)
+			workspace_window_reveal(_max.host, _max.key)
 		} else {
-			// Its Workspace view closed, or another one holds it now: it keeps
+			// Its Workspace window closed, or another one holds it now: it keeps
 			// a window of its own and docks beside its siblings.
 			w.placed = false
 		}
@@ -217,7 +217,7 @@ _max_restore :: proc() {
 }
 
 // The maximize dockspace over the main dockspace's area. Its node takes no
-// split and lets go of nothing: it holds the one view.
+// split and lets go of nothing: it holds the one window.
 @(private = "file")
 _max_space :: proc(pos, size: im.Vec2) -> im.ID {
 	im.SetNextWindowPos(pos)
@@ -244,10 +244,10 @@ _max_tab_index :: proc(node: ^im.DockNode, name: cstring) -> int {
 	return -1
 }
 
-// The key of the view under the mouse (_MAX_GAME for the Game view).
+// The key of the window under the mouse (_MAX_GAME for the Game window).
 @(private = "file")
-_max_hovered_view :: proc() -> (key: string, ok: bool) {
+_max_hovered_window :: proc() -> (key: string, ok: bool) {
 	if w := wnd.hovered(); w != nil && (w.dock != 0 || w.host != "") do return w.key, true
-	if game_view_hover.frame >= im.GetFrameCount() - 1 && game_view_hover.dock != 0 do return _MAX_GAME, true
+	if game_window_hover.frame >= im.GetFrameCount() - 1 && game_window_hover.dock != 0 do return _MAX_GAME, true
 	return
 }

@@ -4,7 +4,7 @@ package editor
 // node's tab bar, opening actions for the tab that node is showing.
 //
 // imgui's own dock-node buttons are both off (apply_theme, menu_content.odin):
-// its close-all button closes every docked view at once, and its window-menu
+// its close-all button closes every docked window at once, and its window-menu
 // button's contents come from a handler that imgui reinstalls after startup,
 // so neither is usable here. The button below is a real tab item
 // (TabItemButton with Trailing) appended to the node's tab bar through
@@ -35,10 +35,10 @@ tab_menu_draw_all :: proc(root: ^im.DockNode) {
 	tab_menu_draw_all(root.ChildNodes[1])
 }
 
-// Views floating outside the dockspace: each sits in a dock tree of its own
-// (io.ConfigDockingAlwaysTabBar gives even a lone view one), which the
+// Windows floating outside the dockspace: each sits in a dock tree of its own
+// (io.ConfigDockingAlwaysTabBar gives even a lone window one), which the
 // dockspace walk above never reaches. Gives every leaf of those trees the same
-// button. Call after the views have drawn this frame, so the floating hosts
+// button. Call after the windows have drawn this frame, so the floating hosts
 // have begun.
 tab_menu_draw_floating :: proc() {
 	ctx := im.GetCurrentContext()
@@ -51,7 +51,7 @@ tab_menu_draw_floating :: proc() {
 	for w in ([^]^im.Window)(ctx.Windows.Data)[:ctx.Windows.Size] {
 		if w == nil || !w.Active || w.IsFallbackWindow do continue
 		if w.Flags & {.Tooltip, .Popup, .Modal, .DockNodeHost} != {} do continue
-		// A docked view is a child window of its dock host. A child that is
+		// A docked window is a child window of its dock host. A child that is
 		// part of another window carries its parent's name ("Parent/Child_ID").
 		if .ChildWindow in w.Flags && strings.contains(string(w.Name), "/") do continue
 		append(&names, w.Name)
@@ -130,7 +130,7 @@ _tab_menu_node :: proc(node: ^im.DockNode) {
 			im.DrawList_AddText(dl, glyph_pos, im.GetColorU32(col), icons.ICON_MD_MENU)
 
 			// The visible tab's toolbar items, left of the menu button. Here
-			// rather than inside the view because a view then owes the feature
+			// rather than inside the window because a window then owes the feature
 			// nothing: no call to make, no width to reserve, no placement to
 			// choose, and no silent failure when it forgets. Switching tabs
 			// switches the toolbar for free, since the bar belongs to the node
@@ -155,12 +155,12 @@ _tab_menu_node :: proc(node: ^im.DockNode) {
 				im.PushStyleVarImVec2(.FramePadding, {style.FramePadding.x, pad_y})
 				im.PushStyleVar(.FrameRounding, 3) // matches the menu button's hover
 				// Every node's items draw into the same HOST window, so two
-				// views whose items share a label would collide. The node id
+				// windows whose items share a label would collide. The node id
 				// is unique and is what distinguishes them.
 				im.PushIDInt(i32(node.ID_))
 
-				view := session.view_of(view_key_of(active_title))
-				items_w := view_tab_bar_width(view)
+				window := session.window_ref_of(window_key_of(active_title))
+				items_w := window_tab_bar_width(window)
 				// Only when the bar has room beside the tabs. A narrow node
 				// keeps its tabs readable and its items reachable through the
 				// menu instead.
@@ -170,7 +170,7 @@ _tab_menu_node :: proc(node: ^im.DockNode) {
 					item_h := im.GetFrameHeight()
 					y := bar.Min.y + max((bar_h - item_h) * 0.5, 0)
 					im.SetCursorScreenPos({bmin.x - items_w, y})
-					view_tab_bar_draw(view)
+					window_tab_bar_draw(window)
 				}
 
 				im.PopID()
@@ -189,7 +189,7 @@ _tab_menu_node :: proc(node: ^im.DockNode) {
 
 // The @(editor_window) origin behind the tab whose imgui window title is
 // `title`. Titles are "<icon> Name###id", and a plugin window's id is the text
-// after "###" — a built-in view has no registered window and answers "".
+// after "###" — a built-in window has no registered window and answers "".
 @(private = "file")
 _window_origin :: proc(title: cstring) -> string {
 	if title == nil do return ""
@@ -199,12 +199,12 @@ _window_origin :: proc(title: cstring) -> string {
 	return wnd.origin_of(s[idx + 3:])
 }
 
-// Close the view whose imgui window title is `title`: a built-in view clears
+// Close the window whose imgui window title is `title`: a built-in window clears
 // its open flag, a plugin window closes by id. Titles are "<icon> Name###id",
 // and a plugin window's id is the text after "###".
 @(private = "file")
-_close_view :: proc(title: cstring) {
-	if flag := menu.view_show_flag(title); flag != nil {
+_close_window :: proc(title: cstring) {
+	if flag := menu.window_show_flag(title); flag != nil {
 		flag^ = false
 		return
 	}
@@ -214,11 +214,11 @@ _close_view :: proc(title: cstring) {
 	}
 }
 
-// Closes the focused view, as its tab's Close Tab does: a hosted view
+// Closes the focused window, as its tab's Close Tab does: a hosted window
 // through its workspace, any other through the registry. The close guard
 // still asks about unapplied edits.
-@(command={name="View/Close", enabled=view_close_can, help="Closes the focused view"})
-view_close_focused :: proc() {
+@(command={name="Window/Close", enabled=window_close_can, help="Closes the focused window"})
+window_close_focused :: proc() {
 	w := wnd.focused()
 	if w.host != "" {
 		workspace_close_hosted(w)
@@ -227,28 +227,28 @@ view_close_focused :: proc() {
 	}
 }
 
-view_close_can :: proc() -> bool {
-	if wnd.focused() == nil do return keymap.disabled("No view has focus")
+window_close_can :: proc() -> bool {
+	if wnd.focused() == nil do return keymap.disabled("No window has focus")
 	return true
 }
 
-// Brings back the view closed last, as a window of its own.
-@(command={name="View/Reopen Closed", enabled=view_reopen_can, help="Brings back the view closed last, as a window of its own"})
-view_reopen_closed :: proc() {
+// Brings back the window closed last, as a window of its own.
+@(command={name="Window/Reopen Closed", enabled=window_reopen_can, help="Brings back the window closed last, as a window of its own"})
+window_reopen_closed :: proc() {
 	wnd.reopen_closed()
 }
 
-view_reopen_can :: proc() -> bool {
-	if !wnd.has_closed() do return keymap.disabled("No closed view to bring back")
+window_reopen_can :: proc() -> bool {
+	if !wnd.has_closed() do return keymap.disabled("No closed window to bring back")
 	return true
 }
 
-// Keys every view shares.
-@(keymap={name="Views"})
-views_keymap :: proc(km: ^keymap.Keymap) {
-	keymap.bind(km, "Ctrl+W", "View/Close")
-	keymap.bind(km, "Ctrl+Shift+T", "View/Reopen Closed")
-	keymap.bind(km, "Shift+Space", "View/Maximize")
+// Keys every window shares.
+@(keymap={name="Window"})
+window_keymap :: proc(km: ^keymap.Keymap) {
+	keymap.bind(km, "Ctrl+W", "Window/Close")
+	keymap.bind(km, "Ctrl+Shift+T", "Window/Reopen Closed")
+	keymap.bind(km, "Shift+Space", "Window/Maximize")
 }
 
 @(private = "file")
@@ -256,8 +256,8 @@ _tab_menu_contents :: proc(node: ^im.DockNode) {
 	// Acts on the tab the node is showing.
 	if node.VisibleWindow != nil {
 		active_title := node.VisibleWindow.Name
-		key := view_key_of(active_title)
-		if tab_menu_view_items(key) do _close_view(active_title)
+		key := window_key_of(active_title)
+		if tab_menu_window_items(key) do _close_window(active_title)
 		_move_to_workspace_menu(key)
 		im.Separator()
 	}
@@ -269,35 +269,35 @@ _tab_menu_contents :: proc(node: ^im.DockNode) {
 }
 
 // Move to Workspace: a window instance moves into a new frame of a workspace
-// a Workspace view shows (workspace_view.odin). A built-in view (Game) is no
+// a Workspace window shows (window_workspace.odin). A built-in window (Game) is no
 // window instance and stays docked.
 @(private = "file")
 _move_to_workspace_menu :: proc(key: string) {
 	inst := wnd.find(key)
-	if inst == nil || inst.host != "" || inst.id == WORKSPACE_VIEW do return
-	views := wnd.instances(WORKSPACE_VIEW)
-	if len(views) == 0 do return
+	if inst == nil || inst.host != "" || inst.id == WORKSPACE_WINDOW do return
+	windows := wnd.instances(WORKSPACE_WINDOW)
+	if len(windows) == 0 do return
 	if !im.BeginMenu("Move to Workspace") do return
 	defer im.EndMenu()
-	for v in views {
-		e, ok := workspace.find(workspace.view_selection(v.key))
-		if !ok || workspace_view_owner(e.ws.id) != v.key do continue
+	for v in windows {
+		e, ok := workspace.find(workspace.window_selection(v.key))
+		if !ok || workspace_window_owner(e.ws.id) != v.key do continue
 		im.PushIDStr(strings.clone_to_cstring(v.key, context.temp_allocator), nil)
-		if im.MenuItem(strings.clone_to_cstring(e.ws.name, context.temp_allocator)) do workspace_view_add(v.key, key)
+		if im.MenuItem(strings.clone_to_cstring(e.ws.name, context.temp_allocator)) do workspace_window_add(v.key, key)
 		im.PopID()
 	}
 }
 
-// The items a view's tab menu shows for the view `key`, wherever its tab is
+// The items a window's tab menu shows for the window `key`, wherever its tab is
 // (a dock node, a workspace frame): Save and Discard for its document, its
-// own @(view_menu) items, Close Tab. True when Close Tab was picked: the
+// own @(window_menu) items, Close Tab. True when Close Tab was picked: the
 // caller closes the tab its own way.
-tab_menu_view_items :: proc(key: string) -> (close: bool) {
-	view := session.view_of(key)
-	// The file the view shows first (session/documents.odin): Save, and
+tab_menu_window_items :: proc(key: string) -> (close: bool) {
+	window := session.window_ref_of(key)
+	// The file the window shows first (session/documents.odin): Save, and
 	// Discard after a confirmation. Both are off while it has no unsaved
 	// changes.
-	if d, ok := session.view_document(view.key); ok {
+	if d, ok := session.window_document(window.key); ok {
 		im.BeginDisabled(!d.dirty)
 		if im.MenuItem("Save") do session.document_save(d)
 		im.EndDisabled()
@@ -306,31 +306,31 @@ tab_menu_view_items :: proc(key: string) -> (close: bool) {
 		im.EndDisabled()
 		im.Separator()
 	}
-	// The view's OWN options next: they are what this menu is for, and the
-	// tab actions below are the same on every view.
-	if view_menu_draw_items(view) {
+	// The window's OWN options next: they are what this menu is for, and the
+	// tab actions below are the same on every window.
+	if window_menu_draw_items(window) {
 		im.Separator()
 	}
-	if im.MenuItem("Maximize", "Shift+Space", maximize_view_is(key)) do maximize_view(key)
+	if im.MenuItem("Maximize", "Shift+Space", maximize_window_is(key)) do maximize_window(key)
 	return im.MenuItem("Close Tab")
 }
 
 // --- Add Tab ----------------------------------------------------------------
 
-// Add Tab lists every view, sorted by name, and opens a new one in the node:
+// Add Tab lists every window, sorted by name, and opens a new one in the node:
 // the window's plain instance, or another instance when the plain one already
-// shows somewhere. The Game view is the one view that exists once: it opens
+// shows somewhere. The Game window is the one window that exists once: it opens
 // here when closed and is focused where it is when open.
 @(private = "file")
 _add_tab_items :: proc(node: im.ID) {
 	Entry :: struct {
 		label: string,
-		title: cstring,      // a built-in view's title
-		flag:  ^bool,        // a built-in view's open flag
+		title: cstring,      // a built-in window's title
+		flag:  ^bool,        // a built-in window's open flag
 		id:    string,       // a window's id
 	}
 	entries := make([dynamic]Entry, context.temp_allocator)
-	for v in menu.builtin_views() do append(&entries, Entry{label = _plain_label(v.title), title = v.title, flag = v.flag})
+	for v in menu.builtin_windows() do append(&entries, Entry{label = _plain_label(v.title), title = v.title, flag = v.flag})
 	for w in wnd.registered() do append(&entries, Entry{label = w.title, id = w.id})
 	slice.sort_by(entries[:], proc(a, b: Entry) -> bool { return a.label < b.label })
 	for e in entries {
@@ -340,7 +340,7 @@ _add_tab_items :: proc(node: im.ID) {
 				im.SetWindowFocusStr(e.title)
 			} else {
 				e.flag^ = true
-				_tab_dock(view_key_of(e.title), node)
+				_tab_dock(window_key_of(e.title), node)
 			}
 			continue
 		}
@@ -358,8 +358,8 @@ _plain_label :: proc(title: cstring) -> string {
 	return strings.trim_space(s)
 }
 
-// Docks a view into the node. It only sets the view's dock id (or its
-// imgui.ini entry, for a view not drawn yet), and the view joins the node
+// Docks a window into the node. It only sets the window's dock id (or its
+// imgui.ini entry, for a window not drawn yet), and the window joins the node
 // when it draws later this frame.
 @(private = "file")
 _tab_dock :: proc(key: string, node: im.ID) {

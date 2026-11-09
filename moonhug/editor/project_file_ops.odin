@@ -1,7 +1,7 @@
 package editor
 
-// Project-view file operations. The Assets/... menu (appearing in BOTH the
-// top Assets menu and the project view's right-click menu) carries Unity's
+// Project-window file operations. The Assets/... menu (appearing in BOTH the
+// top Assets menu and the Project window's right-click menu) carries Unity's
 // top section: Create | Reveal in Finder, Open, Delete, Rename, Copy Path |
 // Open Scene Additive. Cut/Copy/Paste/Duplicate are shortcut-only, like
 // Finder: cmd+C/X/V/D and cmd+Backspace in _project_handle_list_keys.
@@ -180,7 +180,7 @@ project_ops_create_asset :: proc(file_name: string, type_key: core.TypeKey) {
 }
 
 project_ops_show_in_finder :: proc() {
-	target := projectViewData.selectedFile
+	target := projectWindowData.selectedFile
 	if target == "" do target = _pv.current_path
 	if target == "" do return
 	file_reveal_in_os(target)
@@ -342,7 +342,7 @@ _project_delete_confirmed :: proc() {
 // --- Menu registration ----------------------------------------------------------
 // Assets/... items appear in the top menu AND the project right-click menu.
 
-@(menu_item = {path = "Assets/Create/Folder", order = -20, shortcut = "", help = "Creates a folder in the Project view's open folder"})
+@(menu_item = {path = "Assets/Create/Folder", order = -20, shortcut = "", help = "Creates a folder in the Project window's open folder"})
 project_menu_new_folder :: proc() {
 	project_ops_new_folder()
 }
@@ -355,12 +355,12 @@ project_menu_ops_separator :: proc() {}
 
 @(private)
 _project_has_selection :: proc() -> bool {
-	return projectViewData.selectedFile != "" || keymap.disabled("No file is selected")
+	return projectWindowData.selectedFile != "" || keymap.disabled("No file is selected")
 }
 
 @(private)
 _project_selection_renameable :: proc() -> bool {
-	sel := projectViewData.selectedFile
+	sel := projectWindowData.selectedFile
 	if sel == "" do return keymap.disabled("No file is selected")
 	if project_path_is_protected(sel) do return keymap.disabled("The Assets and Packages roots and the package folders keep their names")
 	return true
@@ -368,8 +368,8 @@ _project_selection_renameable :: proc() -> bool {
 
 @(private)
 _project_selection_is_scene :: proc() -> bool {
-	if projectViewData.selectedFile == "" do return keymap.disabled("No file is selected")
-	return strings.has_suffix(projectViewData.selectedFile, ".scene") || keymap.disabled("The selected file is not a scene")
+	if projectWindowData.selectedFile == "" do return keymap.disabled("No file is selected")
+	return strings.has_suffix(projectWindowData.selectedFile, ".scene") || keymap.disabled("The selected file is not a scene")
 }
 
 @(menu_item = {path = "Assets/Reveal in Finder", order = -69, shortcut = "", help = "Shows the selected file in the OS file browser"})
@@ -379,7 +379,7 @@ project_menu_show_in_finder :: proc() {
 
 @(menu_item = {path = "Assets/Open", order = -68, enabled = _project_has_selection, help = "Opens the selected file in the program the OS assigns to it"})
 project_menu_open :: proc() {
-	sel := projectViewData.selectedFile
+	sel := projectWindowData.selectedFile
 	if sel == "" do return
 	file_open_in_os(sel)
 }
@@ -396,14 +396,14 @@ project_menu_rename :: proc() {
 
 @(menu_item = {path = "Assets/Copy Path", order = -65, enabled = _project_has_selection, help = "Copies the selected file's path"})
 project_menu_copy_path :: proc() {
-	sel := projectViewData.selectedFile
+	sel := projectWindowData.selectedFile
 	if sel == "" do return
 	im.SetClipboardText(strings.clone_to_cstring(sel, context.temp_allocator))
 }
 
 @(private)
 _project_selection_has_guid :: proc() -> bool {
-	sel := projectViewData.selectedFile
+	sel := projectWindowData.selectedFile
 	if sel == "" do return keymap.disabled("No file is selected")
 	_, ok := assets.asset_db_get_guid(sel)
 	return ok || keymap.disabled("The selected file is not an asset")
@@ -411,7 +411,7 @@ _project_selection_has_guid :: proc() -> bool {
 
 @(menu_item = {path = "Assets/Copy GUID", order = -64, enabled = _project_selection_has_guid, help = "Copies the selected asset's GUID"})
 project_menu_copy_uuid :: proc() {
-	guid, ok := assets.asset_db_get_guid(projectViewData.selectedFile)
+	guid, ok := assets.asset_db_get_guid(projectWindowData.selectedFile)
 	if !ok do return
 	im.SetClipboardText(strings.clone_to_cstring(uuid.to_string(guid, context.temp_allocator), context.temp_allocator))
 }
@@ -420,5 +420,5 @@ project_menu_copy_uuid :: proc() {
 @(menu_item = {path = "Assets/Open Scene Additive", order = -55, enabled = _project_selection_is_scene, help = "Opens the selected scene beside the open ones"})
 project_menu_open_scene_additive :: proc() {
 	if !_project_selection_is_scene() do return
-	asset_pipeline.asset_open_additive(projectViewData.selectedFile)
+	asset_pipeline.asset_open_additive(projectWindowData.selectedFile)
 }

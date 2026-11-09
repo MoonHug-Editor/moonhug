@@ -161,9 +161,9 @@ test_discard_restores_the_file_for_good :: proc(t: ^testing.T) {
 	if doc == nil do return
 	inspector.load_from_file(path)
 
-	d, ok := session.view_document("Project Inspector")
+	d, ok := session.window_document("Project Inspector")
 	testing.expect(t, ok && d.dirty && d.key == doc, "the Project Inspector's document is the edited material")
-	testing.expect(t, strings.contains(string(session.view_title(icons.TITLE_PROJECT_INSPECTOR)), " *###"), "its tab carries a star")
+	testing.expect(t, strings.contains(string(session.window_title(icons.TITLE_PROJECT_INSPECTOR)), " *###"), "its tab carries a star")
 	clean, _ := filepath.clean(path, context.temp_allocator)
 	testing.expect(t, clean in session.documents_dirty_paths(), "the project window marks the file")
 
@@ -172,7 +172,7 @@ test_discard_restores_the_file_for_good :: proc(t: ^testing.T) {
 	testing.expect_value(t, (^engine.Material)(doc.data.data).color, [4]f32{1, 1, 1, 1})
 	testing.expect_value(t, len(s.items), 0)
 	testing.expect(t, inspector.inspectorData.fileData.data == doc.data.data, "the inspector follows the new instance")
-	testing.expect(t, session.view_title(icons.TITLE_PROJECT_INSPECTOR) == icons.TITLE_PROJECT_INSPECTOR, "the star goes")
+	testing.expect(t, session.window_title(icons.TITLE_PROJECT_INSPECTOR) == icons.TITLE_PROJECT_INSPECTOR, "the star goes")
 }
 
 // File/Save writes every document with unsaved changes, an asset edited

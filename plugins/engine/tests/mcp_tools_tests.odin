@@ -310,7 +310,7 @@ test_list_objects_filters_by_component :: proc(t: ^testing.T) {
 	testing.expect_value(t, err.code, "not_found")
 }
 
-// The view tools name a window by what its tab shows and by its id: imgui's
+// The window tools name a window by what its tab shows and by its id: imgui's
 // "<icon> Title###id" splits at ###, the leading icon glyph and spaces
 // dropped. A name without ### is its own id.
 @(test)

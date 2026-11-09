@@ -110,8 +110,8 @@ asset_pipeline_reimport :: proc(source_path: string) -> bool {
 _reimports_pending: [dynamic]string
 
 // Reimports `source_path` at the start of the next frame
-// (asset_pipeline_reimport_pending), before any view draws. A reimport frees
-// what the asset fed, its GPU textures among them, and a view drawn earlier
+// (asset_pipeline_reimport_pending), before any window draws. A reimport frees
+// what the asset fed, its GPU textures among them, and a window drawn earlier
 // in the frame may already have queued one of them for drawing. An editor
 // that writes import settings mid-frame (an Apply button) asks for this.
 asset_pipeline_reimport_later :: proc(source_path: string) {
@@ -120,7 +120,7 @@ asset_pipeline_reimport_later :: proc(source_path: string) {
 	append(&_reimports_pending, strings.clone(source_path))
 }
 
-// Runs the queued reimports. Once per frame, before any view draws.
+// Runs the queued reimports. Once per frame, before any window draws.
 asset_pipeline_reimport_pending :: proc() {
 	context.allocator = runtime.default_allocator()
 	for len(_reimports_pending) > 0 {

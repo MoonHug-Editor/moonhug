@@ -48,7 +48,7 @@ apply_theme :: proc() {
     s.IndentSpacing = 14
     // No collapse triangle before a window's title or a dock node's tabs
     // (Unity has none; tabs start at the panel edge), and no close-all button
-    // on a dock node: closing every docked view at once is a click away from
+    // on a dock node: closing every docked window at once is a click away from
     // the tab bar and rarely wanted. Each tab keeps its own X.
     s.WindowMenuButtonPosition = .None
     s.DockingNodeHasCloseButton = false
@@ -87,12 +87,12 @@ set_theme :: proc(theme: Theme) {
 
 quit_requested := false
 
-// Window menu, Unity's layout: General holds the everyday views in Unity's
-// order, domain submenus (Animation) follow. The undo History view lives
-// under Edit, right below Undo/Redo (Unity's Edit > Undo History).
+// The Window menu: General holds the everyday windows, domain submenus
+// (Animation) follow, then Theme and Reset Layout. The undo History window
+// lives under Edit, right below Undo/Redo (Edit > Undo History).
 //
-// Entries are OPEN commands, not toggles (Unity): selecting one shows the
-// view and fronts its dock tab. Windows close from the tab's X button,
+// Entries are OPEN commands, not toggles: selecting one shows the
+// window and fronts its dock tab. Windows close from the tab's X button,
 // which writes the same show_* flag through Begin's p_open pointer.
 // Shortcuts match Unity (Ctrl+1..6 = Cmd+1..6 on macOS): Scene, Game,
 // Inspector, Hierarchy, Project, Animation, and Cmd+Shift+C for Console.
@@ -105,30 +105,30 @@ _open_window :: proc(show: ^bool, title: cstring) {
 	im.SetWindowFocusStr(title)
 }
 
-// The open flag behind a built-in view's window title, so the tab menu can
+// The open flag behind a built-in window's title, so the tab menu can
 // close the tab it is opened on. Plugin windows keep their own list
-// (window/window.odin), so this returns nil for them. Views match by the
+// (window/window.odin), so this returns nil for them. Windows match by the
 // text after ###, the window's id: the label before it changes, a star while
-// the view's file has unsaved changes.
-view_show_flag :: proc(title: cstring) -> ^bool {
+// the window's file has unsaved changes.
+window_show_flag :: proc(title: cstring) -> ^bool {
 	id := _window_id(string(title))
-	for v in builtin_views() do if _window_id(string(v.title)) == id do return v.flag
+	for v in builtin_windows() do if _window_id(string(v.title)) == id do return v.flag
 	return nil
 }
 
-// A view that exists once, opened by its flag: the Game view. Every other
-// view is a window instance (editor/window).
-Builtin_View :: struct {
+// A window that exists once, opened by its flag: the Game window. Every other
+// window is a window instance (editor/window).
+Builtin_Window :: struct {
 	title: cstring,
 	flag:  ^bool,
 }
 
-builtin_views :: proc() -> []Builtin_View {
-	return _builtin_views[:]
+builtin_windows :: proc() -> []Builtin_Window {
+	return _builtin_windows[:]
 }
 
 @(private = "file")
-_builtin_views := [?]Builtin_View{
+_builtin_windows := [?]Builtin_Window{
 	{icons.TITLE_GAME, &show_game},
 }
 
@@ -139,13 +139,13 @@ _window_id :: proc(title: string) -> string {
 }
 
 
-@(menu_item={path="Window/General/Scene", order=0, shortcut="Ctrl+1", help="Opens the Scene view"})
+@(menu_item={path="Window/General/Scene", order=0, shortcut="Ctrl+1", help="Opens the Scene window"})
 window_menu_scene :: proc() { wnd.open("Scene") }
 
-@(menu_item={path="Window/General/Game", order=1, shortcut="Ctrl+2", help="Opens the Game view"})
+@(menu_item={path="Window/General/Game", order=1, shortcut="Ctrl+2", help="Opens the Game window"})
 window_menu_game :: proc() { _open_window(&show_game, icons.TITLE_GAME) }
 
-// The views are window instances (editor/window). The engine declares the
+// The windows are window instances (editor/window). The engine declares the
 // Inspector and the Hierarchy, so their items are off without it.
 @(menu_item={path="Window/General/Inspector", order=2, shortcut="Ctrl+3", enabled=_inspector_registered, help="Opens the Inspector, which edits the selected objects"})
 window_menu_inspector :: proc() { wnd.open("Inspector") }
@@ -157,7 +157,7 @@ window_menu_hierarchy :: proc() { wnd.open("Hierarchy") }
 
 _hierarchy_registered :: proc() -> bool { return wnd.is_registered("Hierarchy") || keymap.disabled("The engine plugin is off") }
 
-@(menu_item={path="Window/General/Project", order=5, shortcut="Ctrl+5", help="Opens the Project view, the project's folders and assets"})
+@(menu_item={path="Window/General/Project", order=5, shortcut="Ctrl+5", help="Opens the Project window, the project's folders and assets"})
 window_menu_project :: proc() { wnd.open("Project") }
 
 @(menu_item={path="Window/General/Project Inspector", order=6, shortcut="Ctrl+Alt+5", help="Opens the Project Inspector, which edits the selected asset"})
@@ -166,10 +166,10 @@ window_menu_project_inspector :: proc() { wnd.open("Project Inspector") }
 @(menu_item={path="Window/General/Console", order=7, shortcut="Ctrl+Shift+C", help="Opens the Console, the editor's log"})
 window_menu_console :: proc() { wnd.open("Console") }
 
-@(menu_item={path="Window/General/Workspace", order=10, shortcut="", help="Opens a Workspace, a view that holds other views"})
+@(menu_item={path="Window/General/Workspace", order=10, shortcut="", help="Opens a Workspace, a window that holds other windows"})
 window_menu_workspace :: proc() { wnd.open("workspace") }
 
-@(menu_item={path="Window/General/Output", order=8, shortcut="", help="Opens the Output view"})
+@(menu_item={path="Window/General/Output", order=8, shortcut="", help="Opens the Output window"})
 window_menu_output :: proc() { wnd.open("Output") }
 
 @(menu_item={path="Window/General/Background Tasks", order=9, shortcut="", help="Shows the tasks running in the background and their progress"})
@@ -179,16 +179,16 @@ window_menu_background_tasks :: proc() { background_tasks_requested = true }
 // Background Tasks panel on the next frame and clears it.
 background_tasks_requested := false
 
-@(menu_item={path="Edit/Undo History", order=-98, shortcut="", help="Opens the History view, the list of undo steps"})
+@(menu_item={path="Edit/Undo History", order=-98, shortcut="", help="Opens the History window, the list of undo steps"})
 window_menu_history :: proc() { wnd.open("History") }
 
 // The animation plugin declares both windows, so the items are off without it.
-@(menu_item={path="Window/Animation/Animation", order=0, shortcut="Ctrl+6", enabled=_animation_registered, help="Opens the Animation view"})
+@(menu_item={path="Window/Animation/Animation", order=0, shortcut="Ctrl+6", enabled=_animation_registered, help="Opens the Animation window"})
 window_menu_animation :: proc() { wnd.open("Animation") }
 
 _animation_registered :: proc() -> bool { return wnd.is_registered("Animation") || keymap.disabled("The animation plugin is off") }
 
-@(menu_item={path="Window/Animation/Playable Graph", order=1, shortcut="", enabled=_playable_graph_registered, help="Opens the Playable Graph view"})
+@(menu_item={path="Window/Animation/Playable Graph", order=1, shortcut="", enabled=_playable_graph_registered, help="Opens the Playable Graph window"})
 window_menu_playable_graph :: proc() { wnd.open("Playable Graph") }
 
 _playable_graph_registered :: proc() -> bool { return wnd.is_registered("Playable Graph") || keymap.disabled("The animation plugin is off") }
@@ -198,7 +198,7 @@ file_save_menu :: proc()
 {
     // Every open document with unsaved edits: scenes, assets, the Shader
     // Graph's and the Render Pipeline's files (session/documents.odin). One
-    // shortcut for all of them, and a view's tab menu saves its own.
+    // shortcut for all of them, and a window's tab menu saves its own.
     saved, failed := session.documents_save_all()
     if failed > 0 do log.errorf("[Save] %d of %d unsaved files could not be saved, see above", failed, saved + failed)
 }
@@ -225,7 +225,7 @@ help_about_menu :: proc() {
 }
 
 // Diagnostics for the "keyboard input dies until restart" bug — see
-// editor/view_input_debug.odin. Mouse-only operable on purpose.
+// editor/window_input_debug.odin. Mouse-only operable on purpose.
 @(menu_item={path="Help/Input Debug", order=999, help="Shows the key and mouse state the editor sees, to find lost input"})
 show_input_debug := false
 
@@ -234,67 +234,67 @@ show_input_debug := false
 // menu kind — an action plus a tick predicate is what one-of-N is.
 
 @(menu_item={path="Window/Theme/Spectrum Dark", order=-14, shortcut="", checked=theme_is_spectrum_dark, help="Switches the editor to the Spectrum Dark theme"})
-menu_item_view_theme_spectrum_dark :: proc() {
+menu_item_window_theme_spectrum_dark :: proc() {
     set_theme(.Spectrum_Dark)
 }
 theme_is_spectrum_dark :: proc() -> bool { return active_theme == .Spectrum_Dark }
 
 @(menu_item={path="Window/Theme/Spectrum Light", order=-13, shortcut="", checked=theme_is_spectrum_light, help="Switches the editor to the Spectrum Light theme"})
-menu_item_view_theme_spectrum_light :: proc() {
+menu_item_window_theme_spectrum_light :: proc() {
     set_theme(.Spectrum_Light)
 }
 theme_is_spectrum_light :: proc() -> bool { return active_theme == .Spectrum_Light }
 
 @(menu_item={path="Window/Theme/Dark", order=-12, shortcut="", checked=theme_is_dark, help="Switches the editor to the Dark theme"})
-menu_item_view_theme_dark :: proc() {
+menu_item_window_theme_dark :: proc() {
     set_theme(.Dark)
 }
 theme_is_dark :: proc() -> bool { return active_theme == .Dark }
 
 @(menu_item={path="Window/Theme/Light", order=-11, shortcut="", checked=theme_is_light, help="Switches the editor to the Light theme"})
-menu_item_view_theme_light :: proc() {
+menu_item_window_theme_light :: proc() {
     set_theme(.Light)
 }
 theme_is_light :: proc() -> bool { return active_theme == .Light }
 
 @(menu_item={path="Window/Theme/Classic", order=-10, shortcut="", checked=theme_is_classic, help="Switches the editor to the Classic theme"})
-menu_item_view_theme_classic :: proc() {
+menu_item_window_theme_classic :: proc() {
     set_theme(.Classic)
 }
 theme_is_classic :: proc() -> bool { return active_theme == .Classic }
 
 @(menu_item={path="Window/Theme/Photoshop", order=-9, shortcut="", checked=theme_is_photoshop, help="Switches the editor to the Photoshop theme"})
-menu_item_view_theme_photoshop :: proc() {
+menu_item_window_theme_photoshop :: proc() {
     set_theme(.Photoshop)
 }
 theme_is_photoshop :: proc() -> bool { return active_theme == .Photoshop }
 
 @(menu_item={path="Window/Theme/Unreal", order=-8, shortcut="", checked=theme_is_unreal, help="Switches the editor to the Unreal theme"})
-menu_item_view_theme_unreal :: proc() {
+menu_item_window_theme_unreal :: proc() {
     set_theme(.Unreal)
 }
 theme_is_unreal :: proc() -> bool { return active_theme == .Unreal }
 
 @(menu_item={path="Window/Theme/Deep Dark", order=-7, shortcut="", checked=theme_is_deep_dark, help="Switches the editor to the Deep Dark theme"})
-menu_item_view_theme_deep_dark :: proc() {
+menu_item_window_theme_deep_dark :: proc() {
     set_theme(.Deep_Dark)
 }
 theme_is_deep_dark :: proc() -> bool { return active_theme == .Deep_Dark }
 
 @(menu_item={path="Window/Theme/Dracula", order=-6, shortcut="", checked=theme_is_dracula, help="Switches the editor to the Dracula theme"})
-menu_item_view_theme_dracula :: proc() {
+menu_item_window_theme_dracula :: proc() {
     set_theme(.Dracula)
 }
 theme_is_dracula :: proc() -> bool { return active_theme == .Dracula }
 
 @(menu_item={path="Window/Theme/Catppuccin Mocha", order=-5, shortcut="", checked=theme_is_catppuccin_mocha, help="Switches the editor to the Catppuccin Mocha theme"})
-menu_item_view_theme_catppuccin_mocha :: proc() {
+menu_item_window_theme_catppuccin_mocha :: proc() {
     set_theme(.Catppuccin_Mocha)
 }
 theme_is_catppuccin_mocha :: proc() -> bool { return active_theme == .Catppuccin_Mocha }
 
 @(menu_item={path="Window/Theme/Paper And Ink", order=-4, shortcut="", checked=theme_is_paper_and_ink, help="Switches the editor to the Paper And Ink theme"})
-menu_item_view_theme_paper_and_ink :: proc() {
+menu_item_window_theme_paper_and_ink :: proc() {
     set_theme(.Paper_And_Ink)
 }
 theme_is_paper_and_ink :: proc() -> bool { return active_theme == .Paper_And_Ink }

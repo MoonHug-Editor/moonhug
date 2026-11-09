@@ -48,7 +48,7 @@ _dir_has_odin :: proc(dir: string) -> bool {
 }
 
 // "moonhug/packages/foo" -> ("foo", ""). "moonhug/packages/foo/editor" ->
-// ("foo", "editor"). A sub below editor/ ("editor/scene_views") is an editor
+// ("foo", "editor"). A sub below editor/ ("editor/scene_windows") is an editor
 // half too. Any other sub ("foo/nodes") is a library subpackage.
 package_name_of :: proc(pkg_path: string) -> (name: string, sub: string, ok: bool) {
 	if !strings.has_prefix(pkg_path, PACKAGES_PREFIX) do return "", "", false
@@ -98,7 +98,7 @@ generate :: proc(w: ^db.World) -> bool {
 		// declared package name must match — <name> for the root,
 		// <name>_<sub> for subpackages (tween_editor, foo_util).
 		// The subpackages below a plugin's editor/ (the engine's
-		// editor/scene_views) are editor halves too. They are imported blank
+		// editor/scene_windows) are editor halves too. They are imported blank
 		// here and by their declared name everywhere else, so the lint leaves
 		// their names alone: the declaration alone keeps them unique.
 		if sub != "" {

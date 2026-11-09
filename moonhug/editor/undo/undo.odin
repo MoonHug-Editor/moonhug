@@ -916,7 +916,7 @@ _same_target :: proc(a, b: Property_Target) -> bool {
 	return a.kind == b.kind && a.scene == b.scene && a.local_id == b.local_id && a.offset == b.offset && a.type_id == b.type_id && a.raw_ptr == b.raw_ptr && a.asset_guid == b.asset_guid && a.asset_doc == b.asset_doc && a.asset_copy == b.asset_copy && (a.kind != .Pooled || a.handle.type_key == b.handle.type_key)
 }
 
-// --- History view details ------------------------------------------------------
+// --- History window details ------------------------------------------------------
 
 @(private)
 _append_selection_state :: proc(b: ^strings.Builder, name: string, st: Selection_State, depth: int) {

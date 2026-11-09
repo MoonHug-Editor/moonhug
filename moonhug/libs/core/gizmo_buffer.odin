@@ -10,7 +10,7 @@ import "core:time"
 // that package.
 //
 // One buffer per UserContext, so a preview world's drawing never shows in the
-// scene view. Arrays use the default allocator: they outlive the frame.
+// Scene window. Arrays use the default allocator: they outlive the frame.
 
 // A line (p[0], p[1]) or a triangle, in world space. Lines and triangles share
 // one list so they draw in the order they were recorded: shapes drawn without
@@ -43,7 +43,7 @@ Gizmo_Icon_Image :: union {
 }
 
 // A scene icon (gizmos.icon): kept as data, so each view draws it facing its
-// own camera at `px` pixels wide. The scene view selects `owner` on a click
+// own camera at `px` pixels wide. The Scene window selects `owner` on a click
 // inside it.
 Gizmo_Icon :: struct {
 	pos:      [3]f32, // world
@@ -64,16 +64,16 @@ Gizmo_Label :: struct {
 }
 
 // Who a shape is for, drawn in this order, so a later channel paints over an
-// earlier one where their shapes coincide. The scene view draws .Game,
-// .Outline, .Editor and .Tools, the game view .Game and .Editor_Game. The
+// earlier one where their shapes coincide. The Scene window draws .Game,
+// .Outline, .Editor and .Tools, the Game window .Game and .Editor_Game. The
 // @(comp_on_draw_gizmos) procs record once per view, with that view's camera,
 // so pixel sizes and camera-facing parts fit the view that shows them.
 Gizmo_Channel :: enum u8 {
 	Game,        // gameplay and @(debug_draw) code
-	Outline,     // the selection outline: scene view only, under the gizmos
+	Outline,     // the selection outline: Scene window only, under the gizmos
 	Editor,      // @(comp_on_draw_gizmos) procs, recorded with the scene camera
 	Editor_Game, // the same procs recorded with the game camera
-	Tools,       // handles and the transform gizmo: scene view only, over everything
+	Tools,       // handles and the transform gizmo: Scene window only, over everything
 }
 
 // How long a shape stays. .Fixed_Tick: recorded during a fixed tick, kept
@@ -237,7 +237,7 @@ gizmo_batch_clear :: proc(b: ^Gizmo_Batch) {
 }
 
 // This frame's shapes of `channels` go, for a view that records them again
-// with its own camera (each Scene view copy).
+// with its own camera (each Scene window copy).
 gizmo_buffer_clear_channels :: proc(buf: ^Gizmo_Buffer, channels: bit_set[Gizmo_Channel]) {
 	for ch in channels {
 		for &b in buf.batches[.Frame][ch] do gizmo_batch_clear(&b)

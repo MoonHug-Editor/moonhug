@@ -170,7 +170,7 @@ one, and rewriting it over `Property` would replace one walker with another.
 
 - **No deferred apply.** Writes go straight to the component and the row's
   before/after snapshot gives correct undo. A buffered copy applied on commit
-  would be a second source of truth for a value the scene view, the sequencer
+  would be a second source of truth for a value the Scene window, the sequencer
   window and the preview all read continuously.
 - **No typed accessors.** `(ptr, tid)` plus the type's drawing chain is already the
   type dispatch, and it covers types a fixed accessor list would not.

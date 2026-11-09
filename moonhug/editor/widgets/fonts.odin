@@ -1,6 +1,6 @@
 package widgets
 
-// The editor's base font size and its large icon font, for views outside the
+// The editor's base font size and its large icon font, for windows outside the
 // editor root package. The editor loads the fonts (editor/fonts.odin) and sets
 // the font here at init (widgets can't import the editor).
 

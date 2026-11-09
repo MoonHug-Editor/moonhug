@@ -71,9 +71,9 @@ test_window_instances_per_asset :: proc(t: ^testing.T) {
 	wa.data = new(int)
 	wb.data = new(int)
 
-	d, ok := session.view_document(key_a)
+	d, ok := session.window_document(key_a)
 	testing.expect(t, ok && d.guid == a, "asset A's instance names A's document")
-	_, none := session.view_document(key_b)
+	_, none := session.window_document(key_b)
 	testing.expect(t, !none, "asset B has no open document")
 
 	keys := wnd.open_keys()
@@ -86,7 +86,7 @@ test_window_instances_per_asset :: proc(t: ^testing.T) {
 	wnd.draw_all() // removes closed instances, draws nothing
 	testing.expect_value(t, _fixture.closed - before, 3)
 	testing.expect(t, !wnd.is_open("instance_test"), "every instance is gone")
-	_, still := session.view_document(key_a)
+	_, still := session.window_document(key_a)
 	testing.expect(t, !still, "a closed instance names no document")
 
 	// A saved key reopens when its window exists. Asset A is not in the
@@ -130,7 +130,7 @@ test_window_numbered_instances :: proc(t: ^testing.T) {
 	wnd.draw_all()
 }
 
-// The copy opened or clicked in last is the one code outside a view acts
+// The copy opened or clicked in last is the one code outside a window acts
 // on, and a window's plain state needs no closed proc: the copy frees it.
 @(test)
 test_window_last_and_state :: proc(t: ^testing.T) {
@@ -159,7 +159,7 @@ test_window_last_and_state :: proc(t: ^testing.T) {
 	testing.expect(t, wnd.last("state_test") == nil, "no copy is open")
 }
 
-// A hosted instance (a workspace frame's view) opens from its key, never
+// A hosted instance (a workspace frame's window) opens from its key, never
 // draws as a window of its own, is left out of the saved layout (the
 // workspace saves it), and gets its own window back on release.
 @(test)
@@ -198,10 +198,10 @@ test_window_host_ownership :: proc(t: ^testing.T) {
 	testing.expect(t, wnd.host_open("instance_test/11", "host_b") == nil, "claimed last pass, B still gets nil")
 
 	// A pass where A does not claim it, and A is no open window (it closed):
-	// the view closes, since a workspace changes no layout outside itself.
+	// the window closes, since a workspace changes no layout outside itself.
 	// Any host may then open it afresh.
 	wnd.draw_all()
-	testing.expect(t, !a.open && a.host == "", "let go of, the view closes")
+	testing.expect(t, !a.open && a.host == "", "let go of, the window closes")
 	b := wnd.host_open("instance_test/11", "host_b")
 	testing.expect(t, b != nil && b.host == "host_b", "B opens it afresh")
 	wnd.close(b.key)
@@ -213,7 +213,7 @@ test_window_host_ownership :: proc(t: ^testing.T) {
 	testing.expect(t, h != nil, "the host opens")
 	if h == nil do return
 	c := wnd.host_open("instance_test/13", h.key)
-	testing.expect(t, c != nil, "the host holds a view")
+	testing.expect(t, c != nil, "the host holds a window")
 	defer {
 		wnd.close(h.key)
 		if c != nil do wnd.close(c.key)

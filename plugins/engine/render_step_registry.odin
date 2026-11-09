@@ -51,8 +51,8 @@ Render_Ctx :: struct {
 	// grid line hides behind a mesh and a gizmo can test against it.
 	overlay_under: proc(),
 	overlay_over:  proc(),
-	// The editor's scene view: the run the Render Pipeline window inspects
-	// first, and the one "Show in scene view" replaces the image of.
+	// The editor's Scene window: the run the Render Pipeline window inspects
+	// first, and the one "Show in Scene window" replaces the image of.
 	scene_view: bool,
 	// The view's scene depth holds the opaque meshes already (depth_prepass
 	// ran in this run): scene_opaque keeps it instead of clearing it.

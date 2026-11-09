@@ -174,8 +174,8 @@ canvas_scale :: proc(canvas_tH: Transform_Handle, screen: [2]f32) -> f32 {
 // --- Canvas space -------------------------------------------------------------------------
 
 // The game viewport in pixels as last rendered (render_world_cameras), the
-// size every canvas measures itself against outside a Game view: the scene
-// view, the rect tool, position conversion. 1920x1080 until a frame rendered.
+// size every canvas measures itself against outside a Game window: the Scene
+// window, the rect tool, position conversion. 1920x1080 until a frame rendered.
 @(private = "file") _canvas_game_viewport: [2]f32 = {1920, 1080}
 
 canvas_set_game_viewport :: proc(size: [2]f32) {
@@ -186,13 +186,13 @@ canvas_game_viewport :: proc() -> [2]f32 {
 	return _canvas_game_viewport
 }
 
-// The canvas rect for a Game view: the viewport in canvas units.
+// The canvas rect for a Game window: the viewport in canvas units.
 canvas_rect :: proc(view: Render_View, canvas_tH: Transform_Handle) -> Rect {
 	screen := [2]f32{view.width, view.height}
 	return Rect{pos = {0, 0}, size = screen / canvas_scale(canvas_tH, screen)}
 }
 
-// The canvas in WORLD space (the scene view): a rect with its bottom-left at
+// The canvas in WORLD space (the Scene window): a rect with its bottom-left at
 // the origin in the XY plane, one world unit per canvas unit, sized like the
 // game viewport over the canvas scale. Editor tools work in this space.
 canvas_world_rect :: proc(canvas_tH: Transform_Handle) -> Rect {
@@ -202,10 +202,10 @@ canvas_world_rect :: proc(canvas_tH: Transform_Handle) -> Rect {
 
 // Where a canvas sits: its root rect in canvas units and the matrix taking
 // canvas space to world. `screen` is the viewport the canvas measures against
-// (a Game view's size, else canvas_game_viewport).
+// (a Game window's size, else canvas_game_viewport).
 //
 // - Overlay: the viewport rect at the world origin, identity. `in_world` is
-//   false: a Game view maps it onto its pixels instead (canvas_view_corners).
+//   false: a Game window maps it onto its pixels instead (canvas_view_corners).
 // - ScreenSpaceCamera: the viewport rect, placed plane_distance in front of
 //   the camera, facing it, scaled so its height spans the camera's view there
 //   (2 d tan(fov/2)). Without a resolvable camera it behaves as Overlay.
@@ -269,7 +269,7 @@ rect_transform_driven :: proc(tH: Transform_Handle) -> bool {
 }
 
 // The canvas's nodes with WORLD transforms (canvas_placement applied), for
-// gizmos, picking and framing in the scene view. Returns the placement too.
+// gizmos, picking and framing in the Scene window. Returns the placement too.
 canvas_resolve_placed :: proc(canvas_tH: Transform_Handle, out: ^[dynamic]Node_Rect) -> (root: Rect, xform: matrix[4, 4]f32) {
 	root, xform, _ = canvas_placement(canvas_tH, _canvas_game_viewport)
 	canvas_resolve_rects(canvas_tH, root, out)
@@ -277,11 +277,11 @@ canvas_resolve_placed :: proc(canvas_tH: Transform_Handle, out: ^[dynamic]Node_R
 	return
 }
 
-// z01 NDC depth of the canvas plane in a Game view: just inside the near
+// z01 NDC depth of the canvas plane in a Game window: just inside the near
 // plane (0), so nothing in the scene passes the depth test in front of it.
 CANVAS_NDC_Z :: f32(0.0005)
 
-// The world-space quad screen-pixel corners cover in a Game view: each
+// The world-space quad screen-pixel corners cover in a Game window: each
 // unprojected onto the canvas plane, so the quad lands on exactly those
 // pixels whatever the camera does. Screen y is up, like canvas space.
 canvas_view_corners :: proc(view: Render_View, screen: [4][2]f32) -> [4][3]f32 {
@@ -309,8 +309,8 @@ canvas_world_corners :: proc(r: Rect) -> [4][3]f32 {
 // node's own children resolve in, to canvas space: the parent chain, then
 // this node's Transform rotation and scale around its pivot. Canvas space is
 // 3D with the canvas in the XY plane: a rotation around X or Y tilts the
-// rect out of the plane, which the Game view draws orthographically (the
-// tilt shows as foreshortening) and the scene view shows in depth. Nodes
+// rect out of the plane, which the Game window draws orthographically (the
+// tilt shows as foreshortening) and the Scene window shows in depth. Nodes
 // without a RectTransform add nothing to the chain.
 Node_Rect :: struct {
 	tH:     Transform_Handle,
@@ -455,7 +455,7 @@ canvas_resolve_rects :: proc(canvas_tH: Transform_Handle, root: Rect, out: ^[dyn
 // are relative to the parent's pivot point, in the parent's space (its
 // rotation and scale included), like localPosition under a RectTransform;
 // z passes straight through as depth off the canvas plane. World positions
-// are canvas-space points, the space the scene view shows.
+// are canvas-space points, the space the Scene window shows.
 
 // The canvas node above `tH`, or the zero handle.
 canvas_of :: proc(tH: Transform_Handle) -> Transform_Handle {
@@ -647,9 +647,9 @@ node_graphic :: proc(tH: Transform_Handle) -> (comp: rawptr, graphic: ^Graphic, 
 // their index in the rect walk (hierarchy order).
 CANVAS_SORTING_LAYER :: i32(127)
 
-// The canvas collector (render_collect_commands): Game views draw each
+// The canvas collector (render_collect_commands): Game windows draw each
 // canvas over the viewport, canvas units mapped to pixels through the canvas
-// scale and onto the near plane; the scene view draws it as the world rect
+// scale and onto the near plane; the Scene window draws it as the world rect
 // at the origin. Previews show neither. One Draw_Quad per graphic quad, in
 // the graphic's color and material.
 @(render_collector)

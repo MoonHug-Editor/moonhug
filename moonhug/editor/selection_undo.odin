@@ -117,7 +117,7 @@ selection_apply_state :: proc(state: undo.Selection_State) {
 	}
 	// Keep the active project path in sync (pre-multiselect code reads it,
 	// the Assets menu among it), empty included, and navigate the project
-	// view to its folder so the restored selection is actually visible.
+	// window to its folder so the restored selection is actually visible.
 	_project_set_active(active)
 	if active != "" do _project_reveal_keep_selection(active)
 }
@@ -129,12 +129,12 @@ selection_undo_rebaseline :: proc() {
 	_sel_undo_baseline_valid = false
 }
 
-// Called once per frame from the main loop, after every view has processed
+// Called once per frame from the main loop, after every window has processed
 // its input.
 selection_undo_track :: proc() {
 	// A select request posted this frame (a package menu that created an
 	// object) is applied before the diff, so it lands in the create's step.
-	// Here as well as in the hierarchy view, which may not be drawn at all.
+	// Here as well as in the Hierarchy window, which may not be drawn at all.
 	session.apply_pending_select()
 
 	s := undo.get()

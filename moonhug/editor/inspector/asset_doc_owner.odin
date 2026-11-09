@@ -4,9 +4,9 @@ package inspector
 // serialized asset opened for editing, in the Project Inspector or in a
 // foldout under a component. Import settings are not among them: they commit
 // through Apply and go back through Revert. A Project Inspector instance's
-// document is the asset it shows (project_inspector_window.odin).
+// document is the asset it shows (window_project_inspector.odin).
 //
-// An editor's working copy is one too (asset_doc_copies.odin), of the view
+// An editor's working copy is one too (asset_doc_copies.odin), of the window
 // that holds it: saving it applies it, discarding it drops its edits.
 
 import "moonhug:editor/session"
@@ -23,7 +23,7 @@ _install_asset_documents :: proc() {
 @(private = "file")
 _doc_copies_list :: proc(out: ^[dynamic]session.Document) {
 	for c in _doc_copies() {
-		append(out, session.Document{key = c, guid = c.guid, path = c.path, dirty = c.dirty, can_discard = true, view = c.view})
+		append(out, session.Document{key = c, guid = c.guid, path = c.path, dirty = c.dirty, can_discard = true, window = c.window})
 	}
 }
 

@@ -1,22 +1,22 @@
 ---
 title: "Multiselection"
-description: "Multi-selection in the hierarchy, scene view and project view, the single selection model, and multiedit in the inspector"
+description: "Multi-selection in the hierarchy, Scene window and Project window, the single selection model, and multiedit in the inspector"
 weight: 130
 tags: ["selection", "inspector", "editor"]
 path: editor/editing
 ---
 
-Unity-style multi-selection in the hierarchy, scene view and project view.
+Unity-style multi-selection in the hierarchy, Scene window and Project window.
 The inspector edits the whole selection (see [Multiedit](#multiedit)). The
 header says "N selected".
 
-State lives in `editor/selection.odin`: ONE selection for the whole editor, held as an ordered set per domain (scene Transform_Handles, project paths) where the LAST item is the active one. Selecting in one domain deselects the other, so an object and a file are never selected together, the Edit menu acts on whichever holds the selection, and each history step names one thing. Clearing one domain leaves the other. Dead handles are pruned each frame. `projectViewData.selectedFile` remains the active project path, so single-target code paths are unchanged.
+State lives in `editor/selection.odin`: ONE selection for the whole editor, held as an ordered set per domain (scene Transform_Handles, project paths) where the LAST item is the active one. Selecting in one domain deselects the other, so an object and a file are never selected together, the Edit menu acts on whichever holds the selection, and each history step names one thing. Clearing one domain leaves the other. Dead handles are pruned each frame. `projectWindowData.selectedFile` remains the active project path, so single-target code paths are unchanged.
 
-The two inspectors keep what they last showed when the selection moves to the other domain, and the selection keeps it for them both ways: the objects that were selected while a file is (`sel_scene_inspected`), and the files that were selected while an object is (`sel_proj_inspected`). A view lock takes both (docs/core/Views.md "View locks"). The Animation, Playable Graph and Sequencer windows follow the selected object, or the kept one while a file is selected (`engine.inspector_inspected_selection`), whatever a locked Inspector holds, creation menus parent under the live selection (`engine.inspector_active_selection`). Entering a folder from the file list is navigation and keeps the selection. A click on a folder in the folder tree selects it, as a click on a file row selects the file, so the Project Inspector shows it (a package root opens the package inspector).
+The two inspectors keep what they last showed when the selection moves to the other domain, and the selection keeps it for them both ways: the objects that were selected while a file is (`sel_scene_inspected`), and the files that were selected while an object is (`sel_proj_inspected`). A window lock takes both (docs/core/Windows.md "Window locks"). The Animation, Playable Graph and Sequencer windows follow the selected object, or the kept one while a file is selected (`engine.inspector_inspected_selection`), whatever a locked Inspector holds, creation menus parent under the live selection (`engine.inspector_active_selection`). Entering a folder from the file list is navigation and keeps the selection. A click on a folder in the folder tree selects it, as a click on a file row selects the file, so the Project Inspector shows it (a package root opens the package inspector).
 
 ## Interactions
 
-Everywhere (hierarchy rows, scene-view picking, project list rows):
+Everywhere (hierarchy rows, Scene window picking, project list rows):
 
 - **click** — select only this
 - **cmd/ctrl-click** — toggle in/out. The added item becomes active. Clicking
@@ -24,9 +24,9 @@ Everywhere (hierarchy rows, scene-view picking, project list rows):
 - **shift-click** — range from the active row over the visible rows, replacing
   the selection (hierarchy + project list, not scene picking)
 - **shift + up/down** — extend row by row
-- **LMB-drag** (scene view) — rubber-band box select. Live while dragging,
+- **LMB-drag** (Scene window) — rubber-band box select. Live while dragging,
   cmd/ctrl adds to the set, Escape cancels, one selection-undo step per gesture
-- **Escape** (scene view) — clear
+- **Escape** (Scene window) — clear
 
 The active row is outlined in the hierarchy when more than one is selected.
 The project status line shows the count.
@@ -133,4 +133,4 @@ Properties to know when extending this:
 
 ## Not yet
 
-- Multi-path drag-drop from the project view
+- Multi-path drag-drop from the Project window

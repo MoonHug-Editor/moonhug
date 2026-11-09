@@ -28,7 +28,7 @@ packages/sequencer/                 ← knows only the engine
   component_PlayableDirector.odin   ← playback state + duration
   component_TimelineTrack.odin      ← TimelineTrack, TimelineClip
   director.odin                     ← subtree walk, evaluation, modes
-  editor/view_sequencer.odin        ← the window
+  editor/window_sequencer.odin        ← the window
 
 packages/animation/sequencer/track_animation.odin  ← "animation" track (owns its graph)
 packages/audio/sequencer/track_audio.odin          ← "audio" track
@@ -245,7 +245,7 @@ clips are a sequence).
 
 ## Sequencer window
 
-`packages/sequencer/editor/view_sequencer.odin` (Window/Sequencer), laid out
+`packages/sequencer/editor/window_sequencer.odin` (Window/Animation/Sequencer), laid out
 after ImGuizmo's ImSequencer. Targets the selection like the Animation
 window: the active transform or its nearest ancestor with a PlayableDirector.
 

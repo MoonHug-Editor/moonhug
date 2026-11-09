@@ -4,7 +4,7 @@ package editor
 // "Commands with arguments"). The command runs at once with the values it
 // last used, as one undo step, and this panel then shows those values at the
 // bottom left of the editor, without taking the keyboard or blocking any
-// view. Changing a value undoes that step and runs the command again with
+// window. Changing a value undoes that step and runs the command again with
 // the new values, unless the command's update proc applies the change to
 // what the run made, in place. Reset puts the declared defaults back, which
 // is a change like any other. Anything else that records an undo step, an
@@ -140,7 +140,7 @@ _adjust_title :: proc(c: ^keymap.Command) -> string {
 	return c.name[strings.last_index_byte(c.name, '/') + 1:]
 }
 
-// Drawn from the main loop after the views, like the command palette: a small
+// Drawn from the main loop after the windows, like the command palette: a small
 // window at the bottom left of the editor, titled with the command, its
 // arguments drawn by the inspector. It never takes the keyboard when it
 // appears, and collapses to its title bar.

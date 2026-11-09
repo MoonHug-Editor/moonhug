@@ -204,7 +204,7 @@ test_workspace_fix :: proc(t: ^testing.T) {
 	ws := workspace.make_workspace("Fix")
 	defer workspace.workspace_free(ws)
 	append(&ws.frames, workspace.Frame{id = 0}, workspace.Frame{id = 5}, workspace.Frame{id = 5}, workspace.Frame{id = 7, parent = 5}, workspace.Frame{id = 8, parent = 7}, workspace.Frame{id = 9, parent = 42})
-	for &f in ws.frames do append(&f.tabs, _clone("View"))
+	for &f in ws.frames do append(&f.tabs, _clone("Window"))
 	testing.expect(t, workspace.fix(ws), "it repairs")
 	for f, i in ws.frames {
 		testing.expect(t, f.id != 0, "every frame has an id")
@@ -301,7 +301,7 @@ test_workspace_fix_breaks_cycle :: proc(t: ^testing.T) {
 	ws := workspace.make_workspace("Saved cycle")
 	defer workspace.workspace_free(ws)
 	append(&ws.frames, workspace.Frame{id = 1, parent = 3}, workspace.Frame{id = 2, parent = 1}, workspace.Frame{id = 3, parent = 2}, workspace.Frame{id = 4, parent = 2}, workspace.Frame{id = 5, parent = 5})
-	for &f in ws.frames do append(&f.tabs, _clone("View"))
+	for &f in ws.frames do append(&f.tabs, _clone("Window"))
 	testing.expect(t, workspace.fix(ws), "it repairs")
 	got: [5]u32
 	for f, i in ws.frames do got[i] = f.parent
@@ -367,7 +367,7 @@ test_workspace_sibling_move :: proc(t: ^testing.T) {
 }
 
 // Save In: a workspace moves to another provider with its id, name and
-// frames, so a Workspace view showing it goes on showing it. A provider that
+// frames, so a Workspace window showing it goes on showing it. A provider that
 // takes nothing in is refused, and the workspace stays where it was.
 @(test)
 test_workspace_moves_between_providers :: proc(t: ^testing.T) {

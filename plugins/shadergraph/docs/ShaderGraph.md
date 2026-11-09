@@ -28,7 +28,7 @@ Texture nodes: Sample Texture decodes its texture from sRGB (a color), Main Text
 
 ## Editor
 
-Assets > Create > Shader Graph writes an empty graph. Double-clicking a `.shadergraph` in the Project view (or Enter on it) opens it in the Shader Graph window (`editor/shadergraph_window.odin`), through the open handler the plugin registers with `asset_open_handler_add`. Selecting it shows the importer settings and an Open Shader Graph button that does the same (`editor/shadergraph_inspector.odin`). Each graph opens its own instance of the window, so graphs are edited side by side, and an instance edits its graph's shared asset document, the one File/Save, the tab menu and undo reach ([Views](../../../docs/core/Views.md)). Unsaved edits stay in the document, so closing an instance and opening the graph again keeps them.
+Assets > Create > Shader Graph writes an empty graph. Double-clicking a `.shadergraph` in the Project window (or Enter on it) opens it in the Shader Graph window (`editor/window_shadergraph.odin`), through the open handler the plugin registers with `asset_open_handler_add`. Selecting it shows the importer settings and an Open Shader Graph button that does the same (`editor/shadergraph_inspector.odin`). Each graph opens its own instance of the window, so graphs are edited side by side, and an instance edits its graph's shared asset document, the one File/Save, the tab menu and undo reach ([Windows](../../../docs/core/Windows.md)). Unsaved edits stay in the document, so closing an instance and opening the graph again keeps them.
 
 - **Toolbar**: the asset path, and ` *` while the graph has unsaved edits. A save reimports the graph and drops its cached shader, so a material on the graph draws with the new shader at once. A refused link shows a notice here for a few seconds.
 - **Blackboard** (left): one row per property with its name, kind and default value (a drag per component, a color picker for Color, nothing for Texture). A rename lands when the name field is left, and every node that reads the property follows it. An empty or taken name is ignored. Add opens a list of the kinds, the x button removes a property and the nodes that read it.
@@ -47,5 +47,5 @@ Every edit is one undo step. The window marks the document touched on each edit,
 - `nodes.odin`: the node table, the palette and the contract a saved file relies on (a kind's inputs keep their order)
 - `codegen.odin`: the GLSL
 - `editor/shadergraph_importer.odin`: the importer and the reimport on edit
-- `editor/shadergraph_window.odin`: the window
+- `editor/window_shadergraph.odin`: the window
 - `editor/shadergraph_inspector.odin`: the Open Shader Graph button

@@ -22,7 +22,7 @@ _settings_json :: proc(key: string, value: f64) -> json.Value {
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/inspector"
 import "moonhug:packages/engine"
-import rpv "moonhug:packages/engine/editor/render_pipeline_view"
+import rpv "moonhug:packages/engine/editor/window_render_pipeline"
 import gfx "moonhug:libs/gfx"
 
 @(private = "file")
@@ -353,8 +353,8 @@ test_render_pipeline_window_optional_reads :: proc(t: ^testing.T) {
 	for r in m.res do testing.expectf(t, !r.missing, "%s reported missing", r.name)
 }
 
-// The step the Render Pipeline window looks at: the one shown in the scene
-// view, else the selected one. The captured run draws without the TAA jitter
+// The step the Render Pipeline window looks at: the one shown in the Scene
+// window, else the selected one. The captured run draws without the TAA jitter
 // while it lies before the resolve (render_pipeline_run).
 @(test)
 test_render_inspect_looks_at :: proc(t: ^testing.T) {
@@ -369,7 +369,7 @@ test_render_inspect_looks_at :: proc(t: ^testing.T) {
 	testing.expect(t, !engine._inspect_looks_at(before), "nothing selected")
 	engine.render_inspect_show(5, engine.HDR_TARGET)
 	engine.render_inspect_request(engine.MAIN_SLOT, 7)
-	testing.expect(t, engine._inspect_looks_at(before), "the step shown in the scene view counts over the selection")
+	testing.expect(t, engine._inspect_looks_at(before), "the step shown in the Scene window counts over the selection")
 }
 
 // --- Volumes ---------------------------------------------------------------------

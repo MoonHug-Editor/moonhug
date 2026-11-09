@@ -1,6 +1,6 @@
 package editor
 
-// The selection and the view locks across an editor restart, in the user's
+// The selection and the window locks across an editor restart, in the user's
 // editor settings (UserSettings/editor_settings.json). Both are one person's
 // working state, like the open scenes and windows beside them, so they stay
 // out of the committed project settings.
@@ -12,8 +12,8 @@ package editor
 // - Restored once, when the scenes the editor reopens have loaded
 //   (selection_persist_restore). The selection goes through
 //   selection_apply_state, the proc undo uses, so the hierarchy reveals the
-//   objects and the project view the assets. Then the view locks
-//   (view_lock.odin), every view's the same way. An object or asset gone since
+//   objects and the Project window the assets. Then the window locks
+//   (window_lock.odin), every window's the same way. An object or asset gone since
 //   the last run drops out, and a lock left with nothing is not restored. The
 //   restore is not an undo step.
 
@@ -50,11 +50,11 @@ Persisted_Selection :: struct {
 	kept_assets: [dynamic]Persisted_Asset,
 }
 
-// A view lock by its key ("Inspector", "Project Inspector/2", "Animation")
-// and what it holds, as references (view_lock.odin). An object of a scene
+// A window lock by its key ("Inspector", "Project Inspector/2", "Animation")
+// and what it holds, as references (window_lock.odin). An object of a scene
 // never saved has nothing that names it next run and is left out.
-Persisted_View_Lock :: struct {
-	view:    string,
+Persisted_Window_Lock :: struct {
+	window:  string,
 	objects: [dynamic]Persisted_Object,
 	assets:  [dynamic]Persisted_Asset,
 }
@@ -76,10 +76,10 @@ selection_persist_capture :: proc() {
 	}
 	editor_settings.selection = sel
 
-	locks := make([dynamic]Persisted_View_Lock)
-	for l in view_locks_held() {
+	locks := make([dynamic]Persisted_Window_Lock)
+	for l in window_locks_held() {
 		// Copies: the lock owns its key and paths, and an unlock frees them.
-		p := Persisted_View_Lock{view = strings.clone(l.key), objects = make([dynamic]Persisted_Object), assets = make([dynamic]Persisted_Asset)}
+		p := Persisted_Window_Lock{window = strings.clone(l.key), objects = make([dynamic]Persisted_Object), assets = make([dynamic]Persisted_Asset)}
 		for o in l.objects do if o.scene_guid != {} {
 			append(&p.objects, Persisted_Object{scene = uuid.to_string(uuid.Identifier(o.scene_guid)), local_id = o.local_id})
 		}
@@ -90,7 +90,7 @@ selection_persist_capture :: proc() {
 		}
 		if len(p.objects) > 0 || len(p.assets) > 0 do append(&locks, p)
 	}
-	editor_settings.view_locks = locks
+	editor_settings.window_locks = locks
 }
 
 @(private = "file")
@@ -149,20 +149,20 @@ selection_persist_restore :: proc() {
 	state.kept_proj = _persist_refs_of_assets(saved.kept_assets[:])
 	if len(state.scene) > 0 || len(state.proj) > 0 || len(state.kept) > 0 || len(state.kept_proj) > 0 do selection_apply_state(state)
 
-	// As references: what is not loaded yet waits (view_lock.odin).
-	for l in editor_settings.view_locks {
-		objects := make([dynamic]View_Lock_Object)
+	// As references: what is not loaded yet waits (window_lock.odin).
+	for l in editor_settings.window_locks {
+		objects := make([dynamic]Window_Lock_Object)
 		for o in l.objects {
 			id, err := uuid.read(o.scene)
-			if err == nil do append(&objects, View_Lock_Object{scene_guid = core.Asset_GUID(id), local_id = o.local_id})
+			if err == nil do append(&objects, Window_Lock_Object{scene_guid = core.Asset_GUID(id), local_id = o.local_id})
 		}
-		held := make([dynamic]View_Lock_Asset)
+		held := make([dynamic]Window_Lock_Asset)
 		for a in l.assets {
-			va := View_Lock_Asset{path = a.path, sub_id = a.sub_id}
+			va := Window_Lock_Asset{path = a.path, sub_id = a.sub_id}
 			if id, err := uuid.read(a.guid); err == nil do va.guid = core.Asset_GUID(id)
 			if va.guid != {} || va.path != "" do append(&held, va)
 		}
-		view_lock_restore(l.view, objects[:], held[:])
+		window_lock_restore(l.window, objects[:], held[:])
 	}
 
 	// What was just restored is the starting point, not a change to undo.

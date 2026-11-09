@@ -10,7 +10,7 @@ import "moonhug:packages/engine"
 import "moonhug:libs/gizmos"
 
 // The selection outline for `view`, into the gizmo channel the caller set
-// (.Outline). It only draws, so every Scene view copy records its own.
+// (.Outline). It only draws, so every Scene window copy records its own.
 scene_outline :: proc(view: engine.Render_View) {
 	if sel := session.selection(); len(sel) > 0 {
 		quads := drawn_quads(view)
@@ -20,7 +20,7 @@ scene_outline :: proc(view: engine.Render_View) {
 
 // The handles for this frame, into the gizmo channel the caller set (.Tools):
 // the selection's @(comp_on_scene_handles) procs, then the transform tool.
-// They run once per frame, in one Scene view copy. The handles frame
+// They run once per frame, in one Scene window copy. The handles frame
 // (handles.frame_begin) must already be open with `view`.
 scene_tools_frame :: proc(view: engine.Render_View) {
 	__scene_handles()

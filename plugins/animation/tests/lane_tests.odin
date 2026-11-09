@@ -356,15 +356,15 @@ test_lane_remove_last_lane_removes_row :: proc(t: ^testing.T) {
 	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0, armed = false)
 
 	before := s.top
-	testing.expect(t, animation_editor.animation_view_set_lane(0, 0, false), "x goes off")
+	testing.expect(t, animation_editor.animation_window_set_lane(0, 0, false), "x goes off")
 	testing.expect_value(t, _lane_doc_clip(doc).channels[0].lanes_off, anim.Channel_Lanes_Off{0})
 	testing.expect_value(t, s.top, before + 1)
-	testing.expect(t, !animation_editor.animation_view_set_lane(0, 0, false), "x is already off")
-	testing.expect(t, !animation_editor.animation_view_set_lane(0, 3, false), "a Position row has no w")
-	testing.expect(t, animation_editor.animation_view_set_lane(0, 2, false), "z goes off")
+	testing.expect(t, !animation_editor.animation_window_set_lane(0, 0, false), "x is already off")
+	testing.expect(t, !animation_editor.animation_window_set_lane(0, 3, false), "a Position row has no w")
+	testing.expect(t, animation_editor.animation_window_set_lane(0, 2, false), "z goes off")
 	testing.expect_value(t, s.top, before + 2)
 
-	testing.expect(t, animation_editor.animation_view_set_lane(0, 1, false), "the last lane goes off")
+	testing.expect(t, animation_editor.animation_window_set_lane(0, 1, false), "the last lane goes off")
 	testing.expect_value(t, len(_lane_doc_clip(doc).channels), 0)
 	testing.expect_value(t, s.top, before + 3)
 
@@ -373,7 +373,7 @@ test_lane_remove_last_lane_removes_row :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(clip.channels), 1)
 	if len(clip.channels) == 1 do testing.expect_value(t, clip.channels[0].lanes_off, anim.Channel_Lanes_Off{0, 2})
 
-	testing.expect(t, animation_editor.animation_view_set_lane(0, 0, true), "Enable Lane turns x back on")
+	testing.expect(t, animation_editor.animation_window_set_lane(0, 0, true), "Enable Lane turns x back on")
 	testing.expect_value(t, _lane_doc_clip(doc).channels[0].lanes_off, anim.Channel_Lanes_Off{2})
 }
 

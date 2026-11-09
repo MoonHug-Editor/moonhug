@@ -15,7 +15,7 @@ The libs are the packages that run nothing on their own. Two executables are bui
 | Word | Means | Lives in |
 |---|---|---|
 | **Libs** | Small packages the Editor and an App build on, each imported on its own and only where it is used: `core` (handles, references, phases, the type registry, settings), `log`, `serialization`, `assets` and `catalog` (the asset database and what an App ships), `gfx` and `input` (the window and the platform), `gizmos`, `crash_journal`. | `moonhug/libs/<name>` |
-| **Editor** | The generic editing application: windows, docking, menus, inspector, undo, project view, viewport, Simulate, console. It declares the extension points plugins fill and builds with no plugin installed. | `moonhug/editor` |
+| **Editor** | The generic editing application: windows, docking, menus, inspector, undo, Project window, viewport, Simulate, console. It declares the extension points plugins fill and builds with no plugin installed. | `moonhug/editor` |
 | **Plugins** | A package with special folders, can extend editor using attributes. See [Plugins](Plugins.md) | `plugins/<name>` |
 
 A **package** is an Odin package. Plugin is a role a package plays. The Editor and the libs are packages too, but they are not plugins: a plugin is something a project can leave out, and the Editor cannot leave out itself.
@@ -57,12 +57,12 @@ The editor reaches a plugin only through what the plugin registered: an attribut
 
 | Editor | Engine plugin |
 |---|---|
-| windows, docking, views, menus, toolbar | scene view, hierarchy, game view |
+| windows, docking, windows, menus, toolbar | Scene window, hierarchy, Game window |
 | inspector reflection, field rows, undo recording | drawers for the engine's reference and asset types |
 | the undo stack, grouping, sessions | undo operations on scenes and prefabs |
 | the viewport: camera, navigation, picking, overlay | render collectors that draw meshes, sprites and lights into it |
-| project view, asset database, importer registry, thumbnails | importers for meshes, textures, scenes, and the asset types |
-| run configs, Simulate controls, Game view focus | building and launching the App, snapshot and restore of the world |
+| Project window, asset database, importer registry, thumbnails | importers for meshes, textures, scenes, and the asset types |
+| run configs, Simulate controls, Game window focus | building and launching the App, snapshot and restore of the world |
 | settings windows, console, dialogs, the MCP transport | MCP tools that read and edit scenes |
 | prebuild, attributes, the reference docs | the engine's generators and its docs |
 
