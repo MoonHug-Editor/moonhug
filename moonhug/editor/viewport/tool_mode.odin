@@ -2,7 +2,7 @@ package viewport
 
 // The Scene window's tool mode: the tool (Q W E R T), the gizmo space and the
 // gizmo pivot. The shell sets them from its overlays and keys, the engine's
-// transform tool reads them.
+// transform tool reads them. The space and the pivot persist (gizmo_prefs).
 
 import "moonhug:editor/handles"
 
@@ -19,8 +19,6 @@ Gizmo_Space :: enum {
 	Local,
 }
 
-gizmo_space: Gizmo_Space = .Global
-
 // Gizmo position: the active object's pivot, or the centroid of the selected
 // top-level objects (the pivot average stands in for the combined bounds
 // center).
@@ -29,4 +27,13 @@ Gizmo_Pivot :: enum {
 	Center,
 }
 
-gizmo_pivot: Gizmo_Pivot = .Pivot
+// What the Scene window's Pivot overlay sets, kept per developer in
+// UserSettings/gizmo.json, so the gizmo comes back placed and oriented the way
+// it was left. Zero is the default: world axes, at the active object's pivot.
+Gizmo_Prefs :: struct {
+	space: Gizmo_Space,
+	pivot: Gizmo_Pivot,
+}
+
+@(user_settings={name="Gizmo"})
+gizmo_prefs: Gizmo_Prefs

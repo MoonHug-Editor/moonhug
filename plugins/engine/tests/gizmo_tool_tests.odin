@@ -26,7 +26,7 @@ _Tool_Saved :: struct {
 
 @(private = "file")
 _tool_save :: proc() -> _Tool_Saved {
-	return {viewport.gizmo_mode, viewport.gizmo_space, viewport.gizmo_pivot}
+	return {viewport.gizmo_mode, viewport.gizmo_prefs.space, viewport.gizmo_prefs.pivot}
 }
 
 @(private = "file")
@@ -34,8 +34,8 @@ _tool_restore :: proc(s: _Tool_Saved) {
 	scene_tools.gizmo_end_drag_if_any()
 	editor.sel_scene_clear()
 	viewport.gizmo_mode = s.mode
-	viewport.gizmo_space = s.space
-	viewport.gizmo_pivot = s.pivot
+	viewport.gizmo_prefs.space = s.space
+	viewport.gizmo_prefs.pivot = s.pivot
 }
 
 @(private = "file")
@@ -145,7 +145,7 @@ test_tool_move_in_local_axes :: proc(t: ^testing.T) {
 	engine.transform_set_world_rotation(obj, engine.quat_from_native(linalg.quaternion_angle_axis_f32(math.PI / 2, {0, 0, 1})))
 	editor.sel_scene_only(obj)
 	viewport.gizmo_mode = .Translate
-	viewport.gizmo_space = .Local
+	viewport.gizmo_prefs.space = .Local
 	handles_drag(handles_test_view(), {0, 0.75, 0}, {0.5, 1.75, 0}, _tool_body, nil)
 	testing.expectf(t, _close(_pos(obj), {0, 1, 0}), "the local X arrow points along world Y, got %v", _pos(obj))
 }
@@ -442,7 +442,7 @@ test_tool_rotate_orbits_the_center :: proc(t: ^testing.T) {
 	editor.sel_scene_only(a)
 	editor.sel_scene_add(b)
 	viewport.gizmo_mode = .Rotate
-	viewport.gizmo_pivot = .Center
+	viewport.gizmo_prefs.pivot = .Center
 	handles_drag(handles_test_view(), _ring_point(45), _ring_point(135), _tool_body, nil)
 
 	testing.expectf(t, _close(_pos(a), {0, -1, 0}, 1e-3), "A orbits, got %v", _pos(a))

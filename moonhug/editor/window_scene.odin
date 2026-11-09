@@ -787,23 +787,23 @@ draw_pivot_overlay :: proc(vertical: bool) {
 	// Vertical dock: icon-only square buttons (the words won't fit the column).
 	pivot_label: cstring
 	if vertical {
-		pivot_label = viewport.gizmo_pivot == .Pivot ? icons.ICON_MD_TRIP_ORIGIN : icons.ICON_MD_CENTER_FOCUS
+		pivot_label = viewport.gizmo_prefs.pivot == .Pivot ? icons.ICON_MD_TRIP_ORIGIN : icons.ICON_MD_CENTER_FOCUS
 	} else {
-		pivot_label = viewport.gizmo_pivot == .Pivot ? icons.ICON_MD_TRIP_ORIGIN + " Pivot" : icons.ICON_MD_CENTER_FOCUS + "Center"
+		pivot_label = viewport.gizmo_prefs.pivot == .Pivot ? icons.ICON_MD_TRIP_ORIGIN + " Pivot" : icons.ICON_MD_CENTER_FOCUS + "Center"
 	}
 	if overlay_tool_button(pivot_label, "Gizmo position: active object's pivot vs the selection center", false, width = vertical ? OVERLAY_SPLIT_WIDTH : 0) {
-		viewport.gizmo_pivot = viewport.gizmo_pivot == .Pivot ? .Center : .Pivot
+		viewport.gizmo_prefs.pivot = viewport.gizmo_prefs.pivot == .Pivot ? .Center : .Pivot
 	}
 
 	if !vertical do im.SameLine()
 	label: cstring
 	if vertical {
-		label = viewport.gizmo_space == .Global ? icons.ICON_MD_PUBLIC : icons.ICON_MD_DEPLOYED_CODE
+		label = viewport.gizmo_prefs.space == .Global ? icons.ICON_MD_PUBLIC : icons.ICON_MD_DEPLOYED_CODE
 	} else {
-		label = viewport.gizmo_space == .Global ? icons.ICON_MD_PUBLIC + " World" : icons.ICON_MD_DEPLOYED_CODE + " Local"
+		label = viewport.gizmo_prefs.space == .Global ? icons.ICON_MD_PUBLIC + " World" : icons.ICON_MD_DEPLOYED_CODE + " Local"
 	}
 	if overlay_tool_button(label, "Gizmo orientation: world axes vs the object's axes (scale is always local)", false, width = vertical ? OVERLAY_SPLIT_WIDTH : 0) {
-		viewport.gizmo_space = viewport.gizmo_space == .Global ? .Local : .Global
+		viewport.gizmo_prefs.space = viewport.gizmo_prefs.space == .Global ? .Local : .Global
 	}
 }
 

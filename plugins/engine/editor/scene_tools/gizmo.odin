@@ -12,7 +12,7 @@ package scene_tools
 //   release, or when the drag's handle goes away (a mode switch, the
 //   selection emptied).
 // - The gizmo sits on the active object's pivot or the centroid of the
-//   selection (viewport.gizmo_pivot). Move and rotate follow viewport.gizmo_space, scale is
+//   selection (viewport.gizmo_prefs.pivot). Move and rotate follow viewport.gizmo_prefs.space, scale is
 //   always on the object's own axes.
 // - Its parts use handles.PRIO_TOOL: a component's own handle under the
 //   pointer takes the click.
@@ -28,7 +28,7 @@ import "moonhug:editor/session"
 import undo "moonhug:packages/engine/editor/undo"
 
 gizmo_origin :: proc(tH: engine.Transform_Handle) -> [3]f32 {
-	if viewport.gizmo_pivot == .Center {
+	if viewport.gizmo_prefs.pivot == .Center {
 		sum: [3]f32
 		n := 0
 		for h in session.top_level() {
@@ -120,7 +120,7 @@ gizmo_draw_and_handle :: proc(tH: engine.Transform_Handle) {
 		gizmo_end_drag_if_any()
 		return
 	case .Translate:
-		rot := _gizmo_rotation(tH) if viewport.gizmo_space == .Local else quaternion128(1)
+		rot := _gizmo_rotation(tH) if viewport.gizmo_prefs.space == .Local else quaternion128(1)
 		pos := origin
 		d = handles.position_handle(_TOOL_ID, &pos, rot, size, handles.PRIO_TOOL)
 		if d.started do _gizmo_begin(origin)
@@ -131,7 +131,7 @@ gizmo_draw_and_handle :: proc(tH: engine.Transform_Handle) {
 			}
 		}
 	case .Rotate:
-		local := viewport.gizmo_space == .Local
+		local := viewport.gizmo_prefs.space == .Local
 		if !_gizmo_dragging do _gizmo_rot = _gizmo_rotation(tH) if local else quaternion128(1)
 		d = handles.rotation_handle(_TOOL_ID, &_gizmo_rot, origin, size, local, handles.PRIO_TOOL)
 		if d.started {
