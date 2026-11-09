@@ -14,7 +14,7 @@ Each domain has 32 layers, bit N for layer N, and a list of 32 names. An empty n
 
 - `"render"` (`LAYER_DOMAIN_RENDER`): `Transform.render_layer` and the camera, light and probe masks
 
-The physics plugins own one each, with their own layers asset (names and collision matrix) and settings: `"physics2d"` and `"physics3d"` ([physics2d](../../physics2d/assets/README.md) and [physics3d](../../physics3d/assets/README.md) "Collision layers").
+The physics plugins own one each, with their own layers asset (names and collision matrix) and settings: `"physics2d"` and `"physics3d"` ([physics2d](/plugins/physics2d/docs/concepts/CollisionLayers.md) and [physics3d](/plugins/physics3d/docs/concepts/CollisionLayers.md)).
 
 The registry (`moonhug/libs/core/layers.odin`) hands out each domain's names:
 

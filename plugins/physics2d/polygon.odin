@@ -171,7 +171,7 @@ _in_triangle :: proc(p, a, b, c: [2]f32) -> bool {
 }
 
 // A regular polygon of `sides` points on a circle: the default path of a
-// new polygon collider, Unity's pentagon.
+// new polygon collider, a pentagon.
 polygon_regular :: proc(points: ^[dynamic][2]f32, sides: int, radius: f32) {
 	clear(points)
 	for i in 0 ..< sides {

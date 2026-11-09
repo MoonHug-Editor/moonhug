@@ -1,6 +1,6 @@
 package physics2d
 
-// Unity-literal Rigidbody2D: authored as plain data (inspector/serialization
+// Rigidbody2D: authored as plain data (inspector/serialization
 // come from the attributes), synced to a box2d body by the fixed step. The
 // live b2 body id is runtime-only — for anything not wrapped here (forces,
 // joints, filters) use body_of(tH) and vendor:box2d directly.
@@ -8,7 +8,7 @@ package physics2d
 import b2 "vendor:box2d"
 import "moonhug:packages/engine"
 
-// Unity's order (Dynamic is the default zero value).
+// Dynamic is the default zero value.
 Body_Type :: enum {
 	Dynamic,
 	Kinematic,

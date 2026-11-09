@@ -1,6 +1,6 @@
 package physics3d
 
-// The Physics Material asset (assets/README.md "Physics materials"): how a
+// The Physics Material asset (docs/assets/PhysicsMaterial.md): how a
 // collider's surface slides and bounces. A collider names one in `material`,
 // else takes the Physics 3D settings' default material, else the defaults of
 // a new asset.

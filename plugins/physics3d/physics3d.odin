@@ -1,6 +1,6 @@
 package physics3d
 
-// 3D physics on vendor:box3d with Unity-literal authoring — the 3D sibling
+// 3D physics on vendor:box3d, authored as plain components — the 3D sibling
 // of packages/physics2d, same architecture (docs/core/Plugins.md):
 //
 // - Components are plain data; this fixed step syncs them to box3d. The
@@ -15,7 +15,7 @@ package physics3d
 // - Escape hatch: body_of(tH) returns the live b3.BodyId — use vendor:box3d
 //   directly for forces, joints, mass overrides, raycasts, runtime mutation.
 //
-// Transform scale affects shapes (Unity semantics — see collider_scale). The
+// Transform scale affects shapes (see collider_scale). The
 // whole relative transform, scale included, is BAKED at shape creation:
 // moving or rescaling a child collider afterwards doesn't re-bake, and
 // component field edits at runtime don't re-sync (use the escape hatch).
@@ -236,7 +236,7 @@ _sync_bodies :: proc(w: ^engine.World, fixed_dt: f32) {
 		}
 		// Kinematic bodies follow their transforms (scripts move the
 		// transform, physics obeys) — driven by VELOCITY, not teleport
-		// (Unity MovePosition): the step itself moves the body, so contacts
+		// (a move, not a teleport): the step itself moves the body, so contacts
 		// push dynamic bodies. A Body_SetTransform teleport carries zero
 		// velocity — dynamics would only depenetrate, never be pushed.
 		// Dynamic transforms are owned by the write-back below.
@@ -310,7 +310,7 @@ _Shape_Target :: struct {
 	rot:    b3.Quat, // shape rotation in body-local space
 }
 
-// --- Scale (Unity semantics) ----------------------------------------------------
+// --- Scale ----------------------------------------------------------------------
 // The owner's ABSOLUTE world scale affects collider dims: box size scales
 // per-axis, sphere radius by the LARGEST axis, capsule height by its axis
 // component and radius by the larger perpendicular axis, centers scale too.

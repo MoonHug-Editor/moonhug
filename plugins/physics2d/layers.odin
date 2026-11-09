@@ -1,6 +1,6 @@
 package physics2d
 
-// Collision layers of the 2D colliders (assets/README.md "Collision layers").
+// Collision layers of the 2D colliders (docs/concepts/CollisionLayers.md).
 // One asset type of this plugin, Physics2D_Layers, names the 32 layers and
 // says which pairs of them collide. The Physics 2D project settings pick the
 // asset the project uses. Unset is the built-in default: layer 0 "Default",

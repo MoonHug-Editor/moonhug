@@ -1,8 +1,8 @@
 package physics2d
 
-// Unity-literal 2D colliders. A collider attaches to the nearest ancestor
-// Rigidbody2D (its own transform included) as a shape — Unity's compound-body
-// rule — or, with no rigidbody anywhere above, to its own implicit STATIC
+// 2D colliders. A collider attaches to the nearest ancestor
+// Rigidbody2D (its own transform included) as a shape, the compound-body
+// rule, or, with no rigidbody anywhere above, to its own implicit STATIC
 // body. Sizes are in world units (1 unit = 1 m = 100 px, plugins/engine/docs/FixedTick.md).
 //
 // Runtime ids are created by the fixed step and never serialized. Inspector
@@ -91,7 +91,7 @@ Capsule_Direction :: enum {
 @(typ_guid={guid = "11cbe045-afe7-413a-837e-167ca23b7ca1"})
 CapsuleCollider2D :: struct {
 	using base:  engine.CompData `inspect:"-"`,
-	size:        [2]f32, // width x height, like Unity
+	size:        [2]f32, // width x height, round ends included
 	direction:   Capsule_Direction,
 	offset:      [2]f32,
 	density:     f32,

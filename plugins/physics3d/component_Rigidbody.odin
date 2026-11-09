@@ -1,7 +1,7 @@
 package physics3d
 
-// Unity-literal Rigidbody (3D): authored as plain data, synced to a box3d
-// body by the fixed step. Unity's 3D model — no body-type enum: a collider
+// Rigidbody (3D): authored as plain data, synced to a box3d
+// body by the fixed step. No body-type enum: a collider
 // WITHOUT a Rigidbody is static, is_kinematic switches dynamic/kinematic.
 // The live b3 body id is runtime-only — for anything not wrapped here
 // (forces, joints, mass overrides) use body_of(tH) and vendor:box3d.

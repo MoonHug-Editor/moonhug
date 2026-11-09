@@ -1,6 +1,6 @@
 package physics2d
 
-// 2D physics on vendor:box2d with Unity-literal authoring (docs/core/Plugins.md
+// 2D physics on vendor:box2d, authored as plain components (docs/core/Plugins.md
 // picked the surface, memory holds the decisions):
 //
 // - Components are plain data; this fixed step syncs them to box2d. The
@@ -15,7 +15,7 @@ package physics2d
 // - Escape hatch: body_of(tH) returns the live b2.BodyId — use vendor:box2d
 //   directly for forces, joints, filter groups, raycasts and runtime mutation.
 //
-// Transform scale affects shapes (Unity semantics — see collider_scale). The
+// Transform scale affects shapes (see collider_scale). The
 // whole relative transform, scale included, is BAKED at shape creation:
 // moving or rescaling a child collider afterwards doesn't re-bake, and
 // component field edits at runtime don't re-sync (use the escape hatch).
@@ -159,7 +159,7 @@ _sync_bodies :: proc(w: ^engine.World, fixed_dt: f32) {
 		}
 		// Kinematic bodies follow their transforms (scripts move the
 		// transform, physics obeys) — driven by VELOCITY, not teleport
-		// (Unity MovePosition): the step itself moves the body, so contacts
+		// (a move, not a teleport): the step itself moves the body, so contacts
 		// push dynamic bodies. A Body_SetTransform teleport carries zero
 		// velocity — dynamics would only depenetrate, never be pushed.
 		// Static bodies keep the teleport (they aren't supposed to move),
@@ -240,7 +240,7 @@ _rotate2 :: proc(v: [2]f32, angle: f32) -> [2]f32 {
 	return {v.x * c - v.y * s, v.x * s + v.y * c}
 }
 
-// --- Scale (Unity semantics) ----------------------------------------------------
+// --- Scale ----------------------------------------------------------------------
 // The owner's ABSOLUTE world scale affects collider dims: box/capsule size
 // scales per-axis, circle radius by the LARGER axis, offsets scale too.
 // Shared by the sync and the editor gizmos; baked at shape creation like the

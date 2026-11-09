@@ -1,6 +1,6 @@
 package physics2d
 
-// The Physics Material 2D asset (assets/README.md "Physics materials"): how a
+// The Physics Material 2D asset (docs/assets/PhysicsMaterial2D.md): how a
 // collider's surface slides and bounces. A collider names one in `material`,
 // else takes its Rigidbody2D's, else the Physics 2D settings' default
 // material, else the defaults of a new asset.

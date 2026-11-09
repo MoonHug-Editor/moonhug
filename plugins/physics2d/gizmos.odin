@@ -12,7 +12,7 @@ import "core:math/linalg"
 import "moonhug:packages/engine"
 import "moonhug:libs/gizmos"
 
-// Unity's 2D collider gizmo green.
+// The 2D collider gizmo green.
 COLLIDER_GIZMO_COLOR :: [4]f32{0.57, 0.96, 0.55, 1}
 
 // The owner's position and world z rotation: the space 2D colliders live in.
@@ -89,7 +89,7 @@ draw_edge_collider_wires :: proc(c: ^EdgeCollider2D, color: [4]f32) {
 	}
 }
 
-// Every enabled collider as an outline (Unity's Physics Debug view, there is
+// Every enabled collider as an outline (the physics debug view, there is
 // no selection in the app).
 @(phase={key=DebugDraw, mode=App})
 debug_draw :: proc() {

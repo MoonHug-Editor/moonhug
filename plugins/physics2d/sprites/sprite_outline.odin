@@ -1,7 +1,7 @@
 package physics2d_sprites
 
 // The outline of a sprite's opaque pixels, for a polygon collider added to
-// a sprite: Unity's physics shape. The opaque pixels of the sprite's rect
+// a sprite: its physics shape. The opaque pixels of the sprite's rect
 // are a mask, marching squares traces the mask's boundaries as loops of
 // pixel-edge midpoints, the longest loop is kept, and a Douglas-Peucker pass
 // drops the points a straight line covers within OUTLINE_TOLERANCE_PX. The

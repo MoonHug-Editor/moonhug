@@ -12,7 +12,7 @@ import b3 "vendor:box3d"
 import "moonhug:packages/engine"
 import "moonhug:libs/gizmos"
 
-// Unity's collider gizmo green.
+// The collider gizmo green.
 COLLIDER_GIZMO_COLOR :: [4]f32{0.57, 0.96, 0.55, 1}
 
 draw_box_collider_wires :: proc(c: ^BoxCollider, color: [4]f32) {
@@ -126,7 +126,7 @@ asset_on_changed_hull_wires :: proc(guid: engine.Asset_GUID, path: string, chang
 	}
 }
 
-// Every enabled collider as a wireframe (Unity's Physics Debug view, there is
+// Every enabled collider as a wireframe (the physics debug view, there is
 // no selection in the app).
 @(phase={key=DebugDraw, mode=App})
 debug_draw :: proc() {

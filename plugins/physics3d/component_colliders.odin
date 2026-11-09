@@ -1,8 +1,8 @@
 package physics3d
 
-// Unity-literal 3D colliders. A collider attaches to the nearest ancestor
-// Rigidbody (its own transform included) as a shape — Unity's compound-body
-// rule — or, with no rigidbody anywhere above, to its own implicit STATIC
+// 3D colliders. A collider attaches to the nearest ancestor
+// Rigidbody (its own transform included) as a shape, the compound-body
+// rule, or, with no rigidbody anywhere above, to its own implicit STATIC
 // body. Sizes are in world units (1 unit = 1 m).
 //
 // Runtime ids are created by the fixed step and never serialized. Inspector
@@ -82,7 +82,7 @@ type_cleanup_SphereCollider :: proc(comp: ^SphereCollider) {
 	engine.comp_zero(comp)
 }
 
-// Unity's capsule axis.
+// The capsule's axis.
 Capsule_Direction :: enum {
 	X_Axis,
 	Y_Axis,
@@ -94,7 +94,7 @@ Capsule_Direction :: enum {
 CapsuleCollider :: struct {
 	using base:  engine.CompData `inspect:"-"`,
 	radius:      f32,
-	height:      f32, // total, caps included (Unity)
+	height:      f32, // total, caps included
 	direction:   Capsule_Direction,
 	center:      [3]f32,
 	density:     f32,

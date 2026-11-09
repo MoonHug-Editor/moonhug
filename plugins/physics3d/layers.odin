@@ -1,6 +1,6 @@
 package physics3d
 
-// Collision layers of the 3D colliders (assets/README.md "Collision layers").
+// Collision layers of the 3D colliders (docs/concepts/CollisionLayers.md).
 // One asset type of this plugin, Physics3D_Layers, names the 32 layers and
 // says which pairs of them collide. The Physics 3D project settings pick the
 // asset the project uses. Unset is the built-in default: layer 0 "Default",
