@@ -1,5 +1,16 @@
 package engine
 
+import "core:encoding/endian"
+import "core:math"
+
+
+// What a texture is for. Choosing a type in the inspector sets the settings
+// it expects (texture_type_defaults): a Sprite clamps at its edges, so its
+// border never samples the opposite one under linear filtering.
+Texture_Type :: enum u8 {
+    Default,
+    Sprite,
+}
 
 TextureFilterMode :: enum {
     Linear,
@@ -41,9 +52,12 @@ Sprite_Import_Mode :: enum u8 {
 
 @(typ_guid={guid="21d45bcf-2bd8-44db-b780-953c2f8b610f"})
 TextureSettings :: struct {
+    texture_type: Texture_Type,
     filter:   TextureFilterMode,
     wrap:     TextureWrapMode,
     srgb:     bool,
+    // The import scales a larger image down so its larger side is this many
+    // pixels, keeping its aspect (texture_scaled_size). 0 keeps its size.
     max_size: u16,
     mipmaps:  Texture_Mipmaps,
     // Unity's Pixels Per Unit: a sprite's world size = pixel size / this.
@@ -87,4 +101,47 @@ type_reset_TextureSettings :: proc(p: ^TextureSettings) {
     p^ = default_texture_settings()
 }
 
+// The settings a texture type expects, set when the type is chosen: a Sprite
+// clamps, a Default texture repeats. Every other setting stays as it is.
+texture_type_defaults :: proc(s: ^TextureSettings) {
+    switch s.texture_type {
+    case .Default: s.wrap = .Repeat
+    case .Sprite:  s.wrap = .Clamp
+    }
+}
 
+// --- The texture artifact ----------------------------------------------------
+
+// A texture artifact is an image file's bytes. One the import scaled down
+// (max_size) starts with a header naming the source's size: "MHTS", then the
+// source width and height as little-endian u32. Sprite rects, pixels per unit
+// and native sizes stay in source pixels, so the loader reports the source size
+// and a smaller texture keeps its world size.
+TEXTURE_ARTIFACT_MAGIC       :: "MHTS"
+TEXTURE_ARTIFACT_HEADER_SIZE :: 12
+
+texture_artifact_header :: proc(source_size: [2]i32) -> (h: [TEXTURE_ARTIFACT_HEADER_SIZE]u8) {
+    copy(h[:4], TEXTURE_ARTIFACT_MAGIC)
+    endian.unchecked_put_u32le(h[4:], u32(source_size.x))
+    endian.unchecked_put_u32le(h[8:], u32(source_size.y))
+    return
+}
+
+// The image bytes of a texture artifact, and the source size when the import
+// scaled it down. A plain artifact is all image: `scaled` is false.
+texture_artifact_split :: proc(data: []u8) -> (image: []u8, source_size: [2]i32, scaled: bool) {
+    if len(data) < TEXTURE_ARTIFACT_HEADER_SIZE || string(data[:4]) != TEXTURE_ARTIFACT_MAGIC do return data, {}, false
+    w := endian.unchecked_get_u32le(data[4:])
+    h := endian.unchecked_get_u32le(data[8:])
+    return data[TEXTURE_ARTIFACT_HEADER_SIZE:], {i32(w), i32(h)}, true
+}
+
+// The size the import scales a w x h image to: its larger side becomes
+// `max_size` and the other keeps the aspect, at least 1 pixel. `scaled` is
+// false when max_size is 0 or the image already fits.
+texture_scaled_size :: proc(w, h: i32, max_size: u16) -> (size: [2]i32, scaled: bool) {
+    longest := max(w, h)
+    if max_size == 0 || longest <= i32(max_size) do return {w, h}, false
+    k := f64(max_size) / f64(longest)
+    return {max(1, i32(math.round(f64(w) * k))), max(1, i32(math.round(f64(h) * k)))}, true
+}

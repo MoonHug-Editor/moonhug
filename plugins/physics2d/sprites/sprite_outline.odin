@@ -42,13 +42,18 @@ sprite_outline :: proc(sprite: engine.PPtr, points: ^[dynamic][2]f32) -> bool {
 	if !data_ok do return false
 	path, path_ok := engine.asset_db_get_path(uuid.Identifier(sprite.guid))
 	if !path_ok do return false
+	// A scaled-down artifact names its source's size: the space sprite rects
+	// and pixels per unit are given in, read through the scale below.
+	image, source_size, scaled := engine.texture_artifact_split(data)
 	width, height, channels: i32
-	pixels := stbi.load_from_memory(raw_data(data), i32(len(data)), &width, &height, &channels, 4)
+	pixels := stbi.load_from_memory(raw_data(image), i32(len(image)), &width, &height, &channels, 4)
 	if pixels == nil do return false
 	defer stbi.image_free(pixels)
+	src_size := scaled ? source_size : [2]i32{width, height}
+	to_image := [2]f32{f32(width) / f32(src_size.x), f32(height) / f32(src_size.y)}
 
 	// The rect, pivot and pixels per unit the renderer sizes the sprite by.
-	rect := [4]f32{0, 0, f32(width), f32(height)}
+	rect := [4]f32{0, 0, f32(src_size.x), f32(src_size.y)}
 	pivot := [2]f32{0.5, 0.5}
 	ppu := f32(engine.PIXELS_PER_UNIT)
 	if settings, sok := engine.asset_pipeline_get_settings(path, context.temp_allocator); sok {
@@ -69,11 +74,15 @@ sprite_outline :: proc(sprite: engine.PPtr, points: ^[dynamic][2]f32) -> bool {
 	rw, rh := int(rect.z), int(rect.w)
 	if rw <= 0 || rh <= 0 do return false
 	mask := make([]bool, rw * rh, context.temp_allocator)
+	// The mask is in source pixels. Each one reads the image pixel under its
+	// center, the same pixel when the image is not scaled.
 	for y in 0 ..< rh {
 		py := int(rect.y) + y
+		if scaled do py = int((f32(py) + 0.5) * to_image.y)
 		if py < 0 || py >= int(height) do continue
 		for x in 0 ..< rw {
 			px := int(rect.x) + x
+			if scaled do px = int((f32(px) + 0.5) * to_image.x)
 			if px < 0 || px >= int(width) do continue
 			mask[y * rw + x] = pixels[(py * int(width) + px) * 4 + 3] > ALPHA_OPAQUE
 		}

@@ -38,7 +38,7 @@ _SHADER_EXTS  := []string{".glsl"}
 texture_importer :: proc() -> asset_pipeline.Importer_Desc {
 	return {
 		name         = "texture",
-		version      = 1,
+		version      = 2, // 2: an image larger than max_size is scaled down, behind a header naming its source size
 		extensions   = _TEXTURE_EXTS,
 		settings_tid = typeid_of(engine.TextureSettings),
 		run          = _import_texture,

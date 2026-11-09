@@ -38,6 +38,7 @@
       }
     ],
     "srgb": false,
+    "texture_type": 1,
     "wrap": 1
   }
 }

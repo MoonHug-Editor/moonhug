@@ -9,6 +9,7 @@
     "sprite_mode": 0,
     "sprites": [],
     "srgb": false,
+    "texture_type": 1,
     "wrap": 1
   }
 }

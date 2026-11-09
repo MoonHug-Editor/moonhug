@@ -338,12 +338,13 @@ _lut_texture :: proc(g: Color_Grading) -> (^gfx.Texture, int) {
 	if g.lut == {} || g.lut_contribution <= 0 do return nil, 0
 	t, ok := engine.texture_load(g.lut)
 	if !ok || t.gfx == nil do return nil, 0
-	n := int(t.height)
-	if n < 2 || int(t.width) != n * n {
+	// Texels, so the GPU texture's own size, not the source's.
+	n := int(t.gfx.height)
+	if n < 2 || int(t.gfx.width) != n * n {
 		if g.lut not_in _lut_warned {
 			context.allocator = runtime.default_allocator()
 			_lut_warned[g.lut] = true
-			log.warningf("[PostFX] lookup texture %v is %dx%d, not a strip of N squares N texels on a side (1024 x 32 for N = 32): not applied", g.lut, t.width, t.height)
+			log.warningf("[PostFX] lookup texture %v is %dx%d, not a strip of N squares N texels on a side (1024 x 32 for N = 32): not applied", g.lut, t.gfx.width, t.gfx.height)
 		}
 		return nil, 0
 	}

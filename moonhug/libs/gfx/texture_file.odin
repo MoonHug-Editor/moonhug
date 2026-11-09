@@ -20,7 +20,13 @@ texture_load_file :: proc(path: string) -> (^Texture, bool) {
 texture_decode_file :: proc(path: string, mipmaps := false) -> ^Texture {
 	data, read_err := os.read_entire_file(path, context.temp_allocator)
 	if read_err != nil do return nil
+	return texture_decode_bytes(data, mipmaps)
+}
 
+// texture_decode_file on an image already in memory. nil when it does not
+// decode.
+texture_decode_bytes :: proc(data: []u8, mipmaps := false) -> ^Texture {
+	if len(data) == 0 do return nil
 	w, h, channels: i32
 	// A Radiance .hdr image: linear float, kept as half floats.
 	if stbi.is_hdr_from_memory(raw_data(data), i32(len(data))) != 0 {

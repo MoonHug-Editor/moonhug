@@ -30,6 +30,8 @@ Texture :: struct {
 	width, height: i32,
 	format:        sdl.GPUTextureFormat, // readback needs the channel order
 	mips:          i32,                  // mip levels, 1 = none below the full size
+	filter:        Texture_Filter,       // how mesh and quad draws sample it (texture_sampling.odin)
+	wrap:          Texture_Wrap,
 }
 
 Mesh :: struct {
@@ -235,9 +237,7 @@ _gfx: struct {
 	depth_frag:       ^sdl.GPUShader,              // depth.frag: a depth pass's fragment stage for shaders with no caster
 	caster_frag:      ^sdl.GPUShader,              // caster.frag: the Lit and Unlit shaders' caster
 	skin_pipeline:    ^sdl.GPUComputePipeline, // skinning.odin
-	sampler_linear:   ^sdl.GPUSampler,
-	sampler_nearest:  ^sdl.GPUSampler,
-	sampler_repeat:   ^sdl.GPUSampler, // linear + REPEAT — mesh draws (glTF's default wrap)
+	sampler_linear:   ^sdl.GPUSampler, // linear, clamped: full-screen draws and the renderer's own images. Draws of textures use texture_sampling.odin
 	sampler_shadow:   ^sdl.GPUSampler, // linear depth comparison (LESS_OR_EQUAL: 1 lit), for the shadow maps
 	depth_one:        ^sdl.GPUTexture, // 1x1 depth of 1: a shadow map with nothing in it
 	white_tex:        ^Texture,
@@ -288,27 +288,6 @@ init :: proc(title: cstring, width, height: i32, show := true) -> bool {
 		max_lod        = 1000,
 	}
 	_gfx.sampler_linear = sdl.CreateGPUSampler(_gfx.device, sampler_info)
-	// Meshes sample with REPEAT — glTF's default wrap mode, and models in the
-	// wild rely on it (UVs offset outside [0,1] that wrap back, tiling
-	// detail maps). Sprites keep CLAMP so quad edges can't bleed the
-	// opposite border under linear filtering.
-	sampler_info.address_mode_u = .REPEAT
-	sampler_info.address_mode_v = .REPEAT
-	sampler_info.address_mode_w = .REPEAT
-	// Anisotropic: a surface seen at a grazing angle (a floor toward the
-	// horizon) samples along its stretched footprint instead of blurring it.
-	sampler_info.enable_anisotropy = true
-	sampler_info.max_anisotropy = 8
-	_gfx.sampler_repeat = sdl.CreateGPUSampler(_gfx.device, sampler_info)
-	sampler_info.enable_anisotropy = false
-	sampler_info.max_anisotropy = 0
-	sampler_info.address_mode_u = .CLAMP_TO_EDGE
-	sampler_info.address_mode_v = .CLAMP_TO_EDGE
-	sampler_info.address_mode_w = .CLAMP_TO_EDGE
-	sampler_info.min_filter = .NEAREST
-	sampler_info.mag_filter = .NEAREST
-	sampler_info.mipmap_mode = .NEAREST
-	_gfx.sampler_nearest = sdl.CreateGPUSampler(_gfx.device, sampler_info)
 	// Shadow maps: each lookup compares a reference depth with the map's
 	// texels and filters the results, so one tap is a 2x2 percentage-closer
 	// filter. Clamped: the shaders keep taps inside their tile.
@@ -323,6 +302,7 @@ init :: proc(title: cstring, width, height: i32, show := true) -> bool {
 		enable_compare = true,
 	})
 	if _gfx.sampler_shadow == nil do return false
+	if !_samplers_init() do return false
 	if !_depth_one_init() do return false
 
 	if !_create_pipelines() do return false
@@ -353,9 +333,8 @@ shutdown :: proc() {
 		_cubemap_shutdown()
 	_pipelines_shutdown()
 		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_linear)
-		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_nearest)
-		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_repeat)
 		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_shadow)
+		_samplers_shutdown()
 		if _gfx.depth_one != nil do sdl.ReleaseGPUTexture(_gfx.device, _gfx.depth_one)
 		sdl.ReleaseWindowFromGPUDevice(_gfx.device, _platform.window)
 		sdl.DestroyGPUDevice(_gfx.device)

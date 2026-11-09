@@ -33,6 +33,16 @@ property_drawer_u32 :: proc(ctx: ^Ctx) {
     }
 }
 
+@(property_drawer={type = u16})
+property_drawer_u16 :: proc(ctx: ^Ctx) {
+    ptr, label := ctx.ptr, ctx.label
+    u16_ptr := cast(^u16)(ptr)
+    value := i32(u16_ptr^)
+    if drag_int(field_row(label), &value, 1, 0, i32(max(u16))) {
+        u16_ptr^ = u16(clamp(value, 0, i32(max(u16))))
+    }
+}
+
 @(property_drawer={type = string})
 property_drawer_string :: proc(ctx: ^Ctx) {
     ptr, label := ctx.ptr, ctx.label

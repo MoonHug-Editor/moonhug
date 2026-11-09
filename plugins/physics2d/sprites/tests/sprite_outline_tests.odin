@@ -120,3 +120,58 @@ polygon_collider_added_to_a_sprite_takes_its_outline :: proc(t: ^testing.T) {
 	_, plain_ptr := engine.transform_add_comp(plain, .PolygonCollider2D)
 	testing.expect_value(t, len((cast(^physics2d.PolygonCollider2D)plain_ptr).points), 5)
 }
+
+@(test)
+sprite_outline_of_a_scaled_down_texture_keeps_its_size :: proc(t: ^testing.T) {
+	// A texture imported at max_size 64 is a quarter of its 256 source pixels
+	// on a side, but its sprite keeps its world size: the outline reads the
+	// smaller image through the scale, in source pixels.
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	if !_copy_fixture(t, "circle-256.png") do return
+	defer common.remove_tree(_SRC_DIR)
+	asset_pipeline.asset_pipeline_init()
+	engine.asset_db_init(_SRC_DIR)
+	defer { engine.asset_db_shutdown(); common.remove_tree(engine.library_dir()) }
+	path :: _SRC_DIR + "/circle-256.png"
+	guid, gok := engine.asset_db_get_guid(path)
+	testing.expect(t, gok)
+	if !gok do return
+	sprite := engine.PPtr{guid = engine.Asset_GUID(guid)}
+
+	full: [dynamic][2]f32
+	defer delete(full)
+	testing.expect(t, physics2d_sprites.sprite_outline(sprite, &full))
+	full_radius := _mean_radius(full[:])
+
+	s, sok := engine.asset_pipeline_get_settings(path)
+	testing.expect(t, sok)
+	if !sok do return
+	defer free(s.data)
+	ts := s.(engine.TextureSettings)
+	ts.max_size = 64
+	testing.expect(t, asset_pipeline.asset_pipeline_save_settings(path, ts))
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(path), "the settings change imports")
+
+	small: [dynamic][2]f32
+	defer delete(small)
+	testing.expect(t, physics2d_sprites.sprite_outline(sprite, &small), "the scaled texture has an outline")
+	small_radius := _mean_radius(small[:])
+	// One image pixel is 4 source pixels, 0.04 units at 100 pixels per unit.
+	testing.expectf(t, abs(small_radius - full_radius) < 0.06, "the same size: %v at full size, %v scaled", full_radius, small_radius)
+}
+
+// The mean distance of the points from their center.
+@(private = "file")
+_mean_radius :: proc(points: [][2]f32) -> f32 {
+	if len(points) == 0 do return 0
+	center: [2]f32
+	for p in points do center += p
+	center /= f32(len(points))
+	mean: f32
+	for p in points do mean += math.sqrt((p.x - center.x) * (p.x - center.x) + (p.y - center.y) * (p.y - center.y))
+	return mean / f32(len(points))
+}

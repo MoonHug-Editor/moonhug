@@ -4,12 +4,16 @@ import gfx "moonhug:libs/gfx"
 import "base:runtime"
 import "core:encoding/uuid"
 import "core:fmt"
+import "core:os"
 import "core:strings"
 
 // GUID-keyed texture cache. The GPU side lives in ^gfx.Texture, which is
 // heap-allocated by gfx (its embedded imgui binding address must stay stable).
 Texture2D :: struct {
     guid:   Asset_GUID,
+    // The source image's size, in which sprite rects and pixels per unit are
+    // given. The GPU texture is smaller when the import scaled it down
+    // (TextureSettings.max_size): gfx.width and gfx.height are its own.
     width:  i32,
     height: i32,
     // From the texture's import settings (Unity's Pixels Per Unit): sprite
@@ -85,10 +89,29 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
     }
     // A texture without settings gets the default: generated mip levels.
     mipmaps := !has_settings || ts.mipmaps == .Generate
-    g := gfx.texture_decode_file(artifact, mipmaps)
+    data, read_err := os.read_entire_file(artifact, context.temp_allocator)
+    if read_err != nil {
+        artifact_fail(guid, 0, fmt.tprintf("%s is unreadable (%v)", artifact, read_err))
+        return nil, false
+    }
+    // A scaled-down artifact names its source's size: the texture's size,
+    // in which its sprite rects and pixels per unit are given.
+    image, source_size, scaled := texture_artifact_split(data)
+    g := gfx.texture_decode_bytes(image, mipmaps)
     if g == nil {
         artifact_fail(guid, 0, fmt.tprintf("%s does not decode as a texture", artifact))
         return nil, false
+    }
+    size := scaled ? source_size : [2]i32{g.width, g.height}
+    // Draws sample it as its settings say. Without settings gfx's default
+    // holds: meshes repeat, quads clamp.
+    if has_settings {
+        g.filter = ts.filter == .Nearest ? .Nearest : .Linear
+        switch ts.wrap {
+        case .Repeat: g.wrap = .Repeat
+        case .Clamp:  g.wrap = .Clamp
+        case .Mirror: g.wrap = .Mirror
+        }
     }
 
     ppu := f32(PIXELS_PER_UNIT)
@@ -111,8 +134,8 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
 
     texture_cache[guid] = Texture2D{
         guid   = guid,
-        width  = g.width,
-        height = g.height,
+        width  = size.x,
+        height = size.y,
         pixels_per_unit = ppu,
         sprites = sprites,
         border = border,

@@ -2,8 +2,9 @@
   "guid": "6ae7892c-14e2-4fc9-93ae-bf60599a235a",
   "importer": "texture",
   "settings": {"__type_guid":"21d45bcf-2bd8-44db-b780-953c2f8b610f",
+    "texture_type": 1,
     "filter": 0,
-    "wrap": 0,
+    "wrap": 1,
     "srgb": true,
     "max_size": 0
   }

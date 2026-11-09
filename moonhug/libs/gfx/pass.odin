@@ -1402,9 +1402,10 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			batch_bound = false // vertex buffer binding survives, but re-bind cheaply per pipeline switch
 		}
 		tex := d.texture != nil ? d.texture : _gfx.white_tex
-		// Meshes wrap (glTF default REPEAT — UVs may live outside [0,1]);
-		// batch quads clamp (sprite edges must not bleed the opposite border).
-		smp := d.is_mesh ? _gfx.sampler_repeat : _gfx.sampler_linear
+		// A mesh or quad draw reads each texture with its own filter and wrap
+		// (texture_sampling.odin). A full-screen draw clamps: a post step
+		// reads whole images.
+		smp := d.fullscreen ? _gfx.sampler_linear : _draw_sampler(tex, d.is_mesh)
 		// Slot 0 = main texture; extra_tex fills 1..N (sized by the caller to
 		// the shader's declared sampler count, nil entries bind white).
 		bindings: [MAX_FRAGMENT_SAMPLERS]sdl.GPUTextureSamplerBinding
@@ -1413,7 +1414,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 		for et in d.extra_tex {
 			if num_bindings >= MAX_FRAGMENT_SAMPLERS do break
 			t := et != nil ? et : _gfx.white_tex
-			bindings[num_bindings] = {texture = t.gpu, sampler = smp}
+			bindings[num_bindings] = {texture = t.gpu, sampler = d.fullscreen ? _gfx.sampler_linear : _draw_sampler(t, d.is_mesh)}
 			num_bindings += 1
 		}
 		// A shader that declares the shadow slot gets the pass's shadow map
