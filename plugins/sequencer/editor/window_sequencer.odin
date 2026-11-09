@@ -1,6 +1,6 @@
 package sequencer_editor
 
-// Sequencer window (plugins/sequencer/docs/Sequencer.md) — Unity's Timeline window on the
+// Sequencer window (plugins/sequencer/docs/windows/SequencerWindow.md) — the timeline editor on the
 // director scrub path, laid out after ImGuizmo's ImSequencer: a legend
 // column (mute, track name, target, add-clip) beside a scrollable canvas
 // (seconds ruler + playhead + clip blocks with move/resize grips), an
@@ -654,7 +654,7 @@ sequencer_window_draw :: proc(w: ^wnd.Window) {
 					// Binding order is (rounding, thickness, flags) — unlike native imgui.
 					im.DrawList_AddRect(dl, r0, r1, im.GetColorU32ImVec4({1, 0.85, 0.2, 1}), 3, 2)
 				}
-				// Blend ramps, Unity-style: the weight curve drawn as a line
+				// Blend ramps: the weight curve drawn as a line
 				// across the clip. Where clips OVERLAP this reads as an X —
 				// one ramping down while its neighbour ramps up — because
 				// both are drawing the same derived weights
@@ -890,8 +890,8 @@ sequencer_preview_apply :: proc() {
 		if _sq.time >= dur do _sq.time = 0
 	}
 
-	// Play advances with real crossings (audio sounds, like Unity's Timeline
-	// preview); a paused or dragged playhead is a silent scrub.
+	// Play advances with real crossings (audio sounds in the preview); a
+	// paused or dragged playhead is a silent scrub.
 	if playing_step {
 		seq.director_preview_step(d, _sq.time)
 	} else {

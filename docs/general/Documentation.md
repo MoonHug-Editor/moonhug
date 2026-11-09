@@ -29,7 +29,8 @@ A plugin's pages live in its `docs/` folder and appear under Plugins, one group 
 ```
 plugins/<name>/docs/
   _index.md        the plugin's landing page
-  components/      one page per component
+  components/      one page per component, components only
+  scripts/         one page per important type that is not a component
   assets/          one page per asset type
   windows/         one page per editor window
   attributes/      one page per family of attributes the plugin declares
@@ -43,7 +44,7 @@ Each section answers one question:
 
 | Section | The reader's question |
 |---|---|
-| Components, Assets, Windows, Attributes, Render steps | What does this thing do |
+| Components, Scripts, Assets, Windows, Attributes, Render steps | What does this thing do |
 | Guides | How do I do X |
 | Concepts | How does it work, and why is it built this way |
 | Roadmap | What is missing, undecided or out of scope |
@@ -53,6 +54,8 @@ Each section answers one question:
 - Everything except the roadmap states how things are, in present tense. Rationale goes in the concept page it explains, in a "Why" section or beside the rule it justifies.
 
 ### Landing page
+
+Its `title` is the plugin's package name, `animation` or `sequencer`, the same name the left pane shows for a plugin without a landing page.
 
 What the plugin adds, every page linked by section, what it needs, a quick start, its limits, how to extend it, and links to its API reference and samples.
 
@@ -72,6 +75,8 @@ The plugin it extends documents only its own extension points, such as how to ad
 ### Page templates
 
 - A component page: a one-sentence lead, then Example, Properties (field, default, what it does), Behavior, In the editor, From code, Limits and See also.
+- Types that all plug into one component, such as the scripts and the tweens a timeline clip lists, are child pages of that component: its page becomes `components/<Component>/_index.md`, with one short page per type beside it. When several types plug into one component and none is a component, they can instead form a sub-group under `scripts/`.
+- A child or scripts page shows only the important parts: a one-sentence lead naming the component it goes in, Properties and Behavior.
 - An asset page: Example, Import settings, Artifact, In the editor, From code, Limits and See also.
 - An attributes page covers one family of attributes, a lifecycle for instance, with an example each, and links each attribute's generated reference page, which holds its fields.
 

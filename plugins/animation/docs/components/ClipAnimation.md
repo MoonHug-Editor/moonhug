@@ -7,7 +7,7 @@ tags: ["animation", "sequencer", "components"]
 
 Makes a timeline clip an animation clip: it names the clip a [TrackAnimation](TrackAnimation.md) plays for the clip's span. Needs the sequencer plugin.
 
-A timeline clip is an object under a track that carries `TimelineClip`, with its `start`, `duration`, `ease_in`, `ease_out` and `speed`, and the kind's clip component, this one ([Sequencer](/plugins/sequencer/docs/Sequencer.md), "Structure").
+A timeline clip is an object under a track that carries `TimelineClip`, with its `start`, `duration`, `ease_in`, `ease_out` and `speed`, and the kind's clip component, this one ([Timelines as prefabs](/plugins/sequencer/docs/concepts/TimelinesAsPrefabs.md), "The parts").
 
 ## Example
 

@@ -238,8 +238,8 @@ test_control_track_drives_nested_director :: proc(t: ^testing.T) {
 	testing.expect(t, abs(nt.position.x - 8) < 0.11, "host scrub reaches the nested timeline")
 }
 
-// An animation track drives an ANIMATION COMPONENT (Unity's model: the
-// timeline takes over the Animator). Its target names which one; unset, it
+// An animation track drives an ANIMATION COMPONENT (the timeline takes
+// over the component's own playback). Its target names which one; unset, it
 // finds one on the director, and poses the director's transform directly
 // when there is none. The driven component's own playback stands down, so
 // the two never write the same transforms in one frame.

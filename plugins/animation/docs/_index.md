@@ -1,5 +1,5 @@
 ---
-title: "Animation"
+title: "animation"
 description: "Clip-based animation: the Animation component, animation clips, the Animation window and timeline states"
 tags: ["animation", "plugin"]
 ---

@@ -105,6 +105,9 @@ evaluate_TweenRotateLocalTo :: proc(s: ^TweenRotateLocalTo, t: f32, ctx: ^core.T
 		s.captured = true
 		s.from = tr.rotation
 	}
+	// A new tween's `to` is the all-zero value, which the Euler drawer shows as
+	// 0, 0, 0: no rotation, the way a scene reads an all-zero rotation.
+	to := s.to if s.to != {} else engine.QUAT_IDENTITY
 	tr.rotation = engine.quat_from_native(linalg.quaternion_slerp(
-		engine.quat_to_native(s.from), engine.quat_to_native(s.to), t))
+		engine.quat_to_native(s.from), engine.quat_to_native(to), t))
 }

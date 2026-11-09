@@ -223,6 +223,15 @@ The particle store is `[dynamic]Particle` per system, dead particles leave by sw
 
 Bitmaps per particle are not a step: every particle has every field, and dead ones are removed, so there is no "which particles have X" question.
 
+## Sequencer track
+
+With the sequencer plugin installed, the `sequencer` subpackage (`plugins/particles/sequencer/track_particles.odin`) adds a particles track kind to timelines.
+
+- TrackParticles `system` is the ParticleSystem the clips play. ClipParticles has no fields: the span is the instruction.
+- Entering a span plays the system. Leaving it stops the system and clears its live particles, so the span is the effect's lifetime and play mode shows what scrubbing to the same time shows.
+- Scrubbing replays: the system resets and advances in fixed steps to the clip's local time, exact with a `random_seed`. Its sub-emitter targets clear with it.
+- Author a track-driven system with `manual_start` on and a `random_seed`, so the span decides when it plays.
+
 ## Sample
 
 `packages/particles/samples/particles_sample` ships

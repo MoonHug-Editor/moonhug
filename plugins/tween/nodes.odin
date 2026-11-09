@@ -53,14 +53,17 @@ tick_TweenRotateToLocal :: proc(self: ^TweenRotateToLocal, delta_time: f32, ctx:
     w := engine.ctx_world()
     transform := engine.pool_get(&w.transforms, engine.Handle(ctx.subject))
     if transform == nil do return .Done
+    // A new node's `rotation` is the all-zero value, which the Euler drawer
+    // shows as 0, 0, 0: no rotation, the way a scene reads an all-zero rotation.
+    to := self.rotation if self.rotation != {} else engine.QUAT_IDENTITY
     if self.duration == 0 {
-        transform.rotation = self.rotation
+        transform.rotation = to
         return .Done
     }
     if self.elapsed == 0 do self.from = transform.rotation
     self.elapsed += delta_time
     t := clamp(self.elapsed / self.duration, 0, 1)
-    transform.rotation = engine.quat_from_native(linalg.quaternion_slerp(engine.quat_to_native(self.from), engine.quat_to_native(self.rotation), t))
+    transform.rotation = engine.quat_from_native(linalg.quaternion_slerp(engine.quat_to_native(self.from), engine.quat_to_native(to), t))
     return .Done if t >= 1 else .Running
 }
 

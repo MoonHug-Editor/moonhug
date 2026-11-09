@@ -1,6 +1,6 @@
 package sequencer
 
-// The sequencer's vocabulary (plugins/sequencer/docs/Sequencer.md). A timeline is a TRANSFORM
+// The sequencer's vocabulary (plugins/sequencer/docs/concepts/Playback.md). A timeline is a TRANSFORM
 // SUBTREE — a PlayableDirector node with track child nodes holding clip
 // nodes — so there is no timeline document format: prefabs are the asset
 // form, nesting is composition, variants and overrides are the tweak
@@ -64,7 +64,7 @@ Track_Ctx :: struct {
 // - Scrub: time jumped (ruler drag, paused playhead). Stateful tracks reset
 //   and replay deterministically; nothing sounds.
 // - Preview_Play: the editor preview auto-advances. Crossings are real and
-//   audio plays live (Unity's Timeline preview), particles keep their
+//   audio plays live, particles keep their
 //   deterministic replay, and scripts (game code) stay silent.
 Track_Mode :: enum u8 {
 	Play,
@@ -85,7 +85,7 @@ track_clip_active :: proc(ctx: ^Track_Ctx, c: ^Clip_View) -> bool {
 	return ctx.time >= c.start && ctx.time < c.start + c.duration
 }
 
-// A clip's blend weight at `t`, 0 outside its span (Unity's Timeline model).
+// A clip's blend weight at `t`, 0 outside its span.
 //
 // OVERLAP IS THE BLEND: where two clips on a track overlap, the earlier one
 // ramps out across the overlap and the later one ramps in, so dropping a clip
@@ -189,7 +189,7 @@ track_kinds :: proc(allocator := context.temp_allocator) -> []Track_Desc {
 // --- Built-in registry tracks ---------------------------------------------------------
 
 // Activation: the bound transform is active while any clip covers the time
-// (Unity's activation track post-behavior "inactive outside clips").
+// and inactive outside the clips.
 //
 // The track owns its preview restore: outside Play mode the tick captures
 // the pre-tick is_active, and preview_end (the editor's per-frame render

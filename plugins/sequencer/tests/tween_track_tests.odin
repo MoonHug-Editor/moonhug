@@ -12,6 +12,7 @@ import "core:testing"
 import "moonhug:packages/engine"
 import seq "moonhug:packages/sequencer"
 import tweens "moonhug:packages/sequencer/tweens"
+import seq_core "moonhug:packages/sequencer/core"
 import common "moonhug:tests/common"
 @(private = "file")
 _close :: proc(a, b: [3]f32) -> bool {
@@ -306,4 +307,28 @@ test_tween_capture_enter_scrubs_stable :: proc(t: ^testing.T) {
 		"scrubbing back into the span keeps the first capture")
 	seq.director_set_time(d, 0.1)
 	testing.expect(t, _close(victim.position, {1, 2, 3}), "before the span restores the start pose")
+}
+
+// A new TweenRotateLocalTo's `to` is the all-zero value, which the inspector
+// shows as 0, 0, 0. It has to mean no rotation: slerping toward the zero
+// quaternion would end on a degenerate rotation and collapse the object.
+@(test)
+test_tween_rotate_zero_target_means_no_rotation :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	root := engine.transform_new("Stage")
+	engine.scene_set_root(tc.scene, root)
+	vH := engine.transform_new("Victim", root)
+	victim := engine.pool_get(&tc.world.transforms, engine.Handle(vH))
+	victim.rotation = engine.QUAT_IDENTITY
+
+	tw := tweens.TweenRotateLocalTo{target = {local_id = victim.local_id, handle = engine.Handle(vH)}}
+	ctx := seq_core.Tween_Ctx{owner = root}
+	tweens.evaluate_TweenRotateLocalTo(&tw, 1, &ctx)
+	q := victim.rotation
+	testing.expectf(t, abs(q.x) < 1e-5 && abs(q.y) < 1e-5 && abs(q.z) < 1e-5 && abs(q.w - 1) < 1e-5, "an untouched to ends on no rotation, got %v", q)
 }

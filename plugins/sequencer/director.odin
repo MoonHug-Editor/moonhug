@@ -158,7 +158,7 @@ _director_tree_sig :: proc(tracks: []Track_View) -> u64 {
 	return sig
 }
 
-// --- Playback control (Unity's Play/Pause/Stop) --------------------------------
+// --- Playback control: play, pause, stop ---------------------------------------
 
 director_play :: proc(d: ^PlayableDirector) {
 	d.started = true
@@ -220,7 +220,7 @@ director_set_time :: proc(d: ^PlayableDirector, time: f32) {
 // The editor preview's PLAY advance: evaluation keeps scrub semantics (the
 // world stays a pure function of time — particles replay, poses restore per
 // frame) but crossings are real (mode .Preview_Play), so audio plays live
-// like Unity's Timeline preview. `time` moving backwards is read as the
+// in the preview. `time` moving backwards is read as the
 // preview loop wrapping — jumps use director_set_time.
 director_preview_step :: proc(d: ^PlayableDirector, time: f32) {
 	tracks := director_tracks(d)

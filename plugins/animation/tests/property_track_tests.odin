@@ -1,8 +1,8 @@
 package animation_tests
 
 // Property channels (clip_property.odin): AnimationClip channels that animate
-// component fields by (component type guid, dotted field path) — Unity's
-// EditorCurveBinding model. Camera is the target: fov (f32), clear_color
+// component fields by (component type guid, dotted field path), a binding of
+// object path, component and field. Camera is the target: fov (f32), clear_color
 // ([4]f32), order (i32, discrete) cover the kind matrix on one engine
 // component.
 

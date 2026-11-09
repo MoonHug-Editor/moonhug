@@ -5,7 +5,7 @@ package sequencer
 // asset is a prefab whose root carries this component; instancing, variants
 // and per-instance binding all ride the prefab system.
 //
-// Serialized fields are ZERO-NEUTRAL: manual_start is the inverse of Unity's
+// Serialized fields are ZERO-NEUTRAL: manual_start is the inverse of
 // play-on-awake, speed 0 runs at 1, duration 0 is computed from the last
 // clip end.
 

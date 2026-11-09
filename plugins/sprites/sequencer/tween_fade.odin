@@ -1,7 +1,7 @@
 package sprites_sequencer
 
 // A clip tween owned by the sprites plugin, because the thing it poses is its
-// component (plugins/sequencer/docs/Sequencer.md "Tweens"). It imports only sequencer/core —
+// component (plugins/sequencer/docs/concepts/ScriptsAndTweens.md, "Adding a variant"). It imports only sequencer/core —
 // never the sequencer — and tween_gen picks it up by the embedded Clip_Tween
 // base, adding it to TweenUnion on the next prebuild. That is the whole
 // plugin contract: no registration call, no edit to the sequencer. The

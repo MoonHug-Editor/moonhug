@@ -393,7 +393,7 @@ _ta_advance_states :: proc(a: ^TimelineAnimator, dt: f32, mode: seq.Track_Mode) 
 //
 // `mode` is how the timelines read the advance: .Play at runtime,
 // .Preview_Play for the editor, where crossings and audio are real but game
-// scripts stay silent (plugins/sequencer/docs/Sequencer.md, Track_Mode).
+// scripts stay silent (plugins/sequencer/docs/concepts/Playback.md, "Modes").
 timeline_animator_step :: proc(a: ^TimelineAnimator, dt: f32, mode := seq.Track_Mode.Play) {
 	if !a.enabled {
 		// A disabled animator owns nothing, so whatever it held plays

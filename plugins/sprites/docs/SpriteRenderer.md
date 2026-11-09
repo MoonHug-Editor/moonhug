@@ -124,6 +124,14 @@ then sprites by key. Tests: `tests/sprite_sorting_tests.odin`.
 
 ---
 
+## Sequencer tween
+
+With the sequencer plugin installed, the `sequencer` subpackage (`plugins/sprites/sequencer/tween_fade.odin`) adds TweenFadeTo, a tween for a timeline's [ClipTween](/plugins/sequencer/docs/components/ClipTween/_index.md).
+
+- `target` is the SpriteRenderer to fade and `to` the alpha it ends at. The colour stays.
+- The start alpha is captured when the tween first evaluates, and again as its `capture` setting says.
+- It imports only `sequencer/core`, and the prebuild adds it to the sequencer's TweenUnion, so the sequencer names no sprites type.
+
 ## Lifecycle
 
 | Phase | What happens |

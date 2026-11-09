@@ -24,7 +24,7 @@ Every part is the built-in cube, so the scene needs no imported asset. Each obje
 
 ## 2. The timelines
 
-Each timeline is an object with a PlayableDirector, and its tracks are the objects under it ([Sequencer](/plugins/sequencer/docs/Sequencer.md)):
+Each timeline is an object with a PlayableDirector, and its tracks are the objects under it ([Timelines as prefabs](/plugins/sequencer/docs/concepts/TimelinesAsPrefabs.md)):
 
 ```
 idle            PlayableDirector

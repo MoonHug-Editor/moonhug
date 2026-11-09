@@ -1,9 +1,9 @@
 package animation_sequencer
 
-// The animation timeline track (plugins/sequencer/docs/Sequencer.md): clips are AnimationClips
+// The animation timeline track (plugins/animation/docs/components/TrackAnimation.md): clips are AnimationClips
 // blended on a per-track mixer, weights from their ease ramps, so overlapping
-// clips crossfade. The track drives an ANIMATION COMPONENT (Unity's model:
-// the timeline takes over the Animator): its target names the Animation to
+// clips crossfade. The track drives an ANIMATION COMPONENT (the timeline
+// takes over the component's own playback): its target names the Animation to
 // play on, and the component's own playback stands down while the track
 // drives it, so the two never write the same transforms in one frame.
 // Unset, the track looks for an Animation on the director itself, and falls
@@ -372,7 +372,7 @@ _animation_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 		if n == nil do continue
 		local := (ctx.time - c.start) * (c.speed if c.speed > 0 else 1)
 		// A source clip shorter than the timeline clip wraps by its own wrap
-		// mode (Unity loops the source).
+		// mode.
 		if src, sok := anim.animation_clip_load(_anim_clip_asset(&c)); sok {
 			local, _ = anim.animation_wrap_time(local, src.length, src.wrap)
 		}

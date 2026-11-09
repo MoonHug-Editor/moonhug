@@ -39,6 +39,7 @@ graph                 nodes, time and weight propagation, outputs
 | Script | Calls back with its time and weight. A timeline marker is a script node of zero duration. A leaf. |
 
 - A node has a local time and a speed. Drivers set the times. Evaluation reads `time * speed`.
+- Drivers poll a clip node's length with `playable_clip_length` and whether a Once clip has played past its end with `playable_node_done`. Evaluation fires no callbacks for either.
 - Each input carries a weight from 0 to 1, written by drivers. A weight scales the whole subtree under it, so fading a blend fades every clip in it.
 - A handle is any node, and any subtree is an input to another node. The graph is an arena of nodes, and graphs do not nest: something reusable is built into the host's arena.
 
@@ -123,7 +124,7 @@ The world holds its own values whenever saves, undo or the inspector run, so a p
 ## Scrubbing
 
 - Animation scrubs exactly: evaluation keeps no memory, so any time is valid.
-- Markers and other crossings fire only during playback. A timeline scrub jumps to a time without firing what it passes, and tracks that keep state reset and replay to that time instead ([Sequencer](/plugins/sequencer/docs/Sequencer.md)).
+- Markers and other crossings fire only during playback. A timeline scrub jumps to a time without firing what it passes, and tracks that keep state reset and replay to that time instead ([Playback](/plugins/sequencer/docs/concepts/Playback.md), "Modes").
 - Audio plays only during playback, never while scrubbing.
 
 ## Why it is built this way

@@ -139,7 +139,7 @@ test_activation_preview_restores_authored_state :: proc(t: ^testing.T) {
 	testing.expect(t, ct.is_active, "runtime play drives activation directly")
 }
 
-// Overlap IS the blend (Unity's Timeline model): where two clips on a track
+// Overlap IS the blend: where two clips on a track
 // overlap, the earlier ramps out across the overlap while the later ramps
 // in, with no authoring. Explicit eases still apply at boundaries with no
 // neighbour. Derived from the spans, so it can never disagree with them.

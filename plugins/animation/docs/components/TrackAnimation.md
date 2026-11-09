@@ -7,7 +7,7 @@ tags: ["animation", "sequencer", "components"]
 
 Makes a timeline track an animation track: its clips play on an [Animation](Animation.md) component, and overlapping clips cross-fade. Needs the sequencer plugin.
 
-A track is an object under a timeline's PlayableDirector that carries `TimelineTrack` and one kind component, this one ([Sequencer](/plugins/sequencer/docs/Sequencer.md), "Structure"). Its clips are the objects under it that carry [ClipAnimation](ClipAnimation.md).
+A track is an object under a timeline's PlayableDirector that carries `TimelineTrack` and one kind component, this one ([Timelines as prefabs](/plugins/sequencer/docs/concepts/TimelinesAsPrefabs.md), "The parts"). Its clips are the objects under it that carry [ClipAnimation](ClipAnimation.md).
 
 ## Example
 

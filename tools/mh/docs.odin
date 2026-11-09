@@ -894,6 +894,7 @@ PLUGIN_DOC_SECTIONS :: [?]struct {
 	title: string,
 }{
 	{"components", "Components"},
+	{"scripts", "Scripts"},
 	{"assets", "Assets"},
 	{"windows", "Windows"},
 	{"attributes", "Attributes"},

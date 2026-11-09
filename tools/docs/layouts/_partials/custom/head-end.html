@@ -130,3 +130,57 @@
     }).catch(function () {});
   });
 </script>
+{{- /* The left pane resizes: drag its right edge, double-click it for the
+     theme's width again. The width is kept in localStorage, so it holds across
+     pages and visits, and the variable is set before the page paints, so a
+     page never opens at the old width first. Desktop only: below the md
+     breakpoint the pane is the theme's slide-in menu. */ -}}
+<style>
+@media (min-width: 768px) {
+  .hextra-sidebar-container { width: var(--mh-sidebar-w, 16rem) !important; }
+  .mh-sidebar-grip { position: absolute; top: 0; right: -3px; width: 6px; height: 100%; cursor: col-resize; z-index: 20; }
+  .mh-sidebar-grip:hover, .mh-sidebar-grip.mh-dragging { background: rgba(128, 128, 128, 0.35); }
+}
+@media (max-width: 767px) { .mh-sidebar-grip { display: none; } }
+</style>
+<script>
+(function () {
+  var KEY = "mh-sidebar-w", MIN = 180, MAX = 640;
+  var root = document.documentElement;
+  function load() { try { return parseInt(localStorage.getItem(KEY) || "", 10); } catch (e) { return NaN; } }
+  function save(w) { try { if (w) localStorage.setItem(KEY, String(w)); else localStorage.removeItem(KEY); } catch (e) {} }
+  var saved = load();
+  if (saved >= MIN && saved <= MAX) root.style.setProperty("--mh-sidebar-w", saved + "px");
+  document.addEventListener("DOMContentLoaded", function () {
+    var aside = document.querySelector(".hextra-sidebar-container");
+    if (!aside) return;
+    var grip = document.createElement("div");
+    grip.className = "mh-sidebar-grip";
+    grip.title = "Drag to resize, double-click to reset";
+    aside.appendChild(grip);
+    grip.addEventListener("mousedown", function (e) {
+      e.preventDefault();
+      var startX = e.clientX, startW = aside.getBoundingClientRect().width;
+      grip.classList.add("mh-dragging");
+      document.body.style.userSelect = "none";
+      function move(ev) {
+        var w = Math.min(Math.max(startW + ev.clientX - startX, MIN), MAX);
+        root.style.setProperty("--mh-sidebar-w", w + "px");
+      }
+      function up() {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        grip.classList.remove("mh-dragging");
+        document.body.style.userSelect = "";
+        save(Math.round(aside.getBoundingClientRect().width));
+      }
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    });
+    grip.addEventListener("dblclick", function () {
+      root.style.removeProperty("--mh-sidebar-w");
+      save(0);
+    });
+  });
+})();
+</script>

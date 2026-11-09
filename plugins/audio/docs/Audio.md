@@ -84,6 +84,17 @@ and pans relative to it every frame:
 The math is a pure proc (`spatial_gains`), unit-tested headless. Without a
 listener every source plays 2D.
 
+## Sequencer track
+
+With the sequencer plugin installed, the `sequencer` subpackage (`plugins/audio/sequencer/track_audio.odin`) adds an audio track kind to timelines.
+
+- TrackAudio `source` is the AudioSource whose settings the clips play through: volume, pitch, spatial blend and mute. ClipAudio `clip` is the sound, an mp3, wav or ogg.
+- Each playing clip has a voice of its own, never the source's own track, which game code keeps for `audio_play`.
+- A clip's weight is its volume, so two overlapping clips on one track crossfade, and a clip's `ease_in` and `ease_out` are volume fades.
+- The sound follows the playhead. Entering a span part-way, by pressing Play inside it, playing after a scrub or a loop wrapping into it, starts the voice at the clip's local offset, and crossing a clip's start restarts it.
+- Scrubbing is silent. The Sequencer window's preview plays sound while it plays.
+- Author a track-driven source with `play_on_awake` off, so the clips decide when it plays.
+
 ## Semantics
 
 - One `mix.Track` per playing source, created on first play, destroyed with

@@ -66,5 +66,5 @@ A track kind in any plugin shows its binding field under the animator's states b
 ## See also
 
 - [Timelines as states](../guides/TimelineStates.md), the sample step by step.
-- [Sequencer](/plugins/sequencer/docs/Sequencer.md), the timeline system itself.
+- [Sequencer](/plugins/sequencer/docs/_index.md), the timeline system itself.
 - [Roadmap](../Roadmap.md), for the open questions and known concerns of the TimelineAnimator.
