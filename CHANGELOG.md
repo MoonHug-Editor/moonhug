@@ -1,3 +1,10 @@
+## [0.160.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.159.0...v0.160.0) (2026-11-09)
+
+### Features
+
+* breaking. term rename view->window ([41bb1ff](https://github.com/MoonHug-Editor/moonhug/commit/41bb1ff17ca6109d983407beb5958101241f8b2a))
+* scene_overlay Pivot serialized in UserSettings ([ced7666](https://github.com/MoonHug-Editor/moonhug/commit/ced7666cf1d4a719b4916dc8b03d3fc8d3d34e44))
+
 ## [0.159.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.158.1...v0.159.0) (2026-11-09)
 
 ### Features
