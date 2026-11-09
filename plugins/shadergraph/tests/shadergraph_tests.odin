@@ -1,6 +1,6 @@
 package shadergraph_tests
 
-// The graph document and its code generation (plugins/shadergraph/docs/ShaderGraph.md).
+// The graph document and its code generation (plugins/shadergraph/docs/concepts/CodeGeneration.md).
 // Compiling the GLSL needs the toolchain and a GPU, which the editor
 // exercises through the importer.
 

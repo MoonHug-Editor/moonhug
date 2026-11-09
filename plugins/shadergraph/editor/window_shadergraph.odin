@@ -1,6 +1,6 @@
 package shadergraph_editor
 
-// The Shader Graph window (docs/ShaderGraph.md, Editor): the toolbar, the
+// The Shader Graph window (docs/windows/ShaderGraphWindow.md): the toolbar, the
 // blackboard and the selected node's inputs on the left, the node canvas in
 // the middle, the generated GLSL on the right.
 //

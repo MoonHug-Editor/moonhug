@@ -7,13 +7,13 @@ import "moonhug:packages/engine"
 // when no sprite is set. The node also needs a CanvasRenderer, which is what
 // marks it as drawing; Image only says what.
 //
-// Image types, Unity's: Simple stretches the sprite over the rect. Sliced
+// Image types: Simple stretches the sprite over the rect. Sliced
 // keeps the sprite's 9-slice borders at their pixel size and stretches the
 // edges and the center. Tiled keeps the corners, tiles the edges along their
 // length and the center in both directions. Borders come from the sprite
 // (the Sprite Editor, or the texture's import settings in Single mode);
 // pixels_per_unit_multiplier scales the pixel size the borders and tiles
-// draw at (Unity's Pixels Per Unit Multiplier), so 2 halves them.
+// draw at, so 2 halves them.
 @(component={menu="UI/Image"})
 @(typ_guid={guid = "0a7604a3-0097-4b7d-a565-7ebbdfcaa795"})
 Image :: struct {
@@ -70,8 +70,7 @@ IMAGE_MAX_TILES :: 4096
 // The 3x3 cells of a sprite with borders over `rect`, stretched (Sliced) or
 // tiled (Tiled: corners fixed, edges tiled along their length, the center in
 // both directions, partial tiles cut). Borders and tiles draw at pixel size
-// over `ppu_multiplier`. Borders wider than the rect shrink to share it, as
-// Unity does. Without borders Sliced is a stretch and Tiled tiles the whole
+// over `ppu_multiplier`. Borders wider than the rect shrink to share it. Without borders Sliced is a stretch and Tiled tiles the whole
 // sprite.
 image_sliced :: proc(out: ^[dynamic]engine.Graphic_Quad, tex: engine.Asset_GUID, tex_size: [2]f32, px: [4]f32, border: [4]f32, rect: engine.Rect, fill_center: bool, ppu_multiplier: f32, tiled: bool) {
 	m := 1 / ppu_multiplier if ppu_multiplier > 0 else 1 // 0 (a component saved before the field existed) means 1

@@ -1,7 +1,7 @@
 package tween
 
-// The package's own TweenUnion carrier: a component holding authored tweens,
-// shaped like Unity's legacy Animation component (a list on the object).
+// The plugin's own carrier of authored tweens: a component holding a list
+// of them on the object.
 // Also what the package's tests exercise — they never depend on a runnable
 // package's components. Scene records live in ext_components keyed by the
 // type guid below — never change it.

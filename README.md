@@ -96,18 +96,19 @@ For more details see [Architecture](docs/core/Architecture.md)
 - [Asset Pipeline](docs/core/AssetPipeline.md) - asset importer/loader
 - [Components](plugins/engine/docs/Components.md) - component data layer: pools, handles, iteration contract
 - [Groups](plugins/engine/docs/Groups.md) - named groups of objects: a Groups component holds membership bits, alive and active lists per group kept by the lifecycle hooks, names in a Group Names asset
-- [Input Actions](plugins/input_actions/docs/InputActions.md) - the input_actions plugin, in Enhanced Input's vocabulary: named actions over keys, mouse and gamepad from an Input Actions asset of mapping contexts with key mappings, a priority stack of contexts that consume the keys below them (all, or the listed actions'), per-frame and per-tick values, a table inspector with a key picker and Listen
+- [input_actions](plugins/input_actions/docs/_index.md) - named actions over keys, mouse and gamepad: an Input Actions asset of mapping contexts, a priority stack of contexts that consume the keys below them, per-frame and per-tick values
 - [Scenes](plugins/engine/docs/Scenes.md)
-- [Tweens](plugins/tween/docs/Tweens.md)
+- [tween](plugins/tween/docs/_index.md) - tween trees authored as values in component fields and run as live node trees, Sequence and Parallel composites, node types any plugin adds, the Tween Graph window
 - [Reference Handles](plugins/engine/docs/ReferenceHandles.md)
 - [Object Picker](docs/core/ObjectPicker.md) - Unity-style reference picker: Scene/Project tabs, search, ping, project picks filtered by root component or file extension
 - [SDL3 Renderer](plugins/engine/docs/SDL3Renderer.md) - SDL3 + SDL_GPU rendering (Metal-native), per-camera render commands, Scene window picking + selection outline + move/rotate/scale gizmos
 - [Meshes](plugins/engine/docs/Meshes.md) - glTF import with per-material submeshes, MeshFilter/MeshRenderer components
 - [Materials](plugins/engine/docs/Materials.md) - Material assets (built-in unlit/lit shaders + texture/color) on MeshRenderer AND SpriteRenderer, custom .glsl shaders with hot reload + property blocks + multi-texture rows, PBR/specular sample shaders (camera position + world position available to fragment shaders), directional/point/spot Light components (up to 8 per pass), live-editing inspector
 - [Sprites](plugins/sprites/docs/_index.md) - SpriteRenderer and SpriteSortingGroup, texture slices cut in the Sprite Editor, sprite sorting
-- [Text](plugins/text/docs/Text.md) - TextMeshPro-shaped text plugin for the canvas tree: font files import into a signed-distance-field atlas, an SDF material shader gives outline, underlay shadow, dilation and softness, sharp at any size, backend-neutral layout with a swappable glyph source
+- [text](plugins/text/docs/_index.md) - text for the UI canvas: fonts imported into signed-distance-field atlases, an SDF material shader with outline, shadow, dilation and softness, sharp at any size, layout separate from a swappable glyph source
 - [Handles](docs/core/Handles.md) - Scene window interaction layer for editor and package editors: immediate-mode drag handles on a plane or a line, bounds composites (box, sphere, capsule), snapping, overlay drawing, one drag = one undo step, picking providers
-- [GUI](plugins/mhgui/docs/Gui.md) - canvas tree in the engine (Canvas, RectTransform anchors/pivot layout, CanvasRenderer, CanvasScaler, rect walk with layout providers), mhgui plugin package for the graphics (Image, sprite or solid color), LayoutGroup (row/column/grid), the render collector and the rect tool on editor/handles
+- [UI canvas](plugins/engine/docs/UICanvas.md) - the canvas tree in the engine: Canvas, RectTransform anchors and pivot layout, CanvasRenderer, CanvasScaler, the pointer
+- [mhgui](plugins/mhgui/docs/_index.md) - UI graphics and controls: Image (simple, sliced, tiled), Button, LayoutGroup (row, column, grid), the rect tool
 - [Unity Conveniences](docs/general/UnityConveniences.md)
 - [Multiselection](docs/core/Multiselection.md) - cmd/shift selection in hierarchy, Scene window and project; rubber-band box select; gizmo moves/rotates/scales the whole selection (Pivot/Center toggle); set-wide delete/duplicate/toggle-active as one undo step; multiedit of shared components with Unity's mixed-value indicators
 - [Crash Journal](docs/general/CrashJournal.md) - signal-safe crash log with a symbolized stack and a breadcrumb of what the editor was doing (`logs/crash_<pid>.log`)

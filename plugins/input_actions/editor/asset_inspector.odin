@@ -1,6 +1,6 @@
 package input_actions_editor
 
-// The Input Actions asset's inspector (docs/InputActions.md): one section
+// The Input Actions asset's inspector (docs/assets/InputActions.md): one section
 // per map with its name, priority and consume mode, and under it a table
 // with a row per binding: the action's name, kind, consumed flag and dead
 // zone on the action's first row, then the binding's control, part and

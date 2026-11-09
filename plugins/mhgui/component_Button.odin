@@ -1,6 +1,6 @@
 package mhgui
 
-// Button: a clickable graphic with Unity's Selectable transition. The pointer
+// Button: a clickable graphic with a selectable's colour transition. The pointer
 // pass (engine.canvas_pointer_update, run by ui_tick below before any game
 // update) says which node is hovered, pressed, selected and clicked; every
 // Button derives its state from that and tints its target graphic's
@@ -24,7 +24,7 @@ Selectable_State :: enum u8 {
 	Disabled,
 }
 
-// Unity's ColorBlock. Colors multiply the graphic's own color.
+// The colour per state. Colors multiply the graphic's own color.
 Color_Block :: struct {
 	normal:           [4]f32 `decor:color()`,
 	highlighted:      [4]f32 `decor:color()`,

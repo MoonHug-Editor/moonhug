@@ -97,4 +97,4 @@ N states on M animators are N×M parked subtrees, each walked every frame and ea
 - Transitions, conditions and parameters on the Animation component. A blend reads one value that gameplay sets.
 - Replacing the timeline. A timeline that drives the Animation component sets `timeline_driven`, and the component's own playback stands down.
 - Audio while scrubbing in the editor.
-- Merging with tweens. The tween system is procedural, not clip-based, and stays separate ([Tweens](/plugins/tween/docs/Tweens.md)).
+- Merging with tweens. The tween system is procedural, not clip-based, and stays separate ([Tweens](/plugins/tween/docs/_index.md)).

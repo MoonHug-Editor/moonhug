@@ -1,6 +1,6 @@
 package input_actions
 
-// Input actions (docs/InputActions.md): game code reads named actions
+// Input actions (docs/_index.md): game code reads named actions
 // ("Jump", "Move") instead of keys, and an Input Actions asset says which
 // controls drive them. The asset holds action maps, each a set of actions
 // with bindings. Maps are pushed on a stack with a priority: the Player map

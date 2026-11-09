@@ -1,7 +1,7 @@
 package shadergraph
 
 // Shader Graph: a node graph that compiles to a surface shader
-// (plugins/engine/docs/Materials.md "Surface shaders", docs/ShaderGraph.md).
+// (plugins/engine/docs/Materials.md "Surface shaders", docs/assets/ShaderGraph.md).
 //
 // The asset is a `.shadergraph` JSON file: the blackboard (properties), the
 // nodes, the links between their ports, and one Surface node whose inputs

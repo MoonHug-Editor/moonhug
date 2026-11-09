@@ -267,7 +267,7 @@ _rect_fraction :: proc(r: engine.Rect, m: matrix[4, 4]f32, world: [3]f32) -> [2]
 	return {clamp(f.x, 0, 1), clamp(f.y, 0, 1)}
 }
 
-// Snaps a fraction to the corners, edges and center (Ctrl held), Unity's
+// Snaps a fraction to the corners, edges and center (Ctrl held), for
 // pivot snapping.
 @(private = "file")
 _snap_fraction :: proc(f: [2]f32) -> [2]f32 {

@@ -1,6 +1,6 @@
 package input_actions_editor
 
-// The Key_Name field in the inspector (docs/InputActions.md): a button
+// The Key_Name field in the inspector (docs/assets/InputActions.md): a button
 // with the name that opens a picker, a search field over every control by
 // device, and Listen, which takes the next key, mouse button or gamepad
 // button pressed. The field loop wraps the drawer in field_edit_row, so a

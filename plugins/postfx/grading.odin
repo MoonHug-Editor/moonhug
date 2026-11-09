@@ -1,6 +1,6 @@
 package postfx
 
-// Colour grading, applied by the tonemap step (plugins/postfx/docs/PostFX.md
+// Colour grading, applied by the tonemap step (plugins/postfx/docs/render-steps/Tonemap.md
 // "Colour grading"): in linear light before the operator, white balance and
 // a colour filter, then contrast, then hue shift and saturation, and after
 // the operator a lookup texture. The linear parts are two 3x3 matrices built
