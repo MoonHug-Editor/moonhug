@@ -349,19 +349,16 @@ project_inspectors_follow :: proc() {
     keys := make([dynamic]string, context.temp_allocator)
     append(&keys, inspector.PROJECT_INSPECTOR)
     for w in wnd.instances(inspector.PROJECT_INSPECTOR) do if w.key != inspector.PROJECT_INSPECTOR do append(&keys, w.key)
-    // The target each instance was last given, by key: default allocator.
-    @(static) given: map[string]string
     for key in keys {
         data := inspector.project_inspector_data(key)
         if data == nil do continue
+        // Each instance remembers the target it was last given, so a target
+        // that loads no file is not loaded again every frame.
         target := session.window_asset(key).path
-        if prev, has := given[key]; has && prev == target do continue
-        if prev, has := given[key]; has {
-            delete(prev)
-            given[key] = strings.clone(target)
-        } else {
-            given[strings.clone(key)] = strings.clone(target)
-        }
+        if data.given_set && data.given == target do continue
+        delete(data.given)
+        data.given = strings.clone(target)
+        data.given_set = true
         if target == data.filePath && target != "" do continue
         inspector.inspectorData = data
         inspector.unload()

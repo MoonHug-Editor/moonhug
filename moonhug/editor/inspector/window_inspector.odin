@@ -91,6 +91,12 @@ InspectorData :: struct {
     packageName: string, // .Package mode (owned)
     packageAssetCount: int,
     packageManifest: Plugin_Manifest_View, // .Package mode (owned, plugin_manifest.odin)
+    // The path the editor last gave this Project Inspector instance to show
+    // (project_inspectors_follow), owned. Per instance: a reopened instance
+    // starts with none, so it loads what it shows again. `given_set` tells
+    // an empty path given apart from none given yet.
+    given:     string,
+    given_set: bool,
 }
 
 

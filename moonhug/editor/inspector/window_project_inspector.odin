@@ -110,6 +110,7 @@ _data_free :: proc(data: ^InspectorData) {
 	delete(data.filePath)
 	delete(data.packageName)
 	delete(data.statusMessage)
+	delete(data.given)
 	plugin_manifest_free(&data.packageManifest)
 	data^ = {}
 }

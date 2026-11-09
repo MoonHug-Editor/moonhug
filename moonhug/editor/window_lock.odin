@@ -22,15 +22,18 @@ package editor
 //     reopens, an undo brings the object back. The same local id never names
 //     another object: the engine mints ids at random among 2^63 and checks
 //     the live ones, and an undo restores an object with its own id
-//   - The lock goes when the window is unlocked, or when its window closes after
-//     it was open (window_locks_prune). A lock waiting for its window (restored
-//     after a restart, in a workspace not hosted yet) waits as long as it
-//     takes
+//   - The lock goes when the window is unlocked, or when its window closed
+//     after it was open and cannot come back under its key (window_locks_prune).
+//     While it can, the lock waits: Reopen Closed brings the window back, or
+//     the workspace that hosted it shows it again (window.can_reopen), and the
+//     window is locked as it was. A window opened fresh under that key starts
+//     unlocked. A lock waiting for its window (restored after a restart, in a
+//     workspace not hosted yet) waits as long as it takes
 //   - The lock's key is the window instance's key for an "instance" lock, the
 //     window's id for a "shared" one (window_lock_key)
 //   - Locks survive a restart (selection_persist.odin)
 //
-// Windows and plugins reach it through the session package (session.view_*).
+// Windows and plugins reach it through the session package (session.window_*).
 
 import "base:runtime"
 import "core:encoding/uuid"
@@ -64,6 +67,9 @@ _Window_Lock :: struct {
 	// Its window was open at some point since the lock was made or restored:
 	// only then does a missing window mean the window closed.
 	seen:    bool,
+	// Its window closed and can come back under its key: the lock waits for
+	// a reopen, and a window opened fresh drops it.
+	away:    bool,
 }
 
 // By lock key. On the default allocator: they outlive frames.
@@ -210,6 +216,8 @@ window_lock_missing :: proc(window: string) -> bool {
 }
 
 // A lock and what it holds, for saving (selection_persist.odin). Borrowed.
+// A lock waiting for a window only Reopen Closed can bring back is left out:
+// the closed list does not outlive the session.
 Window_Lock_Held :: struct {
 	key:     string,
 	objects: []Window_Lock_Object,
@@ -218,7 +226,10 @@ Window_Lock_Held :: struct {
 
 window_locks_held :: proc(allocator := context.temp_allocator) -> []Window_Lock_Held {
 	out := make([dynamic]Window_Lock_Held, allocator)
-	for key, lock in _window_locks do append(&out, Window_Lock_Held{key = key, objects = lock.objects[:], assets = lock.assets[:]})
+	for key, lock in _window_locks {
+		if lock.away && !_lock_window_can_reopen(key, across_restart = true) do continue
+		append(&out, Window_Lock_Held{key = key, objects = lock.objects[:], assets = lock.assets[:]})
+	}
 	return out[:]
 }
 
@@ -231,18 +242,48 @@ _lock_window_open :: proc(key: string) -> bool {
 	return false
 }
 
-// Drops the locks of windows that closed: open at some point since the lock
-// was made or restored, and not open now. Once per frame.
+// Whether the window a lock key names can come back under the key, its
+// instance or for a shared lock any instance of the window.
+@(private = "file")
+_lock_window_can_reopen :: proc(key: string, across_restart := false) -> bool {
+	if wnd.lock_mode(key) == .Shared do return wnd.can_reopen_id(key, across_restart)
+	return wnd.can_reopen(key, across_restart)
+}
+
+// Whether the open window a lock key names was reopened, not opened fresh:
+// its instance, or for a shared lock any instance of the window.
+@(private = "file")
+_lock_window_reopened :: proc(key: string) -> bool {
+	if w := wnd.find(key); w != nil do return w.reopened
+	if wnd.lock_mode(key) == .Shared {
+		for w in wnd.instances(key) do if w.reopened do return true
+	}
+	return false
+}
+
+// Once per frame. A lock whose window closed waits while the window can come
+// back under its key, and goes when it cannot. A reopened window takes its
+// lock back, and a window opened fresh under the key drops it.
 window_locks_prune :: proc() {
-	closed := make([dynamic]string, context.temp_allocator)
+	dropped := make([dynamic]string, context.temp_allocator)
 	for key, lock in _window_locks {
-		if _lock_window_open(key) {
+		switch {
+		case _lock_window_open(key):
+			if lock.away && !_lock_window_reopened(key) {
+				append(&dropped, key)
+				continue
+			}
 			lock.seen = true
-		} else if lock.seen {
-			append(&closed, key)
+			lock.away = false
+		case !lock.seen:
+			// Restored after a restart, its window not here yet: it waits.
+		case _lock_window_can_reopen(key):
+			lock.away = true
+		case:
+			append(&dropped, key)
 		}
 	}
-	for key in closed do _lock_drop(key)
+	for key in dropped do _lock_drop(key)
 }
 
 window_locks_shutdown :: proc() {

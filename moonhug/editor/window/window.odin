@@ -52,6 +52,11 @@ Window :: struct {
 	used:   u64,   // when it was last clicked in or opened: the highest is last(id)
 	drawn:  u64,   // the draw pass it was last drawn in, so draw_all skips what draw(id) drew
 	ran:    u64,   // the draw pass its draw proc last ran in: visible as a window, or drawn by its host
+	// Created from its key to bring back an instance that closed or was saved
+	// (reopen_closed, host_open, open_saved), not opened fresh. State the
+	// closed instance left under its key, its window lock, belongs to it only
+	// then.
+	reopened: bool,
 	// The key of the window that hosts it (a Workspace window), "" for a window
 	// of its own. A hosted instance never draws as a window: its host draws
 	// its content (draw_content) where it places it. Owned.
@@ -208,7 +213,7 @@ open_saved :: proc(keys: []string) {
 		if asset != {} {
 			if _, known := assets.asset_db_get_path(uuid.Identifier(asset)); !known do continue
 		}
-		if find(key) == nil do _create(ri, asset, key)
+		if find(key) == nil do _create(ri, asset, key).reopened = true
 	}
 }
 
@@ -310,6 +315,47 @@ has_closed :: proc() -> bool {
 	return len(_closed) > 0
 }
 
+// The keys of instances a host keeps while they are not open: the windows of
+// the frames of every workspace (window_workspace.odin), loaded or not. The
+// shell installs it. They come back when their host shows them again, after
+// a restart too.
+kept_keys_hook: proc(out: ^[dynamic]string)
+
+// Whether no instance is open under `key` and one can open again under it,
+// with the state its closed instance left: it is closing this frame, the
+// closed list remembers it (reopen_closed), or a host keeps it
+// (kept_keys_hook). With `across_restart` only a host's keys count: the
+// closed list does not outlive the session.
+can_reopen :: proc(key: string, across_restart := false) -> bool {
+	return _can_reopen(key, "", across_restart)
+}
+
+// can_reopen for any instance of the window declared under `id`.
+can_reopen_id :: proc(id: string, across_restart := false) -> bool {
+	return _can_reopen("", id, across_restart)
+}
+
+// Matches the key `key`, or with `id` set any key of that window.
+@(private = "file")
+_can_reopen :: proc(key, id: string, across_restart: bool) -> bool {
+	matches :: proc(k, key, id: string) -> bool {
+		if id == "" do return k == key
+		kid, _, ok := _parse_key(k)
+		return ok && kid == id
+	}
+	if id == "" && find(key) != nil do return false
+	if id != "" && is_open(id) do return false
+	if !across_restart {
+		for w in _windows do if !w.open && matches(w.key, key, id) do return true
+		for c in _closed do if matches(c.key, key, id) do return true
+	}
+	if kept_keys_hook == nil do return false
+	kept := make([dynamic]string, context.temp_allocator)
+	kept_keys_hook(&kept)
+	for k in kept do if matches(k, key, id) do return true
+	return false
+}
+
 // Reopens the instance closed last, as a window of its own, and focuses it.
 // Skips keys that cannot open anymore: an asset that is gone, a window that
 // is open again already. Returns it, nil when nothing reopened.
@@ -326,6 +372,7 @@ reopen_closed :: proc() -> ^Window {
 			if _, known := assets.asset_db_get_path(uuid.Identifier(asset)); !known do continue
 		}
 		w := _create(ri, asset, c.key)
+		w.reopened = true
 		if c.host != "" && reopen_hook != nil && reopen_hook(w, c.host) do return w
 		w.reorder_node = c.node
 		w.reorder_tab = c.tab if c.node != 0 else -1
@@ -516,6 +563,7 @@ host_open :: proc(key: string, host: string) -> ^Window {
 			if _, known := assets.asset_db_get_path(uuid.Identifier(asset)); !known do return nil
 		}
 		w = _create(ri, asset, key)
+		w.reopened = true
 	}
 	if w.host != host {
 		delete(w.host)

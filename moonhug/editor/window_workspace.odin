@@ -1490,6 +1490,16 @@ workspace_window_install :: proc() {
 	window_menu_add_dynamic(WORKSPACE_WINDOW, "Save In", _ws_save_in_menu, order = 5)
 	wnd.host_hook = _ws_host_hook
 	wnd.reopen_hook = _ws_reopen_hook
+	wnd.kept_keys_hook = _ws_kept_keys
+}
+
+// The window registry's kept-keys hook (window.kept_keys_hook): the window of
+// every frame of every workspace, loaded or not. Unloading a workspace closes
+// its windows and leaves them in its frames, and loading it again opens them
+// from their keys.
+@(private = "file")
+_ws_kept_keys :: proc(out: ^[dynamic]string) {
+	for e in workspace.all() do for f in e.ws.frames do for key in f.tabs do append(out, key)
 }
 
 // The window menu's Save In submenu: the providers the shown workspace can

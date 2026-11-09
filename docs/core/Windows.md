@@ -76,9 +76,9 @@ my_view_draw :: proc(w: ^wnd.Window) {
 - A window that reads the selection itself, through `session.selection`, `session.active`, `session.project_active` or `engine.inspector_inspected_selection`, gets a padlock that changes nothing. All of its targets come from the `session.view_*` reads.
 - A lock holds references, not handles: an object as its scene's asset guid and its local id, an asset as its guid and sub-asset id. A locked target that does not resolve now is missing, not gone: its scene is closed or it was deleted. The lock stays, the window shows `session.window_lock_missing_note` where its target would be, and shows the target again when it is back, after an undo or when the scene reopens.
 - The same local id never names another object: the engine mints ids at random among 2^63 and checks the live ones, and undo restores an object with its own id.
-- A lock goes when the window is unlocked, or when its window closes after it was open. A lock waiting for its window, restored after a restart or in a workspace not hosted yet, waits as long as it takes.
-- Locks survive a restart: saved in the user settings and taken up once the reopened scenes load (`editor/selection_persist.odin`).
-- A plugin view gets all of this from the attribute and the `session.view_*` reads. It draws no padlock and keeps no lock state of its own.
+- A lock goes when the window is unlocked, or when its window closed and cannot come back under its key. While it can, the lock waits, and the window is locked as it was when Reopen Closed brings it back or the workspace that hosted it shows it again. A window opened fresh under that key starts unlocked. A lock waiting for its window, restored after a restart or in a workspace not hosted yet, waits as long as it takes.
+- Locks survive a restart: saved in the user settings and taken up once the reopened scenes load (`editor/selection_persist.odin`). A lock waiting for a window only Reopen Closed can bring back is not saved, since the closed list does not outlive the session.
+- A plugin window gets all of this from the attribute and the `session.window_*` reads. It draws no padlock and keeps no lock state of its own.
 - The Project Inspector reads its asset the same way: each instance shows `session.window_asset` for its key, the project selection or its lock's asset, and shows nothing when that names nothing it can show (`project_inspectors_follow` in `editor/window_project.odin`).
 
 ## Maximize
