@@ -1,3 +1,13 @@
+## [0.161.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.160.0...v0.161.0) (2026-11-09)
+
+### Features
+
+* texture max_size, filter and wrap apply, texture type ([640b921](https://github.com/MoonHug-Editor/moonhug/commit/640b921a4806878bf24a87d0751dc88b7ad2c7f6))
+
+### Bug Fixes
+
+* locked window reopen restores its locked ref ([97d029d](https://github.com/MoonHug-Editor/moonhug/commit/97d029d41651ff4f8c60ac88d8c9047026662c0c))
+
 ## [0.160.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.159.0...v0.160.0) (2026-11-09)
 
 ### Features
