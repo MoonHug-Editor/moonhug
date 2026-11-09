@@ -31,7 +31,10 @@ package editor
 //     workspace not hosted yet) waits as long as it takes
 //   - The lock's key is the window instance's key for an "instance" lock, the
 //     window's id for a "shared" one (window_lock_key)
-//   - Locks survive a restart (selection_persist.odin)
+//   - Locks survive a restart: a docked or floating window's in the user
+//     settings (selection_persist.odin), a workspace frame's window's in its
+//     workspace (workspace.Lock, kept equal by workspace_locks_sync), so it
+//     goes where the workspace goes
 //
 // Windows and plugins reach it through the session package (session.window_*).
 
@@ -215,22 +218,34 @@ window_lock_missing :: proc(window: string) -> bool {
 	return len(window_objects(window)) == 0 && len(window_assets(window)) == 0
 }
 
-// A lock and what it holds, for saving (selection_persist.odin). Borrowed.
-// A lock waiting for a window only Reopen Closed can bring back is left out:
-// the closed list does not outlive the session.
+// A lock and what it holds, for saving. Borrowed.
 Window_Lock_Held :: struct {
 	key:     string,
 	objects: []Window_Lock_Object,
 	assets:  []Window_Lock_Asset,
 }
 
+// The locks the user settings save (selection_persist.odin). Left out: a
+// lock waiting for a closed window, since the closed list does not outlive
+// the session, and the lock of a window a workspace frame holds, which its
+// workspace saves.
 window_locks_held :: proc(allocator := context.temp_allocator) -> []Window_Lock_Held {
 	out := make([dynamic]Window_Lock_Held, allocator)
 	for key, lock in _window_locks {
-		if lock.away && !_lock_window_can_reopen(key, across_restart = true) do continue
+		if lock.away || wnd.is_kept(key) do continue
 		append(&out, Window_Lock_Held{key = key, objects = lock.objects[:], assets = lock.assets[:]})
 	}
 	return out[:]
+}
+
+// The lock of the window instance `window` alone, for its workspace to save.
+// false when it is unlocked, or its window's instances share one lock: a
+// shared lock is not one instance's to carry.
+window_lock_held :: proc(window: string) -> (Window_Lock_Held, bool) {
+	if window_lock_key(window) != window do return {}, false
+	lock := _window_locks[window]
+	if lock == nil do return {}, false
+	return Window_Lock_Held{key = window, objects = lock.objects[:], assets = lock.assets[:]}, true
 }
 
 // Whether the window a lock key names is open: the instance, or for a shared
@@ -245,9 +260,9 @@ _lock_window_open :: proc(key: string) -> bool {
 // Whether the window a lock key names can come back under the key, its
 // instance or for a shared lock any instance of the window.
 @(private = "file")
-_lock_window_can_reopen :: proc(key: string, across_restart := false) -> bool {
-	if wnd.lock_mode(key) == .Shared do return wnd.can_reopen_id(key, across_restart)
-	return wnd.can_reopen(key, across_restart)
+_lock_window_can_reopen :: proc(key: string) -> bool {
+	if wnd.lock_mode(key) == .Shared do return wnd.can_reopen_id(key)
+	return wnd.can_reopen(key)
 }
 
 // Whether the open window a lock key names was reopened, not opened fresh:

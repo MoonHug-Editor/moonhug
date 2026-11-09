@@ -8,6 +8,13 @@ package editor
 // reads the file at its first frame, keeps the user's layout: the dock ids
 // and positions carry over untouched. An entry already saved under the id
 // gives way to the old one, which is the user's placement. Idempotent.
+//
+// The same pass drops the entries of window copies that are gone for good. A
+// copy's key (`<id>/<n>`) is never handed out again (window.open_another), so
+// imgui would keep the dock place of every copy ever opened. At startup a copy
+// that the saved open windows do not name cannot come back: the list of closed
+// windows did not outlive the last session, and a window in a workspace frame
+// has no entry to lose, since it draws inside its frame.
 
 import "core:os"
 import "core:strings"
@@ -63,10 +70,25 @@ migrate_imgui_ini :: proc() {
 			}
 		}
 	}
-	if !migrated do return
+	// Copies gone for good. Only with a saved list of open windows to tell.
+	gone := make([]bool, len(blocks), context.temp_allocator)
+	pruned := false
+	if editor_settings.has_window_state {
+		for b, i in blocks {
+			name, ok := _window_name(b.header)
+			if !ok || !_is_copy_key(name) do continue
+			open := false
+			for k in editor_settings.open_window_ids do if k == name do open = true
+			if open do continue
+			gone[i] = true
+			pruned = true
+		}
+	}
+	if !migrated && !pruned do return
 
 	out := strings.builder_make(0, len(text) + 64, context.temp_allocator)
 	for b, i in blocks {
+		if gone[i] do continue
 		if name, ok := _window_name(b.header); ok {
 			if first, has := keep_index[name]; has && first != i do continue
 		}
@@ -76,6 +98,15 @@ migrate_imgui_ini :: proc() {
 		strings.write_byte(&out, '\n')
 	}
 	_ = os.write_entire_file(_IMGUI_INI, transmute([]u8)strings.to_string(out))
+}
+
+// Whether `name` is the key of a numbered window copy: `<id>/<digits>`.
+@(private = "file")
+_is_copy_key :: proc(name: string) -> bool {
+	slash := strings.last_index_byte(name, '/')
+	if slash <= 0 || slash == len(name) - 1 do return false
+	for c in name[slash + 1:] do if c < '0' || c > '9' do return false
+	return true
 }
 
 @(private = "file")

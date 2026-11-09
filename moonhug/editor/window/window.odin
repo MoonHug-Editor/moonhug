@@ -7,7 +7,8 @@ package window
 //
 // A window opens as instances. open(id) shows its plain instance, open(id,
 // asset) the instance for that asset, so two assets are edited side by side,
-// and open_another(id) one more plain instance, as Add Tab does. Each
+// and open_another(id) one more plain instance, as Add Tab does, under a
+// number no instance had before. Each
 // instance has its own imgui id (`<id>`, `<id>/<asset guid>`, or `<id>/<n>`)
 // and so its own dock place and size in imgui.ini, and its own state: the
 // draw proc receives the instance and keeps what it needs in `data`, which the
@@ -27,6 +28,7 @@ package window
 import "base:runtime"
 import "core:encoding/uuid"
 import "core:fmt"
+import "core:math/rand"
 import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
@@ -321,23 +323,31 @@ has_closed :: proc() -> bool {
 // a restart too.
 kept_keys_hook: proc(out: ^[dynamic]string)
 
+// Whether a host keeps the instance `key`: a workspace frame lists it.
+is_kept :: proc(key: string) -> bool {
+	if kept_keys_hook == nil do return false
+	kept := make([dynamic]string, context.temp_allocator)
+	kept_keys_hook(&kept)
+	for k in kept do if k == key do return true
+	return false
+}
+
 // Whether no instance is open under `key` and one can open again under it,
 // with the state its closed instance left: it is closing this frame, the
 // closed list remembers it (reopen_closed), or a host keeps it
-// (kept_keys_hook). With `across_restart` only a host's keys count: the
-// closed list does not outlive the session.
-can_reopen :: proc(key: string, across_restart := false) -> bool {
-	return _can_reopen(key, "", across_restart)
+// (kept_keys_hook).
+can_reopen :: proc(key: string) -> bool {
+	return _can_reopen(key, "")
 }
 
 // can_reopen for any instance of the window declared under `id`.
-can_reopen_id :: proc(id: string, across_restart := false) -> bool {
-	return _can_reopen("", id, across_restart)
+can_reopen_id :: proc(id: string) -> bool {
+	return _can_reopen("", id)
 }
 
 // Matches the key `key`, or with `id` set any key of that window.
 @(private = "file")
-_can_reopen :: proc(key, id: string, across_restart: bool) -> bool {
+_can_reopen :: proc(key, id: string) -> bool {
 	matches :: proc(k, key, id: string) -> bool {
 		if id == "" do return k == key
 		kid, _, ok := _parse_key(k)
@@ -345,10 +355,8 @@ _can_reopen :: proc(key, id: string, across_restart: bool) -> bool {
 	}
 	if id == "" && find(key) != nil do return false
 	if id != "" && is_open(id) do return false
-	if !across_restart {
-		for w in _windows do if !w.open && matches(w.key, key, id) do return true
-		for c in _closed do if matches(c.key, key, id) do return true
-	}
+	for w in _windows do if !w.open && matches(w.key, key, id) do return true
+	for c in _closed do if matches(c.key, key, id) do return true
 	if kept_keys_hook == nil do return false
 	kept := make([dynamic]string, context.temp_allocator)
 	kept_keys_hook(&kept)
@@ -439,17 +447,27 @@ focus :: proc(w: ^Window) {
 }
 
 // Opens one more plain instance of the window declared under `id`, as Add
-// Tab does: `id/2`, `id/3` and so on, the lowest number not open. Returns it,
-// nil for an unknown id.
+// Tab does: `id/<n>` with a random number, so its key is its own for good. A
+// key is never handed out twice: what is saved under one, a workspace frame's
+// tab, a window lock, a dock place in imgui.ini, belongs to that instance
+// alone, in every project a shared workspace is seen from. Returns it, nil
+// for an unknown id.
 open_another :: proc(id: string) -> ^Window {
 	ri := _registered_index(id)
 	if ri < 0 {
 		log.errorf("editor_window: unknown id %q (declare it with @(editor_window={{id=...}}))", id)
 		return nil
 	}
-	n := 2
-	for find(fmt.tprintf("%s/%d", id, n)) != nil do n += 1
-	w := _create(ri, {}, fmt.tprintf("%s/%d", id, n))
+	// Checked against what this session knows of. Small numbers are left to
+	// keys saved before numbers were random.
+	key: string
+	for {
+		n := rand.uint32()
+		if n < 1000 do continue
+		key = fmt.tprintf("%s/%d", id, n)
+		if find(key) == nil && !is_closed_remembered(key) do break
+	}
+	w := _create(ri, {}, key)
 	if host_hook != nil && _drawing != nil {
 		host_hook(_drawing, w, true)
 		if w.host != "" do return w

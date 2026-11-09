@@ -9,6 +9,9 @@ package workspace
 // - A workspace has a unique id, which the Workspace window remembers, a name
 //   and its frames. A frame names its windows by window instance key (`id`,
 //   `id/<asset guid>`, `id/<n>`), so a hosted window reopens from it.
+// - A workspace holds the locks of its windows (Lock), so a locked window is
+//   locked wherever the workspace shows up: after a restart, in another
+//   project, when its source brings it back.
 // - Frames form trees of any depth: a frame with a parent sits right of it,
 //   under its earlier siblings and their children, and moves with it
 //   (layout). Trees keep apart: one that overlaps another moves away.
@@ -33,6 +36,92 @@ Workspace :: struct {
 	pan:        [2]f32, // the canvas offset: where its origin sits in the window
 	frames:     [dynamic]Frame,
 	next_frame: u32,    // the next frame id: ids are never reused, so a new frame takes nothing from a removed one
+	locks:      [dynamic]Lock, // the locks of its windows, one per locked window
+}
+
+// What a locked window of a frame holds (editor/window_lock.odin), as
+// references that mean the same anywhere: an object as its scene's asset guid
+// and its local id, an asset as its guid, or its path when it has none. The
+// Workspace window keeps it equal to the window's lock.
+Lock :: struct {
+	window:  string, // owned, the window instance key
+	objects: [dynamic]Lock_Object,
+	assets:  [dynamic]Lock_Asset,
+}
+
+Lock_Object :: struct {
+	scene:    string, // owned, the scene's asset guid
+	local_id: i64,
+}
+
+Lock_Asset :: struct {
+	guid:   string, // owned, "" for an asset without one
+	path:   string `json:"path,omitempty"`, // owned
+	sub_id: i64,
+}
+
+// The index of the lock of the window `key` in `ws`, -1 for none.
+lock_index :: proc(ws: ^Workspace, key: string) -> int {
+	for l, i in ws.locks do if l.window == key do return i
+	return -1
+}
+
+// Makes the lock of the window `key` in `ws` hold `objects` and `assets`,
+// copied, or removes it when both are empty. True when it changed.
+lock_set :: proc(ws: ^Workspace, key: string, objects: []Lock_Object, assets: []Lock_Asset) -> bool {
+	context.allocator = runtime.default_allocator()
+	i := lock_index(ws, key)
+	if len(objects) == 0 && len(assets) == 0 {
+		if i < 0 do return false
+		_lock_free(ws.locks[i])
+		ordered_remove(&ws.locks, i)
+		return true
+	}
+	if i >= 0 && _lock_holds(ws.locks[i], objects, assets) do return false
+	l := Lock{window = strings.clone(key)}
+	for o in objects do append(&l.objects, Lock_Object{scene = strings.clone(o.scene), local_id = o.local_id})
+	for a in assets do append(&l.assets, Lock_Asset{guid = strings.clone(a.guid), path = strings.clone(a.path), sub_id = a.sub_id})
+	if i >= 0 {
+		_lock_free(ws.locks[i])
+		ws.locks[i] = l
+	} else {
+		append(&ws.locks, l)
+	}
+	return true
+}
+
+// Removes the locks of windows no frame of `ws` holds. True when one went.
+locks_prune :: proc(ws: ^Workspace) -> (changed: bool) {
+	for i := len(ws.locks) - 1; i >= 0; i -= 1 {
+		held := false
+		for f in ws.frames do for k in f.tabs do if k == ws.locks[i].window do held = true
+		if held do continue
+		_lock_free(ws.locks[i])
+		ordered_remove(&ws.locks, i)
+		changed = true
+	}
+	return
+}
+
+@(private = "file")
+_lock_holds :: proc(l: Lock, objects: []Lock_Object, assets: []Lock_Asset) -> bool {
+	if len(l.objects) != len(objects) || len(l.assets) != len(assets) do return false
+	for o, i in objects do if l.objects[i] != o do return false
+	for a, i in assets do if l.assets[i] != a do return false
+	return true
+}
+
+@(private = "file")
+_lock_free :: proc(l: Lock) {
+	context.allocator = runtime.default_allocator()
+	delete(l.window)
+	for o in l.objects do delete(o.scene)
+	delete(l.objects)
+	for a in l.assets {
+		delete(a.guid)
+		delete(a.path)
+	}
+	delete(l.assets)
 }
 
 Frame :: struct {
@@ -483,6 +572,8 @@ _workspace_free_fields :: proc(ws: ^Workspace) {
 		delete(f.tabs)
 	}
 	delete(ws.frames)
+	for l in ws.locks do _lock_free(l)
+	delete(ws.locks)
 }
 
 // --- File providers (user settings, project settings) -----------------------

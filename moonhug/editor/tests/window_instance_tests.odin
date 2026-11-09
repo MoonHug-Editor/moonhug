@@ -5,10 +5,11 @@ package editor_tests
 // instance's tab names that asset's document, closing an instance frees its
 // state through the window's closed proc, and saved keys reopen the
 // instances whose window and asset still exist. Add Tab opens numbered
-// instances, each under the lowest free number.
+// instances, each under a key no instance had before.
 
 import "core:encoding/uuid"
 import "core:fmt"
+import "core:strings"
 import "core:testing"
 import "moonhug:editor/session"
 import wnd "moonhug:editor/window"
@@ -106,27 +107,30 @@ test_window_numbered_instances :: proc(t: ^testing.T) {
 	three := wnd.open_another("instance_test")
 	testing.expect(t, plain != nil && two != nil && three != nil, "every open returns its instance")
 	if plain == nil || two == nil || three == nil do return
-	testing.expect_value(t, two.key, "instance_test/2")
-	testing.expect_value(t, three.key, "instance_test/3")
+	testing.expect(t, strings.has_prefix(two.key, "instance_test/") && strings.has_prefix(three.key, "instance_test/"), "a copy's key is its window's id and a number")
+	testing.expect(t, two.key != three.key && two.key != plain.key, "every copy has its own key")
 	testing.expect(t, two.asset == {} && three.asset == {}, "a numbered instance has no asset")
 
 	list := wnd.instances("instance_test")
 	testing.expect(t, len(list) == 3 && list[0] == plain, "the plain instance comes first")
 
-	// A closed number is the next one handed out. draw_all is not called
-	// while instances are open: it would draw them.
-	wnd.close("instance_test/2")
+	// A key is never handed out twice: a closed copy's key stays its own, so
+	// Reopen Closed brings back that copy and no other. draw_all is not
+	// called while instances are open: it would draw them.
+	closed_key := strings.clone(two.key, context.temp_allocator)
+	wnd.close(closed_key)
 	again := wnd.open_another("instance_test")
-	testing.expect(t, again != nil && again.key == "instance_test/2", "the lowest free number is reused")
+	testing.expect(t, again != nil && again.key != closed_key && again.key != three.key, "a new copy takes a key of its own")
 
 	for w in wnd.instances("instance_test") do wnd.close(w.key)
 	wnd.draw_all()
 	testing.expect(t, !wnd.is_open("instance_test"), "every instance is gone")
 
-	// A saved numbered key reopens.
-	wnd.open_saved({"instance_test/4"})
-	testing.expect(t, wnd.find("instance_test/4") != nil, "a numbered instance reopens")
+	// A saved numbered key reopens, one from before numbers were random too.
+	wnd.open_saved({"instance_test/4", closed_key})
+	testing.expect(t, wnd.find("instance_test/4") != nil && wnd.find(closed_key) != nil, "a numbered instance reopens")
 	wnd.close("instance_test/4")
+	wnd.close(closed_key)
 	wnd.draw_all()
 }
 

@@ -35,6 +35,7 @@ package editor
 // - Frames are opaque in the window background, on a canvas a shade darker.
 
 import "base:runtime"
+import "core:encoding/uuid"
 import "core:fmt"
 import "core:math"
 import "core:slice"
@@ -45,6 +46,7 @@ import "moonhug:editor/session"
 import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/workspace"
+import core "moonhug:libs/core"
 
 WORKSPACE_WINDOW :: "workspace"
 
@@ -176,7 +178,11 @@ workspace_window_draw :: proc(w: ^wnd.Window) {
 			_ws_unload_request(w, v, {v.loaded[i]})
 			continue
 		}
-		for f in le.ws.frames do for key in f.tabs do _ws_claim(w, v, key)
+		for f in le.ws.frames do for key in f.tabs {
+			was_open := wnd.find(key) != nil
+			if _ws_claim(w, v, key) != nil && !was_open do workspace_lock_take(le.ws, key)
+		}
+		if workspace_locks_sync(le.ws) do workspace.changed(le.ws)
 	}
 	_ws_canvas(w, v, e.ws)
 }
@@ -1491,6 +1497,55 @@ workspace_window_install :: proc() {
 	wnd.host_hook = _ws_host_hook
 	wnd.reopen_hook = _ws_reopen_hook
 	wnd.kept_keys_hook = _ws_kept_keys
+}
+
+// A window a frame of `ws` just opened from its key takes the lock its
+// workspace saved for it. One still locked from this session keeps what it
+// holds, which may be more: an object of a scene never saved is not saved.
+workspace_lock_take :: proc(ws: ^workspace.Workspace, key: string) {
+	i := workspace.lock_index(ws, key)
+	if i < 0 || window_locked(key) || window_lock_key(key) != key do return
+	l := ws.locks[i]
+	objects := make([dynamic]Window_Lock_Object, context.temp_allocator)
+	for o in l.objects {
+		if id, err := uuid.read(o.scene); err == nil do append(&objects, Window_Lock_Object{scene_guid = core.Asset_GUID(id), local_id = core.Local_ID(o.local_id)})
+	}
+	held := make([dynamic]Window_Lock_Asset, context.temp_allocator)
+	for a in l.assets {
+		va := Window_Lock_Asset{path = a.path, sub_id = core.Local_ID(a.sub_id)}
+		if id, err := uuid.read(a.guid); err == nil do va.guid = core.Asset_GUID(id)
+		if va.guid != {} || va.path != "" do append(&held, va)
+	}
+	window_lock_restore(key, objects[:], held[:])
+}
+
+// Makes the locks `ws` saves equal to the locks of its frames' open windows,
+// and drops those of windows no frame holds. A window that is not open keeps
+// what is saved for it. True when `ws` changed. Once per frame for each
+// loaded workspace, so a lock set, cleared, or brought in with a window
+// reaches the workspace whoever changed it.
+workspace_locks_sync :: proc(ws: ^workspace.Workspace) -> (changed: bool) {
+	changed = workspace.locks_prune(ws)
+	for f in ws.frames do for key in f.tabs {
+		if wnd.find(key) == nil || window_lock_key(key) != key do continue
+		held, locked := window_lock_held(key)
+		if !locked {
+			if workspace.lock_index(ws, key) >= 0 do changed |= workspace.lock_set(ws, key, nil, nil)
+			continue
+		}
+		objects := make([dynamic]workspace.Lock_Object, context.temp_allocator)
+		for o in held.objects do if o.scene_guid != {} {
+			append(&objects, workspace.Lock_Object{scene = uuid.to_string(uuid.Identifier(o.scene_guid), context.temp_allocator), local_id = i64(o.local_id)})
+		}
+		assets_held := make([dynamic]workspace.Lock_Asset, context.temp_allocator)
+		for a in held.assets {
+			la := workspace.Lock_Asset{path = a.path, sub_id = i64(a.sub_id)}
+			if a.guid != {} do la.guid = uuid.to_string(uuid.Identifier(a.guid), context.temp_allocator)
+			append(&assets_held, la)
+		}
+		changed |= workspace.lock_set(ws, key, objects[:], assets_held[:])
+	}
+	return
 }
 
 // The window registry's kept-keys hook (window.kept_keys_hook): the window of

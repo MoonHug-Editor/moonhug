@@ -12,6 +12,7 @@ import "moonhug:editor"
 import "moonhug:editor/inspector"
 import "moonhug:editor/session"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/workspace"
 
 @(test)
 test_project_inspector_instances_show_the_selection_or_their_lock :: proc(t: ^testing.T) {
@@ -56,8 +57,9 @@ test_project_inspector_instances_show_the_selection_or_their_lock :: proc(t: ^te
 }
 
 // A locked copy closed and brought back with Reopen Closed is locked to what
-// it held. A copy opened fresh under the same key starts unlocked. draw_all is
-// called only while no instance is open: it would draw them.
+// it held. A copy opened fresh never takes its key, and the plain instance
+// opened fresh from the menu starts unlocked. draw_all is called only while
+// no instance is open: it would draw them.
 @(test)
 test_project_inspector_lock_comes_back_with_its_window :: proc(t: ^testing.T) {
 	PI :: inspector.PROJECT_INSPECTOR
@@ -70,10 +72,14 @@ test_project_inspector_lock_comes_back_with_its_window :: proc(t: ^testing.T) {
 	testing.expect(t, second != nil, "another instance opens")
 	if second == nil do return
 	key := strings.clone(second.key, context.temp_allocator)
+	fresh_key: string
 	defer {
 		session.window_lock_set(key, false)
+		session.window_lock_set(PI, false)
 		editor.sel_proj_clear()
 		wnd.close(key)
+		wnd.close(fresh_key)
+		wnd.close(PI)
 		wnd.draw_all()
 	}
 
@@ -95,47 +101,91 @@ test_project_inspector_lock_comes_back_with_its_window :: proc(t: ^testing.T) {
 	testing.expect(t, session.window_locked(key), "the reopened copy is locked")
 	testing.expect_value(t, session.window_asset(key).path, A)
 
-	// Closed again, then a copy opened fresh takes the free key: unlocked.
+	// Closed again, then a copy opened fresh: another key, unlocked, and the
+	// lock still waits for its own copy.
 	wnd.close(key)
 	wnd.draw_all()
 	editor.window_locks_prune()
 	fresh := wnd.open_another(PI)
-	testing.expect(t, fresh != nil && fresh.key == key && !fresh.reopened, "a fresh copy takes the key")
+	testing.expect(t, fresh != nil && fresh.key != key && !fresh.reopened, "a fresh copy takes another key")
+	if fresh == nil do return
+	fresh_key = strings.clone(fresh.key, context.temp_allocator)
 	editor.window_locks_prune()
-	testing.expect(t, !session.window_locked(key), "a fresh copy starts unlocked")
-	testing.expect_value(t, session.window_asset(key).path, B)
+	testing.expect(t, !session.window_locked(fresh_key), "a fresh copy starts unlocked")
+	testing.expect_value(t, session.window_asset(fresh_key).path, B)
+	testing.expect(t, session.window_locked(key), "the closed copy's lock still waits")
+
+	// The plain instance's key is reused by design: opened fresh from the
+	// menu after it closed locked, it starts unlocked.
+	plain := wnd.open(PI)
+	editor.sel_proj_only(A)
+	session.window_lock_set(PI, true)
+	wnd.close(PI)
+	wnd.close(fresh_key)
+	wnd.draw_all()
+	editor.window_locks_prune()
+	testing.expect(t, plain != nil && session.window_locked(PI), "the closed plain instance's lock waits")
+	again := wnd.open(PI)
+	editor.window_locks_prune()
+	testing.expect(t, again != nil && !again.reopened, "the menu opens it fresh")
+	testing.expect(t, !session.window_locked(PI), "the plain instance opened fresh starts unlocked")
 }
 
-// A lock waiting for its window outlives a restart only when a host keeps the
-// window (a workspace frame lists it): the closed list does not.
+// The lock of a window in a workspace frame is saved in its workspace, not in
+// the user settings, and a window the workspace opens again takes it: after a
+// restart, in another project, when the workspace's source brings it back.
 @(test)
-test_waiting_window_lock_survives_a_restart_only_in_a_host :: proc(t: ^testing.T) {
+test_frame_window_lock_travels_with_its_workspace :: proc(t: ^testing.T) {
 	PI :: inspector.PROJECT_INSPECTOR
 	KEY :: PI + "/7"
+	A :: "moonhug/tests"
 	if !wnd.is_registered(PI) {
 		wnd.register(PI, PI, "X", inspector.project_inspector_window_draw, 0, 0, closed = inspector.project_inspector_window_closed, lock = .Instance)
 	}
+	ws := workspace.make_workspace("Lock Test")
+	defer workspace.workspace_free(ws)
+	workspace.frame_add(ws, KEY, {0, 0, 300, 200})
 	prev_hook := wnd.kept_keys_hook
 	defer wnd.kept_keys_hook = prev_hook
-	wnd.kept_keys_hook = nil
-	wnd.open_saved({KEY})
-	testing.expect(t, wnd.find(KEY) != nil, "the copy opens from its key")
+	wnd.kept_keys_hook = proc(out: ^[dynamic]string) { append(out, KEY) }
 	defer {
 		session.window_lock_set(KEY, false)
 		editor.sel_proj_clear()
 		wnd.close(KEY)
 		wnd.draw_all()
 	}
-	editor.sel_proj_only("moonhug/tests")
+
+	wnd.open_saved({KEY})
+	editor.sel_proj_only(A)
 	session.window_lock_set(KEY, true)
+	testing.expect(t, editor.workspace_locks_sync(ws), "locking the window changes its workspace")
+	testing.expect_value(t, len(ws.locks), 1)
+	testing.expect(t, !editor.workspace_locks_sync(ws), "nothing changed, nothing to save")
+	testing.expect(t, !_held(KEY), "the user settings leave a frame window's lock to its workspace")
+
+	// The window and its lock are gone, as after a restart or in a session
+	// that never had them: the workspace still holds the lock, and the
+	// window it opens again takes it.
 	wnd.close(KEY)
 	wnd.draw_all()
-	editor.window_locks_prune()
-	testing.expect(t, session.window_locked(KEY), "the lock waits while Reopen Closed can bring the copy back")
-	testing.expect(t, !_held(KEY), "a lock only the closed list keeps is not saved")
+	session.window_lock_set(KEY, false)
+	testing.expect(t, !editor.workspace_locks_sync(ws), "a window that is not open keeps what is saved for it")
+	testing.expect_value(t, len(ws.locks), 1)
+	wnd.open_saved({KEY})
+	editor.sel_proj_only("moonhug/editor")
+	editor.workspace_lock_take(ws, KEY)
+	testing.expect(t, session.window_locked(KEY), "the window takes its workspace's lock")
+	testing.expect_value(t, session.window_asset(KEY).path, A)
 
-	wnd.kept_keys_hook = proc(out: ^[dynamic]string) { append(out, KEY) }
-	testing.expect(t, _held(KEY), "a lock a host keeps is saved")
+	// Unlocked while open: the workspace forgets the lock.
+	session.window_lock_set(KEY, false)
+	testing.expect(t, editor.workspace_locks_sync(ws) && len(ws.locks) == 0, "unlocking reaches the workspace")
+
+	// A lock goes with its window's tab.
+	session.window_lock_set(KEY, true)
+	editor.workspace_locks_sync(ws)
+	workspace.tab_remove(ws, 0, 0)
+	testing.expect(t, editor.workspace_locks_sync(ws) && len(ws.locks) == 0, "a window out of every frame leaves no lock behind")
 }
 
 @(private = "file")
