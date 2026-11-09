@@ -64,7 +64,7 @@ duplicate_array_update :: proc(args: ^Duplicate_Array_Args) -> bool { ... }
 - An update proc records its edits the usual way, with `undo.edit_begin` and `undo.edit_end`. The panel folds them into the run's undo step with `undo.amend_begin`, so undo takes back the run and its adjustments together, and redo makes the result again and applies them.
 - A folded edit of a field the step already edits replaces that edit's new value, so a value dragged on every frame keeps one edit per field.
 - Anything else that records an undo step, an undo or a redo closes the panel: the run is no longer the last step. A run that recorded nothing closes it too, since there is nothing to adjust.
-- Reset in the panel puts the command's declared defaults back. It is disabled while the values are the defaults. A reset is a change like any other: the result is redone with the defaults, still as one step.
+- The reset icon at the right of the panel's title bar puts the command's declared defaults back. It is disabled while the values are the defaults. A reset is a change like any other: the result is redone with the defaults, still as one step.
 - `ask=true` opens the panel before the first run, with a Run button, for a command whose values should be chosen first.
 - The last values used are kept per command in the editor settings, so they survive a restart.
 - The arguments are plain values: numbers, bools, enums, and arrays and structs of them. A string, a pointer, a slice, a map or a dynamic array in them panics at registration with the command's origin.

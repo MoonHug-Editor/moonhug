@@ -527,6 +527,10 @@ undo.record_reorder_components(tH, from, to)
 
 The low-level `record_delete_pre` / `record_cleanup` / `record_commit` and `record_remove_component_pre` still exist for the rare case where the destroy and the record must be split across non-adjacent code (e.g. the destroy happens inside a callback you don't control). Prefer the "fused" forms when possible.
 
+A subtree that holds prefab instances is captured with their records, the way a save writes them, and an undo or redo resolves their content from the prefab again. Its destroy, in `record_delete`, the undo of a create and the redo of a delete, is `engine.transform_destroy_with_records`: the instances' records leave the scene with their hosts and come back with the restore. A split delete destroys with it too. Plain `engine.transform_destroy` keeps every record, which an instance's teardown and rebuild rely on, and a record whose host is gone makes every host lookup scan the world until the scene is reopened.
+
+Prefab content, a part of an instance, is captured whole, objects and components, and keeps its records through the delete: the restore matches them by local id.
+
 ### Group commands
 
 ```odin

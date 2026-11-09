@@ -18,6 +18,7 @@ import "core:slice"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "inspector"
+import "moonhug:editor/icons"
 import "moonhug:editor/keymap"
 import "moonhug:editor/widgets"
 import "undo"
@@ -160,6 +161,7 @@ adjust_last_draw :: proc() {
 	visible := im.Begin(fmt.ctprintf("%s###adjust_last", _adjust_title(c)), nil, flags)
 	defer im.End()
 	if !visible do return
+	_reset_button(c)
 
 	// The arguments are the command's, not part of any document: an edit
 	// records no undo step of its own. The run does.
@@ -169,12 +171,30 @@ adjust_last_draw :: proc() {
 
 	if _adjust.asking {
 		if im.Button("Run") do adjust_last_run(c)
-		im.SameLine()
+		return
 	}
+	adjust_last_apply_edit()
+}
+
+// Reset, an icon at the right of the panel's title bar: puts the command's
+// declared defaults back, a change like any other. Disabled while the values
+// are the defaults. Drawn in the title bar through a clip rect around it, then
+// the cursor goes back to where the panel's rows start.
+@(private = "file")
+_reset_button :: proc(c: ^keymap.Command) {
+	style := im.GetStyle()
+	pos, size := im.GetWindowPos(), im.GetWindowSize()
+	w := im.CalcTextSize(icons.ICON_MD_REFRESH).x + style.FramePadding.x * 2
+	rows := im.GetCursorScreenPos()
+	im.PushClipRect(pos, {pos.x + size.x, pos.y + im.GetFrameHeight()}, false)
+	im.SetCursorScreenPos({pos.x + size.x - style.FramePadding.x - w, pos.y + style.FramePadding.y})
 	at_defaults := runtime.memory_compare(c.args, c.args_default, type_info_of(c.args_type).size) == 0
 	im.BeginDisabled(at_defaults)
-	if im.Button("Reset") do keymap.command_args_reset(c)
+	im.PushStyleColor(.Button, 0)
+	if im.SmallButton(icons.ICON_MD_REFRESH) do keymap.command_args_reset(c)
+	im.PopStyleColor()
 	im.EndDisabled()
-	widgets.tooltip("Puts the settings back to the command's defaults" if !at_defaults else "The settings are the command's defaults", im.HoveredFlags_AllowWhenDisabled)
-	if !_adjust.asking do adjust_last_apply_edit()
+	widgets.tooltip("Reset to defaults" if !at_defaults else "The settings are the defaults", im.HoveredFlags_AllowWhenDisabled)
+	im.PopClipRect()
+	im.SetCursorScreenPos(rows)
 }

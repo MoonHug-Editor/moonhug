@@ -69,7 +69,9 @@ apply_Create_Subtree_Command :: proc(v: ^Create_Subtree_Command) {
 revert_Create_Subtree_Command :: proc(v: ^Create_Subtree_Command) {
 	node_h, ok := _find_transform_for_undo(_scene(v.scene), v.root_local_id)
 	if !ok do return
-	engine.transform_destroy(engine.Transform_Handle(node_h))
+	// The payload holds the subtree's instance records: they leave the scene
+	// with it and come back with a redo.
+	engine.transform_destroy_with_records(engine.Transform_Handle(node_h))
 }
 
 destroy_Create_Subtree_Command :: proc(v: ^Create_Subtree_Command) {
@@ -109,7 +111,7 @@ Delete_Subtree_Command :: struct {
 apply_Delete_Subtree_Command :: proc(v: ^Delete_Subtree_Command) {
 	node_h, ok := _find_transform_for_undo(_scene(v.scene), v.root_local_id)
 	if !ok do return
-	engine.transform_destroy(engine.Transform_Handle(node_h))
+	engine.transform_destroy_with_records(engine.Transform_Handle(node_h))
 }
 
 revert_Delete_Subtree_Command :: proc(v: ^Delete_Subtree_Command) {
@@ -428,9 +430,9 @@ _paste_subtree_preserve_ids :: proc(payload: []byte, parent: engine.Transform_Ha
 		parent_scene = p.scene
 	}
 
-	// The instances in the payload replace the records their removal left
-	// in the scene: a record outlives its host until the next save prunes
-	// it, and two records for one host would resolve its prefab twice.
+	// The instances in the payload replace any record of the same id still in
+	// the scene: a host destroyed outside an undo step leaves its record
+	// behind, and two records for one host would resolve its prefab twice.
 	if parent_scene != nil {
 		for &rec in sf.nested_scenes {
 			for i := len(parent_scene.nested_scenes) - 1; i >= 0; i -= 1 {

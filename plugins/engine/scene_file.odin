@@ -1780,6 +1780,70 @@ _collect_subtree_nested_scenes :: proc(s: ^Scene, tH: Transform_Handle, sf: ^Sce
 	}
 }
 
+// Destroys the subtree at `tH` like transform_destroy, and drops the records
+// of the prefab instances hosted in it: each instance's record, the inner
+// records it expanded and the breadcrumbs of both. For the editor's structural
+// edits (a delete, the undo of a create), whose undo step holds the subtree as
+// scene_copy_subtree writes it, records included, so a restore brings them
+// back. Left behind, a record outlives its host until the scene is reopened,
+// and every lookup of its host scans the whole world: copies, undo and the
+// hierarchy slow down with each one.
+//
+// Prefab content, a nested-owned root, keeps every record: its undo restores
+// the content as it was, against them. transform_destroy alone keeps every
+// record too, which an instance's teardown and rebuild rely on.
+transform_destroy_with_records :: proc(tH: Transform_Handle) {
+	w := ctx_world()
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return
+	s := t.scene
+	if t.nested_owned || s == nil || len(s.nested_scenes) == 0 {
+		transform_destroy(tH)
+		return
+	}
+	inside := make(map[Handle]bool, 0, context.temp_allocator)
+	_subtree_handle_set(w, tH, &inside)
+	in_subtree :: proc(inside: ^map[Handle]bool, h: Transform_Handle) -> bool {
+		k := Handle(h)
+		k.type_key = .Transform
+		return k in inside^
+	}
+	doomed := make([dynamic]Local_ID, 0, context.temp_allocator)
+	for &ns in s.nested_scenes {
+		if ns.expand_parent != {} {
+			if in_subtree(&inside, ns.expand_parent) do append(&doomed, ns.local_id)
+			continue
+		}
+		if nested_scene_is_root_variant(s, &ns) do continue
+		if host := nested_scene_resolve_host_handle(s, &ns); host != {} && in_subtree(&inside, host) {
+			append(&doomed, ns.local_id)
+		}
+	}
+	transform_destroy(tH)
+	for lid in doomed {
+		for i in 0 ..< len(s.nested_scenes) {
+			if s.nested_scenes[i].local_id != lid do continue
+			breadcrumb_clear_for_nested_scene(s, lid)
+			nested_scene_free_owned(&s.nested_scenes[i])
+			delete(s.nested_scenes[i].source_of_inst)
+			ordered_remove(&s.nested_scenes, i)
+			break
+		}
+	}
+}
+
+// Every transform handle in the subtree at `tH`, `tH` included, keyed with
+// the transform type so handles from any source compare equal.
+@(private = "file")
+_subtree_handle_set :: proc(w: ^World, tH: Transform_Handle, out: ^map[Handle]bool) {
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return
+	k := Handle(tH)
+	k.type_key = .Transform
+	out[k] = true
+	for c in t.children do _subtree_handle_set(w, Transform_Handle(c.handle), out)
+}
+
 // The subtree at `tH` as scene file JSON, for scene_paste_subtree. By default
 // it is written the way a save writes it: its own objects and the records of
 // the prefab instances in it, so a paste resolves their content from the

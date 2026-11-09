@@ -266,7 +266,9 @@ record_delete :: proc(tH: engine.Transform_Handle) {
 		engine.transform_destroy(tH)
 		return
 	}
-	engine.transform_destroy(tH)
+	// The step holds the subtree's instance records, so they leave the scene
+	// with it and come back with an undo.
+	engine.transform_destroy_with_records(tH)
 	record_commit(&pre)
 }
 
