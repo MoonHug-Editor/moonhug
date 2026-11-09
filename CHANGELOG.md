@@ -1,3 +1,13 @@
+## [0.159.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.158.1...v0.159.0) (2026-11-09)
+
+### Features
+
+* commands with arguments popup. fix: duplicating a prefab instance keeps its content, undo of a deleted instance restores its content once ([618a292](https://github.com/MoonHug-Editor/moonhug/commit/618a292cae5d06034fbe06ef2decb8c04c98ca15))
+
+### Bug Fixes
+
+* the instance records of a deleted or undone prefab instance leave the scene with it and come back with undo, so copies, undo and the hierarchy no longer slow down with each duplicate and undo cycle. The settings panel's reset is an icon in its title bar ([c8a8570](https://github.com/MoonHug-Editor/moonhug/commit/c8a8570d36b66ebaa65280792ca3463dd9514301))
+
 ## [0.158.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.158.0...v0.158.1) (2026-11-08)
 
 ### Bug Fixes
