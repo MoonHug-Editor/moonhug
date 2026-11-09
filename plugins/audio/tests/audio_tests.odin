@@ -200,7 +200,7 @@ test_audiosource_component :: proc(t: ^testing.T) {
 	if ptr == nil do return
 	src := cast(^audio.AudioSource)ptr
 
-	// Unity defaults via reset.
+	// The defaults come from type_reset.
 	testing.expect_value(t, src.volume, f32(1))
 	testing.expect_value(t, src.play_on_awake, true)
 	testing.expect_value(t, src.loop, false)

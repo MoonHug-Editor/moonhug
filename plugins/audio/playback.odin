@@ -5,7 +5,7 @@ package audio
 // deviceless mixer — loading and decoding work, nothing is audible.
 //
 // The @(update) subscriber lands in the generated per-frame dispatcher, so
-// sources tick in play mode (editor) and always (app), like Unity.
+// sources tick in play mode (editor) and always (app).
 
 import "base:runtime"
 import "core:fmt"
@@ -128,7 +128,7 @@ play_clip :: proc(guid: engine.Asset_GUID, volume: f32 = 1) -> bool {
 	return _one_shot_start(guid, {}, volume, spatial = false)
 }
 
-// Unity's PlayClipAtPoint: a one-shot spatialized at a world position
+// A one-shot spatialized at a world position
 // (full blend, default 1/500 distances).
 play_clip_at_point :: proc(guid: engine.Asset_GUID, position: [3]f32, volume: f32 = 1) -> bool {
 	return _one_shot_start(guid, position, volume, spatial = true)
@@ -261,7 +261,7 @@ audio_update :: proc(dt: f32) {
 	for src, _ in engine.pool_next(&it) {
 		if !engine.pool_valid(&w.transforms, engine.Handle(src.owner)) do continue
 		if !src.enabled {
-			// Unity: a disabled source stops, and play-on-awake replays on
+			// A disabled source stops, and play-on-awake replays on
 			// re-enable.
 			if src.started {
 				audio_stop(src)

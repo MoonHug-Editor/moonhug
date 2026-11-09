@@ -1,6 +1,6 @@
 package audio
 
-// Unity-literal AudioListener: the ear. Spatial sources attenuate and pan
+// AudioListener: the ear. Spatial sources attenuate and pan
 // relative to the first enabled listener's world transform (usually the
 // camera). No fields — the transform is the data.
 

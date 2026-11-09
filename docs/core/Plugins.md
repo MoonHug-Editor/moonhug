@@ -231,7 +231,7 @@ _import_audio :: proc(source_path, artifact_path: string, settings: rawptr) -> b
 
 ## Asset types
 
-A package can own an asset type end to end — the audio package is the reference (plugins/audio/docs/Audio.md):
+A package can own an asset type end to end — the audio package is the reference ([Audio clip](/plugins/audio/docs/assets/AudioClip.md)):
 
 - The importer above produces the artifact (audio bakes its settings into float32 WAV PCM).
 - A guid-keyed runtime cache in the package loads the artifact (`clip_load`), mirroring the engine's texture cache. Its `asset_on_changed_<name>` proc, declared with `@(asset_on_changed)`, drops the entry when the artifact changes — the same hook the texture cache uses, so settings edits apply live.

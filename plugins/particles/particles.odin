@@ -1,7 +1,7 @@
 package particles
 
 // Simulation + rendering for ParticleSystem (component_ParticleSystem.odin).
-// The sim is plain CPU code on the @(update) phase — Unity's Shuriken model.
+// The sim is plain CPU code on the @(update) phase.
 // Rendering registers a collector on the renderer seam and emits billboarded
 // Draw_Quad commands with the shared transparent sort key, so particles
 // interleave correctly with sprites by layer/order/depth.
@@ -28,7 +28,7 @@ particles_tick :: proc(dt: f32) {
 }
 
 // A system referenced as a sub-emitter target does not emit on its own
-// timeline — triggers drive it (Unity's rule). Recomputed before every tick
+// timeline — triggers drive it. Recomputed before every tick
 // pass; callers driving system_tick directly (the edit preview) call it too.
 mark_sub_targets :: proc(w: ^engine.World) {
 	it := engine.pool_iterator(particle_systems(w))
@@ -63,7 +63,7 @@ system_reset :: proc(ps: ^ParticleSystem) {
 	ps.stopped = false
 }
 
-// --- Playback control (Unity's Play/Pause/Stop) --------------------------------
+// --- Playback control: play, pause, stop ---------------------------------------
 
 // Starts or resumes. A stopped system restarts from time zero.
 system_play :: proc(ps: ^ParticleSystem) {
@@ -79,7 +79,7 @@ system_pause :: proc(ps: ^ParticleSystem) {
 }
 
 // Stops emitting. Live particles play out, or clear immediately with
-// `clear_particles` (Unity's StopEmittingAndClear).
+// `clear_particles` (stop emitting and clear).
 system_stop :: proc(ps: ^ParticleSystem, clear_particles := false) {
 	ps.started = true // a stop overrides a pending manual_start decision
 	ps.stopped = true
@@ -88,7 +88,7 @@ system_stop :: proc(ps: ^ParticleSystem, clear_particles := false) {
 
 // Every random draw in the sim runs on the system's OWN stream: a nonzero
 // random_seed replays the exact same effect after system_reset, seed 0 draws
-// fresh entropy each reset (Unity's auto random seed).
+// fresh entropy each reset (an automatic seed).
 _ensure_seeded :: proc(ps: ^ParticleSystem) {
 	if ps.seeded do return
 	ps.seeded = true
@@ -355,7 +355,7 @@ _rand_unit :: proc() -> [3]f32 {
 }
 
 _spawn :: proc(ps: ^ParticleSystem, tw: engine.Transform_World) {
-	// Shape sample in LOCAL space, axis +Z (Unity's).
+	// Shape sample in LOCAL space, axis +Z.
 	pos: [3]f32
 	dir := [3]f32{0, 0, 1}
 	switch ps.shape {
@@ -441,7 +441,7 @@ _spawn :: proc(ps: ^ParticleSystem, tw: engine.Transform_World) {
 }
 
 // Chained and self-targeting sub emitters recurse through _spawn — the
-// depth guard bounds them (Unity limits sub-emitter chains the same way).
+// depth guard bounds them.
 @(private = "file") _sub_depth: int
 
 _sub_emit :: proc(ps: ^ParticleSystem, trigger: Sub_Emitter_Trigger, world_pos: [3]f32) {
@@ -465,7 +465,7 @@ _sub_emit :: proc(ps: ^ParticleSystem, trigger: Sub_Emitter_Trigger, world_pos: 
 // of its emitter transform — the shape offset is kept. Draws on the system's
 // own random stream so its replay stays deterministic. Public: sub emitters
 // trigger through it, gameplay code and the editor's Emit button call it
-// directly (Unity's ParticleSystem.Emit).
+// directly.
 system_emit_at :: proc(ps: ^ParticleSystem, world_pos: [3]f32) {
 	_ensure_seeded(ps)
 	context.random_generator = rand.default_random_generator(&ps.rand_state)

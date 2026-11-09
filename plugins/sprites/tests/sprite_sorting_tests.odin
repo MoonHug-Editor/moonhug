@@ -1,6 +1,6 @@
 package sprites_tests
 
-// Sprite sort key tests (engine/sprite_sort.odin): Unity semantics —
+// Sprite sort key tests (sprite_sort.odin):
 // sorting_layer -> order_in_layer -> view depth back-to-front -> tree order —
 // with SpriteSortingGroup subtrees sorting as one unit against outsiders.
 // Pure data tests: build a scene tree, run the key pass, assert key ordering.

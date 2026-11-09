@@ -1,10 +1,10 @@
 package particles
 
-// Unity's ParticleSystem, range-based: every "random between two constants"
+// A range-based particle system: every "random between two constants"
 // start value is a min/max (or color a/b) pair, over-lifetime modules are
 // engine.Curve / engine.Gradient. Simulation runs on the CPU per frame
 // (@(update) in particles.odin), rendering goes through the renderer seam as
-// billboarded Draw_Quad commands. plugins/particles/docs/ParticleSystem.md describes the modules.
+// billboarded Draw_Quad commands. plugins/particles/docs/components/ParticleSystem.md describes the modules.
 //
 // Serialized fields are ZERO-NEUTRAL: a scene saved before a field existed
 // loads it as zero, so zero must mean "off" or "no change" for every field
@@ -40,10 +40,10 @@ Particle :: struct {
 	trail:            [TRAIL_MAX]Trail_Point,
 }
 
-// Emission volume, oriented along local +Z (Unity's shape axis).
+// Emission volume, oriented along local +Z.
 // New shapes append at the end — the value is the serialized identity.
 Emit_Shape :: enum u8 {
-	Cone,       // Unity's default: base disc of `shape_radius`, spread `shape_angle`
+	Cone,       // the default: base disc of `shape_radius`, spread `shape_angle`
 	Sphere,     // outward from a random point inside `shape_radius`
 	Point,      // straight +Z
 	Hemisphere, // sphere half on the +Z side
@@ -53,7 +53,7 @@ Emit_Shape :: enum u8 {
 }
 
 Sim_Space :: enum u8 {
-	Local, // particles follow the emitter (Unity's default)
+	Local, // particles follow the emitter (the default)
 	World, // particles are left behind in the world
 }
 
@@ -99,7 +99,7 @@ ParticleSystem :: struct {
 	looping:      bool,
 	prewarm:      bool, // looping systems start as if one cycle already ran
 	start_delay:  f32,  // seconds before the first cycle starts
-	// Start values are MinMax_Curves (Unity's): constant, random range,
+	// Start values are MinMax_Curves: constant, random range,
 	// curve over the cycle (t = cycle time / duration), or random between
 	// two curves.
 	start_lifetime: engine.MinMax_Curve,
@@ -113,10 +113,10 @@ ParticleSystem :: struct {
 	sim_space:    Sim_Space,
 	simulation_speed: f32, // playback speed scale, 0 runs at 1
 	max_particles: i32,
-	// 0 draws a fresh seed each reset (Unity's auto random seed); any other
+	// 0 draws a fresh seed each reset (an automatic seed); any other
 	// value replays the exact same effect — restart-to-time depends on it.
 	random_seed: u32,
-	// Inverse of Unity's Play On Awake, so absent-field-loads-as-zero keeps
+	// The inverse of play-on-awake, so absent-field-loads-as-zero keeps
 	// every existing system playing: true = the system waits for
 	// system_play.
 	manual_start: bool,
@@ -198,7 +198,7 @@ ParticleSystem :: struct {
 	trail_min_distance: f32, // min world distance between recorded points
 	trail_width_over:   engine.Curve,    // width × particle size along the trail (empty = 1)
 	trail_color_over:   engine.Gradient, // color × particle color along the trail (empty = white)
-	// The ribbon's own texture/material (Unity's trail material slot) — the
+	// The ribbon's own texture/material (a trail material slot) — the
 	// texture is stretched ONCE along the whole trail. Empty = the
 	// particle's sprite/material.
 	trail_sprite:   engine.PPtr `inspect:"-"`,

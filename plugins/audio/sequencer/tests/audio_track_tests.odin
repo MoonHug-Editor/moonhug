@@ -354,7 +354,7 @@ test_audio_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 }
 
 // The editor preview's PLAY button: director_preview_step advances with real
-// crossings (audio sounds — Unity's Timeline preview), the per-frame restore
+// crossings (audio sounds), the per-frame restore
 // (preview_end with playing=true) leaves the voice alone, and the final
 // preview_end silences. A static scrub stays silent.
 @(test)

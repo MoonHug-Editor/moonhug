@@ -1,6 +1,6 @@
 package sprites
 
-// Sprite sort keys — Unity semantics on data-oriented plumbing:
+// Sprite sort keys on data-oriented plumbing:
 //   sorting_layer -> order_in_layer -> view depth back-to-front -> tree order
 // Each hierarchy level packs into one u64 word:
 //   layer:8 (biased) | order:16 (biased) | ~depth:24 (quantized, inverted so

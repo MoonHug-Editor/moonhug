@@ -2,7 +2,7 @@ package sprites
 
 import "moonhug:packages/engine"
 
-// Unity's SortingGroup: every sprite in this transform's subtree sorts as ONE
+// A sorting group: every sprite in this transform's subtree sorts as ONE
 // unit against sprites outside it, using THIS component's layer/order and the
 // group root's view depth; members keep sorting among themselves by their own
 // keys. Nested groups sort as units inside their outer group (up to

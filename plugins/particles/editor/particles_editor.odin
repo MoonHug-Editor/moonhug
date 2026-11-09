@@ -1,7 +1,7 @@
 package particles_editor
 
 // Editor-only half of the particles package. The ParticleSystem inspector is
-// a full REPLACEMENT wrapper shaped like Unity's Shuriken: the main module's
+// a full REPLACEMENT wrapper shaped as module groups: the main module's
 // fields on top, then collapsible module groups — Emission (with the bursts
 // list), Shape, the over-lifetime modules with ENABLE toggles (on = seeded
 // values, off = cleared, matching the runtime's zero-is-off conventions),
@@ -55,7 +55,7 @@ _color_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	if im.ColorEdit4(inspector.field_row(label), cast(^[4]f32)ptr, {.AlphaBar}) do inspector.mark_inspector_changed()
 }
 
-// A Unity module header: enable checkbox + collapsing header on one row.
+// A module header: enable checkbox + collapsing header on one row.
 // nil toggle = an always-on module. Returns whether the body draws.
 // Headers use the theme's FrameBg greys so modules read as a tier below the
 // component header (which keeps the theme's Header color).
@@ -87,8 +87,7 @@ _toggle_end :: proc(sess: ^undo.Edit_Session) {
 //
 // Burst drags share one whole-component undo session: it opens when a burst
 // widget activates and closes when it deactivates (only one widget is ever
-// active). Bursts don't propagate to multiedit peers — Unity doesn't
-// multiedit particle systems either.
+// active). Bursts don't propagate to multiedit peers.
 
 @(private = "file") _burst_sess: undo.Edit_Session
 @(private = "file") _burst_editing: bool
@@ -239,7 +238,7 @@ _sub_emitters_rows :: proc(ps: ^particles.ParticleSystem) {
 
 // --- Edit-mode playback --------------------------------------------------------
 //
-// Unity's Scene window particle preview: the inspected EFFECT plays in edit
+// The Scene window particle preview: the inspected EFFECT plays in edit
 // mode — the whole ParticleSystem hierarchy from its root, so child systems
 // and sub-emitter targets simulate too, and selecting a child previews the
 // effect it belongs to. The wrapper ticks it while it draws (selection
@@ -248,7 +247,7 @@ _sub_emitters_rows :: proc(ps: ^particles.ParticleSystem) {
 // system. Play/simulate owns playback — the preview stands down while
 // playing.
 
-// What the preview simulates: the whole effect from its root (Unity's
+// What the preview simulates: the whole effect from its root (the
 // default), the inspected system's subtree, or the inspected system alone.
 @(private = "file")
 _Preview_Scope :: enum {
@@ -280,7 +279,7 @@ _ep_get :: proc() -> ^particles.ParticleSystem {
 	return cast(^particles.ParticleSystem)raw
 }
 
-// The effect a system belongs to (Unity's model): walk up while the parent
+// The effect a system belongs to: walk up while the parent
 // transform also carries a ParticleSystem, then gather every system in that
 // root's subtree. `out` is temp-allocated by the callers.
 @(private = "file")
@@ -444,7 +443,7 @@ property_drawer_ParticleSystem_inspector :: proc(ctx: ^inspector.Ctx) {
 		}
 	}
 
-	// Main module (Unity: always visible, no header).
+	// Main module (always visible, no header).
 	_ps_field(ps, &ps.duration, typeid_of(f32), "Duration", "duration")
 	_ps_field(ps, &ps.looping, typeid_of(bool), "Looping", "looping")
 	_ps_field(ps, &ps.prewarm, typeid_of(bool), "Prewarm", "prewarm")

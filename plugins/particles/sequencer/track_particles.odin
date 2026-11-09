@@ -1,6 +1,6 @@
 package particles_sequencer
 
-// The particles Control Track (plugins/particles/docs/ParticleSystem.md, "Sequencer track"): a timeline clip span
+// The particles Control Track (plugins/particles/docs/components/TrackParticles.md): a timeline clip span
 // plays the bound ParticleSystem, leaving the span stops it and clears live
 // particles. Scrubbing rides the restart-to-time contract: system_reset +
 // fixed seed + fixed-step advance to the clip-local time, so a seeded system

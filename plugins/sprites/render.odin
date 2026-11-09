@@ -9,10 +9,9 @@ import "moonhug:packages/engine"
 
 // The world-space quad and uvs a SpriteRenderer covers: bl, br, tr, tl. The
 // editor picks, outlines and frames sprites by the commands this feeds. Sprites are transform-oriented (not billboards), sized
-// px/pixels_per_unit — the texture's import setting (Unity's Pixels Per
-// Unit, default 100). sprite.local_id == 0 covers the whole texture
-// (Unity's Single mode, center pivot). An id that no slice carries returns
-// ok=false — the sprite renders nothing, like Unity's missing sprite.
+// px/pixels_per_unit — the texture's import setting (default 100). sprite.local_id == 0 covers the whole texture
+// (Single mode, center pivot). An id that no slice carries returns
+// ok=false — the sprite renders nothing.
 sprite_quad :: proc(sr: ^SpriteRenderer, tw: engine.Transform_World, tex: ^engine.Texture2D) -> (corners: [4][3]f32, uvs: [4][2]f32, ok: bool) {
 	rect := [4]f32{0, 0, f32(tex.width), f32(tex.height)}
 	pivot := [2]f32{0.5, 0.5}

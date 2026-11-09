@@ -1,6 +1,6 @@
 package audio_sequencer
 
-// The audio Control Track (plugins/audio/docs/Audio.md, "Sequencer track"): a clip span plays its asset on
+// The audio Control Track (plugins/audio/docs/components/TrackAudio.md): a clip span plays its asset on
 // the bound AudioSource. The track owns ONE VOICE PER ACTIVE CLIP — a mixer
 // track of its own, not the source's — so two clips overlapping on one track
 // play at once, each at its clip weight (track_clip_weight): the overlap IS
@@ -122,7 +122,7 @@ _audio_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 	}
 
 	// A static scrub is silent. The preview's PLAY advance (.Preview_Play)
-	// is live audio — Unity's Timeline preview — and falls through.
+	// is live audio and falls through.
 	if ctx.mode == .Scrub {
 		_voices_stop_all(st)
 		return

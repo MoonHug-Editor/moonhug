@@ -275,7 +275,7 @@ _se_resolve :: proc() -> bool {
 	return true
 }
 
-// Persistent slice id — Unity's fileID. Random nonzero, unique in the list.
+// Persistent slice id. Random nonzero, unique in the list.
 // Persisted in the meta, so references survive renames.
 _se_mint_id :: proc() -> engine.Local_ID {
 	for {
@@ -288,7 +288,7 @@ _se_mint_id :: proc() -> engine.Local_ID {
 }
 
 // Reslicing keeps identities: a regenerated slice whose name already existed
-// carries the old id forward (the meta list is Unity's internalIDToNameTable).
+// carries the old id forward (the meta list maps ids to names).
 _se_carry_id :: proc(old: []engine.Sprite_Rect, name: string) -> engine.Local_ID {
 	for s in old do if s.name == name do return s.id
 	return 0
@@ -634,7 +634,7 @@ _se_slice_grid :: proc(tex: ^engine.Texture2D, by_count: bool) {
 	_se_slices_added()
 }
 
-// Unity's Automatic: connected islands of non-transparent pixels, one rect
+// Automatic: connected islands of non-transparent pixels, one rect
 // per island's bounding box. 4-connected BFS over an alpha mask.
 _se_slice_automatic :: proc(tex: ^engine.Texture2D) {
 	data, read_err := os.read_entire_file(_se.path, context.temp_allocator)
@@ -793,8 +793,8 @@ _se_canvas :: proc(tex: ^engine.Texture2D, size: im.Vec2) {
 		r1 := _se_screen(origin, {s.rect.x + s.rect.z, s.rect.y + s.rect.w})
 		im.DrawList_AddRect(dl, r0, r1, i == _se.sel ? _SE_SELECTED : _SE_OUTLINE)
 	}
-	// The active sprite's 9-slice borders as draggable guide lines (Unity's
-	// green lines): the selected slice, or the whole texture in Single mode.
+	// The active sprite's 9-slice borders as draggable guide lines: the
+	// selected slice, or the whole texture in Single mode.
 	if rect, border, has := _se_active_sprite(tex); has {
 		for k in 0 ..< 4 {
 			a, b := _se_border_line(rect, border^, k)
@@ -935,7 +935,7 @@ _se_hit_border :: proc(tex: ^engine.Texture2D, img: im.Vec2) -> int {
 }
 
 // The 9-slice border fields (Sliced and Tiled images), pixels from each
-// edge, Unity's L T R B order, each capped so the pair never crosses.
+// edge, in left, top, right, bottom order, each capped so the pair never crosses.
 _se_border_fields :: proc(b: ^[4]f32, size: [2]f32) -> (changed: bool) {
 	im.SeparatorText("Border")
 	changed |= inspector.drag_float("L", &b.x, 1, 0, size.x - b.z)

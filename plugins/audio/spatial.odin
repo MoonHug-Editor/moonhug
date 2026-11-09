@@ -1,6 +1,6 @@
 package audio
 
-// Pure spatial math, Unity's model:
+// Pure spatial math:
 // - logarithmic rolloff: full volume inside min_distance, min/d beyond it,
 //   held constant past max_distance
 // - balance pan from the listener-space azimuth (x/z plane), continuous

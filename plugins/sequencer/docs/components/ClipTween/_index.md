@@ -22,7 +22,7 @@ The built-in tweens each have a page under this one:
 - [TweenScaleLocalTo](TweenScaleLocalTo.md) scales from the current scale to a scale.
 - [TweenRotateLocalTo](TweenRotateLocalTo.md) rotates from the current rotation to a rotation.
 
-Other plugins add their own, such as the sprites plugin's [TweenFadeTo](/plugins/sprites/docs/SpriteRenderer.md) ([Scripts and tweens](../../concepts/ScriptsAndTweens.md)).
+Other plugins add their own, such as the sprites plugin's [TweenFadeTo](/plugins/sprites/docs/scripts/TweenFadeTo.md) ([Scripts and tweens](../../concepts/ScriptsAndTweens.md)).
 
 ## In the editor
 

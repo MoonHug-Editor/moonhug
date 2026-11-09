@@ -62,7 +62,7 @@ _open_sprite_editor_at :: proc(path: string, guid: engine.Asset_GUID, id: engine
 }
 
 // Default fields, then the Sprite object row (drawers.sprite_ref_row —
-// Unity's sprite picker, shared with the particles package). The `sprite`
+// the sprite picker, shared with the particles package). The `sprite`
 // field itself is inspect:"-" — this row is its only editor.
 @(property_drawer={type=sprites.SpriteRenderer, order="middle"})
 property_drawer_SpriteRenderer_inspector :: proc(ctx: ^inspector.Ctx) {
@@ -75,7 +75,7 @@ property_drawer_SpriteRenderer_inspector :: proc(ctx: ^inspector.Ctx) {
 }
 
 // --- Import settings step: the Sprite Editor button --------------------------
-// Unity's shape: the texture importer inspector carries a Sprite Editor
+// The texture importer inspector carries a Sprite Editor
 // button, the slicing itself happens in the dedicated window
 // (window_sprite_editor.odin) with its own Apply/Revert.
 @(property_drawer={type=engine.TextureSettings, order="middle"})

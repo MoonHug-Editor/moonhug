@@ -1,6 +1,6 @@
 package audio
 
-// Unity-literal AudioSource: a clip reference plus per-instance mixing
+// AudioSource: a clip reference plus per-instance mixing
 // controls. The live SDL3_mixer track is runtime-only.
 
 import mix "vendor:sdl3/mixer"
@@ -19,7 +19,7 @@ AudioSource :: struct {
 	loop:          bool,
 	play_on_awake: bool,
 	// 0 = 2D (full volume, centered), 1 = 3D (attenuated + panned relative
-	// to the AudioListener). Unity's Spatial Blend.
+	// to the AudioListener).
 	spatial_blend: f32,
 	min_distance:  f32, // full volume inside this radius
 	max_distance:  f32, // attenuation stops falling past this radius
