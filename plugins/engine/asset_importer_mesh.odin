@@ -35,7 +35,7 @@ Mesh_Part :: struct {
 // {its guid, 0}. Ids share the model's sub-asset id space with parts and
 // hull sets and, like parts, are matched by name across reimports, so a clip
 // added in the DCC tool never renumbers the rest
-// (plugins/animation/docs/AnimationComponent.md).
+// (plugins/animation/docs/assets/AnimationClip.md).
 Mesh_Clip :: struct {
     id:   Local_ID,
     name: string,

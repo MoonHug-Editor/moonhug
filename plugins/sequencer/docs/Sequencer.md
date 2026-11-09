@@ -40,7 +40,7 @@ packages/sprites/sequencer/tween_fade.odin         ← TweenFadeTo, a TweenUnion
 ## Structure
 
 - **PlayableDirector** (root node): `wrap` (Once/Loop), `speed` (0 runs at 1),
-  `manual_start` (inverse of Unity's play-on-awake), `duration` (0 = last
+  `manual_start` (the inverse of play-on-awake), `duration` (0 = last
   clip end). Zero-neutral throughout.
 - **A track node** carries TWO components: `TimelineTrack` (`muted` — what
   every track has) and its **kind component**, which IS the discriminator:
@@ -138,7 +138,7 @@ Built-in kinds:
   exit together, once). Play mode only — scripts are side effects, and
   posing the timeline must not perform them. See "Scripts" below.
 
-Feature-package kinds:
+Feature-package kinds. A plugin that adds a kind documents it on its own pages, the way the animation plugin documents its track ([TrackAnimation](/plugins/animation/docs/components/TrackAnimation.md)):
 - `particles`: a clip span plays the bound ParticleSystem, leaving it stops
   the system and CLEARS live particles — the span is the effect's existence,
   so play shows what scrubbing to the same playhead shows. Scrubbing replays
@@ -155,17 +155,6 @@ Feature-package kinds:
   loop wrap landing in it — starts the voice at the clip-local offset, and
   crossing a clip's start restarts it. Scrub is silent, preview-play sounds.
   Author track-driven sources with `play_on_awake` off.
-- `animation`: drives an ANIMATION COMPONENT (Unity's model — the timeline
-  takes over the Animator). `TrackAnimation.target` names which one; unset,
-  it finds one on the director, and poses the director's transform directly
-  when there is none. The driven component's own playback STANDS DOWN
-  (`Animation.timeline_driven`) so the two never write the same transforms
-  in one frame, and the track hands it back on preview end or retarget.
-  Internally a mixer with one clip node per timeline clip, weights from
-  track_clip_weight, source clips shorter than their timeline clip wrapping
-  by their own mode. Clips may carry PROPERTY channels
-  (plugins/animation/docs/PlayableGraph.md).
-
 ## Scripts
 
 A script is a `@(typ_guid)` struct plus whichever lifecycle procs it

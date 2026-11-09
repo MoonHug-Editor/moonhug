@@ -577,13 +577,44 @@ docs_write_home :: proc(plugins: []string) -> bool {
 		}
 		dir := fmt.tprintf("%s/plugins/%s", DOCS_HOME_DIR, n)
 		os.make_directory(dir)
-		ip := fmt.tprintf("---\ntitle: \"%s\"\ndescription: \"%s\"\n---\n", n, desc)
+		ip := fmt.tprintf("---\ntitle: \"%s\"\ndescription: \"%s\"\n---\n%s", n, desc, _used_by_section(n))
 		if err := docs_home_write(fmt.tprintf("%s/_index.md", dir), transmute([]byte)ip); err != nil {
 			fmt.eprintfln("mh: cannot write %s/_index.md: %v", dir, err)
 			return false
 		}
 	}
 	return true
+}
+
+// A "Used by" section for the landing page of plugin `name`: the plugins that
+// extend it from an integration subpackage, a folder of theirs named after it
+// (plugins/animation/sequencer extends the sequencer, docs/core/Plugins.md).
+// The plugin that imports documents the integration on its own pages, so the
+// plugin it extends only links to them, and the list never needs editing by
+// hand. "" when no plugin extends it.
+@(private = "file")
+_used_by_section :: proc(name: string) -> string {
+	handle, oerr := os.open("plugins")
+	if oerr != nil do return ""
+	defer os.close(handle)
+	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+	if rerr != nil do return ""
+	slice.sort_by(entries, proc(a, c: os.File_Info) -> bool { return a.name < c.name })
+	b := strings.builder_make(context.temp_allocator)
+	for e in entries {
+		if e.type != .Directory || e.name == name do continue
+		folder := fmt.tprintf("plugins/%s/%s", e.name, name)
+		if !os.is_dir(folder) do continue
+		if strings.builder_len(b) == 0 {
+			strings.write_string(&b, "\n## Used by\n\nThese plugins extend this one from an integration subpackage. Each documents what it adds on its own pages.\n\n")
+		}
+		if os.is_dir(fmt.tprintf("plugins/%s/docs", e.name)) {
+			fmt.sbprintf(&b, "- [%s](/plugins/%s/docs/_index.md), from `%s`\n", e.name, e.name, folder)
+		} else {
+			fmt.sbprintf(&b, "- %s, from `%s`\n", e.name, folder)
+		}
+	}
+	return strings.to_string(b)
 }
 
 // The string value of one top-level field in a small flat JSON object, "" when
@@ -779,12 +810,18 @@ docs_page_mounts :: proc(b: ^strings.Builder, plugins: []string) -> (groups: []s
 			fmt.eprintfln("mh: cannot read %s", repo_path)
 			return false
 		}
+		page := string(data)
+		// A plugin's landing page lists the plugins that extend it.
+		if strings.has_prefix(repo_path, "plugins/") && strings.has_suffix(repo_path, "/docs/_index.md") {
+			plugin := repo_path[len("plugins/"):len(repo_path) - len("/docs/_index.md")]
+			page = strings.concatenate({page, _used_by_section(plugin)}, context.temp_allocator)
+		}
 		name := filepath.base(repo_path)
 		target := fmt.tprintf("%s/%s", default_dir, name)
-		if p := _front_matter_value(string(data), "path"); p != "" {
+		if p := _front_matter_value(page, "path"); p != "" {
 			target = p if strings.has_suffix(p, ".md") else fmt.tprintf("%s/%s", strings.trim_suffix(p, "/"), name)
 		}
-		if err := docs_home_write(fmt.tprintf("%s/%s", DOCS_HOME_DIR, target), transmute([]byte)_with_source(string(data), repo_path)); err != nil {
+		if err := docs_home_write(fmt.tprintf("%s/%s", DOCS_HOME_DIR, target), transmute([]byte)_with_source(page, repo_path)); err != nil {
 			fmt.eprintfln("mh: cannot copy %s: %v", repo_path, err)
 			return false
 		}
@@ -838,13 +875,34 @@ docs_page_mounts :: proc(b: ^strings.Builder, plugins: []string) -> (groups: []s
 	missing := make([dynamic]string, context.temp_allocator)
 	for dir, has_index in dirs {
 		// The sections themselves and a plugin's folder have index pages of
-		// their own (the section files, docs_write_home).
-		if has_index || strings.count(dir, "/") == 0 || strings.has_prefix(dir, "plugins/") do continue
+		// their own (the section files, docs_write_home). A plugin's section
+		// folders do not: they get the standard groups below.
+		if has_index || strings.count(dir, "/") == 0 do continue
+		if strings.has_prefix(dir, "plugins/") && strings.count(dir, "/") == 1 do continue
 		append(&missing, dir)
 	}
 	slice.sort(missing[:])
 	return missing[:], true
 }
+
+// The sections a plugin's docs folder is split into, in the order the sidebar
+// shows them under every plugin (docs/general/Documentation.md, "Plugin
+// pages"). A plugin has only the sections it needs. A folder of another name
+// still builds, after these, with a warning.
+PLUGIN_DOC_SECTIONS :: [?]struct {
+	dir:   string,
+	title: string,
+}{
+	{"components", "Components"},
+	{"assets", "Assets"},
+	{"windows", "Windows"},
+	{"attributes", "Attributes"},
+	{"render-steps", "Render Steps"},
+	{"guides", "Guides"},
+	{"concepts", "Concepts"},
+}
+
+PLUGIN_DOC_UNKNOWN_WEIGHT :: 1000
 
 // A folder is a section of the sidebar only with an `_index.md`, so each
 // group folder a page was placed in gets one, titled after the folder
@@ -856,9 +914,26 @@ docs_write_group_indexes :: proc(groups: []string) -> bool {
 		words := strings.split(filepath.base(dir), "-", context.temp_allocator)
 		for &w in words do if len(w) > 0 do w = strings.concatenate({strings.to_upper(w[:1], context.temp_allocator), w[1:]}, context.temp_allocator)
 		title := strings.join(words, " ", context.temp_allocator)
+		weight := 0
+		// A section folder of a plugin's docs, plugins/<name>/<section>: the
+		// standard title and its place in the standard order, so every plugin
+		// shows the same groups in the same order.
+		if strings.has_prefix(dir, "plugins/") && strings.count(dir, "/") == 2 {
+			weight = PLUGIN_DOC_UNKNOWN_WEIGHT
+			for sec, i in PLUGIN_DOC_SECTIONS {
+				if sec.dir != filepath.base(dir) do continue
+				title, weight = sec.title, (i + 1) * 10
+				break
+			}
+			if weight == PLUGIN_DOC_UNKNOWN_WEIGHT {
+				names := make([dynamic]string, context.temp_allocator)
+				for sec in PLUGIN_DOC_SECTIONS do append(&names, sec.dir)
+				fmt.eprintfln("mh: warning: %s/docs/%s is not a standard plugin docs section (%s), it sorts after them", filepath.dir(dir), filepath.base(dir), strings.join(names[:], ", ", context.temp_allocator))
+			}
+		}
 		out_dir := fmt.tprintf("%s/%s", DOCS_HOME_DIR, dir)
 		os.make_directory_all(out_dir)
-		page := fmt.tprintf("---\ntitle: \"%s\"\n---\n", title)
+		page := weight != 0 ? fmt.tprintf("---\ntitle: \"%s\"\nweight: %d\n---\n", title, weight) : fmt.tprintf("---\ntitle: \"%s\"\n---\n", title)
 		if err := docs_home_write(fmt.tprintf("%s/_index.md", out_dir), transmute([]byte)page); err != nil {
 			fmt.eprintfln("mh: cannot write %s/_index.md: %v", out_dir, err)
 			return false

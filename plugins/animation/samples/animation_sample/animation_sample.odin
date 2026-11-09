@@ -1,6 +1,6 @@
 package animation_sample
 
-// Sample content for the Animation component (plugins/animation/docs/AnimationComponent.md) and
+// Sample content for the Animation component (plugins/animation/docs/guides/AnimatingACharacter.md) and
 // SkinnedMeshRenderer:
 // assets/animation_demo.scene is the essentials plugin's UAL1 character
 // (meshes/characters/UAL1_Standard.glb) — a skinned mesh deformed by its

@@ -1,7 +1,7 @@
 package animation_editor
 
 // Animation window — clip authoring on the PlayableGraph scrub path
-// (plugins/animation/docs/AnimationComponent.md steps 5+6): scrub preview plus dopesheet and curve
+// (plugins/animation/docs/windows/AnimationWindow.md): scrub preview plus dopesheet and curve
 // editing for the clips on the selected object's Animation component.
 //
 // PREVIEW (step 5): never leaks into saved data. Each frame:

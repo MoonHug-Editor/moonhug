@@ -1,6 +1,6 @@
 package animation_sequencer
 
-// TimelineAnimator (plugins/animation/docs/TimelineAnimator.md): an animation state machine one
+// TimelineAnimator (plugins/animation/docs/components/TimelineAnimator.md, rationale in concepts/PlaybackLevels.md): an animation state machine one
 // level above clips, where a state plays a whole TIMELINE instead of a single
 // clip.
 //
@@ -427,7 +427,7 @@ timeline_animator_tick :: proc(dt: f32) {
 // --- Editor preview support -----------------------------------------------------------
 //
 // An edit-mode preview poses the world for the scene render and puts it back
-// after (plugins/animation/docs/PlayableGraph.md step 5), so it needs the graph built before it
+// after (plugins/animation/docs/concepts/PlayableGraph.md "Previews in the editor"), so it needs the graph built before it
 // can capture what to put back, and the bindings of EVERY output — one
 // animator poses as many objects as its timelines drive.
 

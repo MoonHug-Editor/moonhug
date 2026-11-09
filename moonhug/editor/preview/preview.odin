@@ -1,7 +1,7 @@
 package preview
 
 // Editor frame hooks for package editor windows: FRAME HOOKS and SCRUB
-// PREVIEWS (plugins/animation/docs/PlayableGraph.md step 5, plugins/sequencer/docs/Sequencer.md).
+// PREVIEWS (plugins/animation/docs/concepts/PlayableGraph.md "Previews in the editor", plugins/sequencer/docs/Sequencer.md).
 //
 // A package editor window may pose the world for the scene/game render only
 // — the animation window's clip scrub and the sequencer's playhead both do.

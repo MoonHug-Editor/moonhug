@@ -1,6 +1,6 @@
 package animation_editor
 
-// Record (plugins/animation/docs/AnimationComponent.md "Record"): while the
+// Record (plugins/animation/docs/windows/AnimationWindow.md "Record"): while the
 // Animation window's Record is armed, an edit that records undo keys the clip
 // instead of changing the object.
 //

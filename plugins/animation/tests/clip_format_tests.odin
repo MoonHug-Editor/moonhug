@@ -1,6 +1,6 @@
 package animation_tests
 
-// The clip format (clip.odin, plugins/animation/docs/AnimationComponent.md
+// The clip format (clip.odin, plugins/animation/docs/concepts/ClipFormat.md
 // "Clip format"): typed rows (floats, ints, references, strings) behind one
 // `values` key, per-key interpolation modes and tangents on float rows, the
 // glTF CUBICSPLINE bake, and the .anim files already on disk loading as they

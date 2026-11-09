@@ -3,7 +3,7 @@ package animation_editor
 // The pure parts of key interpolation editing in the Animation window: the
 // slopes the presets use, the modes a row offers, and the edits that set a
 // key's mode or tangents while keeping `modes` and `tangents` parallel to
-// `times` (plugins/animation/docs/AnimationComponent.md "Interpolation").
+// `times` (plugins/animation/docs/concepts/ClipFormat.md "Interpolation").
 // Nothing here touches imgui or the document. A caller that edits a document
 // sets context.allocator to the document's allocator first, since `modes` and
 // `tangents` may be created here.

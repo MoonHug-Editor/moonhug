@@ -256,7 +256,7 @@ already has one open is a no-op, which is what makes per-frame calling safe.
 
 ### Commit listener
 
-`undo.commit_listener` sees every closing session's changed entries before anything is recorded. It is one global, nil by default, and the Animation window's Record installs it (plugins/animation/docs/AnimationComponent.md "Record"). The listener runs one call at a time: a session it ends itself, such as its own edit of the clip document, records as usual without calling it again, so a listener needs no re-entry guard of its own.
+`undo.commit_listener` sees every closing session's changed entries before anything is recorded. It is one global, nil by default, and the Animation window's Record installs it (plugins/animation/docs/windows/AnimationWindow.md "Record"). The listener runs one call at a time: a session it ends itself, such as its own edit of the clip document, records as usual without calling it again, so a listener needs no re-entry guard of its own.
 
 - `edit_session_end` captures the new value of every entry first, then calls the listener with the entries that changed, as `Edit_Commit {target, old_json, new_json, ptr}`. The live field holds the new value during the call.
 - An entry the listener marks in `consumed` records no undo step. The session writes the entry's old value back into the live field with the same write an undo makes, so the object ends as it was before the gesture.

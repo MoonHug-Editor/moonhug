@@ -22,6 +22,61 @@ Each page says where it sits on the site with a `path:` line in its front matter
 
 `mh docs` also writes `builds/docs-home/`, every page that exists only on the site: a copy of the README with frontmatter (an empty title, since the README has its own heading and the theme prints the title as one), the notices file it links, the Plugins section index, and a landing page per plugin titled from `mh_plugin.json`. Nothing hand-written lives outside `docs/` and the plugins' `docs/` folders. The README's links are repo paths like every page's, and the link hook resolves them.
 
+## Plugin pages
+
+A plugin's pages live in its `docs/` folder and appear under Plugins, one group per plugin. Every plugin uses the same layout, so the left pane reads the same under each:
+
+```
+plugins/<name>/docs/
+  _index.md        the plugin's landing page
+  components/      one page per component
+  assets/          one page per asset type
+  windows/         one page per editor window
+  attributes/      one page per family of attributes the plugin declares
+  render-steps/    one page per render step
+  guides/          one page per task, steps to follow
+  concepts/        how its systems work, and why they are built this way
+  Roadmap.md       what comes next, open questions, known concerns, what is not planned
+```
+
+Each section answers one question:
+
+| Section | The reader's question |
+|---|---|
+| Components, Assets, Windows, Attributes, Render steps | What does this thing do |
+| Guides | How do I do X |
+| Concepts | How does it work, and why is it built this way |
+| Roadmap | What is missing, undecided or out of scope |
+
+- A plugin has only the folders it needs. `mh docs` gives each folder a group in the left pane with a standard title, in this order (`PLUGIN_DOC_SECTIONS` in `tools/mh/docs.odin`). A folder of another name builds after them, with a warning.
+- Pages inside a folder are ordered by their `weight`. `Roadmap.md` has weight 900, so it sits after the groups.
+- Everything except the roadmap states how things are, in present tense. Rationale goes in the concept page it explains, in a "Why" section or beside the rule it justifies.
+
+### Landing page
+
+What the plugin adds, every page linked by section, what it needs, a quick start, its limits, how to extend it, and links to its API reference and samples.
+
+- **What it needs** lists the plugins it requires and the optional ones, each with what it enables.
+- **Extending** lists every way code extends the plugin. Attributes come first, each family linked to its page under Attributes. Then registries, providers and the procs a driver calls, each in one line with a link to the page that explains it. A plugin that declares no attributes says so.
+
+### Settings
+
+Settings have no section of their own, since a settings tab is usually a short table. It goes on the page of what it configures: an editor window's preferences on the window's page, a project settings tab on the concept page of the system it tunes or on the landing page. A tab too large for that gets its own page at the root of `docs/`.
+
+### Integrations
+
+A plugin that extends another from an integration subpackage ([Plugins](../core/Plugins.md)) documents that integration, since it imports the other plugin and knows both sides. Its components, assets and windows from the subpackage get ordinary pages whose lead says which plugin they need, and its landing page names the plugin under "What it needs".
+
+The plugin it extends documents only its own extension points, such as how to add a track kind, and names no plugin that uses them. `mh docs` appends a "Used by" section to its landing page, listing every plugin with an integration subpackage named after it, so the list never needs editing by hand.
+
+### Page templates
+
+- A component page: a one-sentence lead, then Example, Properties (field, default, what it does), Behavior, In the editor, From code, Limits and See also.
+- An asset page: Example, Import settings, Artifact, In the editor, From code, Limits and See also.
+- An attributes page covers one family of attributes, a lifecycle for instance, with an example each, and links each attribute's generated reference page, which holds its fields.
+
+The [animation plugin](../../plugins/animation/docs/_index.md) follows this layout.
+
 ## Links
 
 Links are relative paths in the repo, so they work on GitHub and on the site alike: `[Undo](Undo.md)` within a section, `[Concepts](../general/Concepts.md)` across sections.

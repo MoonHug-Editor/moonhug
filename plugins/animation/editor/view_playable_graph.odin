@@ -1,9 +1,9 @@
 package animation_editor
 
-// Playable Graph window — the node canvas's first client (docs/
-// PlayableGraph.md step 7): a READ-ONLY visualizer of the selected Animation
-// component's PlayableGraph, Unity's PlayableGraph Visualizer being the
-// model. Clip leaves sit on the left, the root output on the right, edge
+// Playable Graph window (plugins/animation/docs/windows/PlayableGraphWindow.md),
+// the node canvas's first client: a READ-ONLY visualizer of the selected
+// Animation component's PlayableGraph. Clip leaves sit on the left, the root
+// output on the right, edge
 // opacity follows input weight. Nodes auto-layout by depth from the root and
 // stay draggable on top of that (the layout recomputes when the graph's
 // structure changes).
