@@ -36,6 +36,9 @@ TypeGuid_GenComp :: struct {
 	has_reset:        bool,
 	has_cleanup:      bool,
 	has_on_validate:  bool,
+	// `no_embed = true` in menu_assets_create: no field holds an asset of
+	// the type as its own (the picker's Embed action is off for it).
+	no_embed:  bool,
 	create_file_name: string,
 	create_menu_name: string,
 	create_order:     int,
@@ -158,6 +161,9 @@ provide :: proc(w: ^db.World) -> bool {
 					has_cleanup     = gen_core.FileHasProc(decl.file, cleanup_name),
 					has_on_validate = gen_core.FileHasProc(decl.file, on_validate_name),
 				}
+				if targs, has_targs := gen_facts.attr_find(attr_set, "typ_guid"); has_targs {
+					if create_args, has_create := gen_facts.attr_nested(targs, "menu_assets_create"); has_create do tag.no_embed = create_args.fields["no_embed"] == "true"
+				}
 				delete(reset_name)
 				delete(cleanup_name)
 				delete(on_validate_name)
@@ -193,6 +199,7 @@ _TypeGuidRow :: struct {
 	has_reset:        bool,
 	has_cleanup:      bool,
 	has_on_validate:  bool,
+	no_embed:  bool,
 	create_file_name: string,
 	create_menu_name: string,
 	create_order:     int,
@@ -250,6 +257,7 @@ generate :: proc(w: ^db.World) -> bool {
 				has_reset        = guid.has_reset,
 				has_cleanup      = guid.has_cleanup,
 				has_on_validate  = guid.has_on_validate,
+				no_embed  = guid.no_embed,
 				create_file_name = guid.create_file_name,
 				create_menu_name = guid.create_menu_name,
 				create_order     = guid.create_order,
@@ -442,6 +450,7 @@ _write_registration :: proc(entries: []_TypeGuidRow, cleanup_bindings: []_Cleanu
 		} else {
 			fmt.sbprintf(&b, "\t\tcore.register_type(%s, uuid.read(%q) or_else uuid.Identifier{{}})\n", _qualified_type(e), e.guid)
 		}
+		if e.no_embed do fmt.sbprintf(&b, "\t\tcore.type_no_embed_set(%s)\n", _qualified_type(e))
 	}
 	for e in entries {
 		if !included(e, host_name, runnables) do continue

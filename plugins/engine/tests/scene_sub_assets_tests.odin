@@ -258,3 +258,49 @@ test_asset_database_lists_an_open_scenes_sub_assets :: proc(t: ^testing.T) {
 	list = engine.scene_sub_assets(guid)
 	testing.expect(t, len(list) == 1 && list[0].local_id == second.local_id, "a removal reaches it")
 }
+
+// An embedded asset is written inside the field that uses it and read back as
+// a new one: the scene file holds its data in the slot, a loader reads it by
+// the field's key, and a second load has an embedded asset of its own.
+@(test)
+test_embedded_asset_is_written_inside_its_field :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc, "moonhug/tests/fixtures/_test_embedded_asset.scene")
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	engine.material_cache_init()
+	defer engine.material_cache_shutdown()
+
+	tH := engine.transform_new("Cube")
+	engine.scene_set_root(tc.scene, tH)
+	_, mr := engine.transform_get_or_add_comp(tH, engine.MeshRenderer)
+	if !testing.expect(t, mr != nil) do return
+	ref, added := engine.embedded_asset_add("mat", `{"color":[0,1,0,1]}`)
+	if !testing.expect(t, added && ref.guid == engine.EMBEDDED_ASSETS && ref.local_id != 0, "an embedded asset is made") do return
+	append(&mr.materials, ref)
+	testing.expect_value(t, len(tc.scene.assets), 0)
+
+	mat, loaded := engine.material_load(engine.asset_key(ref))
+	testing.expect(t, loaded && mat.color == {0, 1, 0, 1}, "a loader reads the embedded material")
+
+	testing.expect(t, engine.scene_save(tc.scene, tc.path), "the scene saves")
+	text, rerr := os.read_entire_file(tc.path, context.temp_allocator)
+	testing.expect(t, rerr == nil)
+	testing.expect(t, strings.contains(string(text), `"embedded": "mat"`), "the slot holds the material's data")
+	testing.expect(t, !strings.contains(string(text), `"assets"`), "and the file has no sub-asset for it")
+
+	scene := engine.scene_load_single_path(tc.path)
+	if !testing.expect(t, scene != nil, "the scene loads") do return
+	_, loaded_mr := engine.transform_get_comp(engine.Transform_Handle(scene.root.handle), engine.MeshRenderer)
+	if !testing.expect(t, loaded_mr != nil && len(loaded_mr.materials) == 1) do return
+	again := loaded_mr.materials[0]
+	testing.expect(t, again.guid == engine.EMBEDDED_ASSETS && again.local_id != ref.local_id, "the loaded slot has an embedded asset of its own")
+	mat2, loaded2 := engine.material_load(engine.asset_key(again))
+	testing.expect(t, loaded2 && mat2.color == {0, 1, 0, 1}, "with the saved data")
+
+	// An edit of one does not reach the other.
+	testing.expect(t, engine.embedded_asset_store(again, `{"color":[0,0,1,1]}`))
+	first_text, _ := engine.scene_sub_asset_text(ref)
+	testing.expect(t, strings.contains(first_text, "[0,1,0,1]") || strings.contains(first_text, "0,1,0,1"), "the first keeps its data")
+}

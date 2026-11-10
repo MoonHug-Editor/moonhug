@@ -8,6 +8,7 @@ package drawers
 
 import "base:runtime"
 import "core:fmt"
+import "core:strings"
 import "moonhug:editor/subassets"
 import ser "moonhug:libs/serialization"
 import "moonhug:packages/engine"
@@ -30,6 +31,14 @@ scene_sub_assets_install :: proc() {
 	// A scene never saved has no path: its sub-assets are those of the
 	// empty guid.
 	subassets.register(subassets.NO_FILE, provider)
+	// Embedded assets: the same records, under one owner, edited the same way.
+	subassets.register(subassets.EMBEDDED, subassets.Provider{
+		list   = _embedded_assets,
+		text   = engine.scene_sub_asset_text,
+		load   = _scene_sub_asset_load,
+		store  = _embedded_asset_store,
+		create = _embedded_asset_create,
+	})
 }
 
 // A scene file's sub-assets. Each one's kind is its asset type, which is
@@ -121,4 +130,30 @@ _scene_sub_asset_rename :: proc(ref: engine.PPtr, name: string) -> bool {
 _scene_sub_asset_remove :: proc(ref: engine.PPtr) -> bool {
 	if s := engine.scene_sub_asset_scene(ref); s != nil do return scene_undo.sub_asset_remove(s, ref.local_id)
 	return engine.scene_sub_asset_remove_file(ref)
+}
+
+// --- Embedded assets ------------------------------------------------------------
+
+// Every embedded asset, named by what it is: for the lookup of one by its
+// reference. Nothing lists them to pick from.
+@(private = "file")
+_embedded_assets :: proc(path: string, allocator: runtime.Allocator) -> []subassets.Sub_Asset {
+	list := engine.embedded_assets(context.temp_allocator)
+	out := make([]subassets.Sub_Asset, len(list), allocator)
+	for a, i in list do out[i] = subassets.Sub_Asset{id = a.local_id, name = strings.clone(subassets.kind_title(a.type), allocator), kind = strings.clone(a.type, allocator)}
+	return out
+}
+
+// The data keeps its references as they are: one inside embedded data names
+// its file by guid.
+@(private = "file")
+_embedded_asset_store :: proc(ref: engine.PPtr, data: any) -> bool {
+	text, ok := ser.save_to_text(data)
+	return ok && engine.embedded_asset_store(ref, text)
+}
+
+@(private = "file")
+_embedded_asset_create :: proc(owner: engine.Asset_GUID, kind, name: string, data: any) -> (ref: engine.PPtr, ok: bool) {
+	text := ser.save_to_text(data) or_return
+	return engine.embedded_asset_add(kind, text)
 }

@@ -26,8 +26,25 @@ pptr_read_hook: proc(p: ^core.PPtr)
 // Called with a copy of every reference written, before it is written.
 pptr_write_hook: proc(p: ^core.PPtr)
 
+// An embedded asset: a reference whose asset is written in its place, as
+// {"embedded": "<type>", "data": {...}}. The engine installs both.
+// The type and data of the embedded asset `p` names, false for any other reference.
+pptr_embedded_write: proc(p: core.PPtr) -> (type: string, data_json: string, ok: bool)
+// The reference to a new embedded asset of `type` with `data_json`.
+pptr_embedded_read: proc(type: string, data_json: string) -> core.PPtr
+
 pptr_marshal :: proc(w: io.Writer, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
 	p := (cast(^core.PPtr)v.data)^
+	if pptr_embedded_write != nil {
+		if type, data, embedded := pptr_embedded_write(p); embedded {
+			io.write_string(w, `{"embedded": "`)
+			io.write_string(w, type)
+			io.write_string(w, `", "data": `)
+			io.write_string(w, data)
+			io.write_string(w, "}")
+			return nil
+		}
+	}
 	if pptr_write_hook != nil do pptr_write_hook(&p)
 	if p.local_id == 0 && p.guid != {} do return asset_guid_marshal(w, any{&p.guid, typeid_of(core.Asset_GUID)}, opt)
 	return struct_one_line_marshal(w, any{&p, typeid_of(core.PPtr)}, opt)
@@ -45,6 +62,12 @@ pptr_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
 		if err != nil do return json.Unmarshal_Data_Error.Invalid_Data
 		out.guid = core.Asset_GUID(id)
 	case json.Object:
+		if type, embedded := x["embedded"].(json.String); embedded && pptr_embedded_read != nil {
+			data, merr := json.marshal(x["data"], {spec = .JSON, sort_maps_by_key = true}, context.temp_allocator)
+			if merr != nil do return json.Unmarshal_Data_Error.Invalid_Data
+			(cast(^core.PPtr)v.data)^ = pptr_embedded_read(string(type), string(data))
+			return nil
+		}
 		if g, has := x["guid"].(json.String); has {
 			id, err := uuid.read(g)
 			if err != nil do return json.Unmarshal_Data_Error.Invalid_Data

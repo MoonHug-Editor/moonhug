@@ -86,6 +86,13 @@ Provider :: struct {
 // `list` is asked with an empty path.
 NO_FILE :: ""
 
+// The key the provider of embedded assets registers under: assets written
+// inside the one field that uses them (core.EMBEDDED_ASSETS). It has `text`,
+// `load` and `store`, so an embedded asset is edited as a document, and
+// `create`, which makes one from an instance. Its `list` is for lookups
+// only: nothing offers an embedded asset to another field.
+EMBEDDED :: "<embedded>"
+
 // Extension (lowercase, with dot: ".png") -> provider.
 _providers: map[string]Provider
 
@@ -118,6 +125,10 @@ find :: proc(ext: string) -> (Provider, bool) {
 of :: proc(guid: core.Asset_GUID) -> (p: Provider, path: string, ok: bool) {
 	if core.asset_guid_is_empty(guid) {
 		p, ok = _providers[NO_FILE]
+		return
+	}
+	if guid == core.EMBEDDED_ASSETS {
+		p, ok = _providers[EMBEDDED]
 		return
 	}
 	path = assets.asset_db_get_path(uuid.Identifier(guid)) or_return
@@ -194,6 +205,13 @@ creatable_register :: proc(file_name, title: string, type_key: core.TypeKey) {
 
 creatables :: proc() -> []Creatable {
 	return _creatables[:]
+}
+
+// What a kind is called: "Material" for "mat". The kind itself when no
+// creatable type has it.
+kind_title :: proc(kind: string) -> string {
+	for c in _creatables do if c.kind == kind do return c.title
+	return kind
 }
 
 // --- Model clips ------------------------------------------------------------------

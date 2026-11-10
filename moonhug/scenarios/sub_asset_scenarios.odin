@@ -257,7 +257,7 @@ sub_asset_is_deleted_renamed_and_created :: proc(t: ^testing.T) {
 	click(r, win.x + win[2] - 69, slot.y + slot[3] / 2)
 	_, local := item_rect(r, "popup", "demo / Floor")
 	testing.expectf(t, local, "the picker offers the scene's other materials")
-	row, offered := item_rect(r, "popup", "New Material")
+	row, offered := item_rect(r, "popup", "New Material (sub-asset)")
 	if !testing.expectf(t, offered, "the picker offers a new material") do return
 	click(r, row.x + 4, row.y + row[3] / 2)
 	_, set := item_rect(r, "Inspector", "demo / Material")
@@ -271,16 +271,16 @@ sub_asset_is_deleted_renamed_and_created :: proc(t: ^testing.T) {
 	frames(r, 3)
 	_, set = item_rect(r, "Inspector", "demo / Material")
 	testing.expectf(t, set, "redo makes the material again and puts it in the slot")
-	// Make Unique gives the slot a copy of the material it holds.
+	// Copy (sub-asset) gives the slot a copy of the material it holds.
 	slot, _ = item_rect(r, "Inspector", "demo / Material")
 	click(r, win.x + win[2] - 69, slot.y + slot[3] / 2)
-	row, offered = item_rect(r, "popup", "Make Unique")
+	row, offered = item_rect(r, "popup", "Copy (sub-asset)")
 	if !testing.expectf(t, offered, "the picker offers a copy of the slot's material") do return
 	click(r, row.x + 4, row.y + row[3] / 2)
 	_, set = item_rect(r, "Inspector", "demo / Material 1")
 	testing.expectf(t, set, "the slot holds the copy")
 
-	// Of a material file, Make Unique puts a copy into the scene.
+	// Of a material file, Copy (sub-asset) puts a copy into the scene.
 	slot, _ = item_rect(r, "Inspector", "demo / Material 1")
 	click(r, win.x + win[2] - 69, slot.y + slot[3] / 2)
 	row, offered = item_rect(r, "popup", "Red.mat")
@@ -289,7 +289,7 @@ sub_asset_is_deleted_renamed_and_created :: proc(t: ^testing.T) {
 	slot, set = item_rect(r, "Inspector", "Red.mat")
 	if !testing.expectf(t, set, "the slot holds the file") do return
 	click(r, win.x + win[2] - 69, slot.y + slot[3] / 2)
-	row, offered = item_rect(r, "popup", "Make Unique")
+	row, offered = item_rect(r, "popup", "Copy (sub-asset)")
 	if !testing.expectf(t, offered, "the picker offers a copy of the file") do return
 	click(r, row.x + 4, row.y + row[3] / 2)
 	_, set = item_rect(r, "Inspector", "demo / Red")
@@ -436,6 +436,102 @@ sub_assets_of_a_closed_scene_are_managed_like_files :: proc(t: ^testing.T) {
 	testing.expectf(t, len(new_transforms) == len(old_transforms), "the file keeps its objects: %d of %d", len(new_transforms), len(old_transforms))
 	testing.expectf(t, len(new_assets) == len(old_assets) + 1, "and has one sub-asset more: the noise map")
 	testing.expectf(t, as_string(at(call(r, "editor_state"), "scene")) != SCENE, "the scene was never opened")
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	editor_quit(r)
+}
+
+// Copy (embedded) on a material slot gives the slot a copy of its material
+// as an asset of its own, written inside the slot: one undo step, saved in the
+// scene file where the reference was, and there again after a restart.
+@(test)
+embedded_asset_is_stored_inside_its_slot :: proc(t: ^testing.T) {
+	r := begin(t)
+	SCENE :: "assets/demo.scene"
+	meshes :: "plugins/essentials/assets/meshes/"
+	for file in ([]string{"Sphere.glb", "Sphere.glb.meta", "Cube.glb", "Cube.glb.meta"}) {
+		project_copy(r, fmt.tprintf("%s%s", meshes, file), fmt.tprintf("assets/%s", file))
+	}
+	project_copy(r, "plugins/app/assets/demo_sub_assets/demo_sub_assets.scene", SCENE)
+	records_before, _ := at(project_json(r, SCENE), "assets").(json.Array)
+	editor_start(r)
+	call(r, "open_scene", fmt.tprintf(`{{"path":%q}}`, SCENE))
+	frames(r, 5)
+	call(r, "select", `{"name":"Marble"}`)
+	window_open(r, "Inspector")
+	frames(r, 3)
+	list, found := item_rect(r, "Inspector", "materials")
+	if !testing.expectf(t, found, "the Inspector shows the MeshRenderer's materials") do return
+	click(r, list.x + 4, list.y + list[3] / 2)
+	slot, named := item_rect(r, "Inspector", "demo / Marble")
+	if !testing.expectf(t, named, "the slot names the scene's material") do return
+	win, _ := window_rect(r, "Inspector")
+	click(r, win.x + win[2] - 69, slot.y + slot[3] / 2)
+	row, offered := item_rect(r, "popup", "Copy (embedded)")
+	if !testing.expectf(t, offered, "the picker offers an embedded copy") do return
+	click(r, row.x + 4, row.y + row[3] / 2)
+	_, embedded := item_rect(r, "Inspector", "Material (embedded)")
+	testing.expectf(t, embedded, "the slot holds an embedded material")
+
+	// One undo step.
+	call(r, "invoke_menu", `{"path":"Edit/Undo"}`)
+	frames(r, 3)
+	_, back := item_rect(r, "Inspector", "demo / Marble")
+	testing.expectf(t, back, "undo puts the reference back")
+	call(r, "invoke_menu", `{"path":"Edit/Redo"}`)
+	frames(r, 3)
+	_, embedded = item_rect(r, "Inspector", "Material (embedded)")
+	testing.expectf(t, embedded, "redo makes the slot embedded again")
+
+	// The scene file holds the material's data in the slot.
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 5)
+	saved := project_json(r, SCENE)
+	slots := 0
+	components, _ := at(saved, "components").(json.Array)
+	for c in components {
+		materials, _ := at(c, "materials").(json.Array)
+		for m in materials {
+			if as_string(at(m, "embedded")) != "mat" do continue
+			slots += 1
+			testing.expectf(t, as_f64(at(m, "data", "color", 0)) == 1, "with the material's color, got %v", at(m, "data", "color"))
+			testing.expectf(t, as_int(at(m, "data", "texture", "local_id")) != 0, "and its texture, got %v", at(m, "data", "texture"))
+		}
+	}
+	testing.expectf(t, slots == 1, "one slot of the saved scene holds an embedded material, found %d", slots)
+	records_after, _ := at(saved, "assets").(json.Array)
+	testing.expectf(t, len(records_after) == len(records_before), "the scene's sub-assets are as they were")
+
+	editor_restart(r)
+	frames(r, 5)
+	call(r, "select", `{"name":"Marble"}`)
+	frames(r, 3)
+	list, found = item_rect(r, "Inspector", "materials")
+	if found {
+		_, shown := item_rect(r, "Inspector", "Material (embedded)")
+		if !shown do click(r, list.x + 4, list.y + list[3] / 2)
+	}
+	_, embedded = item_rect(r, "Inspector", "Material (embedded)")
+	testing.expectf(t, embedded, "the slot is embedded after a restart")
+
+	// An empty slot gets a new embedded material.
+	slot, _ = item_rect(r, "Inspector", "Material (embedded)")
+	click(r, win.x + win[2] - 69, slot.y + slot[3] / 2)
+	row, offered = item_rect(r, "popup", "None")
+	if !testing.expectf(t, offered, "the picker offers None") do return
+	click(r, row.x + 4, row.y + row[3] / 2)
+	_, embedded = item_rect(r, "Inspector", "Material (embedded)")
+	testing.expectf(t, !embedded, "None empties the slot")
+	click(r, win.x + win[2] - 69, slot.y + slot[3] / 2)
+	_, copy := item_rect(r, "popup", "Copy (embedded)")
+	testing.expectf(t, !copy, "an empty slot has nothing to copy")
+	row, offered = item_rect(r, "popup", "New Material (embedded)")
+	if !testing.expectf(t, offered, "the picker offers a new embedded material for an empty slot") do return
+	click(r, row.x + 4, row.y + row[3] / 2)
+	_, embedded = item_rect(r, "Inspector", "Material (embedded)")
+	testing.expectf(t, embedded, "the slot holds a new embedded material")
+	// Saved, so Quit has nothing to ask about.
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 5)
 	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
 	editor_quit(r)
 }

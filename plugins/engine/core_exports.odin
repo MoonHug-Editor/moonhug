@@ -74,6 +74,7 @@ typeid_to_u16                :: core.typeid_to_u16
 Local_ID            :: core.Local_ID
 Asset_GUID          :: core.Asset_GUID
 PPtr                :: core.PPtr
+EMBEDDED_ASSETS       :: core.EMBEDDED_ASSETS
 Ref_Local           :: core.Ref_Local
 Ref                 :: core.Ref
 Owned               :: core.Owned

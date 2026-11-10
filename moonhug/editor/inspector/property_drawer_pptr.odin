@@ -64,45 +64,67 @@ property_drawer_PPtr :: proc(ctx: ^Ctx) {
     if im.BeginPopup(popup_id) {
         search := picker_search_bar()
         if im.Selectable("None") do _pptr_set(ref_ptr, {})
-        _pptr_picker_new_rows(ctx, ref_ptr)
+        _pptr_picker_make_rows(ctx, ref_ptr)
         im.Separator()
         if picked, ok := _pptr_picker_rows(search, ref_ptr^); ok do _pptr_set(ref_ptr, picked)
         im.EndPopup()
     }
 }
 
-// The rows of the picker that add a sub-asset to the file in scope
-// (sub_asset_scope), where that file takes one (subassets.Provider.create),
-// and put it in the field, as one undo step:
-//   - "New <Type>" for each asset type the field's `ext:` tag names. A field
-//     without the tag has none: it would list every type
-//   - "Make Unique" when the field holds an asset the inspector edits as a
-//     document, a file or a sub-asset: a copy of it, unsaved edits included.
-//     The field then has an asset of its own to change
+// The rows of the picker that give the field an asset of its own. Each says
+// what it makes and where the result lives:
+//
+//   - "New <Type> (embedded)" and "Copy (embedded)": an embedded asset,
+//     written inside the field (core.EMBEDDED_ASSETS). Nothing else can use
+//     it. Not for a type that opts out (`no_embed` in its menu_assets_create).
+//     The change is the field's value, so the row's own edit records it
+//   - "New <Type> (sub-asset)" and "Copy (sub-asset)": a sub-asset of the file
+//     in scope (sub_asset_scope), where that file takes one
+//     (subassets.Provider.create). Other fields can point at it too. One undo
+//     step with the field's change
+//
+// New makes an asset with the type's defaults, one row per asset type the
+// field's `ext:` tag names: a field without the tag would list every type.
+// Copy takes the asset the field points at, a file or a sub-asset the
+// inspector edits as a document, unsaved edits included.
 @(private = "file")
-_pptr_picker_new_rows :: proc(ctx: ^Ctx, ref_ptr: ^core.PPtr) {
-    if !sub_asset_scope.set do return
+_pptr_picker_make_rows :: proc(ctx: ^Ctx, ref_ptr: ^core.PPtr) {
+    embedded, _, can_embed := subassets.of(core.EMBEDDED_ASSETS)
+    can_embed = can_embed && embedded.create != nil
     owner := sub_asset_scope.owner
-    p, _, has := subassets.of(owner)
-    if !has || p.create == nil do return
+    file, _, can_sub := subassets.of(owner)
+    can_sub = can_sub && sub_asset_scope.set && file.create != nil
+
     if current_field_ext_filter != "" {
         for c in subassets.creatables() {
             if !_ext_allowed(c.kind) do continue
-            label := fmt.tprintf("New %s", c.title)
-            if !im.Selectable(strings.clone_to_cstring(label, context.temp_allocator)) do continue
+            make_embedded := can_embed && !core.type_no_embed(core.get_typeid_by_type_key(c.type_key)) && im.Selectable(fmt.ctprintf("New %s (embedded)", c.title))
+            label := fmt.tprintf("New %s (sub-asset)", c.title)
+            make_sub := can_sub && im.Selectable(strings.clone_to_cstring(label, context.temp_allocator))
+            if !make_embedded && !make_sub do continue
             instance := core.create_instance_by_type_key(c.type_key)
             defer {
                 core.type_cleanup(c.type_key, instance.data)
                 free(instance.data)
             }
-            _pptr_put_new(ctx, ref_ptr, p, c.kind, c.title, instance, label)
+            if make_embedded {
+                if created, made := embedded.create(core.EMBEDDED_ASSETS, c.kind, "", instance); made do _pptr_set(ref_ptr, created)
+            } else {
+                _pptr_put_new(ctx, ref_ptr, file, c.kind, c.title, instance, label)
+            }
         }
     }
-    if kind, name, ok := _pptr_copy_source(ref_ptr^); ok && im.Selectable("Make Unique") {
-        // Asked for again: the rows above may have changed the field.
-        if doc := asset_doc_get_ref(ref_ptr^); doc != nil {
-            _pptr_put_new(ctx, ref_ptr, p, kind, name, doc.data, "Make Unique")
-        }
+
+    kind, name, has_source := _pptr_copy_source(ref_ptr^)
+    if !has_source do return
+    source := asset_doc_get_ref(ref_ptr^)
+    if source == nil do return
+    if can_embed && ref_ptr.guid != core.EMBEDDED_ASSETS && !core.type_no_embed(source.data.id) && im.Selectable("Copy (embedded)") {
+        if created, made := embedded.create(core.EMBEDDED_ASSETS, kind, "", source.data); made do _pptr_set(ref_ptr, created)
+        return
+    }
+    if can_sub && im.Selectable("Copy (sub-asset)") {
+        _pptr_put_new(ctx, ref_ptr, file, kind, name, source.data, "Copy (sub-asset)")
     }
 }
 
@@ -158,6 +180,12 @@ _pptr_set :: proc(ref_ptr: ^core.PPtr, value: core.PPtr) {
 // The file name, or "Model / Clip" for a sub-asset.
 @(private = "file")
 _pptr_display :: proc(ref: core.PPtr) -> (string, bool) {
+    // An embedded asset has no file and no name: it is what it is.
+    if ref.guid == core.EMBEDDED_ASSETS {
+        s, found := subassets.get(ref)
+        if !found do return "(missing)", true
+        return fmt.tprintf("%s (embedded)", s.name), true
+    }
     path, ok := assets.asset_db_get_path(uuid.Identifier(ref.guid))
     if !ok {
         // A sub-asset of a file never saved: the file has no path.

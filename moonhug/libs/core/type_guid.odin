@@ -91,9 +91,12 @@ generate_type_info :: proc($T: typeid) -> TypeMeta {
 // Gives a type a stable guid, which scene and asset files store instead of its
 // name, so renaming the type breaks nothing.
 //
-// `guid` is the identity. `menu_assets_create = {menu_name, file_name, order}`
-// adds an Assets > Create entry that makes a new asset of the type, and
-// `makeProcName` names the proc that makes its default instance.
+// `guid` is the identity. `menu_assets_create = {menu_name, file_name, order,
+// no_embed}` adds an Assets > Create entry that makes a new asset of the
+// type. `no_embed = true` there says no field holds an asset of the type as
+// its own: it stays a file or a sub-asset, for a type that has to be shared
+// or is too heavy to copy into every user. `makeProcName` names the proc
+// that makes its default instance.
 @(extension_point={attribute="typ_guid", target="type", fields="guid makeProcName menu_assets_create"})
 register_type :: proc($T: typeid, guid: uuid.Identifier, source := "") {
     if T in typeid_to_guid {
@@ -110,6 +113,20 @@ register_type :: proc($T: typeid, guid: uuid.Identifier, source := "") {
     typeid_to_typeMeta[T] = typeMeta
     guid_to_typeMeta[guid] = typeMeta
     typeid_to_pointerType[T] = ^T
+}
+
+// The asset types that opt out of embedded assets (`no_embed` in their
+// menu_assets_create). Process-global: never borrows the caller's allocator.
+@(private = "file")
+_no_embed: map[typeid]bool
+
+type_no_embed_set :: proc(tid: typeid) {
+	context.allocator = runtime.default_allocator()
+	_no_embed[tid] = true
+}
+
+type_no_embed :: proc(tid: typeid) -> bool {
+	return _no_embed[tid]
 }
 
 register_pointer_type :: proc($T: typeid) {

@@ -94,6 +94,8 @@ _scene_sub_assets_init :: proc "contextless" () {
 	_owners = make(map[Asset_GUID]^_Owner, runtime.default_allocator())
 	serialization.pptr_read_hook = _this_file_read_hook
 	serialization.pptr_write_hook = _this_file_write_hook
+	serialization.pptr_embedded_write = _embedded_write
+	serialization.pptr_embedded_read = _embedded_read
 }
 
 // --- Keys --------------------------------------------------------------------
@@ -172,6 +174,77 @@ scene_sub_asset_store :: proc(ref: PPtr, data_json: string) -> bool {
 	// is pushed by its document (doc_on_changed_Material).
 	texture_unload(asset_key(ref))
 	return true
+}
+
+// --- Embedded assets ------------------------------------------------------------
+//
+// An embedded asset is used by one field and stored inside it: where a scene
+// or an asset file would hold a reference, it holds the asset's data. It has
+// no place in the Project window and no reference another field could hold.
+//
+//   - In memory the field holds {EMBEDDED_ASSETS, id}, and the data is a record
+//     under that owner in the table above, so a loader reads it like any
+//     sub-asset.
+//   - Reading a file makes a record with a new id for each embedded asset, and
+//     writing puts each record's data back in its field. A copy of an object
+//     that goes through its text has embedded assets of its own.
+//   - The ids last for the session and the records until exit: the data is
+//     small text, and nothing tracks which field still uses one.
+//   - A reference inside the data names its file by guid. The "this file"
+//     form of a scene's own sub-assets is not used inside embedded data.
+
+@(private = "file")
+_embedded_next: Local_ID
+
+// Makes an embedded asset of `type` ("mat", "noise") from its data as JSON
+// text. The reference goes into the one field that uses it.
+embedded_asset_add :: proc(type, data_json: string) -> (ref: PPtr, ok: bool) {
+	context.allocator = runtime.default_allocator()
+	data, err := json.parse_string(data_json, .JSON, true, context.temp_allocator)
+	if err != nil do return {}, false
+	o := _owner(core.EMBEDDED_ASSETS)
+	o.loaded = true
+	_embedded_next += 1
+	_record_set(o, _embedded_next, type, "", data)
+	return PPtr{guid = core.EMBEDDED_ASSETS, local_id = _embedded_next}, true
+}
+
+// Replaces the data of the embedded asset `ref`: the editor's edit. The scene
+// being edited holds the field, so it is marked edited.
+embedded_asset_store :: proc(ref: PPtr, data_json: string) -> bool {
+	if ref.guid != core.EMBEDDED_ASSETS do return false
+	o := _owner(core.EMBEDDED_ASSETS)
+	old, has := o.records[ref.local_id]
+	if !has do return false
+	data, err := json.parse_string(data_json, .JSON, true, context.temp_allocator)
+	if err != nil do return false
+	type := strings.clone(old.type, context.temp_allocator)
+	_record_set(o, ref.local_id, type, "", data)
+	texture_unload(asset_key(ref))
+	if s := sm_scene_get_active(); s != nil do s.dirty = true
+	return true
+}
+
+// Every embedded asset of the session, for the editor's lookups. On `allocator`.
+embedded_assets :: proc(allocator := context.temp_allocator) -> []Scene_Sub_Asset_Info {
+	o := _owner(core.EMBEDDED_ASSETS)
+	out := make([dynamic]Scene_Sub_Asset_Info, 0, len(o.records), allocator)
+	for id, rec in o.records do append(&out, Scene_Sub_Asset_Info{local_id = id, type = strings.clone(rec.type, allocator), name = ""})
+	return out[:]
+}
+
+@(private = "file")
+_embedded_write :: proc(p: PPtr) -> (type: string, data_json: string, ok: bool) {
+	if p.guid != core.EMBEDDED_ASSETS do return
+	rec, has := _owner(core.EMBEDDED_ASSETS).records[p.local_id]
+	if !has do return
+	return rec.type, rec.text, true
+}
+
+@(private = "file")
+_embedded_read :: proc(type: string, data_json: string) -> PPtr {
+	ref, _ := embedded_asset_add(type, data_json)
+	return ref
 }
 
 // --- The sub-assets of a scene file that is not open --------------------------

@@ -13,6 +13,12 @@ package core
 import "base:runtime"
 import "core:hash/xxhash"
 
+// The owner of every embedded asset: an asset whose data is written inside the
+// one field that uses it. In memory such a field holds {EMBEDDED_ASSETS, id}
+// with an id that lasts for the session. Nothing lists it and no file holds
+// it under that id, so no other field can point at it.
+EMBEDDED_ASSETS :: Asset_GUID{0x1a, 0x7e, 0x11, 0x4e, 0xa5, 0x5e, 0x45, 0x00, 0x80, 0x00, 0x1a, 0x7e, 0x11, 0x4e, 0x00, 0x01}
+
 // The reference each sub-asset key was made from.
 @(private = "file")
 _key_refs: map[Asset_GUID]PPtr
