@@ -42,6 +42,7 @@ COMMANDS := []Command {
 	{"play", "run a package's run configuration: mh play [pkg[:config]] [--dev|--run-only|--build-only]", cmd_play, true},
 	{"test", "run the test suite (--name=pkg.test runs one)", cmd_test, true},
 	{"test-asan", "run the test suite under AddressSanitizer, four times slower (--name=pkg.test runs one)", cmd_test_asan, true},
+	{"scenarios", "run the editor scenarios: tests that drive the real editor (--name=<test> runs one, --show shows its window)", cmd_scenarios, true},
 	{"prebuild", "run the code generators only", cmd_prebuild, true},
 	{"deps", "gather plugin dependencies into mh_plugin.json (names: only those)", cmd_deps, true},
 	{"shaders", "recompile the built-in GLSL shaders", cmd_shaders, true},

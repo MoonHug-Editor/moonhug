@@ -27,7 +27,7 @@ $(MH_BIN): $(wildcard tools/mh/*.odin) $(ODIN_STAMP)
 
 FORCE:
 
-.PHONY: help setup run debug build check-noplugins play test prebuild deps shaders docs mcp clean distclean
+.PHONY: help setup run debug build check-noplugins play test scenarios prebuild deps shaders docs mcp clean distclean
 
 help:      $(MH_BIN) ; @$(MH) help
 setup:     $(MH_BIN) ; @$(MH) setup
@@ -46,3 +46,6 @@ clean:     $(MH_BIN) ; @$(MH) clean
 distclean: $(MH_BIN) ; @$(MH) clean --all
 test:      $(MH_BIN) ; @$(MH) test $(if $(NAME),--name=$(NAME),)
 test-asan: $(MH_BIN) ; @$(MH) test-asan $(if $(NAME),--name=$(NAME),)
+# make scenarios NAME=<test> runs one scenario, SHOW=1 gives the editor a
+# window on screen.
+scenarios: $(MH_BIN) ; @$(MH) scenarios $(if $(NAME),--name=$(NAME),) $(if $(SHOW),--show,)

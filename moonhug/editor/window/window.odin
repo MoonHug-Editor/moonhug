@@ -895,6 +895,13 @@ _title :: proc(w: ^Window) -> cstring {
 	return fmt.ctprintf("%s %s###%s", r.icon, label, w.key)
 }
 
+// The id of the window an instance key belongs to, false for a key that
+// names none.
+parse_key_id :: proc(key: string) -> (id: string, ok: bool) {
+	id, _, ok = _parse_key(key)
+	return
+}
+
 // A key's window id and asset: `id`, `id/<asset guid>`, or `id/<n>` for
 // another plain instance, which has no asset.
 @(private = "file")

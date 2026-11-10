@@ -61,11 +61,15 @@ main :: proc() {
     // Must be set HERE, not inside init: assertion_failure_proc lives on the
     // context, so it only persists in the scope that assigns it.
     context.assertion_failure_proc = crash_journal.assertion_failure
+    // --hidden keeps the editor's window off the screen: a scenario run
+    // drives it through the bridge (moonhug/scenarios).
+    hidden := false
     for arg in os.args[1:] {
         if arg == "--crash-test" {
             fmt.eprintfln("crash journal self-test: writing %s and faulting", crash_journal.path())
             crash_journal.test_crash()
         }
+        if arg == "--hidden" do hidden = true
     }
 
     win_w, win_h, win_x, win_y := load_editor_settings()
@@ -85,7 +89,7 @@ main :: proc() {
     } else if !has_saved_settings {
         apply_default_window_size()
     }
-    gfx.show_window()
+    if !hidden do gfx.show_window()
     // Dock icon is applied AFTER the first focus event (see the main loop),
     // NOT here: setApplicationIconImage during the launch activation
     // handshake could wedge key-window status when a click landed early —

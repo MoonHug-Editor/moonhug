@@ -113,6 +113,7 @@ For more details see [Architecture](docs/core/Architecture.md)
 - [Multiselection](docs/core/Multiselection.md) - cmd/shift selection in hierarchy, Scene window and project; rubber-band box select; gizmo moves/rotates/scales the whole selection (Pivot/Center toggle); set-wide delete/duplicate/toggle-active as one undo step; multiedit of shared components with Unity's mixed-value indicators
 - [Crash Journal](docs/general/CrashJournal.md) - signal-safe crash log with a symbolized stack and a breadcrumb of what the editor was doing (`logs/crash_<pid>.log`)
 - [MCP Bridge](docs/core/McpBridge.md) - agent access to the running editor (scene dumps, menu invocation) over MCP, zero external dependencies
+- [Scenarios](docs/core/Scenarios.md) - tests that drive the real editor through the bridge: windows, restarts, saved files
 - [Undo](docs/core/Undo.md) - editor undo feature
 - [Windows](docs/core/Windows.md) - editor windows and the attributes that extend windows: window menus, tab bar widgets, the asset a window edits with Save, Discard, the dirty star and the quit prompt, Scene window overlays, the editor toolbar
 - [Simulate](docs/core/Simulate.md) - play the open scene inside the editor with everything still inspectable: Simulate/Pause/Step controls, snapshot+restore on stop, sim-host dropdown picking which game's update code runs. Separate from the Play button, which builds and launches the game as its own process
