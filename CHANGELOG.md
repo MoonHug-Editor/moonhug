@@ -1,3 +1,16 @@
+## [0.162.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.161.0...v0.162.0) (2026-11-10)
+
+### Features
+
+* editor scenario tests that drive the real editor through the bridge ([5870d34](https://github.com/MoonHug-Editor/moonhug/commit/5870d34c1c4938338128bbe506ee3c9a3b194ae0))
+* window copies get unique keys, frame window locks live in the workspace ([b01703a](https://github.com/MoonHug-Editor/moonhug/commit/b01703a613582fae2fa0d69d29d0df5fa9a0b6f7))
+* windows save their state, one record per window in settings and workspaces ([03a98d9](https://github.com/MoonHug-Editor/moonhug/commit/03a98d977553d76e0b00459979b6935688790908))
+
+### Bug Fixes
+
+* game window is a registered window now ([1f96fce](https://github.com/MoonHug-Editor/moonhug/commit/1f96fceabfa9d1fa5680ab82aca0d7b076d92e20))
+* the Input Debug window is a registered window ([9dac6ca](https://github.com/MoonHug-Editor/moonhug/commit/9dac6cacee865564b073226753eefbecd8ec0be1))
+
 ## [0.161.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.160.0...v0.161.0) (2026-11-09)
 
 ### Features
