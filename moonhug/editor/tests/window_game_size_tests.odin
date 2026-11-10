@@ -9,15 +9,15 @@ import "core:testing"
 
 @(private = "file")
 _rect :: proc(index: int, flipped: bool, scale: f32, area: im.Vec2) -> im.Vec2 {
-	old_index, old_flip, old_scale := editor.game_size_index, editor.game_size_flipped, editor.game_scale
+	old_index, old_flip, old_scale := editor._gv.size_index, editor._gv.size_flipped, editor._gv.scale
 	defer {
-		editor.game_size_index = old_index
-		editor.game_size_flipped = old_flip
-		editor.game_scale = old_scale
+		editor._gv.size_index = old_index
+		editor._gv.size_flipped = old_flip
+		editor._gv.scale = old_scale
 	}
-	editor.game_size_index = index
-	editor.game_size_flipped = flipped
-	editor.game_scale = scale
+	editor._gv.size_index = index
+	editor._gv.size_flipped = flipped
+	editor._gv.scale = scale
 	return editor.game_target_rect(area)
 }
 
@@ -66,27 +66,27 @@ game_size_zoom_one_is_actual_pixels_even_when_larger_than_the_window :: proc(t: 
 
 @(test)
 game_min_scale_fits_a_resolution_larger_than_the_window :: proc(t: ^testing.T) {
-	old := editor.game_size_index
-	defer editor.game_size_index = old
-	editor.game_size_index = _index_of("1280x720 HD")
+	old := editor._gv.size_index
+	defer editor._gv.size_index = old
+	editor._gv.size_index = _index_of("1280x720 HD")
 	// Half the width it needs: the floor is the zoom that fits.
 	testing.expect_value(t, editor.game_min_scale({640, 1000}), f32(0.5))
 }
 
 @(test)
 game_min_scale_is_one_when_the_resolution_fits :: proc(t: ^testing.T) {
-	old := editor.game_size_index
-	defer editor.game_size_index = old
-	editor.game_size_index = _index_of("1280x720 HD")
+	old := editor._gv.size_index
+	defer editor._gv.size_index = old
+	editor._gv.size_index = _index_of("1280x720 HD")
 	// Never above 1: a small size stays at its own pixels, not blown up.
 	testing.expect_value(t, editor.game_min_scale({1920, 1200}), f32(1))
 }
 
 @(test)
 game_min_scale_is_one_for_an_aspect :: proc(t: ^testing.T) {
-	old := editor.game_size_index
-	defer editor.game_size_index = old
-	editor.game_size_index = _index_of("16:9")
+	old := editor._gv.size_index
+	defer editor._gv.size_index = old
+	editor._gv.size_index = _index_of("16:9")
 	// An aspect already fits by construction, so its floor is 1.
 	testing.expect_value(t, editor.game_min_scale({640, 1000}), f32(1))
 }

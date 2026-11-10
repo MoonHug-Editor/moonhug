@@ -4,8 +4,6 @@ import "moonhug:libs/log"
 import "moonhug:editor/session"
 import wnd "moonhug:editor/window"
 import asset_pipeline "moonhug:editor/assets"
-import "moonhug:editor/icons"
-import "core:strings"
 import "moonhug:editor/keymap"
 
 Theme :: enum {
@@ -97,53 +95,12 @@ quit_requested := false
 // Shortcuts match Unity (Ctrl+1..6 = Cmd+1..6 on macOS): Scene, Game,
 // Inspector, Hierarchy, Project, Animation, and Cmd+Shift+C for Console.
 
-show_game := true
-
-@(private = "file")
-_open_window :: proc(show: ^bool, title: cstring) {
-	show^ = true
-	im.SetWindowFocusStr(title)
-}
-
-// The open flag behind a built-in window's title, so the tab menu can
-// close the tab it is opened on. Plugin windows keep their own list
-// (window/window.odin), so this returns nil for them. Windows match by the
-// text after ###, the window's id: the label before it changes, a star while
-// the window's file has unsaved changes.
-window_show_flag :: proc(title: cstring) -> ^bool {
-	id := _window_id(string(title))
-	for v in builtin_windows() do if _window_id(string(v.title)) == id do return v.flag
-	return nil
-}
-
-// A window that exists once, opened by its flag: the Game window. Every other
-// window is a window instance (editor/window).
-Builtin_Window :: struct {
-	title: cstring,
-	flag:  ^bool,
-}
-
-builtin_windows :: proc() -> []Builtin_Window {
-	return _builtin_windows[:]
-}
-
-@(private = "file")
-_builtin_windows := [?]Builtin_Window{
-	{icons.TITLE_GAME, &show_game},
-}
-
-@(private = "file")
-_window_id :: proc(title: string) -> string {
-	if i := strings.last_index(title, "###"); i >= 0 do return title[i + 3:]
-	return title
-}
-
 
 @(menu_item={path="Window/General/Scene", order=0, shortcut="Ctrl+1", help="Opens the Scene window"})
 window_menu_scene :: proc() { wnd.open("Scene") }
 
 @(menu_item={path="Window/General/Game", order=1, shortcut="Ctrl+2", help="Opens the Game window"})
-window_menu_game :: proc() { _open_window(&show_game, icons.TITLE_GAME) }
+window_menu_game :: proc() { wnd.open("Game") }
 
 // The windows are window instances (editor/window). The engine declares the
 // Inspector and the Hierarchy, so their items are off without it.

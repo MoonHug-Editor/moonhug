@@ -12,7 +12,6 @@ package editor
 // control.
 
 import im "moonhug:external/odin-imgui"
-import "menu"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/keymap"
 import "moonhug:editor/icons"
@@ -204,10 +203,6 @@ _window_origin :: proc(title: cstring) -> string {
 // and a plugin window's id is the text after "###".
 @(private = "file")
 _close_window :: proc(title: cstring) {
-	if flag := menu.window_show_flag(title); flag != nil {
-		flag^ = false
-		return
-	}
 	s := string(title)
 	if idx := strings.last_index(s, "###"); idx >= 0 {
 		wnd.close(s[idx + 3:])
@@ -319,31 +314,18 @@ tab_menu_window_items :: proc(key: string) -> (close: bool) {
 
 // Add Tab lists every window, sorted by name, and opens a new one in the node:
 // the window's plain instance, or another instance when the plain one already
-// shows somewhere. The Game window is the one window that exists once: it opens
-// here when closed and is focused where it is when open.
+// shows somewhere.
 @(private = "file")
 _add_tab_items :: proc(node: im.ID) {
 	Entry :: struct {
 		label: string,
-		title: cstring,      // a built-in window's title
-		flag:  ^bool,        // a built-in window's open flag
-		id:    string,       // a window's id
+		id:    string, // a window's id
 	}
 	entries := make([dynamic]Entry, context.temp_allocator)
-	for v in menu.builtin_windows() do append(&entries, Entry{label = _plain_label(v.title), title = v.title, flag = v.flag})
 	for w in wnd.registered() do append(&entries, Entry{label = w.title, id = w.id})
 	slice.sort_by(entries[:], proc(a, b: Entry) -> bool { return a.label < b.label })
 	for e in entries {
 		if !im.MenuItem(strings.clone_to_cstring(e.label, context.temp_allocator)) do continue
-		if e.flag != nil {
-			if e.flag^ {
-				im.SetWindowFocusStr(e.title)
-			} else {
-				e.flag^ = true
-				_tab_dock(window_key_of(e.title), node)
-			}
-			continue
-		}
 		w := wnd.open_another(e.id) if wnd.find(e.id) != nil else wnd.open(e.id)
 		if w != nil do _tab_dock(w.key, node)
 	}

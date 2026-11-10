@@ -3,15 +3,66 @@ package editor
 import "core:fmt"
 import gfx "moonhug:libs/gfx"
 import im "moonhug:external/odin-imgui"
-import "menu"
 import core "moonhug:libs/core"
 import "moonhug:editor/viewport"
 import "moonhug:libs/gizmos"
 import "moonhug:libs/input"
 import "moonhug:editor/icons"
+import "moonhug:editor/session"
 import "moonhug:editor/widgets"
+import wnd "moonhug:editor/window"
 
+GAME :: "Game"
+
+// One Game copy's own state, saved with it (window/window_saved.odin). Each
+// copy renders the game into its own target at its own size.
+Game_Window :: struct {
+	// The selected entry in GAME_SIZES, the zoom applied to the resulting
+	// rect, and whether the size's width and height are swapped
+	// (portrait/landscape).
+	size_index:   int,
+	scale:        f32,
+	size_flipped: bool,
+	// The window menu's Gizmos toggle: gizmo procs and gameplay gizmo shapes
+	// in the Game window too (the Scene window always shows them).
+	gizmos:       bool,
+	// The render statistics panel over the game image (the toolbar's Stats
+	// button): frame time, draw calls, instances, triangles and passes,
+	// averaged over the last 60 rendered frames (gfx.stats_average).
+	stats:        bool,
+
+	rt: ^gfx.Render_Target `json:"-"`,
+	// The image size the scroll was last centered for: a new size (a zoom
+	// change, another resolution, a resized window) scrolls back to the
+	// middle, so a larger image overflows equally on both sides.
+	centered_for: im.Vec2 `json:"-"`,
+	// Last frame's zoom floor, so the toolbar can tell "the user parked the
+	// zoom at the floor" (follow the window) from "the user picked this value".
+	scale_floor:  f32 `json:"-"`,
+	// The image was under the mouse when it last drew. The focus decision
+	// uses it at the START of the next frame, before the simulation ticks, so
+	// the click that unfocuses the window never reaches the game.
+	hovered:      bool `json:"-"`,
+}
+
+@(private = "file")
+_GAME_INIT :: Game_Window{scale = 1, scale_floor = 1}
+
+// The state and the target of no Game window: what `_gv` and `game_rt` are
+// while none is open.
+@(private = "file")
+_gv_none := _GAME_INIT
+@(private = "file")
+_game_rt_none: ^gfx.Render_Target
+
+// The game's screen: the Game copy clicked in or opened last. Its image is
+// what the game reads the mouse against, its size what the gizmo pass builds
+// for, its target what a screenshot of the game takes. Set once per frame
+// (game_window_frame_begin), and to the copy being drawn during its draw.
+_gv: ^Game_Window = &_gv_none
 game_rt: ^gfx.Render_Target
+// Whether a Game window is open, as of game_window_frame_begin.
+game_shown: bool
 
 // Unity's Game window size list: Free Aspect follows the window, an aspect
 // letterboxes to that ratio, a fixed resolution renders at exactly those
@@ -37,37 +88,29 @@ GAME_SIZES :: []Game_Size{
 	{"750x1334 iPhone", 750, 1334, true},
 }
 
-// Selected entry in GAME_SIZES, the zoom applied to the resulting rect, and
-// whether the size's width and height are swapped (portrait/landscape). All
-// three persist in editor_settings.
-game_size_index: int
-game_scale: f32 = 1
-game_size_flipped: bool
-// The window menu's Gizmos toggle: gizmo hooks and gameplay gizmo shapes in the
-// Game window too (the Scene window always shows them). Persists in editor_settings.
-@(window_menu={window="Game", label="Gizmos"})
-game_gizmos: bool
+// The state of the Game copy `key`, nil when it is not open or never drew.
+@(private = "file")
+_game_state_of :: proc(key: string) -> ^Game_Window {
+	w := wnd.find(key)
+	if w == nil do return nil
+	return (^Game_Window)(w.data)
+}
 
-// The render statistics panel over the game image (the toolbar's Stats
-// button): frame time, draw calls, instances, triangles and passes, averaged
-// over the last 60 rendered frames (gfx.stats_average).
-game_stats: bool
+// The window menu's Gizmos toggle, for the copy the menu is open on.
+@(window_menu={window="Game", label="Gizmos", checked=game_gizmos_checked})
+game_gizmos_toggle :: proc(window: session.Window_Ref) {
+	if gv := _game_state_of(window.key); gv != nil do gv.gizmos = !gv.gizmos
+}
+
+game_gizmos_checked :: proc(window: session.Window_Ref) -> bool {
+	gv := _game_state_of(window.key)
+	return gv != nil && gv.gizmos
+}
 
 GAME_TOOLBAR_PAD :: f32(4)
 
 // Unity's Game window backdrop outside the rendered rect.
 GAME_BACKDROP :: im.Vec4{0.16, 0.16, 0.16, 1}
-
-// The image size the scroll was last centered for: a new size (a zoom
-// change, another resolution, a resized window) scrolls back to the middle, so a
-// larger image overflows equally on both sides.
-@(private = "file")
-_game_centered_for: im.Vec2
-
-// Last frame's zoom floor, so the toolbar can tell "the user parked the zoom
-// at the floor" (follow the window) from "the user picked this value".
-@(private = "file")
-_game_scale_floor: f32 = 1
 
 // Height the game toolbar occupies, including its padding.
 game_toolbar_height :: proc() -> f32 {
@@ -79,9 +122,9 @@ game_toolbar_height :: proc() -> f32 {
 // does not fit is scaled down to fit, the way Unity clamps its own preview.
 game_target_rect :: proc(avail: im.Vec2) -> (size: im.Vec2) {
 	sizes := GAME_SIZES
-	idx := clamp(game_size_index, 0, len(sizes) - 1)
+	idx := clamp(_gv.size_index, 0, len(sizes) - 1)
 	e := sizes[idx]
-	if game_size_flipped do e.w, e.h = e.h, e.w
+	if _gv.size_flipped do e.w, e.h = e.h, e.w
 	if e.w <= 0 || e.h <= 0 {
 		size = avail // Free Aspect: the whole content area, zoom does not apply
 		return
@@ -95,7 +138,7 @@ game_target_rect :: proc(avail: im.Vec2) -> (size: im.Vec2) {
 		fit := min(avail.x / e.w, avail.y / e.h)
 		size = {e.w * fit, e.h * fit}
 	}
-	size *= clamp(game_scale, game_min_scale(avail), GAME_SCALE_MAX)
+	size *= clamp(_gv.scale, game_min_scale(avail), GAME_SCALE_MAX)
 	return
 }
 
@@ -105,9 +148,9 @@ GAME_SCALE_MAX :: f32(5)
 // window when its actual pixels are larger than the window.
 game_min_scale :: proc(avail: im.Vec2) -> f32 {
 	sizes := GAME_SIZES
-	idx := clamp(game_size_index, 0, len(sizes) - 1)
+	idx := clamp(_gv.size_index, 0, len(sizes) - 1)
 	e := sizes[idx]
-	if game_size_flipped do e.w, e.h = e.h, e.w
+	if _gv.size_flipped do e.w, e.h = e.h, e.w
 	if !e.fixed || e.w <= 0 || e.h <= 0 do return 1
 	if avail.x <= 0 || avail.y <= 0 do return 1
 	return min(1, min(avail.x / e.w, avail.y / e.h))
@@ -118,29 +161,44 @@ game_min_scale :: proc(avail: im.Vec2) -> f32 {
 // else unfocuses it. main.odin blocks the game's input reads while unfocused.
 game_window_focused: bool
 
-// The image was under the mouse when it last drew. The focus decision uses
-// it at the START of the next frame, before the simulation ticks, so the
-// click that unfocuses the window never reaches the game.
-@(private = "file") _game_window_hovered: bool
-
 game_window_focus :: proc() {
 	game_window_focused = true
-	im.SetWindowFocusStr(icons.TITLE_GAME)
+	if w := wnd.last(GAME); w != nil do wnd.focus(w)
 }
 
-// Called once per frame before the simulation tick.
+// Called once per frame before the simulation tick: picks the game's screen,
+// then decides the focus from the click.
 game_window_frame_begin :: proc() {
+	w := wnd.last(GAME)
+	game_shown = w != nil
+	_gv, game_rt = &_gv_none, _game_rt_none
+	if w != nil && w.data != nil {
+		_gv = (^Game_Window)(w.data)
+		if _gv.rt != nil do game_rt = _gv.rt
+	}
 	clicked := im.IsMouseClicked(.Left) || im.IsMouseClicked(.Right) || im.IsMouseClicked(.Middle)
-	if clicked do game_window_focused = _game_window_hovered
+	if clicked do game_window_focused = game_shown && _gv.hovered
 }
 
 init_game_window :: proc() {
-	game_rt = gfx.rt_create(1, 1)
+	_game_rt_none = gfx.rt_create(1, 1)
+	game_rt = _game_rt_none
 }
 
 shutdown_game_window :: proc() {
-	gfx.rt_destroy(game_rt)
+	gfx.rt_destroy(_game_rt_none)
+	_game_rt_none = nil
 	game_rt = nil
+}
+
+// A closing copy gives its render target back. Its state stays for a reopen.
+game_window_closed :: proc(w: ^wnd.Window) {
+	gv := (^Game_Window)(w.data)
+	if gv == nil do return
+	if _gv == gv do _gv, game_rt = &_gv_none, _game_rt_none
+	if gv.rt != nil do gfx.rt_destroy(gv.rt)
+	gv.rt = nil
+	gv.hovered = false
 }
 
 // The channels the Game window draws: gizmos and icons recorded with its camera
@@ -148,7 +206,7 @@ shutdown_game_window :: proc() {
 // toggle or debug drawing on.
 game_gizmo_channels :: proc() -> bit_set[core.Gizmo_Channel] {
 	channels: bit_set[core.Gizmo_Channel]
-	if game_gizmos do channels += {.Game, .Editor_Game}
+	if _gv.gizmos do channels += {.Game, .Editor_Game}
 	if viewport.debug_draw() do channels += {.Game}
 	return channels
 }
@@ -226,22 +284,22 @@ _draw_game_stats :: proc() {
 @(private = "file")
 _draw_game_toolbar :: proc(area: im.Vec2) {
 	sizes := GAME_SIZES
-	game_size_index = clamp(game_size_index, 0, len(sizes) - 1)
+	_gv.size_index = clamp(_gv.size_index, 0, len(sizes) - 1)
 
 	im.PushStyleVarImVec2(.WindowPadding, im.Vec2{GAME_TOOLBAR_PAD, GAME_TOOLBAR_PAD})
 	defer im.PopStyleVar()
 
 	// Swap width and height of the selected size (Unity's portrait toggle).
 	// Free Aspect follows the window, so there is nothing to swap.
-	free := sizes[game_size_index].w <= 0 || sizes[game_size_index].h <= 0
+	free := sizes[_gv.size_index].w <= 0 || sizes[_gv.size_index].h <= 0
 	im.BeginDisabled(free)
 	// Capture the toggle BEFORE the button: clicking it flips the flag, and a
 	// pop keyed off the new value would not match the push.
-	flipped := game_size_flipped
+	flipped := _gv.size_flipped
 	if flipped {
 		im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
 	}
-	if im.Button(icons.ICON_MD_SCREEN_ROTATION) do game_size_flipped = !game_size_flipped
+	if im.Button(icons.ICON_MD_SCREEN_ROTATION) do _gv.size_flipped = !_gv.size_flipped
 	if flipped {
 		im.PopStyleColor()
 	}
@@ -250,10 +308,10 @@ _draw_game_toolbar :: proc(area: im.Vec2) {
 
 	im.SameLine()
 	im.SetNextItemWidth(190)
-	if im.BeginCombo("##game_size", sizes[game_size_index].label, {}) {
+	if im.BeginCombo("##game_size", sizes[_gv.size_index].label, {}) {
 		for e, i in sizes {
-			if im.Selectable(e.label, i == game_size_index) {
-				game_size_index = i
+			if im.Selectable(e.label, i == _gv.size_index) {
+				_gv.size_index = i
 			}
 		}
 		im.EndCombo()
@@ -264,16 +322,16 @@ _draw_game_toolbar :: proc(area: im.Vec2) {
 	// Zoom 1 is the size's actual pixels. The floor drops below 1 only when
 	// those pixels do not fit the window, so the game is always fully visible.
 	// Free Aspect fills the window, so zoom has nothing to scale.
-	free_size := sizes[game_size_index].w <= 0 || sizes[game_size_index].h <= 0
+	free_size := sizes[_gv.size_index].w <= 0 || sizes[_gv.size_index].h <= 0
 	lo := game_min_scale(area)
 	// Sitting at the floor means "match the window": the zoom follows the floor
 	// as the window resizes, so the game stays exactly fitted instead of
 	// sticking at the old fit and cropping or leaving a gap.
-	if game_scale <= _game_scale_floor + 0.0001 {
-		game_scale = lo
+	if _gv.scale <= _gv.scale_floor + 0.0001 {
+		_gv.scale = lo
 	}
-	_game_scale_floor = lo
-	game_scale = clamp(game_scale, lo, GAME_SCALE_MAX)
+	_gv.scale_floor = lo
+	_gv.scale = clamp(_gv.scale, lo, GAME_SCALE_MAX)
 	// The slider takes the rest of the toolbar, so a wider window gives a longer
 	// track (the inspector's range rows stretch the same way). The right pad
 	// keeps the value box off the window edge.
@@ -282,35 +340,31 @@ _draw_game_toolbar :: proc(area: im.Vec2) {
 	stats_w := im.CalcTextSize(stats_label).x + im.GetStyle().FramePadding.x * 2
 	im.BeginDisabled(free_size)
 	slider_w := max(im.GetContentRegionAvail().x - GAME_TOOLBAR_PAD * 2 - stats_w - im.GetStyle().ItemSpacing.x, widgets.slider_width_for_track(40))
-	widgets.slider_float("##game_scale", &game_scale, lo, GAME_SCALE_MAX, "%.2f", slider_w)
+	widgets.slider_float("##game_scale", &_gv.scale, lo, GAME_SCALE_MAX, "%.2f", slider_w)
 	widgets.tooltip(free_size ? "Zoom applies to a fixed aspect or resolution" : "Zoom the rendered rect. 1x is the size's actual pixels", im.HoveredFlags_AllowWhenDisabled)
 	im.EndDisabled()
 
 	im.SameLine()
 	// Captured before the button, as the flip toggle above.
-	stats_on := game_stats
+	stats_on := _gv.stats
 	if stats_on do im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
-	if im.Button(stats_label) do game_stats = !game_stats
+	if im.Button(stats_label) do _gv.stats = !_gv.stats
 	if stats_on do im.PopStyleColor()
 	widgets.tooltip("Render statistics over the last 60 frames")
 }
 
-// The imgui frame the Game window was last under the mouse, and its dock node.
-// Maximize acts on it (maximize.odin).
-game_window_hover: struct {
-	frame: i32,
-	dock:  im.ID,
-}
-
-draw_game_window :: proc() {
-	// Popped right after Begin — see scene_window_draw: the image wants zero
-	// padding, the tooltips raised over it do not.
-	im.PushStyleVarImVec2(.WindowPadding, im.Vec2{0, 0})
-	open := im.Begin(icons.TITLE_GAME, &menu.show_game, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse})
-	im.PopStyleVar()
-	if open {
-		game_window_hover.dock = im.GetWindowDockID()
-		if im.IsWindowHovered(im.HoveredFlags_ChildWindows) do game_window_hover.frame = im.GetFrameCount()
+@(editor_window={id="Game", title="Game", icon="SPORTS_ESPORTS", canvas=true, closed=game_window_closed})
+game_window_draw :: proc(w: ^wnd.Window) {
+	gv := wnd.state(w, _GAME_INIT, saved = true)
+	if gv.rt == nil do gv.rt = gfx.rt_create(1, 1)
+	// The copy being drawn is the one the size math, the toolbar and the
+	// render read, for the length of its draw.
+	prev_gv, prev_rt := _gv, game_rt
+	_gv, game_rt = gv, gv.rt
+	defer _gv, game_rt = prev_gv, prev_rt
+	// Only the game's screen feeds the game's mouse.
+	is_screen := wnd.last(GAME) == w
+	{
 		content_min := im.GetCursorScreenPos()
 		full := im.GetContentRegionAvail()
 
@@ -343,10 +397,10 @@ draw_game_window :: proc() {
 		im.PopStyleColor()
 		if scrolling && w > 0 && h > 0 {
 			visible := im.GetContentRegionAvail()
-			if avail != _game_centered_for {
+			if avail != gv.centered_for {
 				im.SetScrollX(max(avail.x - visible.x, 0) * 0.5)
 				im.SetScrollY(max(avail.y - visible.y, 0) * 0.5)
-				_game_centered_for = avail
+				gv.centered_for = avail
 			}
 			had_camera := render_game_rt(w, h)
 			tex_id := im.TextureID(uintptr(gfx.rt_imgui_id(game_rt)))
@@ -361,7 +415,7 @@ draw_game_window :: proc() {
 			origin := im.GetMainViewport().Pos
 			img_min := im.GetItemRectMin()
 			img_max := im.GetItemRectMax()
-			input.set_viewport({img_min.x - origin.x, img_min.y - origin.y}, {img_max.x - img_min.x, img_max.y - img_min.y})
+			if is_screen do input.set_viewport({img_min.x - origin.x, img_min.y - origin.y}, {img_max.x - img_min.x, img_max.y - img_min.y})
 
 			// Gizmo labels over the image, as the Scene window draws them, for
 			// the channels this window shows.
@@ -372,8 +426,8 @@ draw_game_window :: proc() {
 				}
 			}
 
-			_game_window_hovered = im.IsItemHovered()
-			if game_stats do _draw_game_stats()
+			gv.hovered = im.IsItemHovered()
+			if _gv.stats do _draw_game_stats()
 
 			if !had_camera {
 				// Centered on the part of the area in view.
@@ -393,5 +447,4 @@ draw_game_window :: proc() {
 		}
 		im.EndChild()
 	}
-	im.End()
 }

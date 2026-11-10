@@ -21,7 +21,6 @@ package editor
 
 import "base:runtime"
 import "core:math"
-import "menu"
 import core "moonhug:libs/core"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/handles"
@@ -44,7 +43,7 @@ gizmo_pass :: proc() {
 	// The gizmo procs with the game camera, for the Game window: each window gets
 	// gizmos built for its own camera, pixel sizes included. With no camera
 	// the Game window shows none.
-	if menu.show_game && game_gizmos {
+	if game_shown && _gv.gizmos {
 		if v, ok := _game_gizmo_view(); ok {
 			gizmos.with_view(v)
 			gizmos.with_channel(.Editor_Game)

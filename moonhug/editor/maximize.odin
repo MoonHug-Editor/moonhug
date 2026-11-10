@@ -25,8 +25,6 @@ import "base:runtime"
 import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import "moonhug:editor/icons"
-import "moonhug:editor/menu"
 import wnd "moonhug:editor/window"
 
 @(private = "file")
@@ -38,7 +36,7 @@ _max: struct {
 	// that frame's windows, Focus at the frame after.
 	state:      enum {None, Enter, On, Leave, Unplace, Focus},
 	name:       cstring, // owned, "###<key>": the window's imgui window by its id, whatever its label shows
-	key:        string,  // owned, its window key (_MAX_GAME for the Game window)
+	key:        string,  // owned, its window key
 	node:       im.ID,   // the dock node it left, 0 for a frame's window
 	host:       string,  // owned, the Workspace window whose frame it left, "" for a docked window
 	tab:        int,     // its tab's place in that node, -1 for unknown
@@ -47,10 +45,6 @@ _max: struct {
 	focus_next: bool,    // focus it next frame, once docked in the maximize dockspace
 	ini:        cstring, // io.IniFilename while saving is paused
 }
-
-// The Game window's key: it is no registered window.
-@(private = "file")
-_MAX_GAME :: "Game"
 
 // Puts the maximized window back, or maximizes the window under the mouse. The
 // Window keymap binds it to Shift+Space (dock_tab_menu.odin).
@@ -69,27 +63,18 @@ maximize_window_is :: proc(key: string) -> bool {
 	return maximize_is_on() && _max.key == key
 }
 
-// Maximizes the window `key` (_MAX_GAME for the Game window), or puts it back
+// Maximizes the window `key`, or puts it back
 // when it is the one maximized.
 maximize_window :: proc(key: string) {
 	#partial switch _max.state {
 	case .On:
 		if _max.key == key do _max.state = .Leave
 	case .None:
-		name: string
-		dock: im.ID
-		host: string
-		if key == _MAX_GAME {
-			if !menu.show_game do return
-			name, dock = string(icons.TITLE_GAME), game_window_hover.dock
-		} else {
-			w := wnd.find(key)
-			if w == nil do return
-			name, dock, host = fmt.tprintf("###%s", key), w.dock, w.host
-		}
+		w := wnd.find(key)
+		if w == nil do return
+		name, dock, host := fmt.tprintf("###%s", key), w.dock, w.host
 		if host != "" {
 			// A frame's window: a window of its own until it goes back.
-			w := wnd.find(key)
 			_max.host = strings.clone(host, runtime.default_allocator())
 			wnd.host_release(w)
 			w.placed = true
@@ -142,8 +127,7 @@ maximize_frame :: proc(pos, size: im.Vec2) {
 		_max.state = .On
 	case .On:
 		// A closed window puts the layout back.
-		game := _max.key == _MAX_GAME
-		if (!game && wnd.find(_max.key) == nil) || (game && !menu.show_game) {
+		if wnd.find(_max.key) == nil {
 			_max.state = .Leave
 			_max_restore()
 			return
@@ -244,10 +228,9 @@ _max_tab_index :: proc(node: ^im.DockNode, name: cstring) -> int {
 	return -1
 }
 
-// The key of the window under the mouse (_MAX_GAME for the Game window).
+// The key of the window under the mouse.
 @(private = "file")
 _max_hovered_window :: proc() -> (key: string, ok: bool) {
 	if w := wnd.hovered(); w != nil && (w.dock != 0 || w.host != "") do return w.key, true
-	if game_window_hover.frame >= im.GetFrameCount() - 1 && game_window_hover.dock != 0 do return _MAX_GAME, true
 	return
 }

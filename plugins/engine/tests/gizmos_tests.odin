@@ -9,7 +9,6 @@ import "core:math/linalg"
 import "core:testing"
 import "core:time"
 import "moonhug:editor"
-import "moonhug:editor/menu"
 import "moonhug:editor/handles"
 import "moonhug:packages/engine"
 import gfx "moonhug:libs/gfx"
@@ -331,11 +330,11 @@ test_gizmo_pass_records_for_the_game_window_alone :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer teardown(tc)
 	defer editor.sel_scene_clear()
-	prev_size, prev_game, prev_toggle := editor._sv.view_size, menu.show_game, editor.game_gizmos
+	prev_size, prev_game, prev_toggle := editor._sv.view_size, editor.game_shown, editor._gv.gizmos
 	defer {
 		editor._sv.view_size = prev_size
-		menu.show_game = prev_game
-		editor.game_gizmos = prev_toggle
+		editor.game_shown = prev_game
+		editor._gv.gizmos = prev_toggle
 	}
 
 	prev_rt := editor.game_rt
@@ -350,15 +349,15 @@ test_gizmo_pass_records_for_the_game_window_alone :: proc(t: ^testing.T) {
 	editor.sel_scene_only(cam_t)
 
 	editor._sv.view_size = {} // no Scene window on screen: it rendered no image
-	menu.show_game = true
-	editor.game_gizmos = true
+	editor.game_shown = true
+	editor._gv.gizmos = true
 	editor.gizmo_pass()
 	testing.expect(t, _count(tc, .Editor_Game) > 0, "the selected camera's frustum records for the Game window")
 	testing.expect_value(t, _count(tc, .Editor), 0)
 	testing.expect_value(t, _count(tc, .Tools), 0)
 
 	gizmos.frame_end()
-	editor.game_gizmos = false
+	editor._gv.gizmos = false
 	editor.gizmo_pass()
 	testing.expect_value(t, _count(tc, .Editor_Game), 0)
 }
@@ -506,17 +505,17 @@ test_gizmo_settings_hide_per_type :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer teardown(tc)
 	defer editor.sel_scene_clear()
-	prev_size, prev_game, prev_toggle := editor._sv.view_size, menu.show_game, editor.game_gizmos
+	prev_size, prev_game, prev_toggle := editor._sv.view_size, editor.game_shown, editor._gv.gizmos
 	defer {
 		editor._sv.view_size = prev_size
-		menu.show_game = prev_game
-		editor.game_gizmos = prev_toggle
+		editor.game_shown = prev_game
+		editor._gv.gizmos = prev_toggle
 		gizmos.gizmo_type_set("Light", .Icon, true)
 		gizmos.gizmo_type_set("Light", .Gizmo, true)
 	}
 	editor._sv.view_size = {} // no Scene window on screen: it rendered no image
-	menu.show_game = true
-	editor.game_gizmos = true
+	editor.game_shown = true
+	editor._gv.gizmos = true
 	prev_rt := editor.game_rt
 	defer editor.game_rt = prev_rt
 	rt := gfx.Render_Target{width = 800, height = 600}
@@ -705,15 +704,15 @@ test_scene_copy_records_tools :: proc(t: ^testing.T) {
 	defer im.DestroyContext(ictx)
 	defer editor.sel_scene_clear()
 
-	prev_game := menu.show_game
+	prev_game := editor.game_shown
 	prev_cam, prev_target, prev_mode := editor._sv.cam_pos, editor._sv.cam_target, viewport.gizmo_mode
 	defer {
-		menu.show_game = prev_game
+		editor.game_shown = prev_game
 		editor._sv.cam_pos = prev_cam
 		editor._sv.cam_target = prev_target
 		viewport.gizmo_mode = prev_mode
 	}
-	menu.show_game = false
+	editor.game_shown = false
 	editor._sv.cam_pos = {0, 0, 10}
 	editor._sv.cam_target = {0, 0, 0}
 	viewport.gizmo_mode = .Translate
@@ -758,11 +757,11 @@ test_gizmos_record_per_camera :: proc(t: ^testing.T) {
 	defer im.DestroyContext(ictx)
 	defer editor.sel_scene_clear()
 
-	prev_game, prev_toggle := menu.show_game, editor.game_gizmos
+	prev_game, prev_toggle := editor.game_shown, editor._gv.gizmos
 	prev_cam, prev_target, prev_rt := editor._sv.cam_pos, editor._sv.cam_target, editor.game_rt
 	defer {
-		menu.show_game = prev_game
-		editor.game_gizmos = prev_toggle
+		editor.game_shown = prev_game
+		editor._gv.gizmos = prev_toggle
 		editor._sv.cam_pos = prev_cam
 		editor._sv.cam_target = prev_target
 		editor.game_rt = prev_rt
@@ -771,8 +770,8 @@ test_gizmos_record_per_camera :: proc(t: ^testing.T) {
 	editor._sv.cam_pos = {0, 0, 10}
 	editor._sv.cam_target = {0, 0, 0}
 	// The Game window showing gizmos, its camera 30 away.
-	menu.show_game = true
-	editor.game_gizmos = true
+	editor.game_shown = true
+	editor._gv.gizmos = true
 	rt := gfx.Render_Target{width = 800, height = 600}
 	editor.game_rt = &rt
 	cam_t := engine.transform_new("Camera")

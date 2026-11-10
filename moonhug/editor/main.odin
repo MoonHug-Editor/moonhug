@@ -190,13 +190,12 @@ main :: proc() {
     simulate_init()
     defer simulate_shutdown()
     // Reopen what was open last session — declarations must exist first. A
-    // first run opens the windows the default layout docks, the Game window
-    // included (menu.show_game defaults on).
+    // first run opens the windows the default layout docks.
     window_states_restore()
     wnd.open_saved(editor_settings.open_window_ids[:])
     wnd.close_guard = window_close_guard
     if !editor_settings.has_window_state {
-        wnd.open_saved({"Scene", "Hierarchy", "Inspector", "Project", "Project Inspector", "Console", "Output"})
+        wnd.open_saved({"Scene", "Game", "Hierarchy", "Inspector", "Project", "Project Inspector", "Console", "Output"})
     }
     defer wnd.shutdown()
     defer workspace.shutdown()
@@ -335,9 +334,7 @@ main :: proc() {
         wnd.draw("Scene")
         scene_windows_render_hosted()
 
-        if menu.show_game {
-            draw_game_window()
-        }
+        wnd.draw(GAME)
         preview.restore_all()
 
         if menu.show_input_debug {

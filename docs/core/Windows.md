@@ -6,7 +6,7 @@ tags: ["windows", "workspaces", "attributes", "save", "editor"]
 path: editor
 ---
 
-Every editor window except the Game window is declared with `@(editor_window)`: the Scene, Hierarchy, Project, Console, Output and History windows, the two inspectors, the Animation and Playable Graph windows, and every plugin window. Each one opens as copies, and every copy has its own state. The Game window exists once, since game code reads one screen size per frame. Plugins extend windows through attributes, which the prebuild turns into registrations in the editor. The window itself needs no code for any of them.
+Every editor window is declared with `@(editor_window)`: the Scene, Game, Hierarchy, Project, Console, Output and History windows, the two inspectors, the Animation and Playable Graph windows, and every plugin window. Each one opens as copies, and every copy has its own state. Game code reads one screen size per frame, so one Game copy is the game's screen: the copy clicked in or opened last. Its image is what the game reads the mouse against. Every Game copy renders the game at its own size. Plugins extend windows through attributes, which the prebuild turns into registrations in the editor. The window itself needs no code for any of them.
 
 ## Window ids
 
@@ -43,14 +43,19 @@ open_physics_debug :: proc() {
 
 ## Menu and tab bar
 
-Every dock node's tab bar ends with a ⋮ button, whose menu acts on the visible window. It ends with Add Tab, which lists every window by name and opens a new one in that node: the window's plain instance, or a numbered one when the plain one is open. The Game window opens there when it is closed, and is focused where it is when open. Both attributes below land in `editor/window_chrome_generated.odin` (window_chrome_gen).
+Every dock node's tab bar ends with a ⋮ button, whose menu acts on the visible window. It ends with Add Tab, which lists every window by name and opens a new one in that node: the window's plain instance, or a numbered one when the plain one is open. Both attributes below land in `editor/window_chrome_generated.odin` (window_chrome_gen).
 
 - **`@(window_menu={window, label, order, enabled, checked})`** adds an item to that menu. On a `proc(window: session.Window_Ref)` it is an action, on a bool variable a toggle. `label` is a path in the window's menu, so `"Display/Grid"` makes a submenu. `order`, `enabled` and `checked` work as on `@(menu_item)`, and the predicates take the window too. A toggle's bool is shared by every instance of the window. Two declarations of one label in one window stop the build. The bridge invokes them as `Window Menu/<window>/<label>` ([MCP Bridge](McpBridge.md)).
 - **`@(window_tab_bar={window, order})`** adds a widget left of the ⋮ button: a `proc(window: session.Window_Ref)` that draws it with imgui for that window, at a width that does not change with its state. The window locks are not one of these: a window declares one with `lock` on `@(editor_window)` (below).
 
 ```odin
-@(window_menu={window="Game", label="Gizmos"})
-game_gizmos: bool
+// A toggle every copy of the window shares.
+@(window_menu={window="my_view", label="Show Hidden"})
+my_view_show_hidden: bool
+
+// A toggle of the copy the menu is open on.
+@(window_menu={window="Game", label="Gizmos", checked=game_gizmos_checked})
+game_gizmos_toggle :: proc(window: session.Window_Ref) { ... }
 ```
 
 ### Window locks
@@ -108,7 +113,7 @@ my_window_draw :: proc(w: ^wnd.Window) {
 - What is saved for an instance goes when it is closed and cannot come back under its key. The plain instance is the exception: a window opened again from the menu shows as it was left, after a restart too.
 - The state survives a restart. A docked or floating window's is in the user settings, in the window's record of the `windows` list, beside its lock. The state of a window in a workspace frame is in its workspace, so it goes where the workspace goes. The Workspace window takes it from the open window while the mouse is up (`workspace_states_sync`) and gives it to a window a frame opens (`workspace_state_give`).
 - The registry writes no file itself (`window/window_saved.odin`): `wnd.saved_text` and `wnd.saved_set` are what the user settings and the workspaces save and give back.
-- The Console, Output and History windows save their state this way.
+- The Console, Output, History and Game windows save their state this way.
 
 ## Maximize
 
@@ -204,4 +209,4 @@ The Game window draws its own toolbar above its image (`editor/window_game.odin`
 - **Flip**: swaps the selected size's width and height, for portrait targets. Disabled on Free Aspect, which has no ratio to swap.
 - **Scale**: zooms the rendered rect. 1x is the size's actual pixels and the maximum is 5x. The minimum is 1x, or the zoom that fits the size in the window when its pixels are larger, so the game is never cropped. Parking the slider at that floor means "match the window": the zoom follows the floor as the window resizes. A 1x button returns to actual pixels, and zoom is disabled on Free Aspect, which already fills the window.
 
-The rendered rect is centered in the area under the toolbar. When the zoom makes it larger than the area, the area scrolls: a scrollbar appears on each axis that overflows, the rect stays centered on an axis that fits, and the mouse wheel stays the game's input, so the bars are dragged. The input viewport follows the rect as it scrolls, so game mouse coordinates stay correct at any size, scale or scroll. Size, flip and scale persist in `UserSettings/editor_settings.json`.
+The rendered rect is centered in the area under the toolbar. When the zoom makes it larger than the area, the area scrolls: a scrollbar appears on each axis that overflows, the rect stays centered on an axis that fits, and the mouse wheel stays the game's input, so the bars are dragged. The input viewport follows the rect as it scrolls, so game mouse coordinates stay correct at any size, scale or scroll. Size, flip, scale, the Gizmos toggle and Stats are the copy's saved state (see Saved state), so each Game copy keeps its own.

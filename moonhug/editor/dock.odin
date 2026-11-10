@@ -11,7 +11,6 @@ package editor
 import "core:fmt"
 import "core:math"
 import im "moonhug:external/odin-imgui"
-import "menu"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
@@ -90,8 +89,7 @@ _dock_build_default_layout :: proc(dockspace_id: im.ID, size: im.Vec2) {
 @(menu_item={path="Window/Reset Layout", order=20, shortcut="", help="Puts the windows back in the default layout"})
 window_reset_layout_menu :: proc() {
 	_dock_layout_reset = true
-	wnd.open_saved({"Scene", "Hierarchy", "Inspector", "Project", "Project Inspector", "Console", "Output", "History", "Animation", "Playable Graph"})
-	menu.show_game = true
+	wnd.open_saved({"Scene", "Game", "Hierarchy", "Inspector", "Project", "Project Inspector", "Console", "Output", "History", "Animation", "Playable Graph"})
 }
 
 // ---------------------------------------------------------------------------

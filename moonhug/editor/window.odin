@@ -52,8 +52,7 @@ EditorSettings :: struct {
     open_scene_guids:         [dynamic]string,
     recent_scene_guids:       [dynamic]string,          // File/Recent Scenes, newest first (recent_scenes.odin)
     open_window_ids:          [dynamic]string,          // plugin editor windows open last session (window/window.odin)
-    show_game:                bool,
-    has_window_state:         bool,                     // open_window_ids and show_game are saved: false on a first run
+    has_window_state:         bool,                     // open_window_ids is saved: false on a first run
     scene_overlays:           [dynamic]Overlay_Setting, // dockable overlay placement (dock.odin)
     grid:                     Grid_Settings,            // scene grid (window_scene.odin)
     snap:                     Snap_Settings,            // gizmo snapping (window_scene.odin)
@@ -64,11 +63,6 @@ EditorSettings :: struct {
     scene_ortho:              bool,                     // Scene window projection (window_scene.odin)
     scene_2d:                 bool,                     // Scene window 2D mode (window_scene.odin)
     scene_mode:               core.View_Mode,           // Scene window shading mode (window_scene.odin)
-    game_size_index:          int,                      // Game window size list entry (window_game.odin)
-    game_scale:               f32,                      // Game window zoom (window_game.odin)
-    game_size_flipped:        bool,                     // Game window size width/height swap (window_game.odin)
-    game_gizmos:              bool,                     // Game window Gizmos toggle (window_game.odin)
-    game_stats:               bool,                     // Game window Stats panel (window_game.odin)
     scene_gizmos_off:         bool,                     // Scene window Gizmos toggle, inverted so an older file keeps it on (gizmos.scene_gizmos)
     gizmo_icon_px:            f32,                      // gizmo settings' Icon Size, 0 = the default
     gizmo_hidden_icons:       [dynamic]string,          // component types whose icon the gizmo settings hide
@@ -102,12 +96,6 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
                 snap_settings = editor_settings.snap
             }
             _sv_plain.cam_ortho = editor_settings.scene_ortho
-            game_size_index = editor_settings.game_size_index
-            // Zero = the field predates this setting; keep the 1x default.
-            if editor_settings.game_scale > 0 do game_scale = editor_settings.game_scale
-            game_size_flipped = editor_settings.game_size_flipped
-            game_gizmos = editor_settings.game_gizmos
-            game_stats = editor_settings.game_stats
             gizmos.scene_gizmos = !editor_settings.scene_gizmos_off
             if editor_settings.gizmo_icon_px > 0 do handles.icon_px = editor_settings.gizmo_icon_px
             for name in editor_settings.gizmo_hidden_icons do gizmos.gizmo_type_set(name, .Icon, false)
@@ -115,9 +103,6 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
             if editor_settings.scene_2d do _sv_plain.pending_2d = true
             _sv_plain.view_mode = editor_settings.scene_mode
             command_palette.recent_load(editor_settings.command_palette_recent)
-            if editor_settings.has_window_state {
-                menu.show_game              = editor_settings.show_game
-            }
             if editor_settings.width > 0 && editor_settings.height > 0 {
                 return editor_settings.width, editor_settings.height, editor_settings.x, editor_settings.y
             }
@@ -148,7 +133,6 @@ save_editor_settings :: proc() {
     editor_settings.y      = pos.y
     editor_settings.theme  = menu.active_theme
 
-    editor_settings.show_game              = menu.show_game
     editor_settings.has_window_state       = true
 
     // Plugin windows: imgui.ini keeps each instance's dock and size, not
@@ -163,11 +147,6 @@ save_editor_settings :: proc() {
     editor_settings.scene_ortho = _sv_plain.pre_2d_ortho if _sv_plain.mode_2d else _sv_plain.cam_ortho
     editor_settings.scene_2d = _sv_plain.mode_2d
     editor_settings.scene_mode = _sv_plain.view_mode
-    editor_settings.game_size_index = game_size_index
-    editor_settings.game_scale = game_scale
-    editor_settings.game_size_flipped = game_size_flipped
-    editor_settings.game_gizmos = game_gizmos
-    editor_settings.game_stats = game_stats
     editor_settings.scene_gizmos_off = !gizmos.scene_gizmos
     editor_settings.gizmo_icon_px = handles.icon_px
     delete(editor_settings.gizmo_hidden_icons)
