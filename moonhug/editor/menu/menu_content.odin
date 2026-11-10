@@ -184,7 +184,7 @@ help_about_menu :: proc() {
 // Diagnostics for the "keyboard input dies until restart" bug — see
 // editor/window_input_debug.odin. Mouse-only operable on purpose.
 @(menu_item={path="Help/Input Debug", order=999, help="Shows the key and mouse state the editor sees, to find lost input"})
-show_input_debug := false
+help_input_debug_menu :: proc() { wnd.open("Input Debug") }
 
 // The theme list is a RADIO group: every item sets active_theme, and its
 // checked predicate reports whether it is the one currently set. No exclusive

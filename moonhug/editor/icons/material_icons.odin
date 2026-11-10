@@ -135,5 +135,4 @@ TITLE_OUTPUT            :: ICON_MD_RECEIPT_LONG + " Output###Output"
 TITLE_HISTORY           :: ICON_MD_HISTORY + " History###History"
 TITLE_ANIMATION         :: ICON_MD_ANIMATION + " Animation###Animation"
 TITLE_PLAYABLE_GRAPH    :: ICON_MD_HUB + " Playable Graph###Playable Graph"
-TITLE_INPUT_DEBUG       :: ICON_MD_KEYBOARD + " Input Debug###Input Debug"
 

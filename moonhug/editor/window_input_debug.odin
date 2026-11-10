@@ -15,22 +15,16 @@ import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import input "moonhug:libs/input"
-import "menu"
-import "moonhug:editor/icons"
 import "moonhug:editor/session"
+import wnd "moonhug:editor/window"
 
 @(private="file")
 _dbg_text :: proc(format: string, args: ..any) {
 	im.Text(strings.clone_to_cstring(fmt.tprintf(format, ..args), context.temp_allocator))
 }
 
-draw_input_debug :: proc() {
-	if !im.Begin(icons.TITLE_INPUT_DEBUG, &menu.show_input_debug, {}) {
-		im.End()
-		return
-	}
-	defer im.End()
-
+@(editor_window={id="Input Debug", title="Input Debug", icon="KEYBOARD"})
+input_debug_window_draw :: proc(w: ^wnd.Window) {
 	im.SeparatorText("frame timing")
 	io_fps := im.GetIO()
 	_dbg_text("fps: %.1f   frame: %.2f ms", io_fps.Framerate, 1000.0 / max(io_fps.Framerate, 0.001))

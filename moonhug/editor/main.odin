@@ -337,10 +337,6 @@ main :: proc() {
         wnd.draw(GAME)
         preview.restore_all()
 
-        if menu.show_input_debug {
-            draw_input_debug()
-        }
-
         // Plugin-opened windows (editor/window, docs/core/Plugins.md).
         wnd.draw_all()
         command_palette.draw()
