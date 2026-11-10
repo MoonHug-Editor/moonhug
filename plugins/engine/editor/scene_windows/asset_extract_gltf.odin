@@ -28,7 +28,7 @@ import "moonhug:libs/serialization"
 @(menu_separator={path="Assets", order=-45})
 extract_gltf_separator :: proc() {}
 
-@(menu_item={path="Assets/Extract Assets", order=-40, shortcut="", help="Turns the selected glTF model into textures, materials, clips and a scene"})
+@(menu_item={path="Assets/Extract Assets", order=-40, shortcut="", ext="glb,gltf", help="Turns the selected glTF model into textures, materials, clips and a scene"})
 extract_gltf_menu :: proc() {
 	path := session.project_active()
 	if !strings.has_suffix(path, ".glb") && !strings.has_suffix(path, ".gltf") {
@@ -134,16 +134,16 @@ extract_gltf_assets :: proc(model_path: string) {
 		if m.has_pbr_metallic_roughness {
 			pmr := m.pbr_metallic_roughness
 			mat.color = gfx.linear_to_srgb(pmr.base_color_factor)
-			mat.texture = tex_guid(pmr.base_color_texture, &img_paths)
-			mat.lit.metallic_roughness_map = tex_guid(pmr.metallic_roughness_texture, &img_paths)
+			mat.texture = engine.PPtr{guid = tex_guid(pmr.base_color_texture, &img_paths)}
+			mat.lit.metallic_roughness_map = engine.PPtr{guid = tex_guid(pmr.metallic_roughness_texture, &img_paths)}
 			mat.lit.metallic = pmr.metallic_factor
 			mat.lit.smoothness = 1 - pmr.roughness_factor
 		}
-		mat.lit.normal_map = tex_guid(m.normal_texture, &img_paths)
+		mat.lit.normal_map = engine.PPtr{guid = tex_guid(m.normal_texture, &img_paths)}
 		mat.lit.normal_scale = m.normal_texture.texture != nil ? m.normal_texture.scale : 1
-		mat.lit.occlusion_map = tex_guid(m.occlusion_texture, &img_paths)
+		mat.lit.occlusion_map = engine.PPtr{guid = tex_guid(m.occlusion_texture, &img_paths)}
 		mat.lit.occlusion_strength = m.occlusion_texture.texture != nil ? m.occlusion_texture.scale : 1
-		mat.lit.emission_map = tex_guid(m.emissive_texture, &img_paths)
+		mat.lit.emission_map = engine.PPtr{guid = tex_guid(m.emissive_texture, &img_paths)}
 		// The set each map reads: glTF's texCoord (a baked occlusion atlas
 		// usually sits on the second).
 		uv_set := proc(view: cgltf.texture_view) -> engine.Material_Uv_Set { return view.texcoord == 1 ? .Second : .First }

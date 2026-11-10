@@ -62,7 +62,7 @@ environment_pass :: proc(ctx: ^Render_Ctx) {
 	if env == nil do return
 
 	params, pano, has_pano := _capture_params(env)
-	key := _Env_Key{params = params, panorama = env.panorama, has_pano = has_pano}
+	key := _Env_Key{params = params, panorama = asset_key(env.panorama), has_pano = has_pano}
 	if !_env.built || key != _env.key {
 		if !_env_rebuild(params, pano) do return
 		_env.key = key
@@ -129,7 +129,7 @@ _capture_params :: proc(env: ^Environment) -> (p: _Capture_Params, pano: gfx.Tex
 	}
 	pano = gfx.white_texture()
 	if env.sky == .Panorama {
-		if t, ok := texture_load(env.panorama); ok && env.panorama != {} {
+		if t, ok := texture_load(asset_key(env.panorama)); ok && env.panorama != {} {
 			pano = t.gfx^
 			has_pano = true
 			if gfx.texture_is_hdr(t.gfx) do p.sun_color.w = 1 // linear already, not sRGB

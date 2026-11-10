@@ -322,6 +322,7 @@ _Item_Probe :: struct {
 	id:     i64,
 	window: string, // the imgui window name, owned
 	label:  string, // owned
+	popups: bool,   // asked for "popup": text in any open popup matches
 }
 
 // Probes waiting for the frame they armed to draw, on the default allocator.
@@ -340,7 +341,7 @@ _Item_Match :: struct {
 
 @(mcp_tool={
 	description="Where an item is, for input: the rectangle of an inspector row's widget by the field it edits, or of a piece of text drawn in a window (a button, a component header, a tab, an object in the hierarchy), in points from the editor's top-left, the frame input moves in. Answers after the next frame draws. Rows come from the inspector's own row drawing and text from the frame's draw data, so a row folded away or scrolled out of view, or text clipped away, is not found: window_place and window_resize make room first. A row's rectangle is its last widget (the z of a vector).",
-	param_window="string!:Title or id of the window (window_list)",
+	param_window="string!:Title or id of the window (window_list), or popup for the open popups (a context menu and its open submenu)",
 	param_label="string!:The row's field name as get_property addresses it (duration), or the text to find, case ignored, a part of a longer text matches",
 })
 mcp_tool_item_rect :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
@@ -355,9 +356,22 @@ mcp_tool_item_rect :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) 
 		id     = id,
 		window = strings.clone(string(w.Name), runtime.default_allocator()),
 		label  = strings.clone(label, runtime.default_allocator()),
+		popups = strings.equal_fold(string(query), "popup"),
 	})
 	inspector.row_probe_arm()
 	return MCP_DEFERRED, {}
+}
+
+// Whether imgui window `name` is one of the open popups: a context menu and
+// the submenu open from it are two.
+@(private = "file")
+_owned_by_open_popup :: proc(name: string) -> bool {
+	ctx := im.GetCurrentContext()
+	if ctx == nil do return false
+	for p in ([^]im.PopupData)(ctx.OpenPopupStack.Data)[:ctx.OpenPopupStack.Size] {
+		if p.Window_ != nil && _owned_by(name, string(p.Window_.Name)) do return true
+	}
+	return false
 }
 
 // Whether imgui window `name` is `window` or a child of it ("<parent>/<child>_<id>").
@@ -383,7 +397,8 @@ _mcp_item_rects_poll :: proc() {
 		}
 		q := strings.to_lower(probe.label, context.temp_allocator)
 		for run in runs {
-			if !_owned_by(run.owner, probe.window) do continue
+			owned := _owned_by_open_popup(run.owner) if probe.popups else _owned_by(run.owner, probe.window)
+			if !owned do continue
 			if !strings.contains(strings.to_lower(run.text, context.temp_allocator), q) do continue
 			append(&matches, _Item_Match{"text", run.text, run.min.x - vp.Pos.x, run.min.y - vp.Pos.y, run.max.x - run.min.x, run.max.y - run.min.y})
 		}
@@ -454,7 +469,7 @@ _glyph_for :: proc(table: []_Glyph_Ref, uv0, uv1: [2]f32) -> (^_Glyph_Ref, bool)
 	return nil, false
 }
 
-// Every run of text the last frame drew, decoded from its draw lists: a
+// Every run of text the last frame drew, in every viewport, decoded from its draw lists: a
 // glyph quad's texture rectangle names the glyph. Space has no quad, so a
 // gap of a space width or more between two glyphs puts spaces back. Glyphs
 // drawn in a row on one line make one run. Temp allocated.
@@ -480,44 +495,51 @@ _text_runs :: proc() -> []_Text_Run {
 		open^ = false
 	}
 
-	for list in ([^]^im.DrawList)(dd.CmdLists.Data)[:dd.CmdLists.Size] {
-		if list == nil || list._OwnerName == nil do continue
-		owner := string(list._OwnerName)
-		verts := ([^]im.DrawVert)(list.VtxBuffer.Data)
-		idx := ([^]im.DrawIdx)(list.IdxBuffer.Data)
-		for &cmd in ([^]im.DrawCmd)(list.CmdBuffer.Data)[:list.CmdBuffer.Size] {
-			if cmd.UserCallback != nil do continue
-			if cmd.TexRef._TexData != atlas.TexRef._TexData || cmd.TexRef._TexID != atlas.TexRef._TexID do continue
-			end := cmd.IdxOffset + cmd.ElemCount
-			// A glyph is a quad of two triangles: i, i+1, i+2, i, i+2, i+3.
-			// Other shapes share the command, so every triangle is a candidate.
-			for k := cmd.IdxOffset; k + 6 <= end; k += 3 {
-				i0 := idx[k]
-				if idx[k + 1] != i0 + 1 || idx[k + 2] != i0 + 2 || idx[k + 3] != i0 || idx[k + 4] != i0 + 2 || idx[k + 5] != i0 + 3 do continue
-				v0 := verts[cmd.VtxOffset + u32(i0)]
-				v2 := verts[cmd.VtxOffset + u32(i0) + 2]
-				if v2.uv.x - v0.uv.x <= 0 || v2.uv.y - v0.uv.y <= 0 do continue // a filled shape: the white pixel
-				g, found := _glyph_for(table, v0.uv, v2.uv)
-				if !found do continue
-				k += 3
-				pen := v0.pos.x - g.x0
-				top := v0.pos.y - g.y0
-				same := open && run.owner == owner && math.abs(top - line_top) < 0.75 && pen >= pen_end - 0.75 && pen - pen_end < g.size * 1.5
-				if !same {
-					flush(&out, &run, &b, &open)
-					run = {owner = owner, min = v0.pos, max = v2.pos}
-					open = true
-				} else if gap := pen - pen_end; gap > g.space * 0.5 {
-					for _ in 0 ..< max(int(math.round(gap / g.space)), 1) do strings.write_byte(&b, ' ')
+	// Every viewport's draw data: a popup that reaches past the editor's
+	// edge is drawn in a viewport of its own.
+	pio := im.GetPlatformIO()
+	for vp in ([^]^im.Viewport)(pio.Viewports.Data)[:pio.Viewports.Size] {
+		if vp == nil || vp.DrawData_ == nil || !vp.DrawData_.Valid do continue
+		dd = vp.DrawData_
+		for list in ([^]^im.DrawList)(dd.CmdLists.Data)[:dd.CmdLists.Size] {
+			if list == nil || list._OwnerName == nil do continue
+			owner := string(list._OwnerName)
+			verts := ([^]im.DrawVert)(list.VtxBuffer.Data)
+			idx := ([^]im.DrawIdx)(list.IdxBuffer.Data)
+			for &cmd in ([^]im.DrawCmd)(list.CmdBuffer.Data)[:list.CmdBuffer.Size] {
+				if cmd.UserCallback != nil do continue
+				if cmd.TexRef._TexData != atlas.TexRef._TexData || cmd.TexRef._TexID != atlas.TexRef._TexID do continue
+				end := cmd.IdxOffset + cmd.ElemCount
+				// A glyph is a quad of two triangles: i, i+1, i+2, i, i+2, i+3.
+				// Other shapes share the command, so every triangle is a candidate.
+				for k := cmd.IdxOffset; k + 6 <= end; k += 3 {
+					i0 := idx[k]
+					if idx[k + 1] != i0 + 1 || idx[k + 2] != i0 + 2 || idx[k + 3] != i0 || idx[k + 4] != i0 + 2 || idx[k + 5] != i0 + 3 do continue
+					v0 := verts[cmd.VtxOffset + u32(i0)]
+					v2 := verts[cmd.VtxOffset + u32(i0) + 2]
+					if v2.uv.x - v0.uv.x <= 0 || v2.uv.y - v0.uv.y <= 0 do continue // a filled shape: the white pixel
+					g, found := _glyph_for(table, v0.uv, v2.uv)
+					if !found do continue
+					k += 3
+					pen := v0.pos.x - g.x0
+					top := v0.pos.y - g.y0
+					same := open && run.owner == owner && math.abs(top - line_top) < 0.75 && pen >= pen_end - 0.75 && pen - pen_end < g.size * 1.5
+					if !same {
+						flush(&out, &run, &b, &open)
+						run = {owner = owner, min = v0.pos, max = v2.pos}
+						open = true
+					} else if gap := pen - pen_end; gap > g.space * 0.5 {
+						for _ in 0 ..< max(int(math.round(gap / g.space)), 1) do strings.write_byte(&b, ' ')
+					}
+					strings.write_rune(&b, g.codepoint)
+					run.min = {min(run.min.x, v0.pos.x), min(run.min.y, v0.pos.y)}
+					run.max = {max(run.max.x, v2.pos.x), max(run.max.y, v2.pos.y)}
+					pen_end = pen + g.advance
+					line_top = top
 				}
-				strings.write_rune(&b, g.codepoint)
-				run.min = {min(run.min.x, v0.pos.x), min(run.min.y, v0.pos.y)}
-				run.max = {max(run.max.x, v2.pos.x), max(run.max.y, v2.pos.y)}
-				pen_end = pen + g.advance
-				line_top = top
 			}
+			flush(&out, &run, &b, &open)
 		}
-		flush(&out, &run, &b, &open)
 	}
 	return out[:]
 }

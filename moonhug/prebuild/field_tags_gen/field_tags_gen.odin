@@ -169,6 +169,12 @@ generate :: proc(w: ^db.World) -> bool {
 					continue
 				}
 				seen[tok.key] = true
+				// An asset reference field is a PPtr: it names a file or a
+				// sub-asset of one. A guid has no room for the sub-asset.
+				if tok.key == "ext" && (strings.has_suffix(f.type, "Asset_GUID") || strings.has_suffix(f.type, "uuid.Identifier")) {
+					append(&errors, fmt.tprintf("%s: `%s` takes assets (`ext:`) and is a `%s`, which cannot name a sub-asset: make it a PPtr and read its key with asset_key", where_, field, f.type))
+					continue
+				}
 				if d.form == .Value && !visible[tok.key] {
 					append(&errors, fmt.tprintf("%s: field tag `%s` on `%s` comes after a bare word, a call or a line break, where Odin's reflect.struct_tag_lookup stops reading, move it to the front", where_, tok.key, field))
 					continue

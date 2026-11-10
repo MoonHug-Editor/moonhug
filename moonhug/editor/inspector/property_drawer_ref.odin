@@ -42,13 +42,13 @@ property_drawer_Ref :: proc(ctx: ^Ctx) {
 	// points at (asset vs scene object).
 	if value_double {
 		if is_asset_ref {
-			core.inspector_request_open_asset(ref_ptr.pptr.guid)
+			core.inspector_request_open_asset(ref_ptr.pptr.guid, ref_ptr.pptr.local_id)
 		} else if tH, ok := _ref_local_target_transform({ref_ptr.pptr.local_id, ref_ptr.handle}); ok {
 			core.inspector_request_select(tH)
 		}
 	} else if value_clicked {
 		if is_asset_ref {
-			core.inspector_request_ping_asset(ref_ptr.pptr.guid)
+			core.inspector_request_ping_asset(ref_ptr.pptr.guid, ref_ptr.pptr.local_id)
 		} else if tH, ok := _ref_local_target_transform({ref_ptr.pptr.local_id, ref_ptr.handle}); ok {
 			core.inspector_request_ping(tH)
 		}

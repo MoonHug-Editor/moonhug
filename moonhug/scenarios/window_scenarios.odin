@@ -204,3 +204,41 @@ _saved_window :: proc(r: ^Run, key: string) -> (state: json.Value) {
 	for w in windows do if as_string(at(w, "window")) == key do return at(w, "state")
 	return nil
 }
+
+// An edit made before Play is still unsaved after Stop: Save writes it.
+@(test)
+edit_before_play_is_saved_after_stop :: proc(t: ^testing.T) {
+	r := begin(t)
+	SCENE :: "assets/demo.scene"
+	meshes :: "plugins/essentials/assets/meshes/"
+	for file in ([]string{"Sphere.glb", "Sphere.glb.meta", "Cube.glb", "Cube.glb.meta"}) {
+		project_copy(r, fmt.tprintf("%s%s", meshes, file), fmt.tprintf("assets/%s", file))
+	}
+	project_copy(r, "plugins/app/assets/demo_sub_assets/demo_sub_assets.scene", SCENE)
+	// The green of the scene's Marble material, in the file.
+	green :: proc(r: ^Run) -> f64 {
+		records, _ := at(project_json(r, "assets/demo.scene"), "assets").(json.Array)
+		for a in records do if as_string(at(a, "name")) == "Marble" do return as_f64(at(a, "data", "color", 1))
+		return -1
+	}
+	marble := i64(0)
+	{
+		records, _ := at(project_json(r, SCENE), "assets").(json.Array)
+		for a in records do if as_string(at(a, "name")) == "Marble" do marble = as_int(at(a, "local_id"))
+	}
+	editor_start(r)
+	call(r, "open_scene", fmt.tprintf(`{{"path":%q}}`, SCENE))
+	frames(r, 5)
+	call(r, "asset_document_set", fmt.tprintf(`{{"path":%q,"sub_id":%d,"values":{{"color":[1,0,0,1]}}}}`, SCENE, marble))
+	frames(r, 3)
+	call(r, "invoke_menu", `{"path":"Edit/Play"}`)
+	frames(r, 10)
+	call(r, "invoke_menu", `{"path":"Edit/Play"}`)
+	frames(r, 10)
+	testing.expectf(t, green(r) == 1, "nothing is written before Save")
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 5)
+	testing.expectf(t, green(r) == 0, "Save after Stop writes the edit made before Play, green is %v", green(r))
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	editor_quit(r)
+}

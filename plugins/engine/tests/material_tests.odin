@@ -64,7 +64,7 @@ test_material_marshal_roundtrip :: proc(t: ^testing.T) {
 	tex_guid, _ := uuid.read("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 	mat := engine.Material{
 		shader  = .Lit,
-		texture = engine.Asset_GUID(tex_guid),
+		texture = engine.PPtr{guid = engine.Asset_GUID(tex_guid)},
 		color   = {0.1, 0.2, 0.3, 0.4},
 	}
 	data, err := json.marshal(mat, {spec = .JSON}, context.temp_allocator)

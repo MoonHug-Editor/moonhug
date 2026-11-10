@@ -31,7 +31,7 @@ Color_Grading :: struct {
 	// each square, green down it, blue picking the square left to right.
 	// assets/neutral_lut_32.png is one that changes nothing: grade a
 	// screenshot, apply the same adjustments to it, and assign the result.
-	lut:              engine.Asset_GUID `ext:"png"`,
+	lut:              engine.PPtr `ext:"png"`,
 	lut_contribution: f32 `decor:range(0, 1)`,
 }
 

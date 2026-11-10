@@ -57,7 +57,7 @@ sprite_ref_row :: proc(label: cstring, ref: ^engine.PPtr) -> (changed: bool) {
 		im.OpenPopup(popup_id)
 	}
 	if value_clicked && has_value {
-		engine.inspector_request_ping_asset(ref.guid)
+		engine.inspector_request_ping_asset(ref.guid, ref.local_id)
 	}
 	if cleared {
 		ref^ = {}

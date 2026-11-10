@@ -72,7 +72,7 @@ _mixer_ensure :: proc() -> bool {
 
 // Start (or restart) the source's clip on its track.
 audio_play :: proc(src: ^AudioSource, fade_in_ms: i64 = 0) -> bool {
-	clip, ok := clip_load(src.clip)
+	clip, ok := clip_load(engine.asset_key(src.clip))
 	if !ok do return false
 	if src.track == nil {
 		src.track = mix.CreateTrack(_audio_state.mixer)

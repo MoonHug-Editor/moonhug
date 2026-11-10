@@ -41,7 +41,7 @@ TrackAudio :: struct {
 ClipAudio :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
-	clip: engine.Asset_GUID `ext:"mp3,wav,ogg"`,
+	clip: engine.PPtr `ext:"mp3,wav,ogg"`,
 }
 
 @(phase={key=ImportersInit, order=4})
@@ -137,12 +137,12 @@ _audio_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 		if !has || !mix.TrackPlaying(voice) || seq.track_crossed(ctx, c.start) {
 			// Start (or restart on a start crossing) at the clip-local offset.
 			asset := src.clip
-			if _, cr := get_comp(c.node, ClipAudio); cr != nil && !engine.asset_guid_is_empty(cr.clip) {
+			if _, cr := get_comp(c.node, ClipAudio); cr != nil && cr.clip != {} {
 				asset = cr.clip
 			}
 			_voice_drop(st, c.node)
 			speed := c.speed if c.speed > 0 else 1
-			voice = audio.voice_start(asset, (ctx.time - c.start) * speed)
+			voice = audio.voice_start(engine.asset_key(asset), (ctx.time - c.start) * speed)
 			if voice == nil do continue
 			st.voices[c.node] = voice
 		}

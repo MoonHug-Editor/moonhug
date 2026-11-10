@@ -8,6 +8,7 @@ import "core:path/filepath"
 import "core:encoding/uuid"
 import strings "core:strings"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/subassets"
 import "moonhug:editor/widgets"
 import assets "moonhug:libs/assets"
 import core "moonhug:libs/core"
@@ -97,6 +98,7 @@ InspectorData :: struct {
     // an empty path given apart from none given yet.
     given:     string,
     given_set: bool,
+    given_sub: core.Local_ID, // the sub-asset of that path it was given
 }
 
 
@@ -152,9 +154,11 @@ shutdown_registries :: proc() {
     asset_docs_shutdown()
 }
 
-load_from_file :: proc(filepath: string){
+// Shows the asset at `filepath`, or its sub-asset `sub` when the file's
+// sub-assets are documents (sub_asset_docs.odin). False when nothing loads.
+load_from_file :: proc(filepath: string, sub: core.Local_ID = 0) -> bool {
     context.allocator = runtime.default_allocator()
-    doc := asset_doc_get(filepath)
+    doc := asset_doc_get(filepath, sub)
     if doc != nil {
         delete(inspectorData.filePath)
         inspectorData.filePath = strings.clone(filepath)
@@ -165,9 +169,12 @@ load_from_file :: proc(filepath: string){
         // No "loaded" status: the file row right below says which asset this
         // is, and the load is logged. A status row here only pushes the path down.
         _set_status("")
-    } else {
-        _set_status(fmt.tprintf("Failed to load %s", filepath))
+        return true
     }
+    // A sub-asset that is no document falls back to its file, without a
+    // failure shown.
+    if sub == 0 do _set_status(fmt.tprintf("Failed to load %s", filepath))
+    return false
 }
 
 // A file the inspector can NAME but not edit: a scene. It carries no document
@@ -458,6 +465,10 @@ _dot :: proc() {
 // unsaved edits.
 _draw_file_row :: proc(dirty: bool) {
     label := filepath_base(inspectorData.filePath)
+    // A sub-asset of that file: the file, then the sub-asset.
+    if doc := inspectorData.doc; doc != nil && doc.ref.local_id != 0 {
+        if s, ok := subassets.get(doc.ref); ok do label = fmt.tprintf("%s / %s", label, s.name)
+    }
     if dirty do label = fmt.tprintf("%s *", label)
     im.TextUnformatted(strings.clone_to_cstring(label, context.temp_allocator))
     widgets.tooltip(strings.clone_to_cstring(inspectorData.filePath, context.temp_allocator), im.HoveredFlags_ForTooltip)
@@ -502,7 +513,23 @@ draw_asset_doc :: proc(doc: ^Asset_Doc) {
     if doc == nil || doc.data.data == nil do return
     // Whole-document undo: _undo_finalize_widget after each drawer snapshots
     // and commits against this owner, exactly like the component inspector.
-    undo.push_asset_owner(doc.guid, doc.data.data, doc.data.id)
+    undo.push_asset_owner(doc.ref, doc.data.data, doc.data.id)
+    // What its reference fields may pick among local sub-assets: a
+    // sub-asset's document, those of the same file. A file's, none.
+    prev_scope := sub_asset_scope
+    sub_asset_scope = {set = doc.ref.local_id != 0, owner = doc.ref.guid}
+    defer sub_asset_scope = prev_scope
+    // A sub-asset whose file is not open and cannot be written to
+    // (subassets.Provider.save) is shown, not edited.
+    read_only := false
+    if doc.ref.local_id != 0 && !subassets.editable(doc.ref.guid) {
+        p, _, has := subassets.of(doc.ref.guid)
+        read_only = !has || p.save == nil
+    }
+    if read_only {
+        im.TextDisabled(fmt.ctprintf("Open %s to edit this.", filepath_base(doc.path)))
+        im.BeginDisabled()
+    }
     prev_changed := inspector_changed
     inspector_changed = false
     draw_inspector(doc.data)
@@ -511,6 +538,7 @@ draw_asset_doc :: proc(doc: ^Asset_Doc) {
         asset_doc_changed(doc)
     }
     inspector_changed |= prev_changed
+    if read_only do im.EndDisabled()
     undo.pop_owner()
 }
 
@@ -834,7 +862,7 @@ field_undo_begin :: proc(field_ptr: rawptr, field_tid: typeid, label: string) ->
             append(&targets, undo.edit_target_pooled(o.handle, field_ptr, field_tid))
         case .Asset:
             append(&targets, undo.Edit_Target{
-                kind = .Asset, asset_guid = o.asset_guid, asset_tid = o.asset_tid,
+                kind = .Asset, asset = o.asset, asset_tid = o.asset_tid,
                 field_ptr = field_ptr, field_tid = field_tid,
             })
         case .Raw:
@@ -1180,7 +1208,8 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             // Ref_Local: picker button + "X" clear) and OpenPopupOnItemClick
             // only tests the last one — right-click would then work only on
             // the tiny X (or only when no value meant no X).
-            expands := current_field_expand && field_type.id == typeid_of(core.Asset_GUID)
+            _, expandable := expand_ref(field_ptr, field_type.id)
+            expands := current_field_expand && expandable
             if expands do current_field_trailing_w = EXPAND_BTN_W
             im.BeginGroup()
             fctx := Ctx{
@@ -1204,9 +1233,9 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             // document draws below, outside the row's transaction: its
             // rows must not read as edits of this reference field.
             if expands {
-                guid := (^core.Asset_GUID)(field_ptr)^
+                ref, _ := expand_ref(field_ptr, field_type.id)
                 im.SameLine(0, 0)
-                if expand_arrow(guid) do draw_expanded_asset(guid)
+                if expand_arrow(ref) do draw_expanded_asset(ref)
             }
             if !row_popup_done {
                 draw_field_context_menu(field_ptr, field_type.id, full_path)

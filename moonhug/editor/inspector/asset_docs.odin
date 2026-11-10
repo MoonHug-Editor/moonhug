@@ -2,10 +2,12 @@ package inspector
 
 // Asset document registry: the in-memory copy of every serialized asset
 // (.mat/.asset) the project inspector has opened this session, keyed by
-// asset GUID and document kind. The second kind, an asset's import settings,
+// the asset's reference and document kind. The reference is a PPtr: a file
+// ({guid, 0}), or an authored sub-asset its file holds ({guid, local id},
+// sub_asset_docs.odin). The second kind, an asset's import settings,
 // has its own procs in import_settings_docs.odin. Docs OUTLIVE the inspector's current selection — that is what
 // lets asset edits participate in undo: a Value_Command with an .Asset
-// target re-finds its document by GUID no matter what the inspector shows,
+// target re-finds its document by reference no matter what the inspector shows,
 // and clicking around the project no longer invalidates (or clears) history.
 //
 // Undo/redo applies to the document, not the disk — same model as material
@@ -30,9 +32,9 @@ import gfx "moonhug:libs/gfx"
 import "../undo"
 
 Asset_Doc :: struct {
-    guid:  core.Asset_GUID,
+    ref:   core.PPtr, // the file, or a sub-asset of it
     kind:  undo.Doc_Kind,
-    path:  string, // owned
+    path:  string, // owned: the file's path, also for a sub-asset
     data:  any,
     dirty: bool,   // .File: edited since last save. .Import_Settings: differs from the .meta
     // Counts every change to `data`: an editor's edit (asset_doc_mark_edited)
@@ -40,14 +42,16 @@ Asset_Doc :: struct {
     // derived from the document compares it to rebuild.
     edits: u64,
 
-    // .Import_Settings only (import_settings_docs.odin), default allocator.
-    baseline: []byte, // JSON as of the last undo step
-    applied:  []byte, // JSON as of the last load or Apply (the .meta)
-    touched:  bool,   // shown or edited this frame
+    // .Import_Settings (import_settings_docs.odin) and a sub-asset
+    // (sub_asset_docs.odin), default allocator.
+    baseline: []byte, // .Import_Settings: JSON as of the last undo step
+    applied:  []byte, // JSON as of the last load or Apply (the .meta), or as last read from or stored in the sub-asset's file
+    touched:  bool,   // .Import_Settings: shown or edited this frame
 }
 
-Doc_Key :: struct {
-    guid: core.Asset_GUID,
+// Packed: a map key is hashed as bytes, and padding would be part of them.
+Doc_Key :: struct #packed {
+    ref:  core.PPtr,
     kind: undo.Doc_Kind,
 }
 
@@ -58,6 +62,8 @@ _docs: map[Doc_Key]^Asset_Doc
 // inspector edit, an undo or redo, a revert. The one for a type pushes the
 // document's values into the runtime its asset is sampled from (the engine's
 // material cache for materials), so the change shows before it is saved.
+// `guid` is the asset's key (core.asset_key): the file's guid, or the key of
+// a sub-asset, which is what a guid-keyed cache holds it under.
 // `doc` is the document's typed value, the registered typeid. Declared as
 // `doc_on_changed_<Type>` with @(doc_on_changed={type=T}) on the proc, registered
 // by the generated register_doc_hooks (doc_hooks_gen); `doc_on_saved_<Type>` is
@@ -81,7 +87,11 @@ doc_changed_register :: proc(tid: typeid, p: Doc_Changed) {
 
 // Tells the type's on_changed proc, if any, that `doc` changed.
 asset_doc_changed :: proc(doc: ^Asset_Doc) {
-    if changed, has := _doc_changed_hooks[doc.data.id]; has do changed(doc.guid, doc.data)
+    // A sub-asset has no file of its own: a change goes into the file that
+    // holds it when that is open, and stays in the document until a save
+    // when it is not.
+    if doc.ref.local_id != 0 do _sub_asset_doc_store(doc)
+    if changed, has := _doc_changed_hooks[doc.data.id]; has do changed(core.asset_key(doc.ref), doc.data)
 }
 
 // The open document whose value lives at `ptr`, nil when none does. An
@@ -123,16 +133,19 @@ doc_alloc :: proc() -> runtime.Allocator {
 	return doc_allocator
 }
 
-// The open document for a path — reused if already loaded (unsaved edits
+// The open document for a path, or for the sub-asset `sub` of the file at
+// that path — reused if already loaded (unsaved edits
 // survive clicking away and back), loaded from disk otherwise. nil on load
 // failure or when the file isn't in the asset db.
-asset_doc_get :: proc(path: string) -> ^Asset_Doc {
+asset_doc_get :: proc(path: string, sub: core.Local_ID = 0) -> ^Asset_Doc {
     context.allocator = doc_alloc()
     raw_guid, ok := assets.asset_db_get_guid(path)
     if !ok do return nil
     guid := core.Asset_GUID(raw_guid)
+    if sub != 0 do return _sub_asset_doc_get(core.PPtr{guid = guid, local_id = sub})
+    key := Doc_Key{core.PPtr{guid = guid}, .File}
 
-    if doc, found := _docs[Doc_Key{guid, .File}]; found {
+    if doc, found := _docs[key]; found {
         // Follow renames: guid is stable, path may have changed.
         if doc.path != path {
             delete(doc.path)
@@ -145,15 +158,25 @@ asset_doc_get :: proc(path: string) -> ^Asset_Doc {
     if !load_ok do return nil
 
     doc := new(Asset_Doc)
-    doc.guid = guid
+    doc.ref = core.PPtr{guid = guid}
     doc.path = strings.clone(path)
     doc.data = file_data
     if _docs == nil do _docs = make(map[Doc_Key]^Asset_Doc)
-    _docs[Doc_Key{guid, .File}] = doc
+    _docs[key] = doc
     return doc
 }
 
-// Writes the document to its file and clears the dirty flag. The one save
+// The open document of the asset `ref` names: a file, or a sub-asset of a
+// file, which may be one never saved (the empty guid). nil as asset_doc_get.
+asset_doc_get_ref :: proc(ref: core.PPtr) -> ^Asset_Doc {
+    if ref.local_id != 0 do return _sub_asset_doc_get(ref)
+    path, ok := assets.asset_db_get_path(uuid.Identifier(ref.guid))
+    if !ok do return nil
+    return asset_doc_get(path)
+}
+
+// Writes the document to its file and clears the dirty flag: a sub-asset's
+// document goes to the file that holds it, through that file's provider. The one save
 // path, whether File/Save, the tab menu's Save or an expanded row's.
 // The path comes from the guid at write time, so a renamed or moved asset
 // saves where it is now. An asset whose file is gone is not written: that
@@ -161,10 +184,11 @@ asset_doc_get :: proc(path: string) -> ^Asset_Doc {
 asset_doc_save :: proc(doc: ^Asset_Doc) -> bool {
     context.allocator = doc_alloc()
     if doc == nil || doc.data.data == nil do return false
+    if doc.ref.local_id != 0 do return _sub_asset_doc_save(doc)
     // An import settings document written here would land on the asset file
     // itself: those commit through import_settings_apply.
     assert(doc.kind == .File, "asset_doc_save: import settings commit through import_settings_apply")
-    path, known := assets.asset_db_get_path(uuid.Identifier(doc.guid))
+    path, known := assets.asset_db_get_path(uuid.Identifier(doc.ref.guid))
     if !known || !os.exists(path) {
         log.error(fmt.tprintf("asset_docs: %s is no longer in the project, not saved", doc.path))
         return false
@@ -175,7 +199,7 @@ asset_doc_save :: proc(doc: ^Asset_Doc) -> bool {
     }
     if !ser.save_to_file(doc.path, doc.data) do return false
     doc.dirty = false
-    if saved, has := _doc_saved[doc.data.id]; has do saved(doc.guid, doc.path)
+    if saved, has := _doc_saved[doc.data.id]; has do saved(doc.ref.guid, doc.path)
     return true
 }
 
@@ -198,14 +222,12 @@ asset_docs_save_dirty :: proc() -> (saved, failed: int) {
 // capture_json of the document struct). Zero → reset → JSON → on_validate into a
 // fresh instance, so dynamic arrays never merge with stale contents. The old
 // instance is retired (doc_data_retire): a step may still draw it this frame.
-asset_doc_apply_json :: proc(guid: core.Asset_GUID, kind: undo.Doc_Kind, json_bytes: []byte) -> bool {
-    if kind == .Import_Settings do return _import_settings_apply_json(guid, json_bytes)
+asset_doc_apply_json :: proc(ref: core.PPtr, kind: undo.Doc_Kind, json_bytes: []byte) -> bool {
+    if kind == .Import_Settings do return _import_settings_apply_json(ref.guid, json_bytes)
     context.allocator = doc_alloc()
-    doc, found := _docs[Doc_Key{guid, .File}]
+    doc, found := _docs[Doc_Key{ref, .File}]
     if !found {
-        path, path_ok := assets.asset_db_get_path(uuid.Identifier(guid))
-        if !path_ok do return false
-        doc = asset_doc_get(path)
+        doc = asset_doc_get_ref(ref)
         if doc == nil do return false
     }
 
@@ -240,9 +262,13 @@ asset_doc_mark_edited :: proc(doc: ^Asset_Doc) {
 // do when it is not dirty.
 asset_doc_discard :: proc(doc: ^Asset_Doc) {
     if doc == nil || !doc.dirty do return
+    if doc.ref.local_id != 0 {
+        _sub_asset_doc_discard(doc)
+        return
+    }
     assert(doc.kind == .File, "asset_doc_discard: import settings go back through import_settings_revert")
     path := doc.path
-    if p, known := assets.asset_db_get_path(uuid.Identifier(doc.guid)); known do path = p
+    if p, known := assets.asset_db_get_path(uuid.Identifier(doc.ref.guid)); known do path = p
     fresh: any
     ok: bool
     {
@@ -255,13 +281,13 @@ asset_doc_discard :: proc(doc: ^Asset_Doc) {
     }
     // Before the replace and on the caller's allocator, like every purge:
     // undo entries free with the allocator that made them.
-    undo.purge_asset(undo.get(), doc.guid)
+    undo.purge_asset(undo.get(), doc.ref.guid)
     _doc_replace(doc, fresh, dirty = false)
 }
 
 // A document's new instance takes over: the old one retires, the inspector
 // and the live previews follow. Document state is on the default allocator.
-@(private = "file")
+@(private)
 _doc_replace :: proc(doc: ^Asset_Doc, fresh: any, dirty: bool) {
     context.allocator = doc_alloc()
     doc_data_retire(doc.data)
@@ -289,16 +315,18 @@ asset_on_changed_asset_doc_gone :: proc(guid: core.Asset_GUID, path: string, cha
         unload()
     }
     inspectorData = &_primary
-    for kind in undo.Doc_Kind {
-        doc, found := _docs[Doc_Key{guid, kind}]
-        if !found do continue
+    // The file's documents, and those of the sub-assets it held.
+    gone := make([dynamic]Doc_Key, context.temp_allocator)
+    for key in _docs do if key.ref.guid == guid do append(&gone, key)
+    for key in gone {
+        doc := _docs[key]
         for data in _all_data() {
             if data.doc != doc && data.settingsDoc != doc do continue
             inspectorData = data
             unload()
         }
         inspectorData = &_primary
-        delete_key(&_docs, Doc_Key{guid, kind})
+        delete_key(&_docs, key)
         _asset_doc_free(doc)
     }
 }
@@ -369,10 +397,10 @@ asset_docs_shutdown :: proc() {
     _docs = nil
 }
 
-// The live document payload for a guid, for undo's asset targets. The undo
+// The live document payload of an asset, for undo's asset targets. The undo
 // package cannot import this one, so it is installed as a hook at init.
-asset_doc_payload_ptr :: proc(guid: core.Asset_GUID, kind: undo.Doc_Kind) -> rawptr {
-    doc, found := _docs[Doc_Key{guid, kind}]
+asset_doc_payload_ptr :: proc(ref: core.PPtr, kind: undo.Doc_Kind) -> rawptr {
+    doc, found := _docs[Doc_Key{ref, kind}]
     if !found || doc == nil do return nil
     return doc.data.data
 }

@@ -27,6 +27,8 @@ _index_scene_asset :: proc(guid: Asset_GUID, path: string, data: []byte) {
 
     sf: SceneFile
     if scene_file_unmarshal(data, &sf) != nil do return
+    // The file's own records, before a variant's flattened form replaces sf.
+    _scene_sub_assets_index_file(guid, &sf)
 
     is_variant := false
     base_prefab := Asset_GUID{}

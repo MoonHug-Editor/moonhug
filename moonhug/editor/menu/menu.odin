@@ -2,6 +2,7 @@ package menu
 
 import "core:fmt"
 import "core:mem"
+import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
@@ -33,6 +34,12 @@ ORDER_DEFAULT :: 1 << 30
 GO_SECTION_PARENTING :: ORDER_DEFAULT + 1_000_000
 GO_SECTION_VIEW      :: ORDER_DEFAULT + 2_000_000
 
+// Assets: everything below this band is about the selected assets or the
+// open folder, and mirrors into the Project window's context menu, the
+// Create submenu included. From this band on an item is about the whole
+// asset database (Refresh AssetDB): the main menu only.
+ASSETS_SECTION_DATABASE :: ORDER_DEFAULT + 1_000_000
+
 // Edit: the selection-ops band (Cut..Delete) — mirrored to the top of the
 // hierarchy context menu.
 EDIT_SECTION_SELECTION_MIN :: -50
@@ -51,6 +58,13 @@ MenuNode :: struct {
 	action:        proc(),
 	value:         ^bool,
 	enabled:       proc() -> bool, // nil = always enabled
+	// The item is not drawn while this returns false: for an item that has
+	// a meaning only for some selections. nil = always drawn.
+	visible:       proc() -> bool,
+	// The item is for asset files of these extensions, "scene" or
+	// "glb,gltf": it is drawn and enabled only while the Project window's
+	// active selection is such a file. "" = any selection. A static literal.
+	ext:           string,
 	// Draws the item checked when it returns true. An Action whose state is
 	// computed rather than stored in a bool: a radio group is N actions that
 	// each set the state and each report whether they are the current one.
@@ -191,16 +205,17 @@ draw_menu_sections :: proc(sections: []Menu_Section) {
 		node := _get_or_create_path(_menu_root, s.path)
 		has_items := false
 		for child in node.children {
-			if child.kind != .Separator && child.order >= s.min_order && child.order <= s.max_order {
+			if child.kind != .Separator && child.order >= s.min_order && child.order <= s.max_order && _node_visible(child) {
 				has_items = true
 				break
 			}
 		}
 		if !has_items do continue
 		if prev_drawn do im.Separator()
+		run: _Separator_Run
 		for child in node.children {
 			if child.order < s.min_order || child.order > s.max_order do continue
-			_draw_menu_child(child)
+			_draw_menu_child_in_run(&run, child)
 		}
 		prev_drawn = true
 	}
@@ -218,6 +233,13 @@ draw_menu_sections :: proc(sections: []Menu_Section) {
 // path format: "RootItem/NodeItem1/NodeItem2/LeafItem"
 // add_menu_item adds an action at the given path. When selected, action is called.
 // enabled (optional) is polled at draw time; nil means always enabled.
+// visible (optional) is polled the same way: the item is not drawn while it
+// returns false. For an item that means something only for some selections,
+// where a disabled row would only add noise.
+// ext (optional) says the item is for asset files of some types, "scene" or
+// "glb,gltf": it is drawn and enabled only while the Project window's active
+// selection is a file of one of them. An item about one kind of asset needs
+// no enabled or visible proc for that.
 // checked (optional) is polled the same way and draws the item with a tick —
 // for a toggle whose state is computed, and for radio groups, where each option
 // is an action that sets the state and reports whether it is the current one.
@@ -225,9 +247,12 @@ draw_menu_sections :: proc(sections: []Menu_Section) {
 // qualified name from the generator, which keeps the user's bindings when the
 // item moves in the menu. The path when empty. `help` is one sentence on what
 // the item does, shown in its tooltip and by the command palette.
-@(extension_point={attribute="menu_item", target="proc var", fields="path order shortcut enabled checked id help"})
-add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil, checked: proc() -> bool = nil, origin := "", id := "", help := "") {
+@(extension_point={attribute="menu_item", target="proc var", fields="path order shortcut enabled checked visible ext id help"})
+add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil, checked: proc() -> bool = nil, origin := "", id := "", help := "", visible: proc() -> bool = nil, ext := "") {
 	tree_add_item(_menu_root, path, shortcut, action, order, enabled, checked, origin)
+	node := _get_or_create_path(_menu_root, path)
+	node.visible = visible
+	node.ext = ext
 	_menu_command(_get_or_create_path(_menu_root, path), path, id, help)
 }
 
@@ -554,7 +579,29 @@ _menu_command_enabled :: proc(data: rawptr) -> bool {
 
 _node_enabled :: proc(node: ^MenuNode, window := session.Window_Ref{}) -> bool {
 	if node.window_enabled != nil do return node.window_enabled(window)
+	if node.ext != "" && !_asset_selected(node.ext) do return keymap.disabled(fmt.tprintf("Select a %s asset", node.ext))
 	return node.enabled == nil || node.enabled()
+}
+
+// Whether the item is drawn now: its `visible` proc and its `ext`.
+_node_visible :: proc(node: ^MenuNode) -> bool {
+	if node.visible != nil && !node.visible() do return false
+	return node.ext == "" || _asset_selected(node.ext)
+}
+
+// Whether the Project window's active selection is a file whose extension is
+// in `exts` ("glb,gltf"). A sub-asset of such a file is not the file.
+@(private = "file")
+_asset_selected :: proc(exts: string) -> bool {
+	path := session.project_active()
+	if path == "" || session.project_active_sub() != 0 do return false
+	ext := strings.to_lower(strings.trim_prefix(filepath.ext(path), "."), context.temp_allocator)
+	if ext == "" do return false
+	remaining := exts
+	for allowed in strings.split_iterator(&remaining, ",") {
+		if strings.trim_space(allowed) == ext do return true
+	}
+	return false
 }
 
 _node_ticked :: proc(node: ^MenuNode, window: session.Window_Ref) -> bool {
@@ -571,11 +618,35 @@ _node_run :: proc(node: ^MenuNode, window: session.Window_Ref) {
 }
 
 _draw_menu_children :: proc(node: ^MenuNode, window := session.Window_Ref{}) {
-	for child in node.children {
-		_draw_menu_child(child, window)
-	}
+	run: _Separator_Run
+	for child in node.children do _draw_menu_child_in_run(&run, child, window)
 }
+
+// Separators between the items that are drawn: one before the first item
+// after a separator, none at the start, none at the end and never two in a
+// row. An item that is not drawn now (`visible`, `ext`) leaves no separator
+// behind.
+@(private = "file")
+_Separator_Run :: struct {
+	drew:    bool, // an item was drawn in this menu
+	pending: bool, // a separator waits for the next drawn item
+}
+
+@(private = "file")
+_draw_menu_child_in_run :: proc(run: ^_Separator_Run, child: ^MenuNode, window := session.Window_Ref{}) {
+	if child.kind == .Separator {
+		run.pending = run.drew
+		return
+	}
+	if !_node_visible(child) do return
+	if run.pending do im.Separator()
+	run.pending = false
+	run.drew = true
+	_draw_menu_child(child, window)
+}
+
 _draw_menu_child :: proc(child: ^MenuNode, window := session.Window_Ref{}) {
+	if !_node_visible(child) do return
 	switch child.kind {
 	case .Separator:
 		im.Separator()

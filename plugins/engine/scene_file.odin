@@ -1262,6 +1262,12 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 	}
 
 	sf := SceneFile{}
+	// The scene's sub-assets, borrowed: the shallow destroy below leaves
+	// them alone. References into this file are written without its guid.
+	sf.assets = make([dynamic]Scene_Sub_Asset, 0, len(s.assets), context.temp_allocator)
+	append(&sf.assets, ..s.assets[:])
+	_scene_sub_assets_save_begin(s)
+	defer _scene_sub_assets_save_end()
 
 	// Only persist NS records that belong to this scene file. Records with
 	// `expand_parent` set were pulled in from inner prefabs during resolve
@@ -1363,6 +1369,16 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 		}
 	}
 
+	data, marshaled := scene_file_bytes(&sf)
+	scene_file_destroy_shallow(&sf)
+	return data, marshaled
+}
+
+// A scene file's bytes as a save writes them: the one text form of a
+// SceneFile. A file read with scene_file_unmarshal and written back through
+// this keeps its bytes, so a change to one record of a closed scene's file
+// (scene_sub_asset_store_file) touches nothing else in it.
+scene_file_bytes :: proc(sf: ^SceneFile) -> (data: []byte, ok: bool) {
 	opts := json.Marshal_Options{
 		spec       = .JSON,
 		pretty     = true,
@@ -1372,15 +1388,12 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 		// "__type" sorts before lowercase field names, so it leads each record.
 		sort_maps_by_key = true,
 	}
-	raw, err := json.marshal(sf, opts)
+	raw, err := json.marshal(sf^, opts)
 	if err != nil {
 		fmt.printf("[Scene] Failed to marshal scene: %v\n", err)
-		scene_file_destroy_shallow(&sf)
 		return nil, false
 	}
-
-	scene_file_destroy_shallow(&sf)
-	data := json_canonicalize_floats(raw)
+	data = json_canonicalize_floats(raw)
 	delete(raw)
 	return data, true
 }
@@ -1411,6 +1424,9 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 	if guid, gok := asset_db_get_guid(path); gok {
 		_prefab_bytes_committed(Asset_GUID(guid), data)
 	}
+	// The file's sub-assets are this scene's records again: the bytes
+	// just refreshed are not read over what the scene holds.
+	_scene_sub_assets_publish(s)
 
 	// Keep the AssetDB current: a save can change the root's components (picker
 	// index) or create the file (Save As). Incremental — unchanged assets cost
@@ -1496,6 +1512,7 @@ _prefab_bytes_refresh :: proc(guid: Asset_GUID, data: []byte) {
 	// allocator (see scene_lib_register).
 	context.allocator = runtime.default_allocator()
 	if existing, has := scene_lib[guid]; has do delete(existing)
+	scene_sub_assets_drop(guid)
 	fresh := make([]byte, len(data))
 	copy(fresh, data)
 	scene_lib[guid] = fresh

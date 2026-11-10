@@ -76,15 +76,15 @@ test_session_array_element_records_whole_component :: proc(t: ^testing.T) {
 	_, ptr := engine.transform_add_comp(a, .MeshRenderer)
 	h = _comp_handle_of(a, .MeshRenderer)
 	mr := cast(^engine.MeshRenderer)ptr
-	mr.materials = make([dynamic]engine.Asset_GUID)
-	append(&mr.materials, engine.Asset_GUID{})
+	mr.materials = make([dynamic]engine.PPtr)
+	append(&mr.materials, engine.PPtr{})
 
 	// Point at the ELEMENT, which is outside the component.
 	targets := []undo.Edit_Target{
-		undo.edit_target_pooled(h, &mr.materials[0], typeid_of(engine.Asset_GUID)),
+		undo.edit_target_pooled(h, &mr.materials[0], typeid_of(engine.PPtr)),
 	}
 	sess := undo.edit_session_begin(targets, "Material")
-	mat := engine.Asset_GUID{9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9}
+	mat := engine.PPtr{guid = {9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9}}
 	mr.materials[0] = mat
 	undo.edit_session_end(&sess)
 
@@ -99,7 +99,7 @@ test_session_array_element_records_whole_component :: proc(t: ^testing.T) {
 	testing.expect_value(t, mr.materials[0], mat)
 	undo.apply_undo(s)
 	testing.expect_value(t, len(mr.materials), 1)
-	testing.expect_value(t, mr.materials[0], engine.Asset_GUID{})
+	testing.expect_value(t, mr.materials[0], engine.PPtr{})
 	_ = w
 }
 
@@ -275,18 +275,18 @@ test_session_array_element_undo_restores_each_own_value :: proc(t: ^testing.T) {
 	mr_a := cast(^engine.MeshRenderer)a_ptr
 	mr_b := cast(^engine.MeshRenderer)b_ptr
 
-	mat_a := engine.Asset_GUID{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
-	mat_b := engine.Asset_GUID{2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2}
-	mr_a.materials = make([dynamic]engine.Asset_GUID)
-	mr_b.materials = make([dynamic]engine.Asset_GUID)
+	mat_a := engine.PPtr{guid = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}}
+	mat_b := engine.PPtr{guid = {2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2}}
+	mr_a.materials = make([dynamic]engine.PPtr)
+	mr_b.materials = make([dynamic]engine.PPtr)
 	append(&mr_a.materials, mat_a)
 	append(&mr_b.materials, mat_b)
 
 	// A material assigned across both, as the inspector's element row does.
-	picked := engine.Asset_GUID{9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9}
+	picked := engine.PPtr{guid = {9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9}}
 	targets := []undo.Edit_Target{
-		undo.edit_target_pooled(_comp_handle_of(a, .MeshRenderer), &mr_a.materials[0], typeid_of(engine.Asset_GUID)),
-		undo.edit_target_pooled(_comp_handle_of(b, .MeshRenderer), &mr_b.materials[0], typeid_of(engine.Asset_GUID)),
+		undo.edit_target_pooled(_comp_handle_of(a, .MeshRenderer), &mr_a.materials[0], typeid_of(engine.PPtr)),
+		undo.edit_target_pooled(_comp_handle_of(b, .MeshRenderer), &mr_b.materials[0], typeid_of(engine.PPtr)),
 	}
 	sess := undo.edit_session_begin(targets, "Material")
 	mr_a.materials[0] = picked

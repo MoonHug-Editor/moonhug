@@ -249,6 +249,8 @@ asset_db_new_guid                 :: assets.asset_db_new_guid
 asset_db_assets_with_root_type    :: assets.asset_db_assets_with_root_type
 asset_db_add_indexer              :: assets.asset_db_add_indexer
 asset_db_index_set                :: assets.asset_db_index_set
+asset_db_sub_assets_set           :: assets.asset_db_sub_assets_set
+asset_db_sub_assets               :: assets.asset_db_sub_assets
 asset_db_index_typed_asset        :: assets.asset_db_index_typed_asset
 asset_db_reindex                  :: assets.asset_db_reindex
 asset_on_changed_add              :: assets.asset_on_changed_add

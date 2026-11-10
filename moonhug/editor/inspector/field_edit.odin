@@ -108,7 +108,7 @@ field_edit_begin :: proc(
 		case .Pooled:
 			append(&targets, undo.edit_target_pooled(o.handle, field_ptr, field_tid))
 		case .Asset:
-			append(&targets, undo.edit_target_asset(o.asset_guid, o.asset_tid))
+			append(&targets, undo.edit_target_asset(o.asset, o.asset_tid))
 		case .Raw:
 			append(&targets, undo.Edit_Target{
 				kind = .Raw, raw_ptr = o.base_ptr, raw_tid = o.raw_tid,
@@ -788,7 +788,7 @@ structural_edit_begin :: proc(label := "Edit") -> undo.Edit_Session {
 		case .Pooled:
 			append(&targets, undo.edit_target_whole(o.handle))
 		case .Asset:
-			append(&targets, undo.edit_target_asset(o.asset_guid, o.asset_tid))
+			append(&targets, undo.edit_target_asset(o.asset, o.asset_tid))
 		case .Raw:
 			append(&targets, undo.Edit_Target{kind = .Raw, raw_ptr = o.base_ptr, raw_tid = o.raw_tid})
 		}

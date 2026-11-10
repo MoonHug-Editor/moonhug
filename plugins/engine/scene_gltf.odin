@@ -119,12 +119,12 @@ _scene_gltf_add_node :: proc(data: ^cgltf.data, node: ^cgltf.node, parent: Trans
 		if node.skin != nil {
 			_, smr_raw := transform_add_comp(tH, .SkinnedMeshRenderer)
 			smr := cast(^SkinnedMeshRenderer)smr_raw
-			if smr.materials == nil do smr.materials = make([dynamic]Asset_GUID)
-			append(&smr.materials, ..materials[:])
+			if smr.materials == nil do smr.materials = make([dynamic]PPtr)
+			for g in materials do append(&smr.materials, PPtr{guid = g})
 		} else {
 			_, mr_raw := transform_add_comp(tH, .MeshRenderer)
 			mr := cast(^MeshRenderer)mr_raw
-			append(&mr.materials, ..materials[:])
+			for g in materials do append(&mr.materials, PPtr{guid = g})
 		}
 	}
 

@@ -20,7 +20,7 @@ Text :: struct {
 	// the raw distance field.
 	using graphic: engine.Graphic `inline:""`,
 	text:          string `inspect:"-"`, // a text area in the editor (editor/text_editor.odin)
-	font:          engine.Asset_GUID `ext:"ttf,otf"`, // a font file in assets; empty draws nothing
+	font:          engine.PPtr `ext:"ttf,otf"`, // a font file in assets; empty draws nothing
 	font_style:    Font_Style `inspect:"-"`, // toggle buttons in the editor
 	font_size:     f32, // canvas units
 	auto_size:     bool, // the largest size in [auto_size_min, auto_size_max] whose layout fits the rect
@@ -58,7 +58,7 @@ type_cleanup_Text :: proc(t: ^Text) {
 
 text_layout_params :: proc(t: ^Text) -> Layout_Params {
 	return Layout_Params{
-		font              = t.font,
+		font              = engine.asset_key(t.font),
 		size              = t.font_size,
 		style             = t.font_style,
 		horizontal        = t.horizontal_alignment,
@@ -129,7 +129,7 @@ text_fitted_size :: proc(t: ^Text, b: ^Backend, str: string, rect: engine.Rect) 
 // backend.
 @(canvas_graphic)
 canvas_populate_Text :: proc(tx: ^Text, rect: engine.Rect, out: ^[dynamic]engine.Graphic_Quad) {
-	if engine.asset_guid_is_empty(tx.font) do return
+	if tx.font == {} do return
 	content := text_content_rect(tx, rect)
 	str := text_display_string(tx)
 	p := text_layout_params(tx)

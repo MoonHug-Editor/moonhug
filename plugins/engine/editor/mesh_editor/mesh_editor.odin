@@ -104,7 +104,7 @@ mesh_ref_row :: proc(ref: ^engine.PPtr, label: cstring = "Mesh", tooltip: cstrin
 	}
 	if tooltip != "" do widgets.tooltip(tooltip)
 	if value_clicked && has_value {
-		engine.inspector_request_ping_asset(ref.guid)
+		engine.inspector_request_ping_asset(ref.guid, ref.local_id)
 	}
 	if cleared {
 		_set_mesh(ref, {})

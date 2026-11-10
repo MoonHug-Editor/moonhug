@@ -39,7 +39,7 @@ _edited_material :: proc(t: ^testing.T, s: ^undo.Undo_Stack, path: string) -> ^i
 	doc := inspector.asset_doc_get(path)
 	testing.expect(t, doc != nil, "the material loads as a document")
 	if doc == nil do return nil
-	sess := undo.edit_session_begin({undo.edit_target_asset(doc.guid, doc.data.id)}, "Color")
+	sess := undo.edit_session_begin({undo.edit_target_asset(doc.ref, doc.data.id)}, "Color")
 	(^engine.Material)(doc.data.data).color = {1, 0, 0, 1}
 	undo.edit_session_end(&sess)
 	doc.dirty = true
@@ -231,7 +231,7 @@ test_asset_array_add_and_remove_undo :: proc(t: ^testing.T) {
 	doc := inspector.asset_doc_get(path)
 	if !testing.expect(t, doc != nil, "the pipeline loads as a document") do return
 
-	undo.push_asset_owner(doc.guid, doc.data.data, doc.data.id)
+	undo.push_asset_owner(doc.ref, doc.data.data, doc.data.id)
 	defer undo.pop_owner()
 	elem := type_info_of(engine.Pipeline_Slot)
 	// The document's live array, fetched fresh for every step as the

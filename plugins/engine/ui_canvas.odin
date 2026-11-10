@@ -574,7 +574,7 @@ rect_transform_set_world_position :: proc(tH: Transform_Handle, world: [3]f32) -
 
 Graphic :: struct {
 	color:          [4]f32 `decor:color()`,
-	material:       Asset_GUID `ext:"mat"`, // shader/tint/properties; the quad's texture stays its own. empty = unlit
+	material:       PPtr `ext:"mat"`, // shader/tint/properties; the quad's texture stays its own. empty = unlit
 	raycast_target: bool, // takes pointer events (input)
 }
 
@@ -702,7 +702,7 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 					owner   = n.tH,
 					variant = Draw_Quad{
 						texture  = q.texture,
-						material = g.material,
+						material = asset_key(g.material),
 						corners  = corners,
 						uvs      = q.uvs,
 						color    = g.color * cr.tint if cr.tinted else g.color,

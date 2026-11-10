@@ -110,7 +110,7 @@ asset_doc_copy_apply :: proc(h: Doc_Copy) -> bool {
 		if import_settings_doc_get(path) == nil || !_import_settings_apply_json(c.guid, bytes) do return false
 		written = import_settings_apply(import_settings_doc_get(path))
 	case .File:
-		if asset_doc_get(path) == nil || !asset_doc_apply_json(c.guid, .File, bytes) do return false
+		if asset_doc_get(path) == nil || !asset_doc_apply_json(core.PPtr{guid = c.guid}, .File, bytes) do return false
 		written = asset_doc_save(asset_doc_get(path))
 	}
 	if written do _copy_reload(c)
@@ -277,7 +277,7 @@ _copy_json :: proc(data: any, allocator := context.allocator) -> []byte {
 
 @(private = "file")
 _copy_target :: proc(c: ^Asset_Doc_Copy) -> undo.Property_Target {
-	return undo.make_asset_target(c.guid, c.data.id, c.kind, u64(c.id))
+	return undo.make_asset_target(core.PPtr{guid = c.guid}, c.data.id, c.kind, u64(c.id))
 }
 
 @(private = "file")

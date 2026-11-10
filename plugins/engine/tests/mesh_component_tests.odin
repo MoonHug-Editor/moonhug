@@ -30,7 +30,7 @@ test_save_load_scene_with_mesh_components :: proc(t: ^testing.T) {
 	_, mr := engine.transform_get_or_add_comp(tH, engine.MeshRenderer)
 	testing.expect(t, mr != nil, "MeshRenderer should be added")
 	if mr == nil do return
-	append(&mr.materials, engine.Asset_GUID(mat_guid))
+	append(&mr.materials, engine.PPtr{guid = engine.Asset_GUID(mat_guid)})
 	mr.enabled = true
 
 	ok := engine.scene_save(tc_mem.scene, tc_mem.path)
@@ -50,7 +50,7 @@ test_save_load_scene_with_mesh_components :: proc(t: ^testing.T) {
 	_, loaded_mr := engine.transform_get_comp(root_tH, engine.MeshRenderer)
 	testing.expect(t, loaded_mr != nil, "MeshRenderer should survive reload")
 	if loaded_mr == nil do return
-	testing.expect(t, len(loaded_mr.materials) == 1 && loaded_mr.materials[0] == engine.Asset_GUID(mat_guid), "materials array should round-trip")
+	testing.expect(t, len(loaded_mr.materials) == 1 && loaded_mr.materials[0] == engine.PPtr{guid = engine.Asset_GUID(mat_guid)}, "materials array should round-trip")
 }
 
 // A SkinnedMeshRenderer resolves its joints by NAME once and caches the

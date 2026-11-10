@@ -21,8 +21,9 @@ Owner_Kind :: enum {
 // The scene identity an undo entry records (core.Scene_Ref: the session id).
 Scene_Ref :: core.Scene_Ref
 
-// Which document of an asset an .Asset target edits: the asset's own file
-// (.mat, .asset) or its import settings (the .meta, committed by Apply).
+// Which document of an asset an .Asset target edits: the asset's own data
+// (a .mat or .asset file, or a sub-asset its file holds) or its import
+// settings (the .meta, committed by Apply).
 Doc_Kind :: enum u8 {
 	File,
 	Import_Settings,
@@ -36,9 +37,9 @@ Property_Target :: struct {
 	offset:     u32,
 	type_id:    typeid,
 	raw_ptr:    rawptr,
-	asset_guid: core.Asset_GUID, // .Asset only
-	asset_doc:  Doc_Kind,          // .Asset only
-	asset_copy: u64,               // .Asset: an editor's working copy (inspector.Doc_Copy), 0 for the shared document
+	asset:      core.PPtr, // .Asset only: the file, or a sub-asset of it
+	asset_doc:  Doc_Kind,  // .Asset only
+	asset_copy: u64,       // .Asset: an editor's working copy (inspector.Doc_Copy), 0 for the shared document
 }
 
 @(undo_command)
@@ -76,7 +77,8 @@ scenes_Value_Command :: proc(v: ^Value_Command, out: ^[dynamic]core.Scene_Ref) {
 }
 
 assets_Value_Command :: proc(v: ^Value_Command, out: ^[dynamic]core.Asset_GUID) {
-	if v.target.kind == .Asset do append(out, v.target.asset_guid)
+	// The file: a sub-asset's steps go with the file that holds it.
+	if v.target.kind == .Asset do append(out, v.target.asset.guid)
 }
 
 describe_Value_Command :: proc(v: ^Value_Command, b: ^strings.Builder, depth: int) {
@@ -623,8 +625,8 @@ _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
 			log.error("undo: no asset apply hook installed (inspector init missing?)")
 			return
 		}
-		if !_asset_apply_hook(vc.target.asset_guid, vc.target.asset_doc, json_bytes) {
-			log.error(fmt.tprintf("undo: asset apply failed (guid=%v)", vc.target.asset_guid))
+		if !_asset_apply_hook(vc.target.asset, vc.target.asset_doc, json_bytes) {
+			log.error(fmt.tprintf("undo: asset apply failed (guid=%v sub=%d)", vc.target.asset.guid, i64(vc.target.asset.local_id)))
 		}
 		return
 	}
@@ -731,7 +733,7 @@ _cleanup_before_unmarshal :: proc(ptr: rawptr, tid: typeid) {
 
 @(private) _selection_capture_hook: proc() -> Selection_State
 @(private) _selection_apply_hook:   proc(state: Selection_State)
-@(private) _asset_apply_hook:       proc(guid: core.Asset_GUID, doc: Doc_Kind, json_bytes: []byte) -> bool
+@(private) _asset_apply_hook:       proc(ref: core.PPtr, doc: Doc_Kind, json_bytes: []byte) -> bool
 @(private) _asset_copy_apply_hook:  proc(copy: u64, json_bytes: []byte) -> bool
 
 set_selection_hooks :: proc(capture: proc() -> Selection_State, apply: proc(state: Selection_State)) {
@@ -739,9 +741,10 @@ set_selection_hooks :: proc(capture: proc() -> Selection_State, apply: proc(stat
 	_selection_apply_hook = apply
 }
 
-// cb replaces the whole asset document identified by guid with the given
-// JSON payload (installed by the project inspector's doc registry).
-set_asset_apply :: proc(cb: proc(guid: core.Asset_GUID, doc: Doc_Kind, json_bytes: []byte) -> bool) {
+// cb replaces the whole asset document `ref` names (a file, or a sub-asset
+// of one) with the given JSON payload (installed by the project inspector's
+// doc registry).
+set_asset_apply :: proc(cb: proc(ref: core.PPtr, doc: Doc_Kind, json_bytes: []byte) -> bool) {
 	_asset_apply_hook = cb
 }
 
@@ -756,8 +759,8 @@ _selection_apply :: proc(state: Selection_State) {
 	if _selection_apply_hook != nil do _selection_apply_hook(state)
 }
 
-make_asset_target :: proc(guid: core.Asset_GUID, tid: typeid, doc := Doc_Kind.File, copy := u64(0)) -> Property_Target {
-	return Property_Target{kind = .Asset, asset_guid = guid, asset_doc = doc, type_id = tid, asset_copy = copy}
+make_asset_target :: proc(ref: core.PPtr, tid: typeid, doc := Doc_Kind.File, copy := u64(0)) -> Property_Target {
+	return Property_Target{kind = .Asset, asset = ref, asset_doc = doc, type_id = tid, asset_copy = copy}
 }
 
 // --- Selection state helpers ----------------------------------------------------
@@ -913,7 +916,7 @@ _fold_command :: proc(top: ^Group_Command, sub: Command) {
 // Whether two targets name the same field of the same object or document.
 @(private = "file")
 _same_target :: proc(a, b: Property_Target) -> bool {
-	return a.kind == b.kind && a.scene == b.scene && a.local_id == b.local_id && a.offset == b.offset && a.type_id == b.type_id && a.raw_ptr == b.raw_ptr && a.asset_guid == b.asset_guid && a.asset_doc == b.asset_doc && a.asset_copy == b.asset_copy && (a.kind != .Pooled || a.handle.type_key == b.handle.type_key)
+	return a.kind == b.kind && a.scene == b.scene && a.local_id == b.local_id && a.offset == b.offset && a.type_id == b.type_id && a.raw_ptr == b.raw_ptr && a.asset == b.asset && a.asset_doc == b.asset_doc && a.asset_copy == b.asset_copy && (a.kind != .Pooled || a.handle.type_key == b.handle.type_key)
 }
 
 // --- History window details ------------------------------------------------------
@@ -959,7 +962,10 @@ _append_target :: proc(b: ^strings.Builder, t: Property_Target, depth: int) {
 	case .Raw:
 		if t.raw_ptr != nil do resolved = "raw"
 	case .Asset:
-		if path, ok := asset_path(t.asset_guid); ok do resolved = path
+		if path, ok := asset_path(t.asset.guid); ok {
+			resolved = path
+			if t.asset.local_id != 0 do resolved = fmt.tprintf("%s : sub %d", path, i64(t.asset.local_id))
+		}
 	case .Pooled:
 		// The resolver re-finds the object by scene and local id, so entries
 		// stay resolvable after undo/redo recreated it under a fresh handle.
@@ -1055,7 +1061,8 @@ purge_asset_copy :: proc(s: ^Undo_Stack, copy: u64) {
 	}
 }
 
-// Drop entries that edit this asset's document. Call when the asset left the
+// Drop entries that edit this asset's document, or the document of a
+// sub-asset its file holds. Call when the asset left the
 // project: undoing one would bring back a document for a missing file. A
 // group goes whole if any sub-command edits the asset, like purge_scene.
 purge_asset :: proc(s: ^Undo_Stack, guid: core.Asset_GUID) {

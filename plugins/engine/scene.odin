@@ -37,6 +37,9 @@ Scene :: struct {
 	breadcrumb_synth_seq: u32,
 	nested_scenes:        [dynamic]NestedScene,
 	unknown_components:   [dynamic]Unknown_Component `json:"-"`,
+	// The sub-assets the scene's file holds (scene_sub_assets.odin): what a
+	// save writes under `assets`. On the default allocator.
+	assets:               [dynamic]Scene_Sub_Asset `json:"-"`,
 }
 
 @(private = "file")
@@ -53,6 +56,7 @@ scene_new :: proc() -> ^Scene {
 
 scene_destroy :: proc(s: ^Scene) {
 	if s == nil do return
+	_scene_sub_assets_destroy(s)
 	if s.root.handle != {} {
 		transform_destroy(Transform_Handle(s.root.handle))
 	}
@@ -158,6 +162,7 @@ scene_new_lid :: proc(s: ^Scene) -> Local_ID {
 		if _, taken := bimap_get(&s.local_ids, id); taken do continue
 		if id in s.breadcrumb_data do continue
 		if _, is_ns := scene_nested_scene_by_local_id(s, id); is_ns do continue
+		if scene_sub_asset_has_local(s, id) do continue
 		return id
 	}
 }

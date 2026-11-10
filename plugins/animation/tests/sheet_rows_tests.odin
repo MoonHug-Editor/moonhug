@@ -391,7 +391,7 @@ test_retarget_object_row_is_one_undo_step :: proc(t: ^testing.T) {
 	if !testing.expect_value(t, len((cast(^anim.AnimationClip)doc.data.data).channels), 4) do return
 
 	root := engine.transform_new("Root")
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 0, armed = false)
 
 	before := s.top
 	// Spaces around the typed path are trimmed.
@@ -466,7 +466,7 @@ test_retarget_refuses_a_lane_with_two_rows :: proc(t: ^testing.T) {
 
 	doc := inspector.asset_doc_get(full)
 	if !testing.expect(t, doc != nil && doc.data.id == typeid_of(anim.AnimationClip), "the full clip loads as a document") do return
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 0, armed = false)
 	before := s.top
 	testing.expect(t, !animation_editor.animation_window_retarget("A", "B"), "two rows on every lane of B: refused")
 	testing.expect_value(t, len((cast(^anim.AnimationClip)doc.data.data).channels), 2)
@@ -475,7 +475,7 @@ test_retarget_refuses_a_lane_with_two_rows :: proc(t: ^testing.T) {
 
 	doc = inspector.asset_doc_get(masked)
 	if !testing.expect(t, doc != nil && doc.data.id == typeid_of(anim.AnimationClip), "the masked clip loads as a document") do return
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 0, armed = false)
 	testing.expect(t, animation_editor.animation_window_retarget("A", "B"), "x on A and z on B: applied")
 	testing.expect_value(t, len((cast(^anim.AnimationClip)doc.data.data).channels), 2)
 	testing.expect_value(t, targets(doc), [2]string{"B", "B"})
@@ -514,7 +514,7 @@ test_retarget_keeps_collapsed_and_expanded_rows :: proc(t: ^testing.T) {
 	if !testing.expect(t, doc != nil, "the clip loads as a document") do return
 	clip := cast(^anim.AnimationClip)doc.data.data
 	root := engine.transform_new("Root")
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 0, armed = false)
 
 	arm_pos := animation_editor.sheet_channel_key(&clip.channels[0], context.temp_allocator)
 	leg := animation_editor.sheet_channel_key(&clip.channels[3], context.temp_allocator)

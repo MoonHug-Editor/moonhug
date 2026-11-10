@@ -129,10 +129,20 @@ _is_child_name :: proc(name: string) -> bool {
 }
 
 // The open window `query` names: its title or id, case ignored, else the
-// one window whose title or id contains it.
+// one window whose title or id contains it. "popup" names the popup open on
+// top (a picker, a context menu).
 @(private)
 _find_window :: proc(query: string) -> (^im.Window, Mcp_Error) {
 	if query == "" do return nil, {"bad_request", "need window (a title or id from window_list)"}
+	// A popup has no title to name it by: "popup" is the one open on top.
+	if strings.equal_fold(query, "popup") {
+		ctx := im.GetCurrentContext()
+		if ctx != nil && ctx.OpenPopupStack.Size > 0 {
+			top := ([^]im.PopupData)(ctx.OpenPopupStack.Data)[ctx.OpenPopupStack.Size - 1]
+			if top.Window_ != nil do return top.Window_, {}
+		}
+		return nil, {"not_found", "no popup is open"}
+	}
 	q := strings.to_lower(query, context.temp_allocator)
 	exact := make([dynamic]^im.Window, context.temp_allocator)
 	partial := make([dynamic]^im.Window, context.temp_allocator)

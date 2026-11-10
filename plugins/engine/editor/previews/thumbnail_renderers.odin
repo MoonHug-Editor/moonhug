@@ -27,6 +27,20 @@ register_thumbnail_renderers :: proc() {
 	// slices preview as crops of the resident texture, no render.
 	thumbnails.register_sub(".glb", _thumb_render_model_sub)
 	thumbnails.register_sub(".gltf", _thumb_render_model_sub)
+	// A scene file's sub-assets are assets (engine/scene_sub_assets.odin).
+	thumbnails.register_sub(".scene", _thumb_render_scene_sub_asset)
+}
+
+// A sub-asset of a scene file renders as a file of its type does: the
+// renderers take its key where they take a file's guid.
+@(private = "file")
+_thumb_render_scene_sub_asset :: proc(path: string, guid: engine.Asset_GUID, sub: engine.Local_ID, target: ^gfx.Render_Target) -> bool {
+	key := engine.asset_key(engine.PPtr{guid = guid, local_id = sub})
+	switch engine.asset_type(key) {
+	case "mat":   return _thumb_render_material(path, key, 0, target)
+	case "noise": return _thumb_render_image(path, key, 0, target)
+	}
+	return false
 }
 
 @(private = "file")

@@ -30,7 +30,7 @@ SkinnedMeshRenderer :: struct {
     using base: CompData `inspect:"-"`,
 
     // One material per submesh, like MeshRenderer.
-    materials: [dynamic]Asset_GUID `ext:"mat" expand`,
+    materials: [dynamic]PPtr `ext:"mat" expand`,
 
     // Where joint names are resolved from. Unset searches the parent's subtree,
     // which is where an extracted glTF puts the armature next to the mesh.
@@ -279,7 +279,7 @@ collect_skinned_meshes :: proc(view: Render_View, out: ^[dynamic]Render_Command)
             variant = Draw_Mesh{
                 mesh      = mf.mesh.guid,
                 part      = part,
-                materials = smr.materials[:],
+                materials = asset_keys(smr.materials[:]),
                 model     = linalg.MATRIX4F32_IDENTITY,
                 skinned   = &smr.gpu.mesh,
                 layers    = t.render_layer,

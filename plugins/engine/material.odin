@@ -10,8 +10,6 @@ package engine
 import "base:runtime"
 import gfx "moonhug:libs/gfx"
 import "core:encoding/json"
-import "core:encoding/uuid"
-import "core:os"
 import "core:strings"
 
 // Built-in shaders — a fixed enum keeps the common case dropdown-simple.
@@ -52,14 +50,14 @@ Material_Property :: struct {
 // by name; an empty guid binds white.
 Material_Texture :: struct {
 	name:    string,
-	texture: Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
+	texture: PPtr `ext:"png,jpg,jpeg,bmp"`,
 }
 
 @(typ_guid={guid = "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4", menu_assets_create = {menu_name = "Material", file_name = "New Material.mat", order = -6}})
 Material :: struct {
 	shader:        Material_Shader,
-	custom_shader: Asset_GUID `ext:"glsl,shadergraph"`, // user .glsl or .shadergraph asset; overrides `shader` when set
-	texture:       Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
+	custom_shader: PPtr `ext:"glsl,shadergraph"`, // user .glsl or .shadergraph asset; overrides `shader` when set
+	texture:       PPtr `ext:"png,jpg,jpeg,bmp,noise"`, // an image, or a noise map
 	color:         [4]f32 `decor:color()`,
 	// Alpha clipping: a pixel whose alpha (the texture's times the color's,
 	// or what a surface shader sets) is below alpha_cutoff is not drawn and
@@ -86,12 +84,12 @@ Material_Lit :: struct {
 	metallic:               f32 `decor:range(0, 1)`,
 	smoothness:             f32 `decor:range(0, 1)`,
 	// glTF packing: green is roughness, blue is metallic.
-	metallic_roughness_map: Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
-	normal_map:             Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
+	metallic_roughness_map: PPtr `ext:"png,jpg,jpeg,bmp"`,
+	normal_map:             PPtr `ext:"png,jpg,jpeg,bmp"`,
 	normal_scale:           f32 `decor:min(0)`,
-	occlusion_map:          Asset_GUID `ext:"png,jpg,jpeg,bmp"`, // red channel
+	occlusion_map:          PPtr `ext:"png,jpg,jpeg,bmp"`, // red channel
 	occlusion_strength:     f32 `decor:range(0, 1)`,
-	emission_map:           Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
+	emission_map:           PPtr `ext:"png,jpg,jpeg,bmp"`,
 	emission_color:         [4]f32 `decor:color()`, // brighter than 1 for HDR emission
 	// Where the maps are read: uv times `uv_scale` plus `uv_offset` (glTF's
 	// KHR_texture_transform, one transform for every map of the material).
@@ -203,7 +201,7 @@ _resolve_material :: proc(guid: Asset_GUID, fallback := Material_Shader.Unlit) -
 	if mat.custom_shader != {} {
 		// Unresolvable custom shader (missing toolchain, compile error) keeps
 		// the built-in fallback instead of dropping the draw.
-		if sr, sr_ok := shader_load(mat.custom_shader); sr_ok {
+		if sr, sr_ok := shader_load(asset_key(mat.custom_shader)); sr_ok {
 			shader = sr.name
 			material_data = _material_pack_properties(mat, sr)
 			extra_textures = _material_resolve_textures(mat, sr)
@@ -214,7 +212,7 @@ _resolve_material :: proc(guid: Asset_GUID, fallback := Material_Shader.Unlit) -
 	}
 	color = mat.color
 	if mat.texture != {} {
-		if t, t_ok := texture_load(mat.texture); t_ok {
+		if t, t_ok := texture_load(asset_key(mat.texture)); t_ok {
 			tex = t.gfx
 		}
 	}
@@ -227,7 +225,7 @@ _resolve_material :: proc(guid: Asset_GUID, fallback := Material_Shader.Unlit) -
 // is no normal. The emission color goes in as linear.
 _material_pack_lit :: proc(lit: ^Material_Lit, refraction: f32 = 0) -> (data: []u8, maps: []^gfx.Texture) {
 	maps = make([]^gfx.Texture, 4, context.temp_allocator)
-	guids := [4]Asset_GUID{lit.metallic_roughness_map, lit.normal_map, lit.occlusion_map, lit.emission_map}
+	guids := [4]Asset_GUID{asset_key(lit.metallic_roughness_map), asset_key(lit.normal_map), asset_key(lit.occlusion_map), asset_key(lit.emission_map)}
 	for g, i in guids {
 		if g == {} do continue
 		if t, ok := texture_load(g); ok do maps[i] = t.gfx
@@ -260,7 +258,7 @@ _material_resolve_textures :: proc(mat: ^Material, sr: ^Shader_Runtime) -> []^gf
 		if st.binding == 0 do continue
 		for &mt in mat.textures {
 			if mt.name != st.name || mt.texture == {} do continue
-			if t, t_ok := texture_load(mt.texture); t_ok {
+			if t, t_ok := texture_load(asset_key(mt.texture)); t_ok {
 				extra[st.binding - 1] = t.gfx
 			}
 			break
@@ -323,7 +321,7 @@ material_sync_properties :: proc(mat: ^Material) -> bool {
 		}
 		return changed
 	}
-	sr, ok := shader_load(mat.custom_shader)
+	sr, ok := shader_load(asset_key(mat.custom_shader))
 	if !ok do return false
 
 	for i := 0; i < len(mat.properties); {
@@ -415,11 +413,15 @@ material_load :: proc(guid: Asset_GUID) -> (^Material, bool) {
 	if !_material_cache_ready do return nil, false
 	context.allocator = runtime.default_allocator() // the cache outlives every caller
 
-	path, path_ok := asset_db_get_path(uuid.Identifier(guid))
-	if !path_ok do return nil, false
-	data, read_err := os.read_entire_file(path, context.temp_allocator)
-	if read_err != nil do return nil, false
+	// A material file, or a material that is a sub-asset of a scene file: `guid` is
+	// then the key of that record (asset_key, scene_sub_assets.odin).
+	data, _, src_ok := asset_source(guid, context.temp_allocator)
+	if !src_ok do return nil, false
 
+	// Such a material's own references (its texture) may name records
+	// of the same file.
+	asset_parse_begin(guid)
+	defer asset_parse_end()
 	mat, parse_ok := _material_parse(data)
 	if !parse_ok do return nil, false
 	material_cache[guid] = mat

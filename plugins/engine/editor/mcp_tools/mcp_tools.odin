@@ -490,9 +490,12 @@ mcp_tool_set_transform :: proc(id: i64, params: json.Object) -> (string, Mcp_Err
 		return mcp.tool_fail("bad_request", "field must be position, rotation or scale")
 	}
 	v := current
-	if f, ok := mcp.json_f32(params, "x"); ok do v.x = f
-	if f, ok := mcp.json_f32(params, "y"); ok do v.y = f
-	if f, ok := mcp.json_f32(params, "z"); ok do v.z = f
+	given := false
+	if f, ok := mcp.json_f32(params, "x"); ok do v.x, given = f, true
+	if f, ok := mcp.json_f32(params, "y"); ok do v.y, given = f, true
+	if f, ok := mcp.json_f32(params, "z"); ok do v.z, given = f, true
+	// A call that names no component would answer ok and change nothing.
+	if !given do return mcp.tool_fail("bad_request", "need x, y or z: the components of %s to set", field)
 
 	// Through the property path: one undo step, and on prefab-instance content
 	// the override the inspector's transform rows would record. The euler

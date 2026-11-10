@@ -74,8 +74,8 @@ ui_menu_text :: proc() {
 	_add_comp(tH, .Text, proc(ptr: rawptr) {
 		tx := cast(^text.Text)ptr
 		tx.text = strings.clone("New Text") // the component owns its string (type_cleanup_Text)
-		tx.font = text.default_font_guid()
-		tx.material = text.default_material_guid()
+		tx.font = engine.PPtr{guid = text.default_font_guid()}
+		tx.material = engine.PPtr{guid = text.default_material_guid()}
 	})
 	undo.group_commit(&g)
 	engine.inspector_request_select(tH)

@@ -42,6 +42,11 @@ MenuEntry :: struct {
 	id:          string,
 	// One sentence on what the item does, "" for none. Items and toggles only.
 	help:        string,
+	// Optional predicate proc name, same form as enabled: the item is drawn
+	// only while it returns true. Items only.
+	visible:     string,
+	// Optional asset extensions the item is for ("scene", "glb,gltf"). Items only.
+	ext:         string,
 }
 
 // The stable command id of an item or toggle.
@@ -122,17 +127,17 @@ provide :: proc(w: ^db.World) -> bool {
 					dpath, dorder, _, denabled, _ := _extract_menu_item_comp(args)
 					if dpath != "" {
 						origin := gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, ident_name)
-						append(&entries, MenuEntry{.Dynamic, dpath, ident_name, "", dorder, denabled, "", decl.pkg.name, decl.pkg_path, origin, "", ""})
+						append(&entries, MenuEntry{.Dynamic, dpath, ident_name, "", dorder, denabled, "", decl.pkg.name, decl.pkg_path, origin, "", "", "", ""})
 					}
 					continue
 				}
 
 				if path != "" && separator_path == "" {
 					origin := gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, ident_name)
-					append(&entries, MenuEntry{.Item, path, ident_name, shortcut, menu_order, enabled, checked, decl.pkg.name, decl.pkg_path, origin, args.fields["id"], args.fields["help"]})
+					append(&entries, MenuEntry{.Item, path, ident_name, shortcut, menu_order, enabled, checked, decl.pkg.name, decl.pkg_path, origin, args.fields["id"], args.fields["help"], args.fields["visible"], args.fields["ext"]})
 				} else if separator_path != "" {
 					// A separator has nothing to hover, so it carries no origin.
-					append(&entries, MenuEntry{.Separator, separator_path, "", "", separator_order, "", "", "", "", "", "", ""})
+					append(&entries, MenuEntry{.Separator, separator_path, "", "", separator_order, "", "", "", "", "", "", "", "", ""})
 				}
 			}
 		} else {
@@ -143,7 +148,7 @@ provide :: proc(w: ^db.World) -> bool {
 				path, menu_order, shortcut, _, _ := _extract_menu_item_comp(args)
 				if path != "" {
 					origin := gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, ident_name)
-					append(&entries, MenuEntry{.Toggle, path, ident_name, shortcut, menu_order, "", "", decl.pkg.name, decl.pkg_path, origin, args.fields["id"], args.fields["help"]})
+					append(&entries, MenuEntry{.Toggle, path, ident_name, shortcut, menu_order, "", "", decl.pkg.name, decl.pkg_path, origin, args.fields["id"], args.fields["help"], "", ""})
 				}
 			}
 		}
@@ -301,6 +306,8 @@ generate :: proc(w: ^db.World) -> bool {
 			// Named, so the optional arguments in between need no filler.
 			fmt.sbprintf(&b, ", origin = %q, id = %q", e.origin, _command_id(e))
 			if e.help != "" do fmt.sbprintf(&b, ", help = %q", e.help)
+			if e.visible != "" do fmt.sbprintf(&b, ", visible = %s", _qualified_ident(_PKG_NAME, e.source_pkg, e.visible))
+			if e.ext != "" do fmt.sbprintf(&b, ", ext = %q", e.ext)
 			strings.write_string(&b, ")\n")
 		case .Toggle:
 			strings.write_string(&b, "\tmenu.add_menu_toggle(\"")

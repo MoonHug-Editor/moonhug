@@ -169,7 +169,10 @@ file_separator_menu2 :: proc() {}
 @(menu_item={path="File/Quit", order=10, shortcut="Alt+F4", help="Quits the editor, asking about unsaved edits first"})
 file_quit_menu :: proc() { quit_requested = true }
 
-@(menu_item={path="Assets/Refresh AssetDB", order=0, shortcut="", help="Rescans the project's files and imports what changed"})
+// In the database band (menu.ASSETS_SECTION_DATABASE, ORDER_DEFAULT +
+// 1_000_000): the main menu only, not the Project window's context menu.
+@(menu_separator={path="Assets", order=1074741824})
+@(menu_item={path="Assets/Refresh AssetDB", order=1074741825, shortcut="", help="Rescans the project's files and imports what changed"})
 refresh_asset_db_menu :: proc() {
     asset_pipeline.asset_db_refresh()
 }

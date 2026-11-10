@@ -30,7 +30,7 @@ _open_from_project :: proc(path: string) -> bool {
 @(property_drawer={type=engine.Render_Pipeline, order="middle"})
 property_drawer_Render_Pipeline_open :: proc(ctx: ^inspector.Ctx) {
 	if doc := inspector.asset_doc_of(ctx.ptr); doc != nil {
-		if im.Button("Open Render Pipeline") do render_pipeline_open(doc.path, doc.guid)
+		if im.Button("Open Render Pipeline") do render_pipeline_open(doc.path, doc.ref.guid)
 		im.Separator()
 	}
 	inspector.draw(ctx)

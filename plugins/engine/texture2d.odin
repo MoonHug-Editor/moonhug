@@ -72,6 +72,9 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
     }
     // Headless contexts (tests, scene tooling) have no GPU device.
     if gfx.device() == nil do return nil, false
+    // A noise map is a texture made from its numbers (noise_map.odin): a
+    // .noise file, or a sub-asset of that type in a scene file.
+    if asset_type(guid) == "noise" do return _texture_load_noise(guid)
 
     // The artifact, never the source: the artifact is what an export ships
     // (catalog.export_from copies no source for an imported asset).
@@ -142,6 +145,26 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
         gfx    = g,
     }
     return &texture_cache[guid], true
+}
+
+@(private = "file")
+_texture_load_noise :: proc(key: Asset_GUID) -> (^Texture2D, bool) {
+    data, _, src_ok := asset_source(key, context.temp_allocator)
+    if !src_ok do return nil, false
+    n, parsed := noise_map_parse(data)
+    if !parsed do return nil, false
+    pixels := noise_map_pixels(n, context.temp_allocator)
+    g := gfx.texture_create(pixels, n.size, n.size, true)
+    if g == nil do return nil, false
+    g.wrap = .Repeat
+    texture_cache[key] = Texture2D{
+        guid   = key,
+        width  = n.size,
+        height = n.size,
+        pixels_per_unit = PIXELS_PER_UNIT,
+        gfx    = g,
+    }
+    return &texture_cache[key], true
 }
 
 texture_unload :: proc(guid: Asset_GUID) {

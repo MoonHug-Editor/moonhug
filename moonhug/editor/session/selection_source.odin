@@ -40,8 +40,10 @@ Selection_Source :: struct {
 	window_lock_missing: proc(window: string) -> bool,
 	// The Scene window frames the selection.
 	frame_selected:   proc(),
-	// The Project window's active path, "" when none.
-	project_active:   proc() -> string,
+	// The Project window's active path, "" when none, and the sub-asset of
+	// that file the selection names, 0 when it names the file itself.
+	project_active:     proc() -> string,
+	project_active_sub: proc() -> core.Local_ID,
 	// The folder the Project window shows, where Assets/Create writes.
 	project_dir:      proc() -> string,
 }
@@ -110,6 +112,11 @@ frame_selected :: proc() {
 project_active :: proc() -> string {
 	if _selection_source.project_active == nil do return ""
 	return _selection_source.project_active()
+}
+
+project_active_sub :: proc() -> core.Local_ID {
+	if _selection_source.project_active_sub == nil do return 0
+	return _selection_source.project_active_sub()
 }
 
 project_dir :: proc() -> string {

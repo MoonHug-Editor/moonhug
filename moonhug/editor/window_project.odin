@@ -73,10 +73,12 @@ Project_Window :: struct {
     search_buf: [256]byte,
     // Ping flash: fading row highlight WITHOUT changing selection.
     ping_path: string, // owned; "" = no active ping
+    ping_sub: core.Local_ID, // not 0: the ping is on this sub-asset of ping_path
     ping_deadline_ns: i64,
     scroll_to_ping: bool,
     rename_active: bool,
     rename_path: string,   // owned clone of the full path being renamed
+    rename_sub: core.Local_ID, // not 0: the sub-asset of rename_path being renamed
     rename_in_tree: bool,  // which pane opened the rename (for selection restore)
     rename_buf: [256]byte,
     rename_focus: bool,
@@ -326,7 +328,7 @@ _project_go_up :: proc() {
 // settings panel below and its wrap, frame rate, cycle offset and trim are
 // edited there — in the .meta, which survives re-extracting the model.
 _is_inspector_asset :: proc(path: string) -> bool {
-    return strings.has_suffix(path, ".asset") || strings.has_suffix(path, ".mat")
+    return strings.has_suffix(path, ".asset") || strings.has_suffix(path, ".mat") || strings.has_suffix(path, ".noise")
 }
 
 // Brings every Project Inspector instance in line with what it should show
@@ -354,27 +356,42 @@ project_inspectors_follow :: proc() {
         if data == nil do continue
         // Each instance remembers the target it was last given, so a target
         // that loads no file is not loaded again every frame.
-        target := session.window_asset(key).path
-        if data.given_set && data.given == target do continue
+        shown := session.window_asset(key)
+        target := shown.path
+        if data.given_set && data.given == target && data.given_sub == shown.sub_id do continue
+        same_file := data.given_set && data.given == target
         delete(data.given)
         data.given = strings.clone(target)
         data.given_set = true
-        if target == data.filePath && target != "" do continue
+        // Another sub-asset of the same file is another thing to show when
+        // the file's sub-assets are documents (a scene's).
+        sub_changed := same_file && data.given_sub != shown.sub_id && _project_sub_assets_are_documents(target)
+        data.given_sub = shown.sub_id
+        if target == data.filePath && target != "" && !sub_changed do continue
         inspector.inspectorData = data
         inspector.unload()
-        if target != "" do _project_inspect_one(target)
+        if target != "" do _project_inspect_one(target, shown.sub_id)
         inspector.inspector_data_reset()
     }
 }
 
-// Shows `full_path` in the Project Inspector instance inspector.inspectorData
-// points at.
+// Whether the sub-assets of the file at `path` are edited as documents
+// (subassets.Provider.text).
 @(private = "file")
-_project_inspect_one :: proc(full_path: string) {
+_project_sub_assets_are_documents :: proc(path: string) -> bool {
+    provider, ok := subassets.find(strings.to_lower(filepath.ext(path), context.temp_allocator))
+    return ok && provider.text != nil
+}
+
+// Shows `full_path` in the Project Inspector instance inspector.inspectorData
+// points at: the file, or its sub-asset `sub_id` when that is a document.
+@(private = "file")
+_project_inspect_one :: proc(full_path: string, sub_id: core.Local_ID = 0) {
     if project_path_is_package_root(full_path) {
         inspector.load_package(project_package_root_name(full_path), full_path, _project_package_asset_count(full_path))
         return
     }
+    if sub_id != 0 && inspector.load_from_file(full_path, sub_id) do return
     if _is_inspector_asset(full_path) {
         inspector.load_from_file(full_path)
         return
@@ -428,18 +445,65 @@ _project_begin_rename :: proc(full_path: string, in_tree: bool) {
     // package is a disk operation (imports depend on the folder name).
     if full_path == "" || project_path_is_protected(full_path) do return
     name := filepath.base(full_path)
+    _project_rename_open(full_path, 0, name, in_tree)
+}
+
+// Begin renaming the sub-asset `sub` of the file at `path`, where the file
+// lets the user name its sub-assets (subassets.Provider.rename).
+_project_begin_rename_sub :: proc(path: string, sub: core.Local_ID) {
+    ref, provider, ok := _project_sub_ref(path, sub)
+    if !ok || provider.rename == nil do return
+    s, found := subassets.get(ref)
+    if !found do return
+    _project_rename_open(path, sub, s.name, false)
+}
+
+@(private = "file")
+_project_rename_open :: proc(path: string, sub: core.Local_ID, name: string, in_tree: bool) {
     _pv.rename_active = true
     _pv.rename_in_tree = in_tree
     _pv.rename_focus = true
     _pv.rename_focus_tries = 0
-    if _pv.rename_path != "" do delete(_pv.rename_path)
-    _pv.rename_path = strings.clone(full_path)
+    // Before the path: `name` may be a part of the path replaced here.
     mem.zero(&_pv.rename_buf, len(_pv.rename_buf))
     copy_len := min(len(name), len(_pv.rename_buf) - 1)
     mem.copy(&_pv.rename_buf[0], raw_data(name), copy_len)
+    fresh := strings.clone(path)
+    if _pv.rename_path != "" do delete(_pv.rename_path)
+    _pv.rename_path = fresh
+    _pv.rename_sub = sub
+}
+
+// Unfolds the file's sub-asset rows, in the Project window clicked last.
+_project_unfold_sub_assets :: proc(path: string) {
+    if path in _pv.expanded {
+        _pv.expanded[path] = true
+    } else {
+        _pv.expanded[strings.clone(path)] = true
+    }
+}
+
+// The reference to the sub-asset `sub` of the file at `path`, and the file's
+// provider.
+_project_sub_ref :: proc(path: string, sub: core.Local_ID) -> (ref: core.PPtr, provider: subassets.Provider, ok: bool) {
+    guid := assets.asset_db_get_guid(path) or_return
+    provider = subassets.find(strings.to_lower(filepath.ext(path), context.temp_allocator)) or_return
+    return core.PPtr{guid = core.Asset_GUID(guid), local_id = sub}, provider, true
+}
+
+// The sub-asset the selection's last entry names: (its file's path, its id).
+_project_selected_sub :: proc() -> (path: string, sub: core.Local_ID, ok: bool) {
+    entries := sel_proj_entries()
+    if len(entries) == 0 do return
+    last := entries[len(entries) - 1]
+    return last.path, last.sub_id, last.sub_id != 0
 }
 
 _project_begin_rename_selected :: proc() {
+    if path, sub, is_sub := _project_selected_sub(); is_sub {
+        _project_begin_rename_sub(path, sub)
+        return
+    }
     sel := projectWindowData.selectedFile
     if sel == "" do return
     for r in _pv.list_rows {
@@ -456,6 +520,11 @@ _project_apply_rename :: proc() {
     _pv.rename_just_finished = true
 
     new_name := string(cstring(raw_data(_pv.rename_buf[:])))
+    if _pv.rename_sub != 0 {
+        ref, provider, ok := _project_sub_ref(_pv.rename_path, _pv.rename_sub)
+        if ok && provider.rename != nil && len(new_name) > 0 do provider.rename(ref, new_name)
+        return
+    }
     old_path := _pv.rename_path
     old_name := filepath.base(old_path)
     if len(new_name) == 0 || new_name == old_name do return
@@ -493,7 +562,7 @@ _project_apply_rename :: proc() {
 // Draws the rename InputText in place of the row/node whose full path is being
 // renamed. Returns true if it did (caller skips the normal row).
 _project_draw_rename_row :: proc(full_path: string) -> bool {
-    if !_pv.rename_active || _pv.rename_path != full_path do return false
+    if !_pv.rename_active || _pv.rename_sub != 0 || _pv.rename_path != full_path do return false
     _project_rename_input(im.GetContentRegionAvail().x)
     return true
 }
@@ -824,10 +893,17 @@ _project_draw_grid_sub_cell :: proc(parent_path: string, guid: core.Asset_GUID, 
 
     is_selected := _pv.active_pane == .List && sel_proj_is_sub(parent_path, s.id)
     rect_min := im.GetCursorScreenPos()
-    if im.Selectable("##subcell", is_selected, {.AllowDoubleClick}, im.Vec2{cell, cell + label_h}) {
-        _project_sub_asset_clicked(parent_path, guid, s, provider)
+    renaming := _project_renaming_sub(parent_path, s.id)
+    if renaming {
+        im.Dummy(im.Vec2{cell, cell})
+    } else {
+        if im.Selectable("##subcell", is_selected, {.AllowDoubleClick}, im.Vec2{cell, cell + label_h}) {
+            _project_sub_asset_clicked(parent_path, guid, s, provider)
+        }
+        _project_sub_asset_right_click(parent_path, s)
+        _project_sub_asset_drag(guid, s, fmt.ctprintf("%s%s", icons.ICON_MD_IMAGE, s.name))
+        _project_item_ping_flash(parent_path, s.id)
     }
-    _project_sub_asset_drag(guid, s, fmt.ctprintf("%s%s", icons.ICON_MD_IMAGE, s.name))
 
     dl := im.GetWindowDrawList()
     if tid, uv0, uv1, tok := thumbnails.get_sub(parent_path, s); tok {
@@ -854,7 +930,12 @@ _project_draw_grid_sub_cell :: proc(parent_path: string, guid: core.Asset_GUID, 
     }
 
     // Name centered under the art, clipped to the cell — the parent cell's
-    // label treatment.
+    // label treatment. In-place rename: the input where the label goes.
+    if renaming {
+        im.SetCursorScreenPos(im.Vec2{rect_min.x, rect_min.y + cell})
+        _project_rename_input(cell)
+        return
+    }
     cdisplay := strings.clone_to_cstring(s.name, context.temp_allocator)
     tsize := im.CalcTextSize(cdisplay)
     im.DrawList_PushClipRect(dl,
@@ -873,7 +954,7 @@ _project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool
     defer im.PopID()
 
     // In-place rename: the art block, then the input where the label goes.
-    if !_pv.rename_in_tree && _pv.rename_active && _pv.rename_path == full_path {
+    if !_pv.rename_in_tree && _pv.rename_active && _pv.rename_sub == 0 && _pv.rename_path == full_path {
         pos := im.GetCursorScreenPos()
         im.Dummy(im.Vec2{cell, cell})
         _project_grid_cell_art(full_path, is_dir, pos, cell, false)
@@ -1105,6 +1186,21 @@ _project_sub_asset_clicked :: proc(parent_path: string, guid: core.Asset_GUID, s
     }
 }
 
+// Right-click selects the sub-asset, on the LAST item, so the context menu
+// acts on the row under the cursor. One already selected keeps the set.
+_project_sub_asset_right_click :: proc(parent_path: string, s: subassets.Sub_Asset) {
+    if !im.IsItemHovered(im.HoveredFlags_AllowWhenBlockedByPopup) || !im.IsMouseClicked(.Right) do return
+    if sel_proj_is_sub(parent_path, s.id) do return
+    sel_proj_only(parent_path, s.id)
+    _project_set_active(parent_path)
+    _project_inspectors_refresh()
+}
+
+// Whether the sub-asset `sub` of the file at `path` is the one being renamed.
+_project_renaming_sub :: proc(path: string, sub: core.Local_ID) -> bool {
+    return _pv.rename_active && _pv.rename_sub != 0 && _pv.rename_sub == sub && _pv.rename_path == path
+}
+
 _project_sub_asset_drag :: proc(guid: core.Asset_GUID, s: subassets.Sub_Asset, drag_label: cstring) {
     if im.BeginDragDropSource({}) {
         payload := core.PPtr{guid = guid, local_id = s.id}
@@ -1125,12 +1221,18 @@ _project_draw_sub_asset_rows :: proc(parent_path: string, sub: []subassets.Sub_A
     im.PushIDStr(strings.clone_to_cstring(parent_path, context.temp_allocator), nil)
     for s, i in sub {
         im.PushIDInt(c.int(i))
+        if _project_renaming_sub(parent_path, s.id) {
+            _project_rename_input(im.GetContentRegionAvail().x)
+            im.PopID()
+            continue
+        }
         selected := sel_proj_is_sub(parent_path, s.id)
         label := fmt.ctprintf("%s%s", icons.ICON_MD_IMAGE, s.name)
-        if im.Selectable(label, selected, {.AllowDoubleClick}) {
-            _project_sub_asset_clicked(parent_path, guid, s, provider)
-        }
+        pressed := im.Selectable(label, selected, {.AllowDoubleClick})
+        if pressed do _project_sub_asset_clicked(parent_path, guid, s, provider)
+        _project_sub_asset_right_click(parent_path, s)
         _project_sub_asset_drag(guid, s, label)
+        _project_item_ping_flash(parent_path, s.id)
         if tid, uv0, uv1, tok := thumbnails.get_sub(parent_path, s); tok {
             _project_row_preview(tid, uv0, uv1, s.size.x, s.size.y)
         }
@@ -1173,9 +1275,10 @@ _project_item_clicked :: proc(full_path: string, is_dir: bool) {
     }
 }
 
-// Ping flash: fading highlight over the LAST item, selection untouched.
-_project_item_ping_flash :: proc(full_path: string) {
-    if _pv.ping_path == "" || full_path != _pv.ping_path do return
+// Ping flash: fading highlight over the LAST item, selection untouched. The
+// item is the file's row, or with `sub` the row of that sub-asset.
+_project_item_ping_flash :: proc(full_path: string, sub: core.Local_ID = 0) {
+    if _pv.ping_path == "" || full_path != _pv.ping_path || sub != _pv.ping_sub do return
     remaining := _pv.ping_deadline_ns - time.now()._nsec
     if remaining <= 0 {
         delete(_pv.ping_path)
@@ -1198,7 +1301,9 @@ _project_item_extras :: proc(full_path: string, is_dir: bool, drag_label: cstrin
     // selected asset) targets the item under the cursor, not whatever was
     // previously selected. Inside an existing multi-selection it only
     // re-points the active file, keeping the set.
-    if im.IsItemHovered() && im.IsMouseClicked(.Right) {
+    // Also with a context menu open: that click closes the menu and opens
+    // it again, and the new one has to be about this row.
+    if im.IsItemHovered(im.HoveredFlags_AllowWhenBlockedByPopup) && im.IsMouseClicked(.Right) {
         if sel_proj_is(full_path) {
             _project_set_active(full_path)
         } else {
@@ -1341,7 +1446,22 @@ _project_reveal_keep_selection :: proc(path: string) {
     _pv.tree_reveal = true
 }
 
-_project_reveal_path :: proc(path: string, select: bool) {
+// What a double click on a sub-asset's row does, for a request from another
+// window: the folder is shown, the file unfolds, the sub-asset is selected and
+// its provider's `open` runs. The file itself is not opened.
+_project_open_sub_asset :: proc(path: string, ref: core.PPtr) {
+    _project_reveal_keep_selection(path)
+    _project_unfold_sub_assets(path)
+    sel_proj_only(path, ref.local_id)
+    _project_set_active(path)
+    _project_inspectors_refresh()
+    if _, provider, ok := _project_sub_ref(path, ref.local_id); ok && provider.open != nil {
+        provider.open(path, ref.guid, ref.local_id)
+    }
+}
+
+// `sub`: the ping is on that sub-asset's row, and the file unfolds to show it.
+_project_reveal_path :: proc(path: string, select: bool, sub: core.Local_ID = 0) {
     mem.zero(&_pv.search_buf, len(_pv.search_buf))
     parent := filepath.dir(path) // slice into path — not owned
     if parent == "" {
@@ -1360,6 +1480,8 @@ _project_reveal_path :: proc(path: string, select: bool) {
     } else {
         if _pv.ping_path != "" do delete(_pv.ping_path)
         _pv.ping_path = strings.clone(path)
+        _pv.ping_sub = sub
+        if sub != 0 do _project_unfold_sub_assets(path)
         _pv.ping_deadline_ns = time.now()._nsec + _PROJECT_PING_NS
         _pv.scroll_to_ping = true
     }
@@ -1374,9 +1496,9 @@ _PROJECT_MIN_PANE :: f32(120)
 project_frame_begin :: proc() {
     // Drain cross-package asset requests (inspector value-button clicks):
     // ping = reveal + flash; open = reveal + select + activate (double click).
-    if ping_guid, ok := core.inspector_take_pending_ping_asset(); ok {
-        if path, pok := assets.asset_db_get_path(uuid.Identifier(ping_guid)); pok {
-            _project_reveal_path(path, select = false)
+    if ping, ok := core.inspector_take_pending_ping_asset(); ok {
+        if path, pok := assets.asset_db_get_path(uuid.Identifier(ping.guid)); pok {
+            _project_reveal_path(path, select = false, sub = ping.local_id)
         }
     }
     if sel_guid, ok := core.inspector_take_pending_select_asset(); ok {
@@ -1384,10 +1506,14 @@ project_frame_begin :: proc() {
             _project_reveal_path(path, select = true)
         }
     }
-    if open_guid, ok := core.inspector_take_pending_open_asset(); ok {
-        if path, pok := assets.asset_db_get_path(uuid.Identifier(open_guid)); pok {
-            _project_reveal_path(path, select = true)
-            _project_activate_file(path)
+    if open, ok := core.inspector_take_pending_open_asset(); ok {
+        if path, pok := assets.asset_db_get_path(uuid.Identifier(open.guid)); pok {
+            if open.local_id != 0 {
+                _project_open_sub_asset(path, open)
+            } else {
+                _project_reveal_path(path, select = true)
+                _project_activate_file(path)
+            }
         }
     }
 
@@ -1507,7 +1633,9 @@ project_window_draw :: proc(w: ^wnd.Window) {
         draw_file_list(_pv.current_path)
     }
     if im.BeginPopupContextWindow("ProjectFileListContext", im.PopupFlags_MouseButtonRight) {
-        menu.draw_menu_subtree("Assets")
+        // The Assets menu up to its database band: what acts on the selected
+        // assets and the open folder.
+        menu.draw_menu_sections({menu.section("Assets", max_order = menu.ASSETS_SECTION_DATABASE - 1)})
         im.EndPopup()
     }
     im.EndChild()

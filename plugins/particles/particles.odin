@@ -606,7 +606,7 @@ collect_particles :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render
 			t_lid = ps.trail_sprite.local_id
 		}
 		t_mat := ps.material
-		if !engine.asset_guid_is_empty(ps.trail_material) do t_mat = ps.trail_material
+		if ps.trail_material != {} do t_mat = ps.trail_material
 		tu0, tv0, tu1, tv1: f32 = 0, 0, 1, 1
 		if trails_on {
 			ttex, ttok := engine.texture_load(t_guid)
@@ -677,7 +677,7 @@ collect_particles :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render
 				owner   = engine.Transform_Handle(ps.owner),
 				variant = engine.Draw_Quad{
 					texture  = ps.sprite.guid,
-					material = ps.material,
+					material = engine.asset_key(ps.material),
 					corners  = {
 						wp - r * half_r - u * half_u,
 						wp + r * half_r - u * half_u,
@@ -736,7 +736,7 @@ collect_particles :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render
 						owner   = engine.Transform_Handle(ps.owner),
 						variant = engine.Draw_Quad{
 							texture  = t_guid,
-							material = t_mat,
+							material = engine.asset_key(t_mat),
 							corners  = {
 								a - sides[j - 1] * half_a,
 								a + sides[j - 1] * half_a,

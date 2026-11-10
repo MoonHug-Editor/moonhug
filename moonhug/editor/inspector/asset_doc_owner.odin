@@ -39,9 +39,15 @@ _doc_copy_discard :: proc(key: rawptr) {
 
 @(private = "file")
 _asset_documents_list :: proc(out: ^[dynamic]session.Document) {
+	// First, so a file opened since takes its sub-assets' unsaved edits
+	// before it is listed, saved or asked about.
+	_sub_asset_docs_settle()
 	for _, doc in _docs {
-		if doc.kind != .File do continue
-		append(out, session.Document{key = doc, guid = doc.guid, path = doc.path, dirty = doc.dirty, can_discard = true})
+		// A sub-asset's document is saved with the file that holds it while
+		// that file is open. It is dirty only when the file is not, and is
+		// then a document to save like a file's, under its file's path.
+		if doc.kind != .File || (doc.ref.local_id != 0 && !doc.dirty) do continue
+		append(out, session.Document{key = doc, guid = doc.ref.guid, path = doc.path, dirty = doc.dirty, can_discard = true})
 	}
 }
 

@@ -43,7 +43,7 @@ import_settings_doc_get :: proc(path: string) -> ^Asset_Doc {
 	context.allocator = doc_alloc()
 	raw, ok := assets.asset_db_get_guid(path)
 	if !ok do return nil
-	key := Doc_Key{core.Asset_GUID(raw), .Import_Settings}
+	key := Doc_Key{core.PPtr{guid = core.Asset_GUID(raw)}, .Import_Settings}
 	if doc, found := _docs[key]; found {
 		if doc.path != path {
 			delete(doc.path)
@@ -56,7 +56,7 @@ import_settings_doc_get :: proc(path: string) -> ^Asset_Doc {
 	if !sok do return nil
 	doc := new(Asset_Doc)
 	doc^ = Asset_Doc{
-		guid    = key.guid,
+		ref     = key.ref,
 		kind    = .Import_Settings,
 		path    = strings.clone(path),
 		data    = settings,
@@ -76,7 +76,7 @@ import_settings_doc_get :: proc(path: string) -> ^Asset_Doc {
 import_settings_apply :: proc(doc: ^Asset_Doc) -> bool {
 	context.allocator = doc_alloc()
 	if doc == nil || doc.data.data == nil do return false
-	path, known := assets.asset_db_get_path(uuid.Identifier(doc.guid))
+	path, known := assets.asset_db_get_path(uuid.Identifier(doc.ref.guid))
 	if !known do return false
 	if path != doc.path {
 		delete(doc.path)
@@ -105,7 +105,7 @@ import_settings_revert :: proc(doc: ^Asset_Doc) {
 	doc_data_retire(doc.data)
 	doc.data = settings
 	after := _settings_json(doc.data, context.allocator)
-	undo.push_value(undo.get(), undo.make_asset_target(doc.guid, doc.data.id, .Import_Settings), before, after, "Revert Import Settings")
+	undo.push_value(undo.get(), undo.make_asset_target(doc.ref, doc.data.id, .Import_Settings), before, after, "Revert Import Settings")
 	_import_settings_rebaseline(doc)
 }
 
@@ -115,7 +115,7 @@ import_settings_revert :: proc(doc: ^Asset_Doc) {
 asset_on_changed_import_settings :: proc(guid: core.Asset_GUID, path: string, change: assets.Asset_Change) {
 	if change != .Reimported do return
 	context.allocator = doc_alloc()
-	doc, found := _docs[Doc_Key{guid, .Import_Settings}]
+	doc, found := _docs[Doc_Key{core.PPtr{guid = guid}, .Import_Settings}]
 	if !found || doc.dirty do return
 	settings, ok := assets.asset_pipeline_get_settings(doc.path)
 	if !ok do return
@@ -140,7 +140,7 @@ import_settings_track :: proc(check: bool) {
 		defer delete(cur, runtime.default_allocator())
 		if string(cur) != string(doc.baseline) {
 			undo.push_value(
-				undo.get(), undo.make_asset_target(doc.guid, doc.data.id, .Import_Settings),
+				undo.get(), undo.make_asset_target(doc.ref, doc.data.id, .Import_Settings),
 				slice.clone(doc.baseline), slice.clone(cur), "Edit Import Settings",
 			)
 			_import_settings_rebaseline(doc)
@@ -154,7 +154,7 @@ import_settings_track :: proc(check: bool) {
 @(private)
 _import_settings_apply_json :: proc(guid: core.Asset_GUID, json_bytes: []byte) -> bool {
 	context.allocator = doc_alloc()
-	doc, found := _docs[Doc_Key{guid, .Import_Settings}]
+	doc, found := _docs[Doc_Key{core.PPtr{guid = guid}, .Import_Settings}]
 	if !found {
 		path, path_ok := assets.asset_db_get_path(uuid.Identifier(guid))
 		if !path_ok do return false

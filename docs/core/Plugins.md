@@ -310,6 +310,18 @@ my_install :: proc() {
 }
 ```
 
+A provider's other procs say what the file's sub-assets are:
+
+- `text`, `load`, `store`, `save`: the sub-assets are authored. The file holds their data, and the inspector edits each one as a document, the way it edits a file of that type. While the file is open in the editor (`editable`), every change is stored into it with `store`, and the file holds the unsaved edit. While it is not open, the document holds the edit like a file's document, and Save writes it into the file with `save`
+- `create`, `rename`, `remove`: the user manages the sub-assets as they manage files, whether or not the file that holds them is open. In an open file each call is an undo step the provider records. In a file that is not open each call goes into the file on disk, a file operation with no undo. Delete and Rename of the Assets menu act on a selected sub-asset (Delete asks first, as for a file). Duplicate copies it inside its file. Duplicate as Asset, shown only for such a sub-asset, copies it into a file of its own beside its file: a plain copy, which keeps its references to the file's other sub-assets. Assets > Create makes the new asset inside the file of a selected sub-asset. A reference field's picker has a "New" row for each asset type its `ext:` tag names that has `menu_assets_create`, and "Make Unique" for a copy of the asset the field holds, a file or a sub-asset
+- `editable`: whether the file is open in the editor now, which is what decides between the two. A scene is while it is loaded
+
+Any file's field can hold any sub-asset, as it can hold any file. A picker lists the sub-assets of the field's own file first.
+
+A provider's `list` runs for every file of its kind each time a picker opens, so it must not read a file. The asset database keeps a list per file for this (`assets.asset_db_sub_assets_set`, `assets.asset_db_sub_assets`): the file's indexer sets it from the bytes it already parses, the editor of an open file sets it again on every change, and `list` reads it.
+
+The scene file's provider (`plugins/engine/editor/drawers/scene_sub_assets.odin`) is the reference for all of them.
+
 ## Windows
 
 A plugin's windows and what it adds to other windows are attributes, all in [Windows](Windows.md): `@(editor_window)` for a window, `@(window_menu)` and `@(window_tab_bar)` for a window's menu and tab bar, `@(window_document)` for the asset a window edits, `@(scene_overlay)` for the Scene window's overlays and `@(toolbar)` for the editor toolbar.

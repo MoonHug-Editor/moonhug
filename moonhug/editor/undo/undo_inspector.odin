@@ -9,7 +9,7 @@ Inspector_Owner :: struct {
 	local_id:   core.Local_ID,
 	handle:     core.Handle,
 	base_ptr:   rawptr,
-	asset_guid: core.Asset_GUID, // .Asset only
+	asset:      core.PPtr,       // .Asset only: the file, or a sub-asset of it
 	asset_tid:  typeid,            // .Asset only: the document's typeid
 	asset_doc:  Doc_Kind,          // .Asset only
 	raw_tid:    typeid,            // .Raw only: enables whole-owner snapshots
@@ -83,12 +83,12 @@ push_raw_owner :: proc(base_ptr: rawptr, tid: typeid) {
 }
 
 // Asset document (project inspector): whole-document snapshots, applied back
-// through the asset hook by guid — the doc pointer may be swapped by undo.
-push_asset_owner :: proc(guid: core.Asset_GUID, base_ptr: rawptr, tid: typeid, doc := Doc_Kind.File) {
+// through the asset hook by reference — the doc pointer may be swapped by undo.
+push_asset_owner :: proc(ref: core.PPtr, base_ptr: rawptr, tid: typeid, doc := Doc_Kind.File) {
 	push_owner(Inspector_Owner{
 		kind = .Asset,
 		base_ptr = base_ptr,
-		asset_guid = guid,
+		asset = ref,
 		asset_tid = tid,
 		asset_doc = doc,
 	})
@@ -109,7 +109,7 @@ edit_inspector_field_begin :: proc(field_ptr: rawptr, field_tid: typeid, label :
 	case .Pooled:
 		target = edit_target_pooled(o.handle, field_ptr, field_tid)
 	case .Asset:
-		target = edit_target_asset(o.asset_guid, o.asset_tid, o.asset_doc)
+		target = edit_target_asset(o.asset, o.asset_tid, o.asset_doc)
 	case .Raw:
 		if o.base_ptr == nil do return {}
 		target = Edit_Target{

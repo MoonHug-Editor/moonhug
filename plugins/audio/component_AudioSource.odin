@@ -12,7 +12,7 @@ import engine "moonhug:packages/engine"
 @(typ_guid={guid="6f7fb020-d764-4ce1-bc09-d8088356bd22"})
 AudioSource :: struct {
 	using base:    engine.CompData `inspect:"-"`,
-	clip:          engine.Asset_GUID `ext:"mp3,wav,ogg"`,
+	clip:          engine.PPtr `ext:"mp3,wav,ogg"`,
 	volume:        f32,
 	pitch:         f32, // playback frequency ratio (1 = as authored)
 	mute:          bool,

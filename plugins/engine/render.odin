@@ -207,7 +207,7 @@ collect_mesh_renderers :: proc(view: Render_View, out: ^[dynamic]Render_Command)
 			variant = Draw_Mesh{
 				mesh      = mf.mesh.guid,
 				part      = part,
-				materials = mr.materials[:],
+				materials = asset_keys(mr.materials[:]),
 				model     = model,
 				layers    = t.render_layer,
 				double_sided = double_sided,

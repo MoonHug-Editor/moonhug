@@ -469,7 +469,7 @@ _mk_audio_track :: proc(owner: engine.Transform_Handle, target: engine.Ref_Local
 		cc.start = c.start
 		cc.duration = c.duration
 		_, cr := engine.transform_get_or_add_comp(cn, audio_seq.ClipAudio)
-		cr.clip = asset
+		cr.clip = engine.PPtr{guid = asset}
 	}
 	return node
 }

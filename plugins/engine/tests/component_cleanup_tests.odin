@@ -104,8 +104,8 @@ test_cleanup_is_idempotent :: proc(t: ^testing.T) {
 	_, ptr := engine.transform_add_comp(tH, .MeshRenderer)
 	mr := cast(^engine.MeshRenderer)ptr
 
-	mr.materials = make([dynamic]engine.Asset_GUID)
-	append(&mr.materials, engine.Asset_GUID{})
+	mr.materials = make([dynamic]engine.PPtr)
+	append(&mr.materials, engine.PPtr{})
 
 	// Twice in a row: the second call must not double-free. comp_zero at the end
 	// of cleanup is what makes this safe — it clears the pointers the first call

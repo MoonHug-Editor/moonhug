@@ -73,7 +73,7 @@ test_one_shot_lifecycle :: proc(t: ^testing.T) {
 	owner := engine.transform_new("Speaker")
 	_, ptr := engine.transform_add_comp(owner, .AudioSource)
 	src := cast(^audio.AudioSource)ptr
-	src.clip = guid
+	src.clip = engine.PPtr{guid = guid}
 	testing.expect(t, audio.audio_play(src, fade_in_ms = 20), "fade-in play starts")
 	audio.audio_stop(src, fade_out_ms = 30)
 	testing.expect(t, audio.audio_is_playing(src), "faded stop is still audible")

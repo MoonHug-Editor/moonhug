@@ -247,7 +247,7 @@ test_curve_tools_window_sets_mode_on_selection :: proc(t: ^testing.T) {
 	testing.expect(t, clip.channels[0].step && len(clip.channels[0].modes) == 0, "the row is stored as STEP")
 
 	root := engine.transform_new("Root")
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 0, armed = false)
 	animation_editor.animation_window_select_key(0, 1)
 	animation_editor.animation_window_select_key(0, 2, add = true)
 

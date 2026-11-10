@@ -59,6 +59,9 @@ _Snapshot :: struct {
 	scene_bytes: []byte, // the scene as a save writes it
 	scene_id:    u32,
 	scene_path:  string,
+	// The scene had edits not saved at Start. The restore brings those
+	// edits back, so it brings this back too: Save still writes them.
+	scene_dirty: bool,
 	loaded:      [dynamic]_Loaded_Scene,
 }
 
@@ -96,6 +99,7 @@ _capture :: proc() -> (snapshot: []byte, scene: engine.Scene_Ref, ok: bool) {
 		copy(snap.scene_bytes, serialized)
 		snap.scene_id = active.session_id
 		snap.scene_path = strings.clone(active.path)
+		snap.scene_dirty = active.dirty
 		sm := engine.ctx_scene_manager()
 		for i in 0 ..< sm.count {
 			sc := sm.loaded[i]
@@ -133,6 +137,7 @@ _restore :: proc(snapshot: []byte) -> (scene: engine.Scene_Ref, ok: bool) {
 	if target == nil do return {}, false
 	restored := engine.scene_reload_in_place_bytes(target, snap.scene_bytes, target.asset_guid, snap.scene_path)
 	if restored == nil do return {}, false
+	restored.dirty = snap.scene_dirty
 	return engine.Scene_Ref{id = restored.session_id}, true
 }
 

@@ -106,6 +106,20 @@ _preview_texture :: proc(path: string) {
 	_preview_draw_region(gfx.texture_imgui_id(tex.gfx), uv0, uv1, w, h)
 }
 
+// The preview of a scene file's sub-asset. A texture source (a noise map) draws its
+// resident texture, sharp at pane size and made again after every edit. Any
+// other type draws its thumbnail, as its file would.
+_preview_scene_sub_asset :: proc(path: string, scene: engine.Asset_GUID, s: subassets.Sub_Asset) {
+	key := engine.asset_key(engine.PPtr{guid = scene, local_id = s.id})
+	if engine.asset_type(key) == "noise" {
+		if tex, ok := engine.texture_load(key); ok {
+			_preview_draw_region(gfx.texture_imgui_id(tex.gfx), {0, 0}, {1, 1}, f32(tex.width), f32(tex.height))
+		}
+		return
+	}
+	if tid, uv0, uv1, ok := thumbnails.get_sub(path, s); ok do _preview_draw_region(tid, uv0, uv1, 1, 1)
+}
+
 // --- When a live preview redraws -----------------------------------------------
 // The live previews (model, scene, clip) render into _mesh_pv_rt only when
 // their picture would change: another asset, part or clip, a new pane size,
@@ -290,6 +304,12 @@ _preview_scene :: proc(path: string) {
 	raw_guid, gok := engine.asset_db_get_guid(path)
 	if !gok do return
 	guid := engine.Asset_GUID(raw_guid)
+
+	// A selected sub-asset previews itself: an asset the scene file holds.
+	if s, sok := _preview_selected_sub(path); sok {
+		_preview_scene_sub_asset(path, guid, s)
+		return
+	}
 
 	avail := im.GetContentRegionAvail()
 	if avail.x < 32 || avail.y < 32 do return

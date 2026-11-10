@@ -123,6 +123,14 @@ project_write :: proc(r: ^Run, rel: string, text: string, loc := #caller_locatio
 	testing.expectf(r.t, err == nil, "cannot write %s: %v", rel, err, loc = loc)
 }
 
+// Copies a file of the repo (the working directory) into the project, making
+// its folders. Before editor_start, it is there when the editor first looks.
+project_copy :: proc(r: ^Run, repo_path: string, rel: string, loc := #caller_location) {
+	data, err := os.read_entire_file(repo_path, context.temp_allocator)
+	if !testing.expectf(r.t, err == nil, "cannot read %s: %v", repo_path, err, loc = loc) do return
+	project_write(r, rel, string(data), loc)
+}
+
 // A JSON file of the project (temp), nil with a failure when it does not
 // read or parse.
 project_json :: proc(r: ^Run, rel: string, loc := #caller_location) -> json.Value {
@@ -369,6 +377,48 @@ window_open :: proc(r: ^Run, id: string, another := false, loc := #caller_locati
 window_close :: proc(r: ^Run, key: string, loc := #caller_location) {
 	call(r, "window_close", fmt.tprintf(`{{"window":%q}}`, key), loc)
 	frames(r, 2, loc)
+}
+
+// --- Input -------------------------------------------------------------------
+
+// The rectangle of a piece of text or an inspector row drawn in `window`
+// (the item_rect tool), in points from the editor's top-left: where input
+// moves. False when nothing matches.
+item_rect :: proc(r: ^Run, window: string, label: string, loc := #caller_location) -> (rect: [4]f64, ok: bool) {
+	res, code, _ := call_raw(r, "item_rect", fmt.tprintf(`{{"window":%q,"label":%q}}`, window, label), loc)
+	if code != "" do return {}, false
+	m := at(res, "matches", 0)
+	if m == nil do return {}, false
+	return {as_f64(at(m, "x")), as_f64(at(m, "y")), as_f64(at(m, "width")), as_f64(at(m, "height"))}, true
+}
+
+// The rectangle of the window `id` as window_list reports it. False when it
+// is not listed (closed, or in a workspace frame).
+window_rect :: proc(r: ^Run, id: string, loc := #caller_location) -> (rect: [4]f64, ok: bool) {
+	windows, _ := at(call(r, "window_list", loc = loc), "windows").(json.Array)
+	for w in windows {
+		if as_string(at(w, "id")) != id do continue
+		return {as_f64(at(w, "x")), as_f64(at(w, "y")), as_f64(at(w, "width")), as_f64(at(w, "height"))}, true
+	}
+	return {}, false
+}
+
+// A left click at (x, y), as a person makes one: the mouse arrives, rests a
+// frame, presses and lets go.
+click :: proc(r: ^Run, x, y: f64, loc := #caller_location) {
+	call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":1}},{{"type":"down"}},{{"type":"up"}},{{"type":"wait","frames":3}}]}}`, x, y), loc)
+}
+
+// --- The log -----------------------------------------------------------------
+
+// The editor's console entries at the level Error (temp).
+log_errors :: proc(r: ^Run, loc := #caller_location) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	entries, _ := call(r, "read_log", `{"max":500}`, loc).(json.Array)
+	for e in entries {
+		if as_string(at(e, "level")) == "Error" do append(&out, as_string(at(e, "message")))
+	}
+	return out[:]
 }
 
 // --- Selection ---------------------------------------------------------------

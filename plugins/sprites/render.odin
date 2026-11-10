@@ -77,7 +77,7 @@ collect_sprites :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render_C
 			owner   = engine.Transform_Handle(sr.owner),
 			variant = engine.Draw_Quad{
 				texture  = sr.sprite.guid,
-				material = sr.material,
+				material = engine.asset_key(sr.material),
 				corners  = corners,
 				uvs      = uvs,
 				color    = sr.color,

@@ -163,7 +163,7 @@ test_deleting_an_asset_drops_its_import_settings_document :: proc(t: ^testing.T)
 
 	doc := inspector.import_settings_doc_get(_PNG)
 	if doc == nil do return
-	guid := doc.guid
+	guid := doc.ref.guid
 	_ts(doc).pixels_per_unit = 16
 	inspector.import_settings_track(true)
 	testing.expect_value(t, len(s.items), 1)
@@ -172,7 +172,7 @@ test_deleting_an_asset_drops_its_import_settings_document :: proc(t: ^testing.T)
 	os.remove(strings.concatenate({_PNG, ".meta"}, context.temp_allocator))
 	asset_pipeline.asset_db_refresh()
 	testing.expect_value(t, len(s.items), 0)
-	testing.expect(t, inspector.asset_doc_payload_ptr(guid, .Import_Settings) == nil, "the document is gone")
+	testing.expect(t, inspector.asset_doc_payload_ptr(engine.PPtr{guid = guid}, .Import_Settings) == nil, "the document is gone")
 }
 
 // A reimport can rewrite the .meta (the model importer adds new clips). A clean

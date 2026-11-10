@@ -151,8 +151,8 @@ _ui_text :: proc(parent: engine.Transform_Handle, label: string, size: [2]f32, f
     _, txp := engine.transform_add_comp(tH, .Text)
     tx := cast(^text.Text)txp
     tx.text = strings.clone(label) // the component owns its string (type_cleanup_Text)
-    tx.font = text.default_font_guid()
-    tx.material = text.default_material_guid()
+    tx.font = engine.PPtr{guid = text.default_font_guid()}
+    tx.material = engine.PPtr{guid = text.default_material_guid()}
     tx.font_size = font_size
     tx.color = _WHITE
     return tx

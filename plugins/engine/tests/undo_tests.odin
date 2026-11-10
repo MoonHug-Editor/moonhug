@@ -695,3 +695,56 @@ test_undo_marks_scene_dirty :: proc(t: ^testing.T) {
 	undo.end_group_command(s, "Group")
 	testing.expect(t, scene.dirty, "closing the group marks the scene dirty")
 }
+
+// A scene's sub-asset created, renamed and removed is one undo step each:
+// undo takes each back and redo makes it again, under the same local id and
+// at the same place in the scene's list.
+@(test)
+test_undo_scene_sub_asset_create_rename_remove :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+	scene := tc_mem.scene
+
+	first, _ := undo.sub_asset_create(scene, "mat", "First", `{"color":[1,0,0,1]}`)
+	second, made := undo.sub_asset_create(scene, "noise", "Second", `{"size":32}`)
+	if !testing.expect(t, made && len(scene.assets) == 2, "two sub-assets are in the scene") do return
+	testing.expect(t, scene.dirty, "the scene is edited")
+
+	// Rename.
+	testing.expect(t, undo.sub_asset_rename(scene, first.local_id, "Red"))
+	testing.expect_value(t, scene.assets[0].name, "Red")
+	testing.expect(t, !undo.sub_asset_rename(scene, first.local_id, "Red"), "the same name is no step")
+	undo.apply_undo(s)
+	testing.expect_value(t, scene.assets[0].name, "First")
+	undo.apply_redo(s)
+	testing.expect_value(t, scene.assets[0].name, "Red")
+
+	// Remove the first: undo puts it back first in the list, with its data.
+	testing.expect(t, undo.sub_asset_remove(scene, first.local_id))
+	testing.expect(t, len(scene.assets) == 1 && scene.assets[0].local_id == second.local_id, "the first is gone")
+	_, found := engine.scene_sub_asset_text(first)
+	testing.expect(t, !found, "and a loader no longer reads it")
+	undo.apply_undo(s)
+	if !testing.expect(t, len(scene.assets) == 2 && scene.assets[0].local_id == first.local_id, "undo puts it back in its place") do return
+	testing.expect_value(t, scene.assets[0].name, "Red")
+	text, read := engine.scene_sub_asset_text(first)
+	testing.expectf(t, read && strings.contains(text, `"color"`), "with its data, got %q", text)
+	undo.apply_redo(s)
+	testing.expect_value(t, len(scene.assets), 1)
+	undo.apply_undo(s)
+
+	// Undo of the rename and both creations empties the scene, redo fills it.
+	undo.apply_undo(s)
+	undo.apply_undo(s)
+	undo.apply_undo(s)
+	testing.expect_value(t, len(scene.assets), 0)
+	undo.apply_redo(s)
+	undo.apply_redo(s)
+	if !testing.expect(t, len(scene.assets) == 2, "redo makes both again") do return
+	testing.expect(t, scene.assets[0].local_id == first.local_id && scene.assets[1].local_id == second.local_id, "under their local ids, in order")
+	testing.expect_value(t, scene.assets[1].type, "noise")
+
+}

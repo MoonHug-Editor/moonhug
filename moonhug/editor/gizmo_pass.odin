@@ -150,6 +150,10 @@ _install_selection_source :: proc "contextless" () {
 		window_lock_missing = window_lock_missing,
 		frame_selected   = scene_frame_selected,
 		project_active   = proc() -> string { return projectWindowData.selectedFile },
+		project_active_sub = proc() -> core.Local_ID {
+			_, sub, is_sub := _project_selected_sub()
+			return sub if is_sub else 0
+		},
 		project_dir      = proc() -> string { return _pv.current_path },
 	})
 }

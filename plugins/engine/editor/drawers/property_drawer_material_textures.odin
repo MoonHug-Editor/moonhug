@@ -20,7 +20,7 @@ property_drawer_material_textures :: proc(ctx: ^inspector.Ctx) {
 
 	sr: ^engine.Shader_Runtime
 	if current_material != nil && current_material.custom_shader != {} {
-		sr, _ = engine.shader_load(current_material.custom_shader)
+		sr, _ = engine.shader_load(engine.asset_key(current_material.custom_shader))
 	}
 	if sr == nil || sr.num_samplers <= 1 do return
 

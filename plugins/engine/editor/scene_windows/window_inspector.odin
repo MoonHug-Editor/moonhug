@@ -86,6 +86,13 @@ scene_inspector_window_draw :: proc(w: ^wnd.Window) {
 		return
 	}
 
+	// The object's reference fields may pick the sub-assets of its scene.
+	// The defer is at this proc's level: one inside the `if` would run at
+	// the end of the `if`, before a component is drawn.
+	prev_scope := inspector.sub_asset_scope
+	defer inspector.sub_asset_scope = prev_scope
+	if t.scene != nil do inspector.sub_asset_scope = {set = true, owner = t.scene.asset_guid}
+
 	is_host := engine.scene_find_nested_scene_for_host(t.scene, tH) != nil
 	is_nested := t.nested_owned || is_host
 	if is_nested {

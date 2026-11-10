@@ -141,7 +141,7 @@ _asset_apply_calls: int
 _asset_apply_last_json: string
 
 @(private="file")
-_test_asset_apply :: proc(guid: engine.Asset_GUID, _: undo.Doc_Kind, json_bytes: []byte) -> bool {
+_test_asset_apply :: proc(ref: engine.PPtr, _: undo.Doc_Kind, json_bytes: []byte) -> bool {
 	_asset_apply_calls += 1
 	delete(_asset_apply_last_json)
 	_asset_apply_last_json = strings.clone(string(json_bytes))
@@ -166,7 +166,7 @@ test_undo_asset_target_routes_through_hook :: proc(t: ^testing.T) {
 
 	guid: engine.Asset_GUID
 	guid[0] = 42
-	target := undo.make_asset_target(guid, typeid_of(int))
+	target := undo.make_asset_target(engine.PPtr{guid = guid}, typeid_of(int))
 	old_json := make([]byte, 1); old_json[0] = '1'
 	new_json := make([]byte, 1); new_json[0] = '2'
 	undo.push_value(s, target, old_json, new_json)

@@ -314,8 +314,8 @@ _rp_drew :: proc(id: i32) {
 	for mg in insp.materials {
 		mat, ok := engine.material_load(mg)
 		if !ok do continue
-		add(&textures, mat.texture)
-		for t in mat.textures do add(&textures, t.texture)
+		add(&textures, engine.asset_key(mat.texture))
+		for t in mat.textures do add(&textures, engine.asset_key(t.texture))
 	}
 	_rp_asset_tree("Textures", textures[:])
 }

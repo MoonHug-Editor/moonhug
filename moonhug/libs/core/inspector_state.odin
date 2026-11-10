@@ -33,11 +33,11 @@ InspectorState :: struct {
     pending_ping_tH:       Transform_Handle,
     // Same channel shape for assets: the Project window navigates to and
     // selects the asset ("ping"). {} means "no pending request".
-    pending_ping_asset:    Asset_GUID,
+    pending_ping_asset:    PPtr,
     pending_select_asset:  Asset_GUID,
     // Open request: the Project window navigates AND activates the asset
     // (opens scenes, loads .asset into the inspector).
-    pending_open_asset:    Asset_GUID,
+    pending_open_asset:    PPtr,
 }
 
 @(private) _inspector: InspectorState
@@ -138,27 +138,30 @@ inspector_take_pending_select_asset :: proc() -> (Asset_GUID, bool) {
 }
 
 // Posts a cross-package "ping this asset" request; the Project window consumes
-// it and navigates to / selects the asset.
-inspector_request_ping_asset :: proc(guid: Asset_GUID) {
-    _inspector.pending_ping_asset = guid
+// it, navigates to the asset and flashes its row. With `sub`, the row is the
+// file's sub-asset under that id.
+inspector_request_ping_asset :: proc(guid: Asset_GUID, sub: Local_ID = 0) {
+    _inspector.pending_ping_asset = {guid = guid, local_id = sub}
 }
 
-inspector_take_pending_ping_asset :: proc() -> (Asset_GUID, bool) {
-    guid := _inspector.pending_ping_asset
-    if guid == (Asset_GUID{}) do return {}, false
+inspector_take_pending_ping_asset :: proc() -> (PPtr, bool) {
+    ref := _inspector.pending_ping_asset
+    if ref.guid == (Asset_GUID{}) do return {}, false
     _inspector.pending_ping_asset = {}
-    return guid, true
+    return ref, true
 }
 
 // Posts an "open this asset" request; the Project window navigates to it AND
 // activates it (double-click semantics: open scene / load into inspector).
-inspector_request_open_asset :: proc(guid: Asset_GUID) {
-    _inspector.pending_open_asset = guid
+// With `sub`, it does what a double click on that sub-asset's row does:
+// selects the sub-asset, and its file is not opened.
+inspector_request_open_asset :: proc(guid: Asset_GUID, sub: Local_ID = 0) {
+    _inspector.pending_open_asset = {guid = guid, local_id = sub}
 }
 
-inspector_take_pending_open_asset :: proc() -> (Asset_GUID, bool) {
-    guid := _inspector.pending_open_asset
-    if guid == (Asset_GUID{}) do return {}, false
+inspector_take_pending_open_asset :: proc() -> (PPtr, bool) {
+    ref := _inspector.pending_open_asset
+    if ref.guid == (Asset_GUID{}) do return {}, false
     _inspector.pending_open_asset = {}
-    return guid, true
+    return ref, true
 }

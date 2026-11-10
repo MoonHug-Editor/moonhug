@@ -1,0 +1,802 @@
+{
+  "root": 1,
+  "transforms": [
+    {
+      "local_id": 1,
+      "name": "SubAssetsDemo",
+      "is_active": true,
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 11,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 13,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 15,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 17,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 20,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 23,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 26,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 29,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": []
+    },
+    {
+      "local_id": 11,
+      "name": "Camera",
+      "is_active": true,
+      "position": [
+        0.0,
+        2.6,
+        9.0
+      ],
+      "rotation": [
+        -0.10452846,
+        0.0,
+        0.0,
+        0.99452192
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 12
+        }
+      ]
+    },
+    {
+      "local_id": 13,
+      "name": "Sun",
+      "is_active": true,
+      "position": [
+        2.0,
+        4.0,
+        5.0
+      ],
+      "rotation": [
+        -0.23911799,
+        -0.209272,
+        0.052422,
+        0.94676399
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 14
+        }
+      ]
+    },
+    {
+      "local_id": 15,
+      "name": "Environment",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 16
+        }
+      ]
+    },
+    {
+      "local_id": 17,
+      "name": "Floor",
+      "is_active": true,
+      "position": [
+        0,
+        -0.05,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        16,
+        0.1,
+        10
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 18
+        },
+        {
+          "local_id": 19
+        }
+      ]
+    },
+    {
+      "local_id": 20,
+      "name": "Marble",
+      "is_active": true,
+      "position": [
+        -4.5,
+        1.1,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        2.2,
+        2.2,
+        2.2
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 21
+        },
+        {
+          "local_id": 22
+        }
+      ]
+    },
+    {
+      "local_id": 23,
+      "name": "Clouds",
+      "is_active": true,
+      "position": [
+        -1.5,
+        1.1,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        2.2,
+        2.2,
+        2.2
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 24
+        },
+        {
+          "local_id": 25
+        }
+      ]
+    },
+    {
+      "local_id": 26,
+      "name": "Lava",
+      "is_active": true,
+      "position": [
+        1.5,
+        1.1,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        2.2,
+        2.2,
+        2.2
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 27
+        },
+        {
+          "local_id": 28
+        }
+      ]
+    },
+    {
+      "local_id": 29,
+      "name": "Scales",
+      "is_active": true,
+      "position": [
+        4.5,
+        1.1,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        2.2,
+        2.2,
+        2.2
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 30
+        },
+        {
+          "local_id": 31
+        }
+      ]
+    }
+  ],
+  "nested_scenes": [],
+  "breadcrumbs": [],
+  "components": [
+    {
+      "__type": "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d",
+      "base": {
+        "enabled": true,
+        "local_id": 12
+      },
+      "clear_color": [
+        0.08,
+        0.09,
+        0.12,
+        1.0
+      ],
+      "far_clip": 1000.0,
+      "fov": 50.0,
+      "near_clip": 0.30000001,
+      "order": 0,
+      "render_layer_mask": 4294967295,
+      "slot": ""
+    },
+    {
+      "__type": "9f36ee91-34b6-4636-a360-ee872af0436b",
+      "ambient": 0.25,
+      "base": {
+        "enabled": true,
+        "local_id": 14
+      },
+      "color": [
+        1.0,
+        0.97000003,
+        0.89999998,
+        1.0
+      ],
+      "inner_spot_angle": 21.79999924,
+      "intensity": 1.39999998,
+      "range": 10.0,
+      "shadows": 0,
+      "spot_angle": 30.0,
+      "type": 0
+    },
+    {
+      "__type": "9d79f55a-e5ac-4e37-a2bf-12c807ec781e",
+      "ambient_intensity": 1.0,
+      "base": {
+        "enabled": true,
+        "local_id": 16
+      },
+      "draw_sky": true,
+      "exposure": 1.0,
+      "fog": {
+        "color": [
+          0.69999999,
+          0.75,
+          0.80000001,
+          1.0
+        ],
+        "density": 0.025,
+        "end": 100.0,
+        "height": 0.0,
+        "height_falloff": 0.34999999,
+        "mode": 0,
+        "sky": 0.5,
+        "start": 10.0
+      },
+      "ground": [
+        0.34999999,
+        0.31999999,
+        0.30000001,
+        1.0
+      ],
+      "panorama": "00000000-0000-0000-0000-000000000000",
+      "panorama_rotation": 0.0,
+      "reflection_intensity": 1.0,
+      "sky": 0,
+      "sky_horizon": [
+        0.75,
+        0.81999999,
+        0.89999998,
+        1.0
+      ],
+      "sky_top": [
+        0.34999999,
+        0.55000001,
+        0.85000002,
+        1.0
+      ],
+      "sun_size": 1.0
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "mesh": {
+        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
+        "local_id": 0
+      },
+      "base": {
+        "enabled": true,
+        "local_id": 18
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "materials": [
+        {
+          "local_id": 9002,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "base": {
+        "enabled": true,
+        "local_id": 19
+      }
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "mesh": {
+        "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
+        "local_id": 0
+      },
+      "base": {
+        "enabled": true,
+        "local_id": 21
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "materials": [
+        {
+          "local_id": 9004,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "base": {
+        "enabled": true,
+        "local_id": 22
+      }
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "mesh": {
+        "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
+        "local_id": 0
+      },
+      "base": {
+        "enabled": true,
+        "local_id": 24
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "materials": [
+        {
+          "local_id": 9006,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "base": {
+        "enabled": true,
+        "local_id": 25
+      }
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "mesh": {
+        "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
+        "local_id": 0
+      },
+      "base": {
+        "enabled": true,
+        "local_id": 27
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "materials": [
+        {
+          "local_id": 9008,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "base": {
+        "enabled": true,
+        "local_id": 28
+      }
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "mesh": {
+        "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
+        "local_id": 0
+      },
+      "base": {
+        "enabled": true,
+        "local_id": 30
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "materials": [
+        {
+          "local_id": 9010,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "base": {
+        "enabled": true,
+        "local_id": 31
+      }
+    }
+  ],
+  "assets": [
+    {
+      "local_id": 9001,
+      "type": "noise",
+      "name": "Floor Noise",
+      "data": {
+        "__type_guid": "2eb41971-9bc0-4aac-83e0-b274fdff8f0f",
+        "kind": 2,
+        "size": 512,
+        "frequency": 14,
+        "octaves": 2,
+        "gain": 0.35,
+        "seed": 3,
+        "low": [
+          0.16,
+          0.17,
+          0.19,
+          1
+        ],
+        "high": [
+          0.55,
+          0.56,
+          0.58,
+          1
+        ]
+      }
+    },
+    {
+      "local_id": 9002,
+      "type": "mat",
+      "name": "Floor",
+      "data": {
+        "__type_guid": "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "texture": {
+          "local_id": 9001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      }
+    },
+    {
+      "local_id": 9003,
+      "type": "noise",
+      "name": "Marble Noise",
+      "data": {
+        "__type_guid": "2eb41971-9bc0-4aac-83e0-b274fdff8f0f",
+        "kind": 1,
+        "size": 512,
+        "frequency": 3,
+        "octaves": 5,
+        "seed": 11,
+        "low": [
+          0.93,
+          0.91,
+          0.87,
+          1
+        ],
+        "high": [
+          0.22,
+          0.24,
+          0.3,
+          1
+        ]
+      }
+    },
+    {
+      "local_id": 9004,
+      "type": "mat",
+      "name": "Marble",
+      "data": {
+        "__type_guid": "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "texture": {
+          "local_id": 9003,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      }
+    },
+    {
+      "local_id": 9005,
+      "type": "noise",
+      "name": "Clouds Noise",
+      "data": {
+        "__type_guid": "2eb41971-9bc0-4aac-83e0-b274fdff8f0f",
+        "kind": 0,
+        "size": 512,
+        "frequency": 3,
+        "octaves": 5,
+        "seed": 5,
+        "low": [
+          0.2,
+          0.45,
+          0.9,
+          1
+        ],
+        "high": [
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "local_id": 9006,
+      "type": "mat",
+      "name": "Clouds",
+      "data": {
+        "__type_guid": "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "texture": {
+          "local_id": 9005,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      }
+    },
+    {
+      "local_id": 9007,
+      "type": "noise",
+      "name": "Lava Noise",
+      "data": {
+        "__type_guid": "2eb41971-9bc0-4aac-83e0-b274fdff8f0f",
+        "kind": 1,
+        "size": 512,
+        "frequency": 4,
+        "octaves": 4,
+        "gain": 0.6,
+        "seed": 23,
+        "low": [
+          0.07,
+          0.02,
+          0.01,
+          1
+        ],
+        "high": [
+          1,
+          0.5,
+          0.08,
+          1
+        ]
+      }
+    },
+    {
+      "local_id": 9008,
+      "type": "mat",
+      "name": "Lava",
+      "data": {
+        "__type_guid": "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "texture": {
+          "local_id": 9007,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      }
+    },
+    {
+      "local_id": 9009,
+      "type": "noise",
+      "name": "Scales Noise",
+      "data": {
+        "__type_guid": "2eb41971-9bc0-4aac-83e0-b274fdff8f0f",
+        "kind": 2,
+        "size": 512,
+        "frequency": 12,
+        "octaves": 2,
+        "gain": 0.4,
+        "seed": 9,
+        "low": [
+          0.05,
+          0.25,
+          0.12,
+          1
+        ],
+        "high": [
+          0.6,
+          0.9,
+          0.45,
+          1
+        ]
+      }
+    },
+    {
+      "local_id": 9010,
+      "type": "mat",
+      "name": "Scales",
+      "data": {
+        "__type_guid": "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "texture": {
+          "local_id": 9009,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      }
+    }
+  ]
+}

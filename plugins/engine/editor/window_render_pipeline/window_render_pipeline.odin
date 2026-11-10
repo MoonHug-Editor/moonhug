@@ -815,7 +815,7 @@ _rp_record :: proc(undo_allocator: runtime.Allocator) {
 		}
 		recorded = strings.clone(string(now), runtime.default_allocator())
 		before := transmute([]byte)strings.clone(_rp.baseline)
-		undo.push_value(undo.get(), undo.make_asset_target(_rp.guid, tid, .File), before, now, _rp.label)
+		undo.push_value(undo.get(), undo.make_asset_target(engine.PPtr{guid = _rp.guid}, tid, .File), before, now, _rp.label)
 	}
 	delete(_rp.baseline, runtime.default_allocator())
 	_rp.baseline = recorded

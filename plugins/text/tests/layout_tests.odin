@@ -242,7 +242,7 @@ test_text_component_helpers :: proc(t: ^testing.T) {
 	b := _fake_backend()
 	tx: text.Text
 	text.type_reset_Text(&tx)
-	tx.font = _font()
+	tx.font = engine.PPtr{guid = _font()}
 	tx.text = "a\\nb"
 	tx.parse_escape_characters = true
 	testing.expect_value(t, text.text_display_string(&tx), "a\nb")
@@ -287,7 +287,7 @@ test_collector_emits_glyph_quads_through_any_backend :: proc(t: ^testing.T) {
 	tx := cast(^text.Text)txp
 	tx.enabled = true
 	tx.text = strings.clone("hi") // type_cleanup_Text frees it on destroy
-	tx.font = _font()
+	tx.font = engine.PPtr{guid = _font()}
 	tx.font_size = 12
 	tx.color = {0, 1, 0, 1}
 

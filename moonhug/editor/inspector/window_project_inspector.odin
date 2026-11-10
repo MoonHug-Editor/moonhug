@@ -92,7 +92,7 @@ project_inspector_document :: proc(window: session.Window_Ref) -> core.Asset_GUI
 	if data == nil do return {}
 	doc := data.doc
 	if data.mode != .Asset || doc == nil || doc.kind != .File do return {}
-	return doc.guid
+	return doc.ref.guid
 }
 
 @(private = "file")

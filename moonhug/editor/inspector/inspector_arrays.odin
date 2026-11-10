@@ -218,7 +218,8 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 		elem_ptr := rawptr(uintptr(da.data) + uintptr(i * elem_ti.size))
 		// The remove button and, with `expand` on the array field, the arrow
 		// take their width from the element, not from the row.
-		expands := current_field_expand && elem_ti.id == typeid_of(core.Asset_GUID)
+		_, expandable := expand_ref(elem_ptr, elem_ti.id)
+		expands := current_field_expand && expandable
 		trailing := ARRAY_REMOVE_BTN_W + (expands ? EXPAND_BTN_W : 0)
 		current_field_trailing_w = trailing
 		im.SetNextItemWidth(im.GetContentRegionAvail().x - trailing)
@@ -227,7 +228,8 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 		open := false
 		if expands {
 			im.SameLine(0, 0)
-			open = expand_arrow((^core.Asset_GUID)(elem_ptr)^)
+			ref, _ := expand_ref(elem_ptr, elem_ti.id)
+			open = expand_arrow(ref)
 		}
 		im.SameLine(0, 0)
 		if readonly {
@@ -239,7 +241,10 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 		if readonly {
 			im.EndDisabled()
 		}
-		if open do draw_expanded_asset((^core.Asset_GUID)(elem_ptr)^)
+		if open {
+			ref, _ := expand_ref(elem_ptr, elem_ti.id)
+			draw_expanded_asset(ref)
+		}
 		im.PopID()
 	}
 	_draw_reorder_tail(field_ptr, draw_count)

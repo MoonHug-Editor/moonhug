@@ -81,7 +81,7 @@ hierarchy_paste_menu :: proc() {
 	session.edit_run(.Paste)
 }
 
-@(menu_item={path="Edit/Duplicate", order=-47, enabled=_edit_can_duplicate, help="Duplicates the selected objects, or the selected files"})
+@(menu_item={path="Edit/Duplicate", order=-47, enabled=_edit_can_duplicate, help="Duplicates the selected objects, or the selected files. A selected sub-asset is copied inside the file that holds it"})
 hierarchy_duplicate_menu :: proc() {
 	if sel_in_project() {
 		project_ops_duplicate()

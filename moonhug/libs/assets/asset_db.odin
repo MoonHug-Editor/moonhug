@@ -46,6 +46,11 @@ AssetDB :: struct {
     // a picker assignment IS the PPtr, same as Unity's guid+fileID.
     assets_by_type: map[core.TypeKey][dynamic]core.PPtr,
 
+    // The sub-assets a file holds, where its indexer or its editor publishes
+    // them (asset_db_sub_assets_set): a scene file's. A list of sub-assets
+    // reads this, so no file is opened to fill a picker or a Project row.
+    sub_assets:     map[core.Asset_GUID][]Asset_Sub_Info,
+
     // Refresh snapshot (Unity's SourceAssetDB idea): per path, the stamp seen
     // at the last refresh. asset_db_refresh diffs the tree against this and
     // touches ONLY what changed — no polling, no OS watcher; the caller
@@ -54,6 +59,14 @@ AssetDB :: struct {
     // tracked for create/delete only (their mtimes churn with every child
     // change).
     file_state: map[string]Asset_File_Stamp,
+}
+
+// A sub-asset as a list shows it. The strings are owned by the database.
+Asset_Sub_Info :: struct {
+    id:      core.Local_ID,
+    name:    string,
+    // What a reference field's `ext:` tag matches: "mat", "noise".
+    kind:    string,
 }
 
 Asset_Root_Info :: struct {
@@ -166,6 +179,49 @@ _free_root_index :: proc() {
     delete(asset_db.assets_by_type)
     asset_db.root_info = nil
     asset_db.assets_by_type = nil
+    for _, list in asset_db.sub_assets do _sub_infos_free(list)
+    delete(asset_db.sub_assets)
+    asset_db.sub_assets = nil
+}
+
+@(private = "file")
+_sub_infos_free :: proc(list: []Asset_Sub_Info) {
+    // The lists live on the default allocator, whoever frees them.
+    context.allocator = runtime.default_allocator()
+    for e in list {
+        delete(e.name)
+        delete(e.kind)
+    }
+    delete(list)
+}
+
+// Sets the sub-assets the file `guid` holds, in the order a list shows them.
+// The strings are cloned. An empty list forgets the file's.
+// Two callers keep it true: the file's indexer, from the file's bytes, and
+// the editor of an open file, from what it holds in memory, edits not yet
+// saved included.
+asset_db_sub_assets_set :: proc(guid: core.Asset_GUID, list: []Asset_Sub_Info) {
+    // Database state never borrows the caller's allocator.
+    context.allocator = runtime.default_allocator()
+    if old, has := asset_db.sub_assets[guid]; has {
+        _sub_infos_free(old)
+        delete_key(&asset_db.sub_assets, guid)
+    }
+    if len(list) == 0 do return
+    if asset_db.sub_assets == nil do asset_db.sub_assets = make(map[core.Asset_GUID][]Asset_Sub_Info)
+    stored := make([]Asset_Sub_Info, len(list))
+    for e, i in list {
+        stored[i] = e
+        stored[i].name = strings.clone(e.name)
+        stored[i].kind = strings.clone(e.kind)
+    }
+    asset_db.sub_assets[guid] = stored
+}
+
+// The sub-assets the database knows the file `guid` holds. Borrowed until
+// the file's list is set again.
+asset_db_sub_assets :: proc(guid: core.Asset_GUID) -> []Asset_Sub_Info {
+    return asset_db.sub_assets[guid]
 }
 
 // The scan/refresh machinery is editor-side (editor/assets/asset_scan.odin):
@@ -288,6 +344,7 @@ _index_add :: proc(key: core.TypeKey, guid: core.Asset_GUID, local_id: core.Loca
 }
 
 _index_remove :: proc(guid: core.Asset_GUID) {
+    asset_db_sub_assets_set(guid, nil)
     if info, ok := asset_db.root_info[guid]; ok {
         delete(info.root_name)
         delete_key(&asset_db.root_info, guid)

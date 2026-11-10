@@ -747,7 +747,7 @@ property_drawer_ParticleSystem_inspector :: proc(ctx: ^inspector.Ctx) {
 				inspector.record_nested_override(&ps.trail_sprite, typeid_of(engine.PPtr), "trail_sprite", true)
 			}
 			inspector.current_field_ext_filter = "mat"
-			_ps_field(ps, &ps.trail_material, typeid_of(engine.Asset_GUID), "Trail Material", "trail_material")
+			_ps_field(ps, &ps.trail_material, typeid_of(engine.PPtr), "Trail Material", "trail_material")
 			inspector.current_field_ext_filter = ""
 		}
 	}
@@ -758,7 +758,7 @@ property_drawer_ParticleSystem_inspector :: proc(ctx: ^inspector.Ctx) {
 			inspector.record_nested_override(&ps.sprite, typeid_of(engine.PPtr), "sprite", true)
 		}
 		inspector.current_field_ext_filter = "mat"
-		_ps_field(ps, &ps.material, typeid_of(engine.Asset_GUID), "Material", "material")
+		_ps_field(ps, &ps.material, typeid_of(engine.PPtr), "Material", "material")
 		inspector.current_field_ext_filter = ""
 		_ps_enum(ps, &ps.render_mode, typeid_of(particles.Render_Mode), "Render Mode", "render_mode")
 		if ps.render_mode == .Stretched {

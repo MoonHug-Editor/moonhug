@@ -353,7 +353,7 @@ test_lane_remove_last_lane_removes_row :: proc(t: ^testing.T) {
 	root := engine.transform_new("Root")
 	engine.transform_new("Arm", root)
 	_lane_doc_row(_lane_doc_clip(doc), {target = "Arm", path = .Position}, {0, 1}, {{0, 0, 0, 0}, {1, 2, 3, 0}})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 0, armed = false)
 
 	before := s.top
 	testing.expect(t, animation_editor.animation_window_set_lane(0, 0, false), "x goes off")
@@ -403,7 +403,7 @@ test_lane_driven_value_fills_disabled_lanes :: proc(t: ^testing.T) {
 	clip := _lane_doc_clip(doc)
 	_lane_doc_row(clip, {target = "Arm", path = .Position, lanes_off = {0, 2}}, {0, 2}, {{0, 0, 0, 0}, {2, 4, 6, 0}})
 	_lane_doc_row(clip, {target = "Arm", component = _volume_guid_str(), field = "size", lanes_off = {0, 2}}, {0, 2}, {{0, 0, 0, 0}, {10, 20, 30, 0}})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 1, armed = false)
 
 	pos: [3]f32
 	driven, _, _ := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &pos)
@@ -415,7 +415,7 @@ test_lane_driven_value_fills_disabled_lanes :: proc(t: ^testing.T) {
 	testing.expect(t, driven, "the size is driven")
 	testing.expect_value(t, size, [3]f32{1, 10, 3})
 
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = true)
+	animation_editor.animation_record_arm(root, doc.ref, 1, armed = true)
 	edited := [3]f32{8, 8, 8}
 	testing.expect(t, inspector.driven_commit(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &edited), "the commit keys the position")
 	testing.expect_value(t, _lane_doc_clip(doc).channels[0].lanes_off, anim.Channel_Lanes_Off{})

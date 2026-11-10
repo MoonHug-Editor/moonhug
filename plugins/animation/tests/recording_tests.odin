@@ -155,7 +155,7 @@ test_record_keys_a_field_without_a_row :: proc(t: ^testing.T) {
 	_, lp := engine.transform_add_comp(lamp, .Light)
 	light := cast(^engine.Light)lp
 	light.intensity = 1
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5)
 
 	before := s.top
 	_drag_intensity(lamp, light)
@@ -209,7 +209,7 @@ test_record_keys_a_transform_drag :: proc(t: ^testing.T) {
 	w := engine.ctx_world()
 	tr := engine.pool_get(&w.transforms, engine.Handle(child))
 	tr.position = {0, 0, 0}
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+	animation_editor.animation_record_arm(root, doc.ref, 1)
 
 	before := s.top
 	sess := undo.edit_session_begin({undo.edit_target_transform(child, &tr.position, typeid_of([3]f32))}, "Move")
@@ -249,7 +249,7 @@ test_record_keys_a_string_edit :: proc(t: ^testing.T) {
 	_, cp := engine.transform_add_comp(eye, .Camera)
 	cam := cast(^engine.Camera)cp
 	own := strings.clone(cam.slot, context.temp_allocator)
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5)
 
 	before := s.top
 	{
@@ -309,7 +309,7 @@ test_record_leaves_an_edit_outside_the_root_alone :: proc(t: ^testing.T) {
 	_, lp := engine.transform_add_comp(other, .Light)
 	light := cast(^engine.Light)lp
 	light.intensity = 1
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5)
 
 	before := s.top
 	_drag_intensity(other, light)
@@ -337,7 +337,7 @@ test_record_off_keys_nothing :: proc(t: ^testing.T) {
 	_, lp := engine.transform_add_comp(lamp, .Light)
 	light := cast(^engine.Light)lp
 	light.intensity = 1
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5, armed = false)
 
 	before := s.top
 	_drag_intensity(lamp, light)
@@ -405,14 +405,14 @@ test_driven_value_samples_the_row :: proc(t: ^testing.T) {
 	_rec_intensity_row(_rec_clip(doc))
 	lh := _rec_comp(lamp, .Light)
 
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5, armed = false)
 	v, driven, editable := _ask_f32(lh, offset_of(engine.Light, intensity))
 	testing.expect(t, driven, "the field with a row is driven")
 	testing.expect_value(t, v, 2)
 	testing.expect(t, !editable, "read-only with Record off")
 	testing.expect_value(t, light.intensity, 7)
 
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = true)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5, armed = true)
 	v, driven, editable = _ask_f32(lh, offset_of(engine.Light, intensity))
 	testing.expect(t, driven && editable, "editable with Record armed")
 	testing.expect_value(t, v, 2)
@@ -442,7 +442,7 @@ test_driven_value_needs_a_row_under_the_root :: proc(t: ^testing.T) {
 	outside := engine.transform_new("Lamp")
 	engine.transform_add_comp(outside, .Light)
 	_rec_intensity_row(_rec_clip(doc))
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5)
 
 	_, driven, _ := _ask_f32(_rec_comp(lamp, .Light), offset_of(engine.Light, range))
 	testing.expect(t, !driven, "a field without a row is not driven")
@@ -467,7 +467,7 @@ test_driven_value_samples_a_position_row :: proc(t: ^testing.T) {
 	root := engine.transform_new("Root")
 	arm := engine.transform_new("Arm", root)
 	_rec_add_row(_rec_clip(doc), {target = "Arm", path = .Position}, {0, 2}, {{0, 0, 0, 0}, {2, 4, 6, 0}})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 1, armed = false)
 
 	pos: [3]f32
 	driven, editable, _ := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &pos)
@@ -498,7 +498,7 @@ test_row_value_keys_at_the_playhead :: proc(t: ^testing.T) {
 	_rec_intensity_row(_rec_clip(doc))
 
 	// A key at the playhead takes the value.
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 1, armed = false)
 	before := s.top
 	animation_editor.animation_record_key_row(0, {9, 0, 0, 0})
 	ch := &_rec_clip(doc).channels[0]
@@ -510,7 +510,7 @@ test_row_value_keys_at_the_playhead :: proc(t: ^testing.T) {
 	testing.expect_value(t, ch.values.([dynamic][4]f32)[1].x, 3)
 
 	// No key at the playhead: one is added between the others.
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5, armed = false)
 	before = s.top
 	animation_editor.animation_record_key_row(0, {4, 0, 0, 0})
 	ch = &_rec_clip(doc).channels[0]
@@ -544,14 +544,14 @@ test_driven_row_through_the_inspector :: proc(t: ^testing.T) {
 	light.intensity = 1
 	_rec_intensity_row(_rec_clip(doc))
 
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5, armed = false)
 	before := s.top
 	_drag_intensity(lamp, light)
 	testing.expect_value(t, light.intensity, 1)
 	testing.expect_value(t, s.top, before)
 	testing.expect_value(t, len(_rec_clip(doc).channels[0].times), 2)
 
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = true)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5, armed = true)
 	_drag_intensity(lamp, light)
 	testing.expect_value(t, light.intensity, 1)
 	testing.expect_value(t, s.top, before + 1)
@@ -588,7 +588,7 @@ test_driven_commit_keys_the_objects_own_value :: proc(t: ^testing.T) {
 	tr := engine.pool_get(&w.transforms, engine.Handle(arm))
 	tr.scale = {1, 1, 1}
 	_rec_add_row(_rec_clip(doc), {target = "Arm", path = .Scale}, {0, 2}, {{2, 2, 2, 0}, {2, 2, 2, 0}})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+	animation_editor.animation_record_arm(root, doc.ref, 1)
 
 	shown: [3]f32
 	driven, editable, _ := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, scale), typeid_of([3]f32), &shown)
@@ -612,7 +612,7 @@ test_driven_commit_keys_the_objects_own_value :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(_rec_clip(doc).channels[0].times), 2)
 
 	// Record off: the commit goes nowhere.
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 1, armed = false)
 	testing.expect(t, !inspector.driven_commit(engine.Handle(arm), offset_of(engine.Transform, scale), typeid_of([3]f32), &one), "nothing is keyed with Record off")
 }
 
@@ -635,7 +635,7 @@ test_driven_row_keys_the_objects_own_value :: proc(t: ^testing.T) {
 	light := cast(^engine.Light)lp
 	light.intensity = 1
 	_rec_intensity_row(_rec_clip(doc))
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5)
 
 	before := s.top
 	{
@@ -679,7 +679,7 @@ test_rotation_row_euler_round_trip :: proc(t: ^testing.T) {
 	root := engine.transform_new("Root")
 	engine.transform_new("Arm", root)
 	_rec_add_row(_rec_clip(doc), {target = "Arm", path = .Rotation}, {0}, {{0, 0, 0, 1}})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 1, armed = false)
 
 	animation_editor.animation_record_key_row_euler(0, {0, 90, 0})
 	ch := &_rec_clip(doc).channels[0]
@@ -719,7 +719,7 @@ test_row_state_answers_rows_and_keyable :: proc(t: ^testing.T) {
 	// Keyable only while recording. Keyed when the playhead sits on a key:
 	// the intensity row has keys at 0 and 1, so 0.5 sits between them.
 	for armed in ([2]bool{false, true}) {
-		animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = armed)
+		animation_editor.animation_record_arm(root, doc.ref, 0.5, armed = armed)
 		has_row, keyable, keyed := inspector.driven_row_state(lh, offset_of(engine.Light, intensity), typeid_of(f32))
 		testing.expect(t, has_row && keyable == armed && !keyed, "the field with a row has a row, is keyable while recording, and has no key at 0.5")
 		has_row, keyable, keyed = inspector.driven_row_state(lh, offset_of(engine.Light, range), typeid_of(f32))
@@ -729,7 +729,7 @@ test_row_state_answers_rows_and_keyable :: proc(t: ^testing.T) {
 		has_row, keyable, keyed = inspector.driven_row_state(engine.Handle(lamp), offset_of(engine.Transform, position), typeid_of([3]f32))
 		testing.expect(t, !has_row && keyable == armed && !keyed, "a transform channel without a row is keyable while recording")
 	}
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1.0, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 1.0, armed = false)
 	_, _, keyed := inspector.driven_row_state(lh, offset_of(engine.Light, intensity), typeid_of(f32))
 	testing.expect(t, keyed, "the playhead on the row's key at 1.0 reads keyed")
 
@@ -759,7 +759,7 @@ test_add_key_with_record_off_keys_the_live_value :: proc(t: ^testing.T) {
 	light := cast(^engine.Light)lp
 	light.intensity = 3
 	lh := _rec_comp(lamp, .Light)
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5, armed = false)
 
 	before := s.top
 	ok := inspector.driven_add_key(lh, offset_of(engine.Light, intensity), typeid_of(f32), &light.intensity)
@@ -886,11 +886,11 @@ test_delete_key_removes_the_playhead_key :: proc(t: ^testing.T) {
 	off := offset_of(engine.Light, intensity)
 
 	// Between the keys there is nothing to delete.
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5)
 	testing.expect(t, !inspector.driven_delete_key(lh, off, typeid_of(f32)), "no key at 0.5 to delete")
 
 	// On the key at 1.0: gone, one undo step, the row keeps its other key.
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1.0)
+	animation_editor.animation_record_arm(root, doc.ref, 1.0)
 	top := s.top
 	testing.expect(t, inspector.driven_delete_key(lh, off, typeid_of(f32)), "the key at 1.0 is deleted")
 	testing.expect_value(t, s.top, top + 1)
@@ -900,7 +900,7 @@ test_delete_key_removes_the_playhead_key :: proc(t: ^testing.T) {
 	testing.expect(t, has_row, "the row stays while it has a key")
 
 	// The last key takes the row with it.
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.0)
+	animation_editor.animation_record_arm(root, doc.ref, 0.0)
 	testing.expect(t, inspector.driven_delete_key(lh, off, typeid_of(f32)), "the key at 0 is deleted")
 	has_row, _, _ = inspector.driven_row_state(lh, off, typeid_of(f32))
 	testing.expect(t, !has_row, "a row without keys is gone")
@@ -949,7 +949,7 @@ test_record_into_a_split_row_keys_only_the_changed_lane :: proc(t: ^testing.T) {
 	tr := engine.pool_get(&w.transforms, engine.Handle(arm))
 	tr.position = {1, 2, 3}
 	_rec_split_position(_rec_clip(doc), {0}, {0}, {0}, {1}, {2}, {3})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+	animation_editor.animation_record_arm(root, doc.ref, 1)
 
 	before := s.top
 	sess := undo.edit_session_begin({undo.edit_target_transform(arm, &tr.position, typeid_of([3]f32))}, "Move")
@@ -986,7 +986,7 @@ test_driven_value_merges_split_channels :: proc(t: ^testing.T) {
 	arm := engine.transform_new("Arm", root)
 	// x: 0 to 2 over 2 s, y: 7 throughout, z: 0 to 10 from 0.5 s to 1.5 s.
 	_rec_split_position(_rec_clip(doc), {0, 2}, {1}, {0.5, 1.5}, {0, 2}, {7}, {0, 10})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 1, armed = false)
 
 	pos: [3]f32
 	driven, _, _ := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &pos)
@@ -1010,7 +1010,7 @@ test_split_row_commit_keys_changed_lanes_add_key_keys_all :: proc(t: ^testing.T)
 	root := engine.transform_new("Root")
 	arm := engine.transform_new("Arm", root)
 	_rec_split_position(_rec_clip(doc), {0}, {0}, {0}, {1}, {2}, {3})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+	animation_editor.animation_record_arm(root, doc.ref, 1)
 
 	edited := [3]f32{1, 2, 9}
 	testing.expect(t, inspector.driven_commit(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &edited), "the commit keys the position")
@@ -1020,7 +1020,7 @@ test_split_row_commit_keys_changed_lanes_add_key_keys_all :: proc(t: ^testing.T)
 	at := _key_at(&clip.channels[2], 1)
 	testing.expect(t, at >= 0 && clip.channels[2].values.([dynamic][4]f32)[at].z == 9, "the z channel takes the edit")
 
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1.5, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 1.5, armed = false)
 	added := [3]f32{4, 5, 6}
 	testing.expect(t, inspector.driven_add_key(engine.Handle(arm), offset_of(engine.Transform, position), typeid_of([3]f32), &added), "Add Key keys the position")
 	clip = _rec_clip(doc)
@@ -1057,7 +1057,7 @@ test_record_rotation_creates_an_euler_row :: proc(t: ^testing.T) {
 	tr := engine.pool_get(&w.transforms, engine.Handle(arm))
 	own := anim.animation_quat_from_euler({10, 20, 30})
 	tr.rotation = own
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+	animation_editor.animation_record_arm(root, doc.ref, 1)
 
 	before := s.top
 	sess := undo.edit_session_begin({undo.edit_target_transform(arm, &tr.rotation, typeid_of([4]f32))}, "Rotate")
@@ -1101,7 +1101,7 @@ test_driven_rotation_reads_an_euler_row_as_angles_or_quaternion :: proc(t: ^test
 	tr.rotation = anim.animation_quat_from_euler({20, 0, 0})
 	// Only y animates: 0 to 90 over 2 s.
 	_rec_add_row(_rec_clip(doc), {target = "Arm", path = .Euler, lanes_off = {0, 2}}, {0, 2}, {{0, 0, 0, 0}, {0, 90, 0, 0}})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 1, armed = false)
 
 	e: [3]f32
 	driven, _, _ := inspector.driven_provider(engine.Handle(arm), offset_of(engine.Transform, rotation), typeid_of([3]f32), &e)
@@ -1131,7 +1131,7 @@ test_delete_key_on_a_split_row_removes_every_lane_key :: proc(t: ^testing.T) {
 	root := engine.transform_new("Root")
 	arm := engine.transform_new("Arm", root)
 	_rec_split_position(_rec_clip(doc), {0, 1}, {0.5, 1}, {1, 1.5}, {1, 2}, {3, 4}, {5, 6})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+	animation_editor.animation_record_arm(root, doc.ref, 1)
 
 	off := offset_of(engine.Transform, position)
 	top := s.top
@@ -1168,7 +1168,7 @@ test_record_and_undo_bump_document_edits :: proc(t: ^testing.T) {
 	child := engine.transform_new("Child", root)
 	w := engine.ctx_world()
 	tr := engine.pool_get(&w.transforms, engine.Handle(child))
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+	animation_editor.animation_record_arm(root, doc.ref, 1)
 
 	start := doc.edits
 	sess := undo.edit_session_begin({undo.edit_target_transform(child, &tr.position, typeid_of([3]f32))}, "Move")
@@ -1210,7 +1210,7 @@ test_record_split_position_beside_scale_keys_only_position :: proc(t: ^testing.T
 	_rec_add_row(clip, {target = "Arm", path = .Scale}, {0}, {{1, 1, 1, 0}})
 	_rec_add_row(clip, {target = "Arm", path = .Position, lanes_off = {1, 2}}, {0}, {{1, 0, 0, 0}})
 	_rec_add_row(clip, {target = "Arm", path = .Position, lanes_off = {0, 2}}, {0}, {{0, 2, 0, 0}})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+	animation_editor.animation_record_arm(root, doc.ref, 1)
 
 	before := s.top
 	sess := undo.edit_session_begin({undo.edit_target_transform(arm, &tr.position, typeid_of([3]f32))}, "Move")
@@ -1257,7 +1257,7 @@ test_record_rotation_unwinds_toward_the_row :: proc(t: ^testing.T) {
 	tr := engine.pool_get(&w.transforms, engine.Handle(arm))
 	tr.rotation = {0, 0, 0, 1}
 	_rec_add_row(_rec_clip(doc), {target = "Arm", path = .Euler}, {0, 1}, {{0, 0, 0, 0}, {0, 170, 0, 0}})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 2)
+	animation_editor.animation_record_arm(root, doc.ref, 2)
 
 	sess := undo.edit_session_begin({undo.edit_target_transform(arm, &tr.rotation, typeid_of([4]f32))}, "Rotate")
 	tr.rotation = anim.animation_quat_from_euler({0, 190, 0})
@@ -1291,7 +1291,7 @@ test_record_skips_a_state_preview :: proc(t: ^testing.T) {
 	tr := engine.pool_get(&w.transforms, engine.Handle(child))
 	tr.position = {0, 0, 0}
 	_rec_add_row(_rec_clip(doc), {target = "Child", path = .Position}, {0}, {{0, 0, 0, 0}})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, entry = 1)
+	animation_editor.animation_record_arm(root, doc.ref, 1, entry = 1)
 
 	off := offset_of(engine.Transform, position)
 	has_row, keyable, _ := inspector.driven_row_state(engine.Handle(child), off, typeid_of([3]f32))
@@ -1332,7 +1332,7 @@ test_record_keys_on_the_playheads_frame :: proc(t: ^testing.T) {
 	atr := engine.pool_get(&w.transforms, engine.Handle(arm))
 	clip := _rec_clip(doc)
 	clip.frame_rate = 30
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.51)
+	animation_editor.animation_record_arm(root, doc.ref, 0.51)
 
 	sess := undo.edit_session_begin({undo.edit_target_transform(child, &ctr.position, typeid_of([3]f32))}, "Move")
 	ctr.position = {1, 2, 3}
@@ -1347,7 +1347,7 @@ test_record_keys_on_the_playheads_frame :: proc(t: ^testing.T) {
 
 	// A key at 0.51 s is the key on the playhead's frame (0.5 s).
 	_rec_add_row(clip, {target = "Arm", path = .Position}, {0, 0.51, 1}, {{0, 0, 0, 0}, {1, 1, 1, 0}, {2, 2, 2, 0}})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.495)
+	animation_editor.animation_record_arm(root, doc.ref, 0.495)
 	sess = undo.edit_session_begin({undo.edit_target_transform(arm, &atr.position, typeid_of([3]f32))}, "Move")
 	atr.position = {4, 5, 6}
 	undo.edit_session_end(&sess)
@@ -1388,7 +1388,7 @@ test_record_split_euler_ignores_float_noise :: proc(t: ^testing.T) {
 		v[l] = start[l]
 		_rec_add_row(clip, {target = "Arm", path = .Euler, lanes_off = masks[l]}, {0}, {v})
 	}
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+	animation_editor.animation_record_arm(root, doc.ref, 1)
 
 	sess := undo.edit_session_begin({undo.edit_target_transform(arm, &tr.rotation, typeid_of([4]f32))}, "Rotate")
 	tr.rotation = anim.animation_quat_from_euler({10.00001, 30, 30})
@@ -1421,7 +1421,7 @@ test_record_field_memo_follows_frames :: proc(t: ^testing.T) {
 	arm := engine.transform_new("Arm", root)
 	clip := _rec_clip(doc)
 	_rec_add_row(clip, {target = "Arm", path = .Scale}, {0}, {{1, 1, 1, 0}})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 1, armed = false)
 
 	pos := offset_of(engine.Transform, position)
 	scl := offset_of(engine.Transform, scale)
@@ -1463,7 +1463,7 @@ test_record_into_a_joined_row_fills_the_disabled_lanes :: proc(t: ^testing.T) {
 	tr := engine.pool_get(&w.transforms, engine.Handle(arm))
 	tr.position = {1, 2, 3}
 	_rec_add_row(_rec_clip(doc), {target = "Arm", path = .Position, lanes_off = {1}}, {0, 1}, {{7, 99, 9, 0}, {8, 98, 9, 0}})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 1)
+	animation_editor.animation_record_arm(root, doc.ref, 1)
 
 	sess := undo.edit_session_begin({undo.edit_target_transform(arm, &tr.position, typeid_of([3]f32))}, "Move")
 	tr.position = {5, 2, 3}
@@ -1514,7 +1514,7 @@ test_driven_provider_names_the_objects_own_lanes :: proc(t: ^testing.T) {
 	_rec_add_row(clip, {target = "Box", path = .Position, lanes_off = {0, 2}}, {0}, {{0, 2, 0, 0}})
 	_rec_add_row(clip, {target = "Box", path = .Euler, lanes_off = {0, 1}}, {0}, {{0, 0, 30, 0}})
 	_rec_add_row(clip, {target = "Box", path = .Scale}, {0}, {{2, 2, 2, 0}})
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5, armed = false)
 
 	size: [3]f32
 	driven, _, own := inspector.driven_provider(_rec_comp(box, .Volume), offset_of(engine.Volume, size), typeid_of([3]f32), &size)
@@ -1584,7 +1584,7 @@ test_driven_row_edits_the_objects_own_lanes :: proc(t: ^testing.T) {
 	vol := cast(^engine.Volume)vp
 	vol.size = {5, 6, 7}
 	_rec_size_x_row(_rec_clip(doc))
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = false)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5, armed = false)
 
 	before := s.top
 	_drag_size(box, vol)
@@ -1597,7 +1597,7 @@ test_driven_row_edits_the_objects_own_lanes :: proc(t: ^testing.T) {
 	testing.expect(t, undo.apply_undo(s), "undo")
 	testing.expect_value(t, vol.size, [3]f32{5, 6, 7})
 
-	animation_editor.animation_record_arm(root, engine.PPtr{guid = doc.guid}, 0.5, armed = true)
+	animation_editor.animation_record_arm(root, doc.ref, 0.5, armed = true)
 	before = s.top
 	_drag_size(box, vol)
 	testing.expect_value(t, vol.size, [3]f32{5, 6, 7})

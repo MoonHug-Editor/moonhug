@@ -33,6 +33,9 @@ import assets "moonhug:libs/assets"
 import "moonhug:libs/serialization"
 import core "moonhug:libs/core"
 import "moonhug:editor/keymap"
+import "moonhug:editor/inspector"
+import "moonhug:editor/subassets"
+import "moonhug:editor/undo"
 
 // --- File clipboard -----------------------------------------------------------
 // Cut and Copy put the selected files on the editor's clipboard (clipboard
@@ -157,6 +160,11 @@ project_ops_new_folder :: proc() {
 // taken), then known to the asset database, selected and ready to rename, as
 // New Folder does. The generated create menu items call it.
 project_ops_create_asset :: proc(file_name: string, type_key: core.TypeKey) {
+	// With a sub-asset selected, the new asset is a sub-asset of the same
+	// file, where that file takes one. Otherwise it is a file.
+	if path, sub, is_sub := _project_selected_sub(); is_sub {
+		if _project_create_sub_asset(path, sub, file_name, type_key) do return
+	}
 	dir := _pv.current_path
 	if dir == "" do return
 	if dir == _PROJECT_PACKAGES_PATH {
@@ -177,6 +185,32 @@ project_ops_create_asset :: proc(file_name: string, type_key: core.TypeKey) {
 	project_dir_cache_invalidate()
 	_project_set_selected(dst)
 	_project_begin_rename(dst, false)
+}
+
+// Adds a new asset of the type to the file that holds the selected sub-asset
+// `sub`, as one undo step, selects it and opens its name for typing. The
+// kind and the name come from the file name Assets > Create gives the type
+// ("New Material.mat"). False when the file takes no new sub-asset now.
+@(private = "file")
+_project_create_sub_asset :: proc(path: string, sub: core.Local_ID, file_name: string, type_key: core.TypeKey) -> bool {
+	ref, provider, ok := _project_sub_ref(path, sub)
+	if !ok || provider.create == nil do return false
+	kind := strings.trim_prefix(strings.to_lower(filepath.ext(file_name), context.temp_allocator), ".")
+	name := subassets.unique_name(ref.guid, filepath.stem(file_name))
+	instance := core.create_instance_by_type_key(type_key)
+	defer {
+		core.type_cleanup(type_key, instance.data)
+		free(instance.data)
+	}
+	owner_path := strings.clone(path, context.temp_allocator) // the selection owns `path`
+	created, made := provider.create(ref.guid, kind, name, instance)
+	if !made do return false
+	sel_proj_only(owner_path, created.local_id)
+	_project_set_active(owner_path)
+	_project_unfold_sub_assets(owner_path)
+	_project_inspectors_refresh()
+	_project_begin_rename_sub(owner_path, created.local_id)
+	return true
 }
 
 project_ops_show_in_finder :: proc() {
@@ -248,7 +282,9 @@ project_ops_paste :: proc() {
 project_ops_duplicate :: proc() {
 	srcs := slice.clone(sel_proj_items(), context.temp_allocator)
 	if len(srcs) == 0 {
-		fmt.println("[Editor] Duplicate: select files first")
+		// Sub-assets only: each gets a copy inside its file, an undo step
+		// like any edit of that file. A file of its own is Duplicate as Asset.
+		if !project_ops_duplicate_as_sub_asset() do fmt.println("[Editor] Duplicate: select files first")
 		return
 	}
 	dups := make([dynamic]string, context.temp_allocator)
@@ -262,36 +298,153 @@ project_ops_duplicate :: proc() {
 	_project_select_paths(dups[:])
 }
 
-// Every asset delete (Edit/Delete, Assets/Delete, the Delete key) asks first:
-// the files go to the OS Trash and undo does not bring them back. The dialog
-// lists what it deletes, _project_delete_confirmed does the work.
+// The selected sub-assets, their paths on the temp allocator: the selection
+// changes while a copy of each is made.
+@(private = "file")
+_project_selected_sub_assets :: proc() -> []Proj_Sel {
+	subs := make([dynamic]Proj_Sel, context.temp_allocator)
+	for e in sel_proj_entries() {
+		if e.sub_id != 0 do append(&subs, Proj_Sel{path = strings.clone(e.path, context.temp_allocator), sub_id = e.sub_id})
+	}
+	return subs[:]
+}
+
+// Duplicate, for sub-assets: a copy of each selected sub-asset in the file that
+// holds it, where the file takes one (subassets.Provider.create) and the
+// sub-asset is a document, as one undo step. The copies are selected.
+// Returns whether the selection held a sub-asset.
+project_ops_duplicate_as_sub_asset :: proc() -> bool {
+	subs := _project_selected_sub_assets()
+	if len(subs) == 0 do return false
+	g := undo.group_begin("Duplicate Sub-Assets")
+	defer undo.group_end(&g)
+	first := true
+	for e in subs {
+		ref, provider, ok := _project_sub_ref(e.path, e.sub_id)
+		source, found := subassets.get(ref)
+		doc := inspector.asset_doc_get_ref(ref) if ok && found else nil
+		if doc == nil || provider.create == nil {
+			fmt.printf("[Editor] Duplicate: the importer of %s makes its sub-assets, they are not copied\n", e.path)
+			continue
+		}
+		kind := strings.clone(source.kind, context.temp_allocator)
+		name := subassets.unique_name(ref.guid, source.name)
+		copied, made := provider.create(ref.guid, kind, name, doc.data)
+		if !made {
+			fmt.printf("[Editor] Duplicate: a sub-asset of %s is not copied\n", e.path)
+			continue
+		}
+		if first do sel_proj_only(e.path, copied.local_id)
+		else do sel_proj_add(e.path, copied.local_id)
+		first = false
+	}
+	undo.group_commit(&g)
+	_project_inspectors_refresh()
+	return true
+}
+
+// Duplicate as Asset: a copy of each selected sub-asset as a file of its own,
+// beside the file that holds it and named after the sub-asset, where the
+// sub-asset is a document. The file's unsaved edits are in the copy, and the
+// file does not have to be open. The new files are selected. Like every file
+// operation it is not an undo step. Returns whether the selection held a
+// sub-asset.
+project_ops_duplicate_as_asset :: proc() -> bool {
+	subs := _project_selected_sub_assets()
+	if len(subs) == 0 do return false
+	made := make([dynamic]string, context.temp_allocator)
+	for e in subs {
+		ref, _, ok := _project_sub_ref(e.path, e.sub_id)
+		source, found := subassets.get(ref)
+		doc := inspector.asset_doc_get_ref(ref) if ok && found else nil
+		if doc == nil || source.kind == "" {
+			fmt.printf("[Editor] Duplicate: the importer of %s makes its sub-assets, they have no data of their own to copy\n", e.path)
+			continue
+		}
+		// A sub-asset's name is free text, a file's is not.
+		file, _ := strings.replace_all(source.name, "/", "_", context.temp_allocator)
+		file, _ = strings.replace_all(file, ":", "_", context.temp_allocator)
+		if file == "" do file = "Sub-Asset"
+		dst := _project_unique_dest(filepath.dir(e.path), fmt.tprintf("%s.%s", file, source.kind))
+		if !serialization.save_to_file(dst, doc.data) {
+			fmt.printf("[Editor] Duplicate: failed to write %s\n", dst)
+			continue
+		}
+		append(&made, dst)
+	}
+	asset_pipeline.asset_db_refresh()
+	project_dir_cache_invalidate()
+	_project_select_paths(made[:])
+	_project_inspectors_refresh()
+	return true
+}
+
+// Every asset delete (Edit/Delete, Assets/Delete, the Delete key) asks first.
+// A file goes to the OS Trash and undo does not bring it back. A sub-asset
+// leaves its file and undo restores it. The dialog lists what it deletes,
+// _project_delete_confirmed does the work.
 project_ops_delete :: proc() {
-	srcs := sel_proj_items()
-	if len(srcs) == 0 {
+	if sel_proj_count() == 0 {
 		fmt.println("[Editor] Delete: select files first")
 		return
 	}
 	_project_delete_pending_clear()
-	for src in srcs {
-		if project_path_is_protected(src) {
-			fmt.printf("[Editor] Delete: %s is a package root — remove the package folder on disk to uninstall\n", src)
+	context.allocator = runtime.default_allocator()
+	for e in sel_proj_entries() {
+		if e.sub_id != 0 {
+			// A sub-asset its file lets the user remove (subassets.Provider.remove).
+			_, provider, ok := _project_sub_ref(e.path, e.sub_id)
+			if !ok || provider.remove == nil {
+				fmt.printf("[Editor] Delete: the importer of %s makes its sub-assets, they are not removed\n", e.path)
+				continue
+			}
+			append(&_delete_pending_subs, Proj_Sel{path = strings.clone(e.path), sub_id = e.sub_id})
 			continue
 		}
-		append(&_delete_pending, strings.clone(src, runtime.default_allocator()))
+		if project_path_is_protected(e.path) {
+			fmt.printf("[Editor] Delete: %s is a package root — remove the package folder on disk to uninstall\n", e.path)
+			continue
+		}
+		append(&_delete_pending, strings.clone(e.path))
 	}
-	if len(_delete_pending) == 0 do return
+	files, subs := len(_delete_pending), len(_delete_pending_subs)
+	if files + subs == 0 do return
 
 	DELETE_LIST_MAX :: 10
 	b := strings.builder_make(context.temp_allocator)
-	for p, i in _delete_pending {
-		if i == DELETE_LIST_MAX {
-			fmt.sbprintf(&b, "... and %d more\n", len(_delete_pending) - DELETE_LIST_MAX)
-			break
-		}
+	listed := 0
+	for p in _delete_pending {
+		if listed == DELETE_LIST_MAX do break
 		fmt.sbprintf(&b, "%s\n", p)
+		listed += 1
 	}
-	strings.write_string(&b, "\nThe files move to the Trash. Undo does not restore them.")
-	title := "Delete selected asset?" if len(_delete_pending) == 1 else fmt.tprintf("Delete %d selected assets?", len(_delete_pending))
+	for e in _delete_pending_subs {
+		if listed == DELETE_LIST_MAX do break
+		name := "?"
+		if ref, _, ok := _project_sub_ref(e.path, e.sub_id); ok {
+			if sub, found := subassets.get(ref); found do name = sub.name
+		}
+		fmt.sbprintf(&b, "%s / %s\n", e.path, name)
+		listed += 1
+	}
+	if files + subs > listed do fmt.sbprintf(&b, "... and %d more\n", files + subs - listed)
+	if files > 0 do strings.write_string(&b, "\nThe files move to the Trash. Undo does not restore them.")
+	if subs > 0 {
+		// One in an open file is an edit of that file. One in a file that is
+		// not open is a change of the file on disk.
+		open, closed := 0, 0
+		for e in _delete_pending_subs {
+			ref, _, ok := _project_sub_ref(e.path, e.sub_id)
+			if ok && subassets.editable(ref.guid) do open += 1
+			else do closed += 1
+		}
+		strings.write_string(&b, "\nThe sub-assets leave their files. A field that uses one shows it as missing.")
+		if open > 0 && closed == 0 do strings.write_string(&b, " Undo restores them.")
+		if open == 0 && closed > 0 do strings.write_string(&b, " Their files are not open, so undo does not restore them.")
+		if open > 0 && closed > 0 do strings.write_string(&b, " Undo restores those of an open file, not the others.")
+	}
+	what := "sub-asset" if files == 0 else "asset"
+	title := fmt.tprintf("Delete selected %s?", what) if files + subs == 1 else fmt.tprintf("Delete %d selected %ss?", files + subs, what)
 	widgets.dialog_open({
 		title       = title,
 		description = strings.to_string(b),
@@ -303,10 +456,13 @@ project_ops_delete :: proc() {
 	})
 }
 
-// Paths the open delete confirmation asks about (default allocator: the list
-// lives across frames).
+// What the open delete confirmation asks about: file paths, and sub-assets
+// as (their file's path, their id). Default allocator: the lists live across
+// frames.
 @(private = "file")
 _delete_pending: [dynamic]string
+@(private = "file")
+_delete_pending_subs: [dynamic]Proj_Sel
 
 @(private = "file")
 _project_delete_pending_clear :: proc() {
@@ -314,6 +470,9 @@ _project_delete_pending_clear :: proc() {
 	for p in _delete_pending do delete(p)
 	delete(_delete_pending)
 	_delete_pending = nil
+	for e in _delete_pending_subs do delete(e.path)
+	delete(_delete_pending_subs)
+	_delete_pending_subs = nil
 }
 
 // The paths an open delete confirmation would trash (tests).
@@ -324,6 +483,8 @@ project_ops_delete_pending :: proc() -> []string {
 @(private = "file")
 _project_delete_confirmed :: proc() {
 	defer _project_delete_pending_clear()
+	_project_delete_pending_sub_assets()
+	if len(_delete_pending) == 0 do return
 	for src in _delete_pending {
 		if !os.exists(src) do continue // a trashed parent folder took it along
 		if !file_move_to_trash(src) {
@@ -337,6 +498,27 @@ _project_delete_confirmed :: proc() {
 	_project_set_active("")
 	asset_pipeline.asset_db_refresh()
 	project_dir_cache_invalidate()
+}
+
+// Removes the sub-assets the confirmation asked about, as one undo step. A
+// removed one leaves the selection, and its file is selected when nothing
+// else is.
+@(private = "file")
+_project_delete_pending_sub_assets :: proc() {
+	if len(_delete_pending_subs) == 0 do return
+	g := undo.group_begin("Delete Sub-Assets")
+	defer undo.group_end(&g)
+	for e in _delete_pending_subs {
+		ref, provider, ok := _project_sub_ref(e.path, e.sub_id)
+		if !ok || provider.remove == nil || !provider.remove(ref) {
+			fmt.printf("[Editor] Delete: a sub-asset of %s is not removed\n", e.path)
+			continue
+		}
+		sel_proj_remove(e.path, e.sub_id)
+		if sel_proj_count() == 0 do sel_proj_only(e.path)
+	}
+	undo.group_commit(&g)
+	_project_inspectors_refresh()
 }
 
 // --- Menu registration ----------------------------------------------------------
@@ -360,16 +542,31 @@ _project_has_selection :: proc() -> bool {
 
 @(private)
 _project_selection_renameable :: proc() -> bool {
+	if path, sub, is_sub := _project_selected_sub(); is_sub {
+		_, provider, ok := _project_sub_ref(path, sub)
+		if !ok || provider.rename == nil do return keymap.disabled("The file's importer names this sub-asset")
+		return true
+	}
 	sel := projectWindowData.selectedFile
 	if sel == "" do return keymap.disabled("No file is selected")
 	if project_path_is_protected(sel) do return keymap.disabled("The Assets and Packages roots and the package folders keep their names")
 	return true
 }
 
+// Whether the selection's last entry is a sub-asset the inspector edits as a
+// document: one with data of its own, which a copy can take. What shows
+// Duplicate as Asset.
 @(private)
-_project_selection_is_scene :: proc() -> bool {
-	if projectWindowData.selectedFile == "" do return keymap.disabled("No file is selected")
-	return strings.has_suffix(projectWindowData.selectedFile, ".scene") || keymap.disabled("The selected file is not a scene")
+_project_sub_asset_is_document :: proc() -> bool {
+	path, sub, is_sub := _project_selected_sub()
+	if !is_sub do return false
+	_, provider, ok := _project_sub_ref(path, sub)
+	return ok && provider.text != nil
+}
+
+@(private)
+_project_can_duplicate_as_asset :: proc() -> bool {
+	return _project_sub_asset_is_document() || keymap.disabled("Select a sub-asset that has data of its own: a scene's material, not a model's part")
 }
 
 @(menu_item = {path = "Assets/Reveal in Finder", order = -69, shortcut = "", help = "Shows the selected file in the OS file browser"})
@@ -384,14 +581,24 @@ project_menu_open :: proc() {
 	file_open_in_os(sel)
 }
 
-@(menu_item = {path = "Assets/Delete", order = -67, enabled = _project_has_selection, help = "Moves the selected files to the Trash"})
+@(menu_item = {path = "Assets/Delete", order = -67, enabled = _project_has_selection, help = "Asks, then moves the selected files to the Trash and removes the selected sub-assets from their files"})
 project_menu_delete :: proc() {
 	project_ops_delete()
 }
 
-@(menu_item = {path = "Assets/Rename", order = -66, enabled = _project_selection_renameable, help = "Renames the selected file"})
+@(menu_item = {path = "Assets/Rename", order = -66, enabled = _project_selection_renameable, help = "Renames the selected file or sub-asset"})
 project_menu_rename :: proc() {
 	_project_begin_rename_selected()
+}
+
+@(menu_item = {path = "Assets/Duplicate", order = -66, enabled = _project_has_selection, help = "Copies the selected files beside them. A selected sub-asset is copied inside the file that holds it"})
+project_menu_duplicate :: proc() {
+	project_ops_duplicate()
+}
+
+@(menu_item = {path = "Assets/Duplicate as Asset", order = -66, enabled = _project_can_duplicate_as_asset, visible = _project_sub_asset_is_document, help = "Copies the selected sub-asset into a file of its own, beside the file that holds it"})
+project_menu_duplicate_as_asset :: proc() {
+	project_ops_duplicate_as_asset()
 }
 
 @(menu_item = {path = "Assets/Copy Path", order = -65, enabled = _project_has_selection, help = "Copies the selected file's path"})
@@ -417,8 +624,7 @@ project_menu_copy_uuid :: proc() {
 }
 
 @(menu_separator = {path = "Assets", order = -60})
-@(menu_item = {path = "Assets/Open Scene Additive", order = -55, enabled = _project_selection_is_scene, help = "Opens the selected scene beside the open ones"})
+@(menu_item = {path = "Assets/Open Scene Additive", order = -55, ext = "scene", help = "Opens the selected scene beside the open ones"})
 project_menu_open_scene_additive :: proc() {
-	if !_project_selection_is_scene() do return
 	asset_pipeline.asset_open_additive(projectWindowData.selectedFile)
 }

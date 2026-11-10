@@ -65,7 +65,7 @@ _create_primitive :: proc(name: string, mesh_guid: string, collider_key: engine.
 	mr_owned, mr_ptr := engine.transform_add_comp(tH, .MeshRenderer)
 	if mr := cast(^engine.MeshRenderer)mr_ptr; mr != nil {
 		if guid, err := uuid.read(essentials.DEFAULT_MATERIAL_GUID); err == nil {
-			append(&mr.materials, engine.Asset_GUID(guid))
+			append(&mr.materials, engine.PPtr{guid = engine.Asset_GUID(guid)})
 		}
 		_record_added(tH, mr_owned.handle)
 	}

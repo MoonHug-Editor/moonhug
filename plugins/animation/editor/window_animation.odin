@@ -406,7 +406,7 @@ _pv_edit_begin :: proc(doc: ^inspector.Asset_Doc) {
 	// same gesture is open would otherwise capture the already-edited value.
 	if undo.edit_session_active(&_pv_session) do return
 	_pv_session = undo.edit_session_begin(
-		{undo.edit_target_asset(doc.guid, doc.data.id)}, "Animation Edit")
+		{undo.edit_target_asset(doc.ref, doc.data.id)}, "Animation Edit")
 }
 
 @(private)
@@ -486,10 +486,10 @@ _animation_frame :: proc() {
 	// The document's edits reach the engine cache the preview samples from,
 	// every frame, whether or not an Animation window is shown: recording
 	// from the inspector keeps posing from the current keys.
-	if doc != nil && clip != nil && (doc.edits != _pv.synced_edits || doc.guid != _pv.synced_guid) {
-		anim.animation_clip_preview(engine.PPtr{guid = doc.guid}, clip^)
+	if doc != nil && clip != nil && (doc.edits != _pv.synced_edits || doc.ref.guid != _pv.synced_guid) {
+		anim.animation_clip_preview(doc.ref, clip^)
 		_pv.synced_edits = doc.edits
-		_pv.synced_guid = doc.guid
+		_pv.synced_guid = doc.ref.guid
 	}
 	length := clip != nil ? max(clip.length, 0.0001) : 0.0001
 	_pv_advance(clip, length)
@@ -684,7 +684,7 @@ _pv_draw_toolbar :: proc(clip: ^anim.AnimationClip, length: f32, read_only: bool
 @(window_document={window="Animation"})
 animation_window_document :: proc(window: session.Window_Ref) -> engine.Asset_GUID {
 	doc, _ := _pv_doc()
-	return doc.guid if doc != nil else {}
+	return doc.ref.guid if doc != nil else {}
 }
 
 // Dopesheet / Curves, as tabs along the bottom of the sheet.

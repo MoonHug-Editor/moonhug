@@ -113,7 +113,15 @@ load_from_file :: proc(filepath: string) -> (file_data: any, ok: bool) {
         return any{}, false
     }
     defer delete(data)
+    file_data, ok = load_from_bytes(data)
+    if ok do log.info(fmt.tprintf("Loaded from %s", filepath))
+    return
+}
 
+// An asset from the bytes its file holds: the type its `__type_guid` names,
+// zeroed, with the bytes read over the type's reset defaults. The same for a
+// file and for a sub-asset another file holds.
+load_from_bytes :: proc(data: []byte) -> (file_data: any, ok: bool) {
     // Parse JSON
     json_data, err := json.parse(data)
     if err != nil {
@@ -167,7 +175,6 @@ load_from_file :: proc(filepath: string) -> (file_data: any, ok: bool) {
     if cb, ok := mapAfterDeserialize[result.id]; ok {
         cb(result.data, result.id)
     }
-    log.info(fmt.tprintf("Loaded from %s", filepath))
     return result, true
 }
 
@@ -267,4 +274,19 @@ save_to_file :: proc(filepath: string, file_data: any) -> bool {
 
     log.info(fmt.tprintf("Saved successfully to %s", filepath))
     return true
+}
+
+// An asset as the text its file would hold, `__type_guid` first: what
+// save_to_file writes. On `allocator`. For a sub-asset another file holds.
+save_to_text :: proc(file_data: any, allocator := context.temp_allocator) -> (text: string, ok: bool) {
+    tid := file_data.id
+    if cb, has := mapBeforeSerialize[tid]; has do cb(file_data.data, tid, false)
+    raw_bytes, marshal_err := json.marshal(file_data, {spec = .JSON}, context.temp_allocator)
+    if cb, has := mapBeforeSerialize[tid]; has do cb(file_data.data, tid, true)
+    if marshal_err != nil || len(raw_bytes) < 2 do return "", false
+    data_bytes := core.json_canonicalize_floats(raw_bytes, context.temp_allocator)
+    guid_str := uuid.to_string(core.get_guid_by_typeid(tid), context.temp_allocator)
+    body := string(data_bytes[1:])
+    sep := strings.has_prefix(body, "}") ? "" : ","
+    return strings.concatenate({`{"`, TYPE_GUID_KEY, `":"`, guid_str, `"`, sep, body}, allocator), true
 }

@@ -27,7 +27,7 @@ property_drawer_material_properties :: proc(ctx: ^inspector.Ctx) {
 
 	sr: ^engine.Shader_Runtime
 	if current_material != nil && current_material.custom_shader != {} {
-		sr, _ = engine.shader_load(current_material.custom_shader)
+		sr, _ = engine.shader_load(engine.asset_key(current_material.custom_shader))
 	}
 	if sr == nil || len(sr.properties) == 0 do return
 

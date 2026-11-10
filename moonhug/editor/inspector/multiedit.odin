@@ -509,7 +509,7 @@ multi_array_structural :: proc(
 		case .Pooled:
 			append(&targets, undo.edit_target_whole(o.handle))
 		case .Asset:
-			append(&targets, undo.edit_target_asset(o.asset_guid, o.asset_tid, o.asset_doc))
+			append(&targets, undo.edit_target_asset(o.asset, o.asset_tid, o.asset_doc))
 		case .Raw:
 			if o.raw_tid != nil do append(&targets, undo.Edit_Target{kind = .Raw, raw_ptr = o.base_ptr, raw_tid = o.raw_tid})
 		}
