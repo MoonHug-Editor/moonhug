@@ -805,19 +805,13 @@ shutdown :: proc() {
 	context.allocator = runtime.default_allocator()
 	file_store_free(&_user)
 	file_store_free(&_project)
-	for k, s in _windows.by_key {
-		delete(k)
-		delete(s.workspace)
-		free(s)
-	}
-	delete(_windows.by_key)
-	_windows = {}
 }
 
 // --- What each Workspace window remembers ------------------------------------
 
-// What a Workspace window copy remembers between sessions, by its key
-// ("workspace", "workspace/2"). In the user's settings. Zero is the default.
+// What a Workspace window copy remembers between sessions: the Workspace
+// window keeps it in its saved state (editor/window_workspace.odin). Zero is
+// the default.
 Window_Settings :: struct {
 	workspace: string, // owned, the id of the workspace it shows
 	minimap:   Minimap,
@@ -841,62 +835,4 @@ Anchor :: enum {
 	Bottom,
 	Bottom_Right,
 	Right,
-}
-
-@(private = "file")
-_windows: struct {
-	loaded: bool,
-	by_key: map[string]^Window_Settings, // owned keys and settings
-}
-
-@(private = "file")
-_WINDOWS_PATH :: "UserSettings/workspace_windows.json"
-
-// The settings of the Workspace window `window`, made on first use. Call
-// window_settings_save after changing them.
-window_settings :: proc(window: string) -> ^Window_Settings {
-	_windows_load()
-	if s, has := _windows.by_key[window]; has do return s
-	context.allocator = runtime.default_allocator()
-	s := new(Window_Settings)
-	_windows.by_key[strings.clone(window)] = s
-	return s
-}
-
-window_settings_save :: proc() {
-	out := make(map[string]Window_Settings, len(_windows.by_key), context.temp_allocator)
-	for k, s in _windows.by_key do out[k] = s^
-	bytes, err := json.marshal(out, {pretty = true, spec = .JSON, sort_maps_by_key = true}, context.temp_allocator)
-	if err == nil do _ = os.write_entire_file(_WINDOWS_PATH, bytes)
-}
-
-// The id of the workspace the window `window` shows, "" for none.
-window_selection :: proc(window: string) -> string {
-	return window_settings(window).workspace
-}
-
-window_select :: proc(window: string, id: string) {
-	s := window_settings(window)
-	if s.workspace == id do return
-	delete(s.workspace, runtime.default_allocator())
-	s.workspace = strings.clone(id, runtime.default_allocator())
-	window_settings_save()
-}
-
-@(private = "file")
-_windows_load :: proc() {
-	if _windows.loaded do return
-	_windows.loaded = true
-	context.allocator = runtime.default_allocator()
-	bytes, err := os.read_entire_file(_WINDOWS_PATH, context.temp_allocator)
-	if err != nil do return
-	if !json.is_valid(bytes) do return // json.unmarshal loops forever on some truncated files
-	file: map[string]Window_Settings
-	defer delete(file)
-	if json.unmarshal(bytes, &file) != nil do return
-	for k, s in file {
-		p := new(Window_Settings)
-		p^ = s
-		_windows.by_key[k] = p
-	}
 }

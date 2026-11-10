@@ -275,7 +275,7 @@ _move_to_workspace_menu :: proc(key: string) {
 	if !im.BeginMenu("Move to Workspace") do return
 	defer im.EndMenu()
 	for v in windows {
-		e, ok := workspace.find(workspace.window_selection(v.key))
+		e, ok := workspace.find(workspace_window_selection(v.key))
 		if !ok || workspace_window_owner(e.ws.id) != v.key do continue
 		im.PushIDStr(strings.clone_to_cstring(v.key, context.temp_allocator), nil)
 		if im.MenuItem(strings.clone_to_cstring(e.ws.name, context.temp_allocator)) do workspace_window_add(v.key, key)

@@ -130,6 +130,65 @@ lock_comes_back_with_its_window :: proc(t: ^testing.T) {
 	editor_quit(r)
 }
 
+// A window in a workspace frame has its lock and its saved state kept by the
+// workspace: they are in the workspace's file, and they come back when the
+// Workspace window is reopened and after a restart.
+@(test)
+framed_window_keeps_its_lock_and_state :: proc(t: ^testing.T) {
+	r := begin(t)
+	A :: "assets/a.txt"
+	B :: "assets/b.txt"
+	project_write(r, A, "a")
+	project_write(r, B, "b")
+	editor_start(r)
+	window_open(r, "workspace")
+	call(r, "workspace_new", `{"source":"Project"}`)
+	inspector := as_string(at(call(r, "workspace_add", `{"id":"Project Inspector"}`), "window"))
+	game := as_string(at(call(r, "workspace_add", `{"id":"Game"}`), "window"))
+	frames(r, 3)
+	testing.expectf(t, as_string(at(window_state(r, inspector), "host")) == "workspace", "the added Project Inspector %s is in the Workspace window", inspector)
+	testing.expectf(t, as_string(at(window_state(r, game), "host")) == "workspace", "the added Game window %s is in the Workspace window", game)
+
+	select_asset(r, A)
+	call(r, "window_lock", fmt.tprintf(`{{"window":%q,"locked":true}}`, inspector))
+	select_asset(r, B)
+	frames(r, 3)
+	testing.expectf(t, _shows(r, inspector, A), "the framed copy is locked to %s", A)
+
+	// The workspace saves at once.
+	saved := _workspace_window(r, inspector)
+	testing.expectf(t, as_string(at(saved, "assets", 0, "path")) == A || as_string(at(saved, "assets", 0, "guid")) != "", "the workspace's file holds the copy's lock")
+	testing.expectf(t, at(_workspace_window(r, game), "state") != nil, "the workspace's file holds the Game copy's state")
+
+	// The Workspace window closed, then brought back.
+	window_close(r, "workspace")
+	frames(r, 3)
+	testing.expectf(t, !window_is_open(r, inspector), "closing the Workspace window closes its windows")
+	call(r, "run_command", `{"command":"Window/Reopen Closed"}`)
+	frames(r, 5)
+	testing.expectf(t, window_is_open(r, "workspace"), "Reopen Closed brings the Workspace window back")
+	testing.expectf(t, window_is_open(r, inspector), "with its framed window")
+	testing.expectf(t, _shows(r, inspector, A), "still locked to %s", A)
+
+	editor_restart(r)
+	frames(r, 10)
+	testing.expectf(t, as_string(at(window_state(r, inspector), "host")) == "workspace", "after a restart the copy is in its frame")
+	testing.expectf(t, _shows(r, inspector, A), "and locked to %s", A)
+	testing.expectf(t, window_is_open(r, game), "the Game copy is back too")
+	editor_quit(r)
+}
+
+// What the project's workspace file saves for the window `key`, nil for none.
+@(private = "file")
+_workspace_window :: proc(r: ^Run, key: string) -> json.Value {
+	workspaces, _ := at(project_json(r, "ProjectSettings/workspaces.json"), "workspaces").(json.Array)
+	for ws in workspaces {
+		windows, _ := at(ws, "windows").(json.Array)
+		for w in windows do if as_string(at(w, "window")) == key do return w
+	}
+	return nil
+}
+
 // Whether the window `key` is locked and shows exactly the asset `path`.
 @(private = "file")
 _shows :: proc(r: ^Run, key: string, path: string) -> bool {

@@ -88,7 +88,15 @@ _WS_Left :: struct {
 	rect:   [4]f32,
 }
 
-// One Workspace window copy's own state.
+// What a Workspace window copy keeps in its wnd.Window: the settings it
+// saves (window/window_saved.odin) and its state for the session.
+@(private = "file")
+_WS_State :: struct {
+	settings: workspace.Window_Settings,
+	run:      ^_WS_Window `json:"-"`,
+}
+
+// One Workspace window copy's state for the session.
 @(private = "file")
 _WS_Window :: struct {
 	drag:       enum {None, Pan, Move, Map_Pan, Map_Move, Map_Resize},
@@ -138,9 +146,11 @@ _WS_Window :: struct {
 // default allocator, whoever appends to them.
 @(private = "file")
 _ws_state :: proc(w: ^wnd.Window) -> ^_WS_Window {
-	if w.data != nil do return (^_WS_Window)(w.data)
-	v := wnd.state(w, _WS_Window{})
+	if w.data != nil do return (^_WS_State)(w.data).run
+	st := wnd.state(w, _WS_State{}, saved = true)
 	a := runtime.default_allocator()
+	v := new(_WS_Window, a)
+	st.run = v
 	v.pending.allocator = a
 	v.moves.allocator = a
 	v.edits.allocator = a
@@ -154,13 +164,13 @@ _ws_state :: proc(w: ^wnd.Window) -> ^_WS_Window {
 workspace_window_draw :: proc(w: ^wnd.Window) {
 	v := _ws_state(w)
 	_ws_toolbar(w, v)
-	e, ok := workspace.find(workspace.window_selection(w.key))
+	e, ok := workspace.find(workspace_window_selection(w.key))
 	owner := ""
 	if ok do owner = workspace_window_owner(e.ws.id)
 	if !ok || owner != w.key {
 		msg: cstring = "Pick a workspace, or make one with New."
 		if ok do msg = "This workspace is open in another Workspace window: pick another one here."
-		else if workspace.window_selection(w.key) != "" do msg = "This workspace is not open: the source that holds it does not have it now."
+		else if workspace_window_selection(w.key) != "" do msg = "This workspace is not open: the source that holds it does not have it now."
 		im.SetCursorPos(im.GetCursorPos() + {12, 12})
 		im.TextDisabled(msg)
 		return
@@ -277,7 +287,7 @@ _ws_unload_now :: proc(w: ^wnd.Window, v: ^_WS_Window, ids: []string) {
 			ordered_remove(&v.loaded, i)
 		}
 		// Unloaded, the workspace shown is shown no more.
-		if workspace.window_selection(w.key) == id do workspace.window_select(w.key, "")
+		if workspace_window_selection(w.key) == id do workspace_window_select(w.key, "")
 	}
 	if v.closing_window && len(v.loaded) == 0 do wnd.close(w.key)
 }
@@ -317,15 +327,16 @@ _ws_claim :: proc(w: ^wnd.Window, v: ^_WS_Window, key: string) -> ^wnd.Window {
 // windows, so two Workspace windows never fight over them.
 @(private)
 workspace_window_owner :: proc(id: string) -> string {
-	for inst in wnd.instances(WORKSPACE_WINDOW) do if workspace.window_selection(inst.key) == id do return inst.key
+	for inst in wnd.instances(WORKSPACE_WINDOW) do if workspace_window_selection(inst.key) == id do return inst.key
 	return ""
 }
 
 // Closing the window closes the windows it hosts. One with unapplied edits asks
 // first (window_close_prompt.odin).
 workspace_window_closed :: proc(w: ^wnd.Window) {
-	v := (^_WS_Window)(w.data)
-	if v == nil do return
+	st := (^_WS_State)(w.data)
+	if st == nil do return
+	v := st.run
 	for key in _ws_hosted_keys(w.key) do wnd.close(key)
 	for k in v.closing do delete(k, runtime.default_allocator())
 	delete(v.closing)
@@ -343,7 +354,36 @@ workspace_window_closed :: proc(w: ^wnd.Window) {
 	delete(v.edits)
 	delete(v.reveal, runtime.default_allocator())
 	free(v, runtime.default_allocator())
+	// The saved settings own a string, so the struct goes too: a reopened
+	// window gets them back from what the registry saved.
+	delete(st.settings.workspace, runtime.default_allocator())
+	free(st, runtime.default_allocator())
 	w.data = nil
+}
+
+// The saved settings of the open Workspace window `key`, nil when it is not
+// open.
+@(private = "file")
+_ws_settings :: proc(key: string) -> ^workspace.Window_Settings {
+	w := wnd.find(key)
+	if w == nil || w.id != WORKSPACE_WINDOW do return nil
+	_ws_state(w)
+	return &(^_WS_State)(w.data).settings
+}
+
+// The id of the workspace the Workspace window `key` shows, "" for none or
+// for a window that is not open.
+workspace_window_selection :: proc(key: string) -> string {
+	s := _ws_settings(key)
+	return s.workspace if s != nil else ""
+}
+
+// Makes the Workspace window `key` show the workspace `id`.
+workspace_window_select :: proc(key: string, id: string) {
+	s := _ws_settings(key)
+	if s == nil || s.workspace == id do return
+	delete(s.workspace, runtime.default_allocator())
+	s.workspace = strings.clone(id, runtime.default_allocator())
 }
 
 // The keys of the instances the window `host` hosts, for the workspaces it
@@ -363,7 +403,7 @@ _WS_PAD :: f32(6)
 @(private = "file")
 _ws_toolbar :: proc(w: ^wnd.Window, v: ^_WS_Window) {
 	im.SetCursorPos(im.GetCursorPos() + {_WS_PAD, _WS_PAD})
-	selected := workspace.window_selection(w.key)
+	selected := workspace_window_selection(w.key)
 	entries := workspace.all()
 	provs := workspace.providers()
 	preview: cstring = "No workspace"
@@ -379,7 +419,7 @@ _ws_toolbar :: proc(w: ^wnd.Window, v: ^_WS_Window) {
 			elsewhere := owner != "" && owner != w.key
 			// Showing another workspace keeps this one loaded: its windows live on,
 			// hidden, until it is unloaded.
-			if im.Selectable(label, en.ws.id == selected, {.Disabled} if elsewhere else {}) && en.ws.id != selected do workspace.window_select(w.key, en.ws.id)
+			if im.Selectable(label, en.ws.id == selected, {.Disabled} if elsewhere else {}) && en.ws.id != selected do workspace_window_select(w.key, en.ws.id)
 			if elsewhere do widgets.tooltip("Open in another Workspace window", im.HoveredFlags_AllowWhenDisabled)
 			im.PopID()
 		}
@@ -396,7 +436,7 @@ _ws_toolbar :: proc(w: ^wnd.Window, v: ^_WS_Window) {
 			if p.create == nil do continue
 			if im.MenuItem(fmt.ctprintf("In %s", p.name)) {
 				if ws := p.create(fmt.tprintf("Workspace %d", len(entries) + 1)); ws != nil {
-					workspace.window_select(w.key, ws.id)
+					workspace_window_select(w.key, ws.id)
 				}
 			}
 		}
@@ -416,11 +456,10 @@ _ws_toolbar :: proc(w: ^wnd.Window, v: ^_WS_Window) {
 		im.EndPopup()
 	}
 
-	m := &workspace.window_settings(w.key).minimap
+	m := &_ws_settings(w.key).minimap
 	im.SameLine(max(im.GetWindowWidth() - _WS_PAD - im.GetFrameHeight(), im.GetCursorPosX()))
 	if widgets.icon_button(icons.ICON_MD_MAP, "##ws_map", "Show or hide the mini-map", active = !m.hidden) {
 		m.hidden = !m.hidden
-		workspace.window_settings_save()
 	}
 	im.SetCursorPosY(im.GetCursorPosY() + _WS_PAD)
 }
@@ -442,7 +481,7 @@ _ws_window_menu :: proc() -> (id: string, picked: bool) {
 // The key of a new instance of the window `id`: its plain instance's when
 // that is not open anywhere (hosting opens it from the key), another one's
 // when it is (open_another makes it). "" for an unknown id.
-@(private = "file")
+@(private)
 _ws_new_key :: proc(id: string) -> string {
 	if wnd.find(id) == nil do return id
 	inst := wnd.open_another(id)
@@ -459,7 +498,7 @@ _ws_new_key :: proc(id: string) -> string {
 workspace_window_add :: proc(window, key: string, parent: u32 = 0) -> ^wnd.Window {
 	hv := wnd.find(window)
 	if hv == nil || hv.id != WORKSPACE_WINDOW do return nil
-	e, ok := workspace.find(workspace.window_selection(window))
+	e, ok := workspace.find(workspace_window_selection(window))
 	if !ok do return nil
 	inst := wnd.host_open(key, window)
 	if inst == nil do return nil
@@ -821,7 +860,7 @@ workspace_window_reveal :: proc(host, key: string) {
 // `host` shows: it closed while away from it.
 @(private)
 workspace_window_forget :: proc(host, key: string) {
-	e, ok := workspace.find(workspace.window_selection(host))
+	e, ok := workspace.find(workspace_window_selection(host))
 	if !ok do return
 	fi := _ws_frame_of(e.ws, key)
 	if fi < 0 do return
@@ -845,7 +884,7 @@ _ws_host_hook :: proc(opener, w: ^wnd.Window, created: bool) {
 	if opener == nil do return
 	hv := wnd.find(opener.host)
 	if hv == nil || hv.id != WORKSPACE_WINDOW do return
-	e, ok := workspace.find(workspace.window_selection(hv.key))
+	e, ok := workspace.find(workspace_window_selection(hv.key))
 	if !ok do return
 	fi := _ws_frame_of(e.ws, opener.key)
 	if fi < 0 do return
@@ -865,7 +904,7 @@ _ws_reopen_hook :: proc(w: ^wnd.Window, host: string) -> bool {
 	if !left do return false
 	k, _ := delete_key(&v.left, w.key)
 	delete(k)
-	e, ok := workspace.find(workspace.window_selection(host))
+	e, ok := workspace.find(workspace_window_selection(host))
 	if !ok do return false
 	if wnd.host_open(w.key, host) == nil do return false
 	if workspace.frame_index(e.ws, l.frame) >= 0 {
@@ -1342,7 +1381,7 @@ _ws_map_resize :: proc(m: ^workspace.Minimap, v: ^_WS_Window, mouse: im.Vec2, ca
 // The mini-map's rect in the canvas, false while it is hidden.
 @(private = "file")
 _ws_map_rect :: proc(window: string, canvas: [2]f32) -> (pos, size: [2]f32, shown: bool) {
-	m := &workspace.window_settings(window).minimap
+	m := &_ws_settings(window).minimap
 	if m.hidden do return
 	base: [2]f32
 	base, size = _ws_map_place(m, canvas)
@@ -1351,7 +1390,7 @@ _ws_map_rect :: proc(window: string, canvas: [2]f32) -> (pos, size: [2]f32, show
 
 @(private = "file")
 _ws_minimap :: proc(w: ^wnd.Window, v: ^_WS_Window, ws: ^workspace.Workspace, origin, canvas: im.Vec2) {
-	m := &workspace.window_settings(w.key).minimap
+	m := &_ws_settings(w.key).minimap
 	if m.hidden do return
 	base, size := _ws_map_place(m, canvas)
 	pos := _ws_map_clamp(base + m.offset, size, canvas)
@@ -1405,7 +1444,6 @@ _ws_minimap :: proc(w: ^wnd.Window, v: ^_WS_Window, ws: ^workspace.Workspace, or
 				_ws_map_resize(m, v, mouse, canvas)
 			} else {
 				v.drag = .None
-				workspace.window_settings_save()
 			}
 		}
 	}
@@ -1463,7 +1501,6 @@ _ws_minimap :: proc(w: ^wnd.Window, v: ^_WS_Window, ws: ^workspace.Workspace, or
 			m.offset = _ws_map_clamp(base + v.drag_start + (mouse - v.drag_from), size, canvas) - base
 		} else {
 			v.drag = .None
-			workspace.window_settings_save()
 		}
 	}
 
@@ -1585,7 +1622,7 @@ _ws_kept_keys :: proc(out: ^[dynamic]string) {
 // other goes on showing it.
 @(private = "file")
 _ws_save_in_menu :: proc(window: session.Window_Ref) {
-	e, ok := workspace.find(workspace.window_selection(window.key))
+	e, ok := workspace.find(workspace_window_selection(window.key))
 	if !ok {
 		im.TextDisabled("No workspace shown")
 		return
@@ -1599,10 +1636,9 @@ _ws_save_in_menu :: proc(window: session.Window_Ref) {
 
 @(private = "file")
 _ws_minimap_menu :: proc(window: session.Window_Ref) {
-	m := &workspace.window_settings(window.key).minimap
+	m := &_ws_settings(window.key).minimap
 	if im.MenuItem("Show", nil, !m.hidden) {
 		m.hidden = !m.hidden
-		workspace.window_settings_save()
 	}
 	if im.BeginMenu("Attach To") {
 		for a in _WS_ANCHORS {
@@ -1611,7 +1647,6 @@ _ws_minimap_menu :: proc(window: session.Window_Ref) {
 				m.anchor = a.anchor
 				m.offset = {}
 				m.hidden = false
-				workspace.window_settings_save()
 			}
 		}
 		im.EndMenu()
@@ -1619,7 +1654,6 @@ _ws_minimap_menu :: proc(window: session.Window_Ref) {
 	im.Separator()
 	if im.MenuItem("Reset") {
 		m^ = {}
-		workspace.window_settings_save()
 	}
 	widgets.tooltip("Shown, at the top right, at its default size")
 }
@@ -1637,7 +1671,7 @@ workspace_rename_menu :: proc(window: session.Window_Ref) {
 workspace_unload_menu :: proc(window: session.Window_Ref) {
 	w := wnd.find(window.key)
 	if w == nil || w.data == nil do return
-	id := workspace.window_selection(window.key)
+	id := workspace_window_selection(window.key)
 	_ws_unload_request(w, (^_WS_Window)(w.data), {strings.clone(id, context.temp_allocator)})
 }
 
@@ -1646,7 +1680,7 @@ workspace_delete_menu :: proc(window: session.Window_Ref) {
 	context.allocator = runtime.default_allocator()
 	delete(_ws_delete_window)
 	_ws_delete_window = strings.clone(window.key)
-	e, ok := workspace.find(workspace.window_selection(window.key))
+	e, ok := workspace.find(workspace_window_selection(window.key))
 	if !ok do return
 	widgets.dialog_open({
 		title       = "Delete Workspace",
@@ -1663,7 +1697,7 @@ workspace_window_shutdown :: proc() {
 }
 
 _ws_has_selection :: proc(window: session.Window_Ref) -> bool {
-	_, ok := workspace.find(workspace.window_selection(window.key))
+	_, ok := workspace.find(workspace_window_selection(window.key))
 	return ok
 }
 
@@ -1673,7 +1707,7 @@ _ws_delete_window: string // owned
 
 @(private = "file")
 _ws_delete_confirmed :: proc() {
-	e, ok := workspace.find(workspace.window_selection(_ws_delete_window))
+	e, ok := workspace.find(workspace_window_selection(_ws_delete_window))
 	w := wnd.find(_ws_delete_window)
 	delete(_ws_delete_window, runtime.default_allocator())
 	_ws_delete_window = ""
