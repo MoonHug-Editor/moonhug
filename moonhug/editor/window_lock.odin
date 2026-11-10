@@ -33,7 +33,7 @@ package editor
 //     window's id for a "shared" one (window_lock_key)
 //   - Locks survive a restart: a docked or floating window's in the user
 //     settings (selection_persist.odin), a workspace frame's window's in its
-//     workspace (workspace.Lock, kept equal by workspace_locks_sync), so it
+//     workspace (workspace.Saved_Window, kept equal by workspace_locks_sync), so it
 //     goes where the workspace goes
 //
 // Windows and plugins reach it through the session package (session.window_*).

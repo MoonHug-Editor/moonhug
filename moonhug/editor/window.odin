@@ -74,7 +74,7 @@ EditorSettings :: struct {
     gizmo_hidden_icons:       [dynamic]string,          // component types whose icon the gizmo settings hide
     gizmo_hidden_gizmos:      [dynamic]string,          // component types whose gizmo the gizmo settings hide
     selection:                Persisted_Selection,      // the selection at quit (selection_persist.odin)
-    window_locks:               [dynamic]Persisted_Window_Lock, // every locked window (window_lock.odin, selection_persist.odin)
+    windows:                  [dynamic]Persisted_Window, // every window's lock and saved state (selection_persist.odin)
     command_palette_recent:   []command_palette.Recent, // each palette mode's recently run rows, newest first
     command_args:             map[string]string,        // each command with arguments' last values, JSON by command id (adjust_last.odin)
 }
@@ -202,8 +202,11 @@ save_editor_settings :: proc() {
         pretty     = true,
         use_spaces = true,
         spaces     = 2,
+        // A window's saved state and the command arguments are maps: sorted,
+        // the file reads the same whenever it is written.
+        sort_maps_by_key = true,
     }
     if data, err := json.marshal(editor_settings, opts, allocator = context.temp_allocator); err == nil {
-        _ = os.write_entire_file(EDITOR_SETTINGS_FILE, data)
+        _ = os.write_entire_file(EDITOR_SETTINGS_FILE, core.json_canonicalize_floats(data, context.temp_allocator))
     }
 }

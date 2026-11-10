@@ -159,7 +159,7 @@ test_frame_window_lock_travels_with_its_workspace :: proc(t: ^testing.T) {
 	editor.sel_proj_only(A)
 	session.window_lock_set(KEY, true)
 	testing.expect(t, editor.workspace_locks_sync(ws), "locking the window changes its workspace")
-	testing.expect_value(t, len(ws.locks), 1)
+	testing.expect_value(t, len(ws.windows), 1)
 	testing.expect(t, !editor.workspace_locks_sync(ws), "nothing changed, nothing to save")
 	testing.expect(t, !_held(KEY), "the user settings leave a frame window's lock to its workspace")
 
@@ -170,7 +170,7 @@ test_frame_window_lock_travels_with_its_workspace :: proc(t: ^testing.T) {
 	wnd.draw_all()
 	session.window_lock_set(KEY, false)
 	testing.expect(t, !editor.workspace_locks_sync(ws), "a window that is not open keeps what is saved for it")
-	testing.expect_value(t, len(ws.locks), 1)
+	testing.expect_value(t, len(ws.windows), 1)
 	wnd.open_saved({KEY})
 	editor.sel_proj_only("moonhug/editor")
 	editor.workspace_lock_take(ws, KEY)
@@ -179,13 +179,13 @@ test_frame_window_lock_travels_with_its_workspace :: proc(t: ^testing.T) {
 
 	// Unlocked while open: the workspace forgets the lock.
 	session.window_lock_set(KEY, false)
-	testing.expect(t, editor.workspace_locks_sync(ws) && len(ws.locks) == 0, "unlocking reaches the workspace")
+	testing.expect(t, editor.workspace_locks_sync(ws) && len(ws.windows) == 0, "unlocking reaches the workspace")
 
 	// A lock goes with its window's tab.
 	session.window_lock_set(KEY, true)
 	editor.workspace_locks_sync(ws)
 	workspace.tab_remove(ws, 0, 0)
-	testing.expect(t, editor.workspace_locks_sync(ws) && len(ws.locks) == 0, "a window out of every frame leaves no lock behind")
+	testing.expect(t, editor.workspace_locks_sync(ws) && len(ws.windows) == 0, "a window out of every frame leaves no lock behind")
 }
 
 @(private = "file")

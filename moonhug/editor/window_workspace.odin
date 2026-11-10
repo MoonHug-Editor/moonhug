@@ -180,9 +180,14 @@ workspace_window_draw :: proc(w: ^wnd.Window) {
 		}
 		for f in le.ws.frames do for key in f.tabs {
 			was_open := wnd.find(key) != nil
+			if !was_open do workspace_state_give(le.ws, key)
 			if _ws_claim(w, v, key) != nil && !was_open do workspace_lock_take(le.ws, key)
 		}
-		if workspace_locks_sync(le.ws) do workspace.changed(le.ws)
+		changed := workspace_locks_sync(le.ws)
+		// A state changes all through a drag (a splitter), and a change saves
+		// the workspace: it is taken when the mouse is up.
+		if !im.IsAnyMouseDown() do changed |= workspace_states_sync(le.ws)
+		if changed do workspace.changed(le.ws)
 	}
 	_ws_canvas(w, v, e.ws)
 }
@@ -1503,9 +1508,8 @@ workspace_window_install :: proc() {
 // workspace saved for it. One still locked from this session keeps what it
 // holds, which may be more: an object of a scene never saved is not saved.
 workspace_lock_take :: proc(ws: ^workspace.Workspace, key: string) {
-	i := workspace.lock_index(ws, key)
-	if i < 0 || window_locked(key) || window_lock_key(key) != key do return
-	l := ws.locks[i]
+	if !workspace.lock_has(ws, key) || window_locked(key) || window_lock_key(key) != key do return
+	l := ws.windows[workspace.window_index(ws, key)]
 	objects := make([dynamic]Window_Lock_Object, context.temp_allocator)
 	for o in l.objects {
 		if id, err := uuid.read(o.scene); err == nil do append(&objects, Window_Lock_Object{scene_guid = core.Asset_GUID(id), local_id = core.Local_ID(o.local_id)})
@@ -1519,18 +1523,37 @@ workspace_lock_take :: proc(ws: ^workspace.Workspace, key: string) {
 	window_lock_restore(key, objects[:], held[:])
 }
 
+// A window a frame of `ws` is about to open from its key gets the state its
+// workspace saved for it (window.saved_set). One closed in this session
+// keeps the state it left, which is newer.
+workspace_state_give :: proc(ws: ^workspace.Workspace, key: string) {
+	if wnd.saved_has(key) do return
+	wnd.saved_set(key, workspace.state_text(ws, key))
+}
+
+// Makes the states `ws` saves equal to the saved states of its frames' open
+// windows. A window that is not open keeps what is saved for it. True when
+// `ws` changed.
+workspace_states_sync :: proc(ws: ^workspace.Workspace) -> (changed: bool) {
+	for f in ws.frames do for key in f.tabs {
+		if wnd.find(key) == nil do continue
+		changed |= workspace.state_set(ws, key, wnd.saved_text(key))
+	}
+	return
+}
+
 // Makes the locks `ws` saves equal to the locks of its frames' open windows,
-// and drops those of windows no frame holds. A window that is not open keeps
+// and drops the records of windows no frame holds. A window that is not open keeps
 // what is saved for it. True when `ws` changed. Once per frame for each
 // loaded workspace, so a lock set, cleared, or brought in with a window
 // reaches the workspace whoever changed it.
 workspace_locks_sync :: proc(ws: ^workspace.Workspace) -> (changed: bool) {
-	changed = workspace.locks_prune(ws)
+	changed = workspace.windows_prune(ws)
 	for f in ws.frames do for key in f.tabs {
 		if wnd.find(key) == nil || window_lock_key(key) != key do continue
 		held, locked := window_lock_held(key)
 		if !locked {
-			if workspace.lock_index(ws, key) >= 0 do changed |= workspace.lock_set(ws, key, nil, nil)
+			changed |= workspace.lock_set(ws, key, nil, nil)
 			continue
 		}
 		objects := make([dynamic]workspace.Lock_Object, context.temp_allocator)

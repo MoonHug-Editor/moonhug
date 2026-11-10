@@ -192,6 +192,7 @@ main :: proc() {
     // Reopen what was open last session — declarations must exist first. A
     // first run opens the windows the default layout docks, the Game window
     // included (menu.show_game defaults on).
+    window_states_restore()
     wnd.open_saved(editor_settings.open_window_ids[:])
     wnd.close_guard = window_close_guard
     if !editor_settings.has_window_state {

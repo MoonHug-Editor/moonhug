@@ -11,10 +11,10 @@ import "moonhug:editor/keymap"
 // One History copy's own state.
 @(private = "file")
 _History_Window :: struct {
-	selected:      int, // the entry shown in the details pane: 0 the initial state, -1 none
-	last_count:    int, // entries last frame: more means a new step to scroll to
+	selected:      int `json:"-"`, // the entry shown in the details pane: 0 the initial state, -1 none
+	last_count:    int `json:"-"`, // entries last frame: more means a new step to scroll to
 	split_ratio:   f32, // the list's share of the list/details split
-	scroll_to_sel: bool, // scroll the selected row into view next frame
+	scroll_to_sel: bool `json:"-"`, // scroll the selected row into view next frame
 }
 
 @(private = "file")
@@ -22,7 +22,7 @@ _hv: ^_History_Window
 
 @(editor_window={id="History", title="History", icon="HISTORY"})
 history_window_draw :: proc(w: ^wnd.Window) {
-	_hv = wnd.state(w, _History_Window{selected = -1, split_ratio = 0.6})
+	_hv = wnd.state(w, _History_Window{selected = -1, split_ratio = 0.6}, saved = true)
 	s := undo.get()
 	if s == nil {
 		im.TextDisabled("Undo stack unavailable")

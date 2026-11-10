@@ -310,7 +310,11 @@ test_selection_and_inspector_lock_survive_a_restart :: proc(t: ^testing.T) {
 	editor.selection_persist_set_restored_for_test(true)
 	editor.selection_persist_capture()
 	testing.expect_value(t, len(editor.editor_settings.selection.objects), 2)
-	testing.expect_value(t, len(editor.editor_settings.window_locks), 1)
+	// One window holds a lock. The list also has the windows that only save
+	// their state.
+	lock_count := 0
+	for w in editor.editor_settings.windows do if len(w.objects) > 0 || len(w.assets) > 0 do lock_count += 1
+	testing.expect_value(t, lock_count, 1)
 
 	// Next run: nothing selected, nothing locked, C deleted meanwhile.
 	editor.window_lock_set("Inspector", false)

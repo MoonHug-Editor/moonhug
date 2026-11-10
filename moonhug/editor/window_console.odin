@@ -18,13 +18,13 @@ _console_clear_on_play: bool = true
 // One Console copy's own state.
 @(private = "file")
 _Console_Window :: struct {
-	last_count:    int, // entries shown last frame: more means new ones to scroll to
+	last_count:    int `json:"-"`, // entries shown last frame: more means new ones to scroll to
 	show_info:     bool,
 	show_warning:  bool,
 	show_error:    bool,
-	filter:        [256]u8,
-	selected_id:   u64,  // log.Entry.id of the row shown in the detail pane
-	scroll_to_sel: bool, // scroll the selected row into view next frame
+	filter:        [256]u8 `json:"-"`,
+	selected_id:   u64 `json:"-"`,  // log.Entry.id of the row shown in the detail pane
+	scroll_to_sel: bool `json:"-"`, // scroll the selected row into view next frame
 	split_ratio:   f32,  // rows pane share of the rows/detail split
 }
 
@@ -122,7 +122,7 @@ _console_time_str :: proc(t: time.Time) -> string {
 
 @(editor_window={id="Console", title="Console", icon="LIST_ALT"})
 console_window_draw :: proc(w: ^wnd.Window) {
-	_cv = wnd.state(w, _Console_Window{show_info = true, show_warning = true, show_error = true, split_ratio = 0.72})
+	_cv = wnd.state(w, _Console_Window{show_info = true, show_warning = true, show_error = true, split_ratio = 0.72}, saved = true)
 	if im.Button("Clear") {
 		log.clear()
 		_cv.last_count = 0

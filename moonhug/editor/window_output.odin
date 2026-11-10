@@ -17,7 +17,7 @@ _Output_Window :: struct {
 	// Off means the window stays where you scrolled it while a build keeps
 	// writing, which is the only way to read an error that has scrolled past.
 	follow_tail: bool,
-	last_count:  int, // lines shown last frame: more means new output
+	last_count:  int `json:"-"`, // lines shown last frame: more means new output
 }
 
 output_window_append :: proc(stdout, stderr: []byte) {
@@ -79,7 +79,7 @@ output_window_clear :: proc() {
 
 @(editor_window={id="Output", title="Output", icon="RECEIPT_LONG"})
 output_window_draw :: proc(w: ^wnd.Window) {
-	ov := wnd.state(w, _Output_Window{follow_tail = true})
+	ov := wnd.state(w, _Output_Window{follow_tail = true}, saved = true)
 	if im.Button("Clear") {
 		output_window_clear()
 	}

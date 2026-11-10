@@ -12,7 +12,8 @@ package window
 // instance has its own imgui id (`<id>`, `<id>/<asset guid>`, or `<id>/<n>`)
 // and so its own dock place and size in imgui.ini, and its own state: the
 // draw proc receives the instance and keeps what it needs in `data`, which the
-// `closed` proc frees when the instance closes. A new asset instance with
+// `closed` proc frees when the instance closes. A window can have that state
+// saved with it (window_saved.odin). A new asset instance with
 // nothing saved docks beside an open instance of the same window, or opens
 // offset from it when that one floats, so it never hides behind it. An asset
 // instance's tab shows the asset's name.
@@ -26,6 +27,7 @@ package window
 // it, the editor root draws it once per frame (draw_all).
 
 import "base:runtime"
+import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:fmt"
 import "core:math/rand"
@@ -46,6 +48,9 @@ Window :: struct {
 	// The window's own state for this instance: its draw proc sets it, its
 	// closed proc frees it.
 	data:   rawptr,
+	// The type of `data` when the registry saves it (state with saved), nil
+	// otherwise (window_saved.odin).
+	saved:  typeid,
 	open:   bool,
 	reg:    int,   // index into _registry
 	dock:   im.ID, // its dock node last frame, 0 while floating: a new sibling docks there
@@ -533,6 +538,7 @@ draw :: proc(id: string) {
 // Instances draw in the order they opened, so an earlier one has its place
 // when a later one looks for a sibling to dock beside.
 draw_all :: proc() {
+	destroyed := false
 	for i := len(_windows) - 1; i >= 0; i -= 1 {
 		w := _windows[i]
 		if w.open do continue
@@ -542,7 +548,9 @@ draw_all :: proc() {
 		}
 		_remember_closed(w)
 		_destroy(i)
+		destroyed = true
 	}
+	if destroyed do _saved_prune()
 	for i := 0; i < len(_windows); i += 1 {
 		w := _windows[i]
 		if w.open && w.host == "" && w.drawn != _pass + 1 do _draw_instance(w)
@@ -707,11 +715,19 @@ label :: proc(w: ^Window) -> string {
 // The instance's state, made from `init` on first use. It lives on the
 // default allocator, since it outlives frames. A window whose state owns no
 // memory needs no closed proc: the instance frees `data` when it closes.
-state :: proc(w: ^Window, init: $T) -> ^T {
+//
+// With `saved` the registry saves the state under the instance's key
+// (window_saved.odin): every field without `json:"-"` comes back after a
+// restart, and the whole struct when the instance is reopened in the session.
+state :: proc(w: ^Window, init: $T, saved := false) -> ^T {
 	if w.data == nil {
 		p := new(T, runtime.default_allocator())
 		p^ = init
 		w.data = p
+		if saved {
+			// A field the record lacks keeps its `init` value.
+			if text := _saved_begin(w, T); text != "" do _ = json.unmarshal_string(text, p, allocator = runtime.default_allocator())
+		}
 	}
 	return (^T)(w.data)
 }
@@ -786,6 +802,7 @@ shutdown :: proc() {
 	for len(_windows) > 0 do _destroy(len(_windows) - 1)
 	delete(_windows)
 	_windows = nil
+	_saved_shutdown()
 	delete(_registry)
 	_registry = nil
 }
@@ -819,6 +836,7 @@ _create :: proc(ri: int, asset: core.Asset_GUID, key := "") -> ^Window {
 	case:             w.key = fmt.aprintf("%s/%s", r.id, uuid.to_string(uuid.Identifier(asset), context.temp_allocator))
 	}
 	if asset != {} do session.window_asset_set(w.key, asset)
+	_saved_unpark(w)
 	_use_count += 1
 	w.used = _use_count
 	append(&_windows, w)
@@ -826,16 +844,19 @@ _create :: proc(ri: int, asset: core.Asset_GUID, key := "") -> ^Window {
 }
 
 // The instance's state goes through its window's closed proc, then the
-// instance itself.
+// instance itself. A saved state leaves its record, and its struct stays for
+// the instance that opens under the key next (window_saved.odin).
 @(private = "file")
 _destroy :: proc(i: int) {
 	w := _windows[i]
+	_saved_closing(w)
 	if closed := _registry[w.reg].closed; closed != nil {
 		closed(w)
-	} else if w.data != nil {
+	} else if w.data != nil && w.saved == nil {
 		free(w.data, runtime.default_allocator())
 		w.data = nil
 	}
+	_saved_park(w)
 	// An instance reopened under the same key keeps the mapping.
 	if w.asset != {} && find(w.key) == nil do session.window_asset_clear(w.key)
 	if _focus_request == w do _focus_request = nil

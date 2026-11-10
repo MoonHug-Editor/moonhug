@@ -1,7 +1,8 @@
 package editor
 
-// The selection and the window locks across an editor restart, in the user's
-// editor settings (UserSettings/editor_settings.json). Both are one person's
+// The selection, the window locks and the windows' saved state across an
+// editor restart, in the user's editor settings
+// (UserSettings/editor_settings.json). All are one person's
 // working state, like the open scenes and windows beside them, so they stay
 // out of the committed project settings.
 //
@@ -17,12 +18,14 @@ package editor
 //   the last run drops out, and a lock left with nothing is not restored. The
 //   restore is not an undo step.
 
+import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:strings"
 import assets "moonhug:libs/assets"
 import "moonhug:editor/inspector"
 import "moonhug:editor/simulate"
 import "moonhug:editor/undo"
+import wnd "moonhug:editor/window"
 import core "moonhug:libs/core"
 
 // A scene object across a restart: its scene's asset guid and its local id.
@@ -50,13 +53,38 @@ Persisted_Selection :: struct {
 	kept_assets: [dynamic]Persisted_Asset,
 }
 
-// A window lock by its key ("Inspector", "Project Inspector/2", "Animation")
-// and what it holds, as references (window_lock.odin). An object of a scene
-// never saved has nothing that names it next run and is left out.
-Persisted_Window_Lock :: struct {
+// What is saved for a window, by its key ("Inspector", "Project Inspector/2",
+// "Animation"):
+//
+// - What its lock holds, as references (window_lock.odin), empty for an
+//   unlocked window. An object of a scene never saved has nothing that names
+//   it next run and is left out.
+// - Its saved state (window/window_saved.odin), nil for a window without one.
+//
+// A window of a workspace frame is not here: its workspace saves it.
+Persisted_Window :: struct {
 	window:  string,
-	objects: [dynamic]Persisted_Object,
-	assets:  [dynamic]Persisted_Asset,
+	objects: [dynamic]Persisted_Object `json:"objects,omitempty"`,
+	assets:  [dynamic]Persisted_Asset `json:"assets,omitempty"`,
+	state:   json.Value `json:"state,omitempty"`,
+}
+
+// The record of the window `key` in `list`, added when missing.
+@(private = "file")
+_persist_window :: proc(list: ^[dynamic]Persisted_Window, key: string) -> ^Persisted_Window {
+	for &p in list do if p.window == key do return &p
+	append(list, Persisted_Window{window = key})
+	return &list[len(list) - 1]
+}
+
+// Gives the window registry the saved states the settings hold, before the
+// windows of the last session open (window.open_saved).
+window_states_restore :: proc() {
+	for p in editor_settings.windows {
+		if p.state == nil do continue
+		text, err := json.marshal(p.state, {spec = .JSON}, context.temp_allocator)
+		if err == nil do wnd.saved_set(p.window, string(text))
+	}
 }
 
 // Fills the editor settings' selection and lock fields from the editor as it
@@ -76,21 +104,34 @@ selection_persist_capture :: proc() {
 	}
 	editor_settings.selection = sel
 
-	locks := make([dynamic]Persisted_Window_Lock)
+	windows := make([dynamic]Persisted_Window)
 	for l in window_locks_held() {
 		// Copies: the lock owns its key and paths, and an unlock frees them.
-		p := Persisted_Window_Lock{window = strings.clone(l.key), objects = make([dynamic]Persisted_Object), assets = make([dynamic]Persisted_Asset)}
+		objects := make([dynamic]Persisted_Object)
 		for o in l.objects do if o.scene_guid != {} {
-			append(&p.objects, Persisted_Object{scene = uuid.to_string(uuid.Identifier(o.scene_guid)), local_id = o.local_id})
+			append(&objects, Persisted_Object{scene = uuid.to_string(uuid.Identifier(o.scene_guid)), local_id = o.local_id})
 		}
+		held := make([dynamic]Persisted_Asset)
 		for a in l.assets {
 			pa := Persisted_Asset{path = strings.clone(a.path), sub_id = a.sub_id}
 			if a.guid != {} do pa.guid = uuid.to_string(uuid.Identifier(a.guid))
-			append(&p.assets, pa)
+			append(&held, pa)
 		}
-		if len(p.objects) > 0 || len(p.assets) > 0 do append(&locks, p)
+		if len(objects) == 0 && len(held) == 0 do continue
+		p := _persist_window(&windows, strings.clone(l.key))
+		p.objects, p.assets = objects, held
 	}
-	editor_settings.window_locks = locks
+	// The saved states: an open window's, and a plain instance's, which
+	// shows as it was left when its window opens again. Another closed
+	// instance does not come back under its key after a restart.
+	for key in wnd.saved_keys() {
+		if wnd.is_kept(key) do continue
+		if wnd.find(key) == nil && strings.index_byte(key, '/') >= 0 do continue
+		state, err := json.parse_string(wnd.saved_text(key), .JSON, true)
+		if err != nil do continue
+		_persist_window(&windows, strings.clone(key)).state = state
+	}
+	editor_settings.windows = windows
 }
 
 @(private = "file")
@@ -150,7 +191,8 @@ selection_persist_restore :: proc() {
 	if len(state.scene) > 0 || len(state.proj) > 0 || len(state.kept) > 0 || len(state.kept_proj) > 0 do selection_apply_state(state)
 
 	// As references: what is not loaded yet waits (window_lock.odin).
-	for l in editor_settings.window_locks {
+	for l in editor_settings.windows {
+		if len(l.objects) == 0 && len(l.assets) == 0 do continue
 		objects := make([dynamic]Window_Lock_Object)
 		for o in l.objects {
 			id, err := uuid.read(o.scene)

@@ -9,9 +9,10 @@ package workspace
 // - A workspace has a unique id, which the Workspace window remembers, a name
 //   and its frames. A frame names its windows by window instance key (`id`,
 //   `id/<asset guid>`, `id/<n>`), so a hosted window reopens from it.
-// - A workspace holds the locks of its windows (Lock), so a locked window is
-//   locked wherever the workspace shows up: after a restart, in another
-//   project, when its source brings it back.
+// - A workspace holds what its windows save (Saved_Window): a locked
+//   window's lock and a window's saved state. So a window is as it was left
+//   wherever the workspace shows up: after a restart, in another project,
+//   when its source brings it back.
 // - Frames form trees of any depth: a frame with a parent sits right of it,
 //   under its earlier siblings and their children, and moves with it
 //   (layout). Trees keep apart: one that overlaps another moves away.
@@ -28,6 +29,7 @@ import "core:encoding/uuid"
 import "core:crypto"
 import "core:os"
 import "core:strings"
+import core "moonhug:libs/core"
 import "moonhug:libs/log"
 
 Workspace :: struct {
@@ -36,17 +38,23 @@ Workspace :: struct {
 	pan:        [2]f32, // the canvas offset: where its origin sits in the window
 	frames:     [dynamic]Frame,
 	next_frame: u32,    // the next frame id: ids are never reused, so a new frame takes nothing from a removed one
-	locks:      [dynamic]Lock, // the locks of its windows, one per locked window
+	// What it saves for its windows: a locked window's lock, a window's saved
+	// state. One record per window that has either.
+	windows:    [dynamic]Saved_Window,
 }
 
-// What a locked window of a frame holds (editor/window_lock.odin), as
-// references that mean the same anywhere: an object as its scene's asset guid
-// and its local id, an asset as its guid, or its path when it has none. The
-// Workspace window keeps it equal to the window's lock.
-Lock :: struct {
+// What a workspace saves for a window of a frame, so it goes where the
+// workspace goes. The Workspace window keeps it equal to the window.
+//
+// - The lock (editor/window_lock.odin), as references that mean the same
+//   anywhere: an object as its scene's asset guid and its local id, an asset
+//   as its guid, or its path when it has none. Empty for an unlocked window.
+// - The saved state (window/window_saved.odin), nil for a window without one.
+Saved_Window :: struct {
 	window:  string, // owned, the window instance key
-	objects: [dynamic]Lock_Object,
-	assets:  [dynamic]Lock_Asset,
+	objects: [dynamic]Lock_Object `json:"objects,omitempty"`,
+	assets:  [dynamic]Lock_Asset `json:"assets,omitempty"`,
+	state:   json.Value `json:"state,omitempty"`, // owned
 }
 
 Lock_Object :: struct {
@@ -60,61 +68,104 @@ Lock_Asset :: struct {
 	sub_id: i64,
 }
 
-// The index of the lock of the window `key` in `ws`, -1 for none.
-lock_index :: proc(ws: ^Workspace, key: string) -> int {
-	for l, i in ws.locks do if l.window == key do return i
+// The index of the record of the window `key` in `ws`, -1 for none.
+window_index :: proc(ws: ^Workspace, key: string) -> int {
+	for l, i in ws.windows do if l.window == key do return i
 	return -1
+}
+
+// Whether `ws` saves a lock for the window `key`.
+lock_has :: proc(ws: ^Workspace, key: string) -> bool {
+	i := window_index(ws, key)
+	return i >= 0 && (len(ws.windows[i].objects) > 0 || len(ws.windows[i].assets) > 0)
+}
+
+// The record of the window `key`, made when missing.
+@(private = "file")
+_window_record :: proc(ws: ^Workspace, key: string) -> ^Saved_Window {
+	if i := window_index(ws, key); i >= 0 do return &ws.windows[i]
+	append(&ws.windows, Saved_Window{window = strings.clone(key)})
+	return &ws.windows[len(ws.windows) - 1]
+}
+
+// Removes the record of the window `key` when it holds nothing.
+@(private = "file")
+_window_record_trim :: proc(ws: ^Workspace, key: string) {
+	i := window_index(ws, key)
+	if i < 0 do return
+	r := ws.windows[i]
+	if len(r.objects) > 0 || len(r.assets) > 0 || r.state != nil do return
+	_window_free(r)
+	ordered_remove(&ws.windows, i)
 }
 
 // Makes the lock of the window `key` in `ws` hold `objects` and `assets`,
 // copied, or removes it when both are empty. True when it changed.
 lock_set :: proc(ws: ^Workspace, key: string, objects: []Lock_Object, assets: []Lock_Asset) -> bool {
 	context.allocator = runtime.default_allocator()
-	i := lock_index(ws, key)
-	if len(objects) == 0 && len(assets) == 0 {
-		if i < 0 do return false
-		_lock_free(ws.locks[i])
-		ordered_remove(&ws.locks, i)
-		return true
-	}
-	if i >= 0 && _lock_holds(ws.locks[i], objects, assets) do return false
-	l := Lock{window = strings.clone(key)}
-	for o in objects do append(&l.objects, Lock_Object{scene = strings.clone(o.scene), local_id = o.local_id})
-	for a in assets do append(&l.assets, Lock_Asset{guid = strings.clone(a.guid), path = strings.clone(a.path), sub_id = a.sub_id})
-	if i >= 0 {
-		_lock_free(ws.locks[i])
-		ws.locks[i] = l
-	} else {
-		append(&ws.locks, l)
-	}
+	if !lock_has(ws, key) && len(objects) == 0 && len(assets) == 0 do return false
+	r := _window_record(ws, key)
+	if _lock_holds(r^, objects, assets) do return false
+	_lock_free(r)
+	for o in objects do append(&r.objects, Lock_Object{scene = strings.clone(o.scene), local_id = o.local_id})
+	for a in assets do append(&r.assets, Lock_Asset{guid = strings.clone(a.guid), path = strings.clone(a.path), sub_id = a.sub_id})
+	_window_record_trim(ws, key)
 	return true
 }
 
-// Removes the locks of windows no frame of `ws` holds. True when one went.
-locks_prune :: proc(ws: ^Workspace) -> (changed: bool) {
-	for i := len(ws.locks) - 1; i >= 0; i -= 1 {
+// The saved state of the window `key` in `ws` as JSON text with sorted keys
+// (temp), "" for none.
+state_text :: proc(ws: ^Workspace, key: string) -> string {
+	i := window_index(ws, key)
+	if i < 0 || ws.windows[i].state == nil do return ""
+	text, err := json.marshal(ws.windows[i].state, {spec = .JSON, sort_maps_by_key = true}, context.temp_allocator)
+	if err != nil do return ""
+	return string(core.json_canonicalize_floats(text, context.temp_allocator))
+}
+
+// Makes the saved state of the window `key` in `ws` the JSON `text`, or
+// removes it for "". True when it changed.
+state_set :: proc(ws: ^Workspace, key: string, text: string) -> bool {
+	context.allocator = runtime.default_allocator()
+	if state_text(ws, key) == text do return false
+	value: json.Value
+	if text != "" {
+		parsed, err := json.parse_string(text, .JSON, true)
+		if err != nil do return false
+		value = parsed
+	}
+	r := _window_record(ws, key)
+	json.destroy_value(r.state)
+	r.state = value
+	_window_record_trim(ws, key)
+	return true
+}
+
+// Removes the records of windows no frame of `ws` holds. True when one went.
+windows_prune :: proc(ws: ^Workspace) -> (changed: bool) {
+	for i := len(ws.windows) - 1; i >= 0; i -= 1 {
 		held := false
-		for f in ws.frames do for k in f.tabs do if k == ws.locks[i].window do held = true
+		for f in ws.frames do for k in f.tabs do if k == ws.windows[i].window do held = true
 		if held do continue
-		_lock_free(ws.locks[i])
-		ordered_remove(&ws.locks, i)
+		_window_free(ws.windows[i])
+		ordered_remove(&ws.windows, i)
 		changed = true
 	}
 	return
 }
 
 @(private = "file")
-_lock_holds :: proc(l: Lock, objects: []Lock_Object, assets: []Lock_Asset) -> bool {
+_lock_holds :: proc(l: Saved_Window, objects: []Lock_Object, assets: []Lock_Asset) -> bool {
 	if len(l.objects) != len(objects) || len(l.assets) != len(assets) do return false
 	for o, i in objects do if l.objects[i] != o do return false
 	for a, i in assets do if l.assets[i] != a do return false
 	return true
 }
 
+// Frees and empties the lock of a record.
 @(private = "file")
-_lock_free :: proc(l: Lock) {
+_lock_free :: proc(l: ^Saved_Window) {
 	context.allocator = runtime.default_allocator()
-	delete(l.window)
 	for o in l.objects do delete(o.scene)
 	delete(l.objects)
 	for a in l.assets {
@@ -122,6 +173,17 @@ _lock_free :: proc(l: Lock) {
 		delete(a.path)
 	}
 	delete(l.assets)
+	l.objects = nil
+	l.assets = nil
+}
+
+@(private = "file")
+_window_free :: proc(l: Saved_Window) {
+	context.allocator = runtime.default_allocator()
+	l := l
+	_lock_free(&l)
+	delete(l.window)
+	json.destroy_value(l.state)
 }
 
 Frame :: struct {
@@ -572,8 +634,8 @@ _workspace_free_fields :: proc(ws: ^Workspace) {
 		delete(f.tabs)
 	}
 	delete(ws.frames)
-	for l in ws.locks do _lock_free(l)
-	delete(ws.locks)
+	for l in ws.windows do _window_free(l)
+	delete(ws.windows)
 }
 
 // --- File providers (user settings, project settings) -----------------------
@@ -645,12 +707,14 @@ file_store_save :: proc(s: ^File_Store) -> bool {
 	}
 	file := _File{workspaces = make([]Workspace, len(s.list), context.temp_allocator)}
 	for ws, i in s.list do file.workspaces[i] = ws^
-	bytes, err := json.marshal(file, {pretty = true, spec = .JSON}, context.temp_allocator)
+	// Sorted keys: a window's saved state is a JSON object, and the file
+	// reads the same whenever it is written.
+	bytes, err := json.marshal(file, {pretty = true, spec = .JSON, sort_maps_by_key = true}, context.temp_allocator)
 	if err != nil {
 		log.errorf("workspaces: cannot encode %s (%v)", s.path, err)
 		return false
 	}
-	if werr := os.write_entire_file(s.path, bytes); werr != nil {
+	if werr := os.write_entire_file(s.path, core.json_canonicalize_floats(bytes, context.temp_allocator)); werr != nil {
 		log.errorf("workspaces: cannot write %s (%v)", s.path, werr)
 		return false
 	}
