@@ -1,3 +1,10 @@
+## [0.163.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.162.0...v0.163.0) (2026-11-11)
+
+### Features
+
+* embedded assets ([e5e366b](https://github.com/MoonHug-Editor/moonhug/commit/e5e366bae352e138bc3e95436c7c30e42910b5a0))
+* sub-assets in scene files ([6648d25](https://github.com/MoonHug-Editor/moonhug/commit/6648d25954b9209f2aec833479de7d4b2e8fc09e))
+
 ## [0.162.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.161.0...v0.162.0) (2026-11-10)
 
 ### Features
