@@ -1418,6 +1418,7 @@ _prefab_resolved_bytes :: proc(guid: Asset_GUID, depth := 0) -> (out: []byte, ow
     }
 
     root_ns := vf.nested_scenes[root_ns_idx]
+    _scene_sub_assets_variant_base_set(guid, root_ns.source_prefab)
 
     // Resolve the base (recursively flatten if it too is a variant), then bake
     // this variant's overrides onto it.
@@ -1515,6 +1516,7 @@ _prefab_resolved_bytes :: proc(guid: Asset_GUID, depth := 0) -> (out: []byte, ow
     delete(vf.nested_scenes); vf.nested_scenes = nil
     delete(vf.breadcrumbs); vf.breadcrumbs = nil
     delete(vf.components); vf.components = nil
+    scene_file_destroy(&vf)
 
     opts := json.Marshal_Options{spec = .JSON, pretty = false}
     data, merr := json.marshal(base_sf, opts)

@@ -85,6 +85,8 @@ property_drawer_PPtr :: proc(ctx: ^Ctx) {
 //
 // New makes an asset with the type's defaults, one row per asset type the
 // field's `ext:` tag names: a field without the tag would list every type.
+// None for a type that cannot live inside another file
+// (subassets.can_live_inside): its loader reads an imported artifact.
 // Copy takes the asset the field points at, a file or a sub-asset the
 // inspector edits as a document, unsaved edits included.
 @(private = "file")
@@ -97,7 +99,7 @@ _pptr_picker_make_rows :: proc(ctx: ^Ctx, ref_ptr: ^core.PPtr) {
 
     if current_field_ext_filter != "" {
         for c in subassets.creatables() {
-            if !_ext_allowed(c.kind) do continue
+            if !_ext_allowed(c.kind) || !subassets.can_live_inside(c.kind) do continue
             make_embedded := can_embed && !core.type_no_embed(core.get_typeid_by_type_key(c.type_key)) && im.Selectable(fmt.ctprintf("New %s (embedded)", c.title))
             label := fmt.tprintf("New %s (sub-asset)", c.title)
             make_sub := can_sub && im.Selectable(strings.clone_to_cstring(label, context.temp_allocator))
@@ -140,7 +142,7 @@ _pptr_copy_source :: proc(ref: core.PPtr) -> (kind, name: string, ok: bool) {
         path := assets.asset_db_get_path(uuid.Identifier(ref.guid)) or_return
         kind, name = _path_ext(path), _stem(path)
     }
-    if kind == "" || !_ext_allowed(kind) do return
+    if kind == "" || !_ext_allowed(kind) || !subassets.can_live_inside(kind) do return
     doc := asset_doc_get_ref(ref)
     return kind, name, doc != nil && doc.data.data != nil
 }

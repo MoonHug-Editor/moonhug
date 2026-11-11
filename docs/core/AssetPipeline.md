@@ -174,7 +174,7 @@ The app has ONE pipeline: catalog. With no flag it boots the editor-maintained i
 
 ### Sub-asset files
 
-A sub-asset is something inside an asset that a reference can name on its own: a model's parts, clips and convex decompositions, a texture's sprite slices. A reference names it as a PPtr, `{"guid": "<asset>", "local_id": <id>}`. Local id 0 means no local id: the asset itself. Ids are unique within their asset.
+A sub-asset is something inside an asset that a reference can name on its own: a model's parts, clips and convex decompositions, a texture's sprite slices. A reference names it as a PPtr, `{"guid": "<asset>", "local_id": <id>}`. Local id 0 means no local id: the asset itself. Ids are unique within their asset. This section is about the sub-assets an importer makes. The ones a user makes inside a scene file, and embedded assets, are in [Sub-assets and Embedded Assets](SubAssets.md).
 
 - an importer writes the data of each sub-asset that has data of its own to `<key>_s<id>.bin` beside the main artifact (`assets.artifact_sub_path`). A model's parts, clips and convex decompositions each get one, an empty part included. A sprite slice has none: it is a rect of its texture
 - the export ships a `_s<id>` file only when some reference in the closure names that id. Unused clips of an animation library stay behind, and so does a model's whole-mesh artifact when a scene only uses its parts

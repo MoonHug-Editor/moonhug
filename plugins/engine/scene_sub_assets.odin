@@ -75,12 +75,20 @@ _Owner :: struct {
 @(private = "file")
 _owners: map[Asset_GUID]^_Owner
 
-// The files a reference read now may point into: the file being loaded, then
-// the scene it loads into. Empty outside a load.
+// The files a reference read now may point into: the file being loaded, the
+// bases of that file when it is a variant, then the scene it loads into.
+// Default allocator.
 @(private = "file")
-_bind_owners: [2]Asset_GUID
+_bind_owners: [dynamic]Asset_GUID
 @(private = "file")
 _binding: bool
+
+// A variant's base, by the variant's guid. A nested variant loads from
+// flattened bytes that hold its base's content (_prefab_resolved_bytes), and
+// that content's references name records of the base's file. Set by the
+// flattening. Default allocator.
+@(private = "file")
+_variant_bases: map[Asset_GUID]Asset_GUID
 
 // The file being written: references into it are written with an empty guid.
 @(private = "file")
@@ -715,16 +723,32 @@ _scene_sub_assets_load_begin :: proc(sf: ^SceneFile, s: ^Scene, scope: Asset_GUI
 		}
 		_scene_sub_assets_publish(s)
 	}
-	// A nested prefab's content: its own file first, then the host, whose
-	// overrides may name the host's records.
-	_bind_owners = {}
-	if own {
-		if s != nil do _bind_owners[0] = s.asset_guid
-	} else {
-		_bind_owners[0] = scope
-		if s != nil do _bind_owners[1] = s.asset_guid
+	// A nested prefab's content: its own file first, then the bases it holds
+	// content of when it is a variant, then the host, whose overrides may name
+	// the host's records.
+	_bind_owners_reset()
+	if !own {
+		g := scope
+		for depth := 0; !asset_guid_is_empty(g) && depth <= 32; depth += 1 {
+			append(&_bind_owners, g)
+			g = _variant_bases[g]
+		}
 	}
+	if s != nil do append(&_bind_owners, s.asset_guid)
 	_binding = true
+}
+
+// A nested variant's flattened content holds the content of `base`.
+@(private)
+_scene_sub_assets_variant_base_set :: proc(variant, base: Asset_GUID) {
+	context.allocator = runtime.default_allocator()
+	_variant_bases[variant] = base
+}
+
+@(private = "file")
+_bind_owners_reset :: proc() {
+	if _bind_owners == nil do _bind_owners = make([dynamic]Asset_GUID, runtime.default_allocator())
+	clear(&_bind_owners)
 }
 
 @(private)
@@ -738,7 +762,8 @@ _scene_sub_assets_load_end :: proc() {
 asset_parse_begin :: proc(key: Asset_GUID) {
 	ref, sub := asset_key_ref(key)
 	if !sub do return
-	_bind_owners = {ref.guid, {}}
+	_bind_owners_reset()
+	append(&_bind_owners, ref.guid)
 	_binding = true
 }
 

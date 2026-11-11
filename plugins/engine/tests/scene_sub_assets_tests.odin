@@ -12,6 +12,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import asset_pipeline "moonhug:editor/assets"
+import "moonhug:editor/subassets"
 import "moonhug:libs/catalog"
 import ser "moonhug:libs/serialization"
 import "moonhug:packages/engine"
@@ -445,4 +446,15 @@ test_export_ships_sub_assets_and_embedded_assets :: proc(t: ^testing.T) {
 	blue, blue_ok := engine.material_load(engine.asset_key(mr.materials[1]))
 	testing.expectf(t, blue_ok && blue.color == {0, 0, 1, 1}, "the embedded material loads, got %v", blue.color)
 	testing.expect(t, blue_ok && blue.texture.guid == engine.Asset_GUID(tex_raw), "and names the shipped texture")
+}
+
+// A kind whose files an importer owns loads from the importer's artifact, so
+// it cannot be a sub-asset or an embedded asset: the picker offers no rows
+// for it. One without an importer loads from wherever its data is.
+@(test)
+test_only_kinds_without_an_importer_live_inside_a_file :: proc(t: ^testing.T) {
+	testing.expect(t, subassets.can_live_inside("mat"), "a material can")
+	testing.expect(t, subassets.can_live_inside("noise"), "a noise map can")
+	testing.expect(t, !subassets.can_live_inside("png"), "a texture file cannot: the texture importer owns it")
+	testing.expect(t, !subassets.can_live_inside("glsl"), "a shader cannot: the shader importer owns it")
 }

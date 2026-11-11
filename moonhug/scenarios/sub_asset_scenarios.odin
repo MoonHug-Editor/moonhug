@@ -613,6 +613,53 @@ embedded_asset_edit_belongs_to_its_scene :: proc(t: ^testing.T) {
 	editor_quit(r)
 }
 
+// An embedded material edited before Play: after Stop the slot holds the same
+// embedded material, so undo of that edit still reaches it.
+@(test)
+embedded_asset_edit_undoes_after_play :: proc(t: ^testing.T) {
+	r := begin(t)
+	SCENE :: "assets/demo.scene"
+	meshes :: "plugins/essentials/assets/meshes/"
+	for file in ([]string{"Sphere.glb", "Sphere.glb.meta", "Cube.glb", "Cube.glb.meta"}) {
+		project_copy(r, fmt.tprintf("%s%s", meshes, file), fmt.tprintf("assets/%s", file))
+	}
+	project_copy(r, "plugins/app/assets/demo_sub_assets/demo_sub_assets.scene", SCENE)
+	editor_start(r)
+	call(r, "open_scene", fmt.tprintf(`{{"path":%q}}`, SCENE))
+	window_open(r, "Inspector")
+	frames(r, 3)
+	call(r, "select", `{"name":"Marble"}`)
+	frames(r, 3)
+	list, found := item_rect(r, "Inspector", "materials")
+	if !testing.expectf(t, found, "the Inspector shows the MeshRenderer's materials") do return
+	click(r, list.x + 4, list.y + list[3] / 2)
+	slot, named := item_rect(r, "Inspector", "demo / Marble")
+	if !testing.expectf(t, named, "the slot names the scene's material") do return
+	win, _ := window_rect(r, "Inspector")
+	click(r, win.x + win[2] - 69, slot.y + slot[3] / 2)
+	row, offered := item_rect(r, "popup", "Copy (embedded)")
+	if !testing.expectf(t, offered, "the picker offers an embedded copy") do return
+	click(r, row.x + 4, row.y + row[3] / 2)
+	click(r, win.x + win[2] - 44, slot.y + slot[3] / 2)
+	clip, shown := item_rect(r, "Inspector", "alpha_clip")
+	if !testing.expectf(t, shown, "the foldout shows the material's rows") do return
+	click(r, clip.x + clip[3] / 2, clip.y + clip[3] / 2)
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 5)
+	testing.expectf(t, _saved_alpha_clip(r, SCENE) == 1, "the edit is saved")
+
+	call(r, "invoke_menu", `{"path":"Edit/Play"}`)
+	frames(r, 10)
+	call(r, "invoke_menu", `{"path":"Edit/Play"}`)
+	frames(r, 10)
+	call(r, "invoke_menu", `{"path":"Edit/Undo"}`)
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 5)
+	testing.expectf(t, _saved_alpha_clip(r, SCENE) == 0, "undo after Stop takes the edit back, and the scene saves that")
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	editor_quit(r)
+}
+
 // A scene of one object, for a second scene beside the one a test edits.
 @(private = "file")
 _ONE_OBJECT_SCENE :: `{

@@ -161,7 +161,8 @@ project_ops_new_folder :: proc() {
 // New Folder does. The generated create menu items call it.
 project_ops_create_asset :: proc(file_name: string, type_key: core.TypeKey) {
 	// With a sub-asset selected, the new asset is a sub-asset of the same
-	// file, where that file takes one. Otherwise it is a file.
+	// file, where that file takes one and the type can live inside another
+	// file. Otherwise it is a file.
 	if path, sub, is_sub := _project_selected_sub(); is_sub {
 		if _project_create_sub_asset(path, sub, file_name, type_key) do return
 	}
@@ -190,12 +191,14 @@ project_ops_create_asset :: proc(file_name: string, type_key: core.TypeKey) {
 // Adds a new asset of the type to the file that holds the selected sub-asset
 // `sub`, as one undo step, selects it and opens its name for typing. The
 // kind and the name come from the file name Assets > Create gives the type
-// ("New Material.mat"). False when the file takes no new sub-asset now.
+// ("New Material.mat"). False when the file takes no new sub-asset now, or
+// the type cannot live inside another file: the caller makes a file.
 @(private = "file")
 _project_create_sub_asset :: proc(path: string, sub: core.Local_ID, file_name: string, type_key: core.TypeKey) -> bool {
 	ref, provider, ok := _project_sub_ref(path, sub)
 	if !ok || provider.create == nil do return false
 	kind := strings.trim_prefix(strings.to_lower(filepath.ext(file_name), context.temp_allocator), ".")
+	if !subassets.can_live_inside(kind) do return false
 	name := subassets.unique_name(ref.guid, filepath.stem(file_name))
 	instance := core.create_instance_by_type_key(type_key)
 	defer {

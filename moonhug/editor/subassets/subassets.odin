@@ -20,6 +20,7 @@ import "core:encoding/uuid"
 import "core:fmt"
 import "core:path/filepath"
 import "core:strings"
+import asset_pipeline "moonhug:editor/assets"
 import assets "moonhug:libs/assets"
 import core "moonhug:libs/core"
 
@@ -184,7 +185,8 @@ unique_name :: proc(guid: core.Asset_GUID, base: string) -> string {
 
 // An asset type with `menu_assets_create` on its @(typ_guid): Assets > Create
 // makes a file of it, and a reference field that takes its kind makes a
-// sub-asset of it in a file whose provider adds one (Provider.create).
+// sub-asset or an embedded asset of it, when the kind can live inside
+// another file (can_live_inside).
 Creatable :: struct {
 	kind:     string, // the file's extension without the dot: "mat"
 	title:    string, // "Material"
@@ -205,6 +207,14 @@ creatable_register :: proc(file_name, title: string, type_key: core.TypeKey) {
 
 creatables :: proc() -> []Creatable {
 	return _creatables[:]
+}
+
+// Whether an asset of `kind` ("mat") can be a sub-asset or an embedded asset.
+// Its loader must read the data from where it is stored (engine.asset_source).
+// A kind whose files an importer owns ("anim", "shadergraph") loads from the
+// importer's artifact, and a record inside another file has none.
+can_live_inside :: proc(kind: string) -> bool {
+	return asset_pipeline.importer_for_extension(fmt.tprintf(".%s", kind)) == ""
 }
 
 // What a kind is called: "Material" for "mat". The kind itself when no

@@ -318,12 +318,7 @@ A provider's other procs say what the file's sub-assets are:
 
 Any file's field can hold any sub-asset, as it can hold any file. A picker lists the sub-assets of the field's own file first.
 
-An embedded asset is the third place an asset can be: written inside the one field that uses it, where a file holds a reference. The picker's "Copy (embedded)" gives a field a copy of the asset it points at as its own, and "New <Type> (embedded)" a new one with the type's defaults. In memory the field holds `{core.EMBEDDED_ASSETS, id}` and the data is a record beside the scene sub-assets, so loaders and the foldout under the field work as for a sub-asset. Nothing lists an embedded asset and no other field can point at it. A copy of the object has a copy of the asset. `no_embed = true` in an asset type's `menu_assets_create` keeps both rows off every field for that type.
-
-- A reference to an embedded asset always has the foldout arrow, with or without the `expand` tag: the foldout is the only place it is edited.
-- Its edit is an edit of what holds the field. The inspector records the holder where the asset is made and where its foldout is drawn: the scene of the object, an asset document, or a settings struct. A change marks that scene edited, or goes into that document as its own edit, whichever scene is the active one.
-- An undo snapshot writes the asset with its session id (`serialization.pptr_embedded_ids`), so a step put back gives the field the same embedded asset and the asset's own edit steps still reach it. Files, copies and multi-edit never write the id, so two fields never share an embedded asset.
-- Export needs nothing of its own: the data is inline in the file that holds the field, and the export walk finds the guids inside it like any other.
+What sub-assets and embedded assets are for the user, how they are written and loaded, and their limits: [Sub-assets and Embedded Assets](SubAssets.md).
 
 A provider's `list` runs for every file of its kind each time a picker opens, so it must not read a file. The asset database keeps a list per file for this (`assets.asset_db_sub_assets_set`, `assets.asset_db_sub_assets`): the file's indexer sets it from the bytes it already parses, the editor of an open file sets it again on every change, and `list` reads it.
 

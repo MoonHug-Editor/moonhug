@@ -10,6 +10,7 @@ import "core:strings"
 import "moonhug:editor/simulate"
 import "moonhug:packages/engine"
 import "moonhug:libs/log"
+import ser "moonhug:libs/serialization"
 import "moonhug:registration"
 
 @(provider_install)
@@ -78,7 +79,16 @@ _capture :: proc() -> (snapshot: []byte, scene: engine.Scene_Ref, ok: bool) {
 		log.error("Simulate: no active scene")
 		return nil, {}, false
 	}
-	serialized, sok := engine.scene_serialize(active)
+	// With embedded assets' ids, as an undo snapshot: Stop gives each field
+	// its embedded asset back, so edit steps recorded before Play still reach it.
+	serialized: []byte
+	sok: bool
+	{
+		prev := ser.pptr_embedded_ids
+		ser.pptr_embedded_ids = true
+		defer ser.pptr_embedded_ids = prev
+		serialized, sok = engine.scene_serialize(active)
+	}
 	if !sok {
 		log.error("Simulate: failed to capture scene snapshot")
 		return nil, {}, false

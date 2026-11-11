@@ -17,3 +17,5 @@ A `.scene` file: a tree of objects and their components. The same file is a leve
 ## The file
 
 JSON: the scene's objects by local id, each with its transform and components. Components carry stable local ids, so references between objects survive saving and reloading ([Scenes](../Scenes.md)).
+
+A scene file can also hold assets of its own, such as materials its objects use, and a field can hold an asset written inside it: [Sub-assets and Embedded Assets](../../../../docs/core/SubAssets.md).
