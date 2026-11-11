@@ -50,6 +50,9 @@ AssetDB :: struct {
     // them (asset_db_sub_assets_set): a scene file's. A list of sub-assets
     // reads this, so no file is opened to fill a picker or a Project row.
     sub_assets:     map[core.Asset_GUID][]Asset_Sub_Info,
+    // Counts the changes of those lists: what a list made from them is fresh
+    // against (the Project window's search hits).
+    sub_assets_gen: u64,
 
     // Refresh snapshot (Unity's SourceAssetDB idea): per path, the stamp seen
     // at the last refresh. asset_db_refresh diffs the tree against this and
@@ -203,6 +206,7 @@ _sub_infos_free :: proc(list: []Asset_Sub_Info) {
 asset_db_sub_assets_set :: proc(guid: core.Asset_GUID, list: []Asset_Sub_Info) {
     // Database state never borrows the caller's allocator.
     context.allocator = runtime.default_allocator()
+    asset_db.sub_assets_gen += 1
     if old, has := asset_db.sub_assets[guid]; has {
         _sub_infos_free(old)
         delete_key(&asset_db.sub_assets, guid)

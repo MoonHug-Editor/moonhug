@@ -101,13 +101,18 @@ Project_Window :: struct {
     search_for: string, // owned
     search_gen: u64,    // project_dir_cache_gen when they were found
     search_count: int,  // assets in the db then: an import or a delete changes it
+    search_subs: u64,   // the db's sub-asset lists then (asset_db.sub_assets_gen)
     search_hits: [dynamic]Project_Search_Hit,
 }
 
-// A search hit: an asset path and whether it is a folder.
+// A search hit: an asset path and whether it is a folder, or a sub-asset of
+// the file at the path.
 Project_Search_Hit :: struct {
-    path:   string, // owned
-    is_dir: bool,
+    path:     string, // owned
+    is_dir:   bool,
+    sub:      core.Local_ID, // not 0: the sub-asset with this id
+    sub_name: string,        // owned
+    sub_kind: string,        // owned
 }
 
 @(private = "file")
@@ -1221,25 +1226,29 @@ _project_draw_sub_asset_rows :: proc(parent_path: string, sub: []subassets.Sub_A
     im.PushIDStr(strings.clone_to_cstring(parent_path, context.temp_allocator), nil)
     for s, i in sub {
         im.PushIDInt(c.int(i))
-        if _project_renaming_sub(parent_path, s.id) {
-            _project_rename_input(im.GetContentRegionAvail().x)
-            im.PopID()
-            continue
-        }
-        selected := sel_proj_is_sub(parent_path, s.id)
-        label := fmt.ctprintf("%s%s", icons.ICON_MD_IMAGE, s.name)
-        pressed := im.Selectable(label, selected, {.AllowDoubleClick})
-        if pressed do _project_sub_asset_clicked(parent_path, guid, s, provider)
-        _project_sub_asset_right_click(parent_path, s)
-        _project_sub_asset_drag(guid, s, label)
-        _project_item_ping_flash(parent_path, s.id)
-        if tid, uv0, uv1, tok := thumbnails.get_sub(parent_path, s); tok {
-            _project_row_preview(tid, uv0, uv1, s.size.x, s.size.y)
-        }
+        _project_draw_sub_asset_row(parent_path, guid, s, provider, fmt.ctprintf("%s%s", icons.ICON_MD_IMAGE, s.name))
         im.PopID()
     }
     im.PopID()
     im.Unindent(indent * 2)
+}
+
+// One sub-asset's row: under its unfolded file, or as a search hit. The
+// caller pushes an id of its own around it.
+_project_draw_sub_asset_row :: proc(parent_path: string, guid: core.Asset_GUID, s: subassets.Sub_Asset, provider: subassets.Provider, label: cstring) {
+    if _project_renaming_sub(parent_path, s.id) {
+        _project_rename_input(im.GetContentRegionAvail().x)
+        return
+    }
+    selected := sel_proj_is_sub(parent_path, s.id)
+    pressed := im.Selectable(label, selected, {.AllowDoubleClick})
+    if pressed do _project_sub_asset_clicked(parent_path, guid, s, provider)
+    _project_sub_asset_right_click(parent_path, s)
+    _project_sub_asset_drag(guid, s, label)
+    _project_item_ping_flash(parent_path, s.id)
+    if tid, uv0, uv1, tok := thumbnails.get_sub(parent_path, s); tok {
+        _project_row_preview(tid, uv0, uv1, s.size.x, s.size.y)
+    }
 }
 
 // Single click selects (and loads .asset/import settings for files); double
@@ -1317,49 +1326,73 @@ _project_item_extras :: proc(full_path: string, is_dir: bool, drag_label: cstrin
     }
 }
 
-// Search results: every file/folder under the assets root whose NAME contains
-// the query (case-insensitive), shown as root-relative paths. The asset DB
-// indexes all of them (folders included) and refreshes on rename/create, so
-// it's both the cheapest and the freshest source — no directory re-walk.
+// Search results, shown as root-relative paths: what asset_search finds
+// (asset_search.odin has the query's words), files first, then sub-assets.
 // Returns the match count for the status line.
 _project_draw_search_results :: proc(query: string) -> int {
     hits := _project_search_hits(query)
     prefix := strings.concatenate({projectWindowData.rootPath, "/"}, context.temp_allocator)
-    items := make([]_Project_List_Item, len(hits), context.temp_allocator)
-    for h, i in hits {
+    items := make([dynamic]_Project_List_Item, 0, len(hits), context.temp_allocator)
+    for h in hits {
+        if h.sub != 0 do continue
         display := h.path
         if strings.has_prefix(h.path, prefix) do display = h.path[len(prefix):]
-        items[i] = {display = display, path = h.path, is_dir = h.is_dir}
+        append(&items, _Project_List_Item{display = display, path = h.path, is_dir = h.is_dir})
     }
-    _project_draw_rows(items)
+    _project_draw_rows(items[:])
+
+    // Sub-asset hits: the row a file's unfolded sub-asset has, with its file.
+    im.PushIDStr("##sub_hits", nil)
+    for h, i in hits {
+        if h.sub == 0 do continue
+        raw_guid, known := assets.asset_db_get_guid(h.path)
+        provider, has := subassets.find(strings.to_lower(filepath.ext(h.path), context.temp_allocator))
+        if !known || !has do continue
+        display := h.path
+        if strings.has_prefix(h.path, prefix) do display = h.path[len(prefix):]
+        im.PushIDInt(c.int(i))
+        label := fmt.ctprintf("%s%s  (%s)", icons.ICON_MD_IMAGE, h.sub_name, display)
+        _project_draw_sub_asset_row(h.path, core.Asset_GUID(raw_guid), subassets.Sub_Asset{id = h.sub, name = h.sub_name, kind = h.sub_kind}, provider, label)
+        im.PopID()
+    }
+    im.PopID()
     return len(hits)
 }
 
-// The assets whose names match `query`, sorted by path. Found once per query
-// and kept while the files stay the same, since a search draws every frame.
-// Finding them touches no file: the asset db knows which entries are folders.
+// The assets that match `query`, files sorted by path and then sub-assets.
+// Found once per query and kept while the files and the sub-asset lists stay
+// the same, since a search draws every frame.
 @(private = "file")
 _project_search_hits :: proc(query: string) -> []Project_Search_Hit {
     gen := project_dir_cache_gen()
     count := len(assets.asset_db.path_to_guid)
-    if query == _pv.search_for && gen == _pv.search_gen && count == _pv.search_count {
+    subs := assets.asset_db.sub_assets_gen
+    if query == _pv.search_for && gen == _pv.search_gen && count == _pv.search_count && subs == _pv.search_subs {
         return _pv.search_hits[:]
     }
     delete(_pv.search_for)
     _pv.search_for = strings.clone(query)
     _pv.search_gen = gen
     _pv.search_count = count
-    for h in _pv.search_hits do delete(h.path)
+    _pv.search_subs = subs
+    for h in _pv.search_hits {
+        delete(h.path)
+        delete(h.sub_name)
+        delete(h.sub_kind)
+    }
     clear(&_pv.search_hits)
 
-    terms := widgets.search_terms(query)
-    for path in assets.asset_db.path_to_guid {
-        if widgets.search_match(filepath.base(path), terms) {
-            append(&_pv.search_hits, Project_Search_Hit{path = strings.clone(path), is_dir = assets.asset_db_is_dir(path)})
-        }
+    found := make([dynamic]Asset_Hit, context.temp_allocator)
+    asset_search(query, widgets.search_match, &found)
+    for h in found {
+        append(&_pv.search_hits, Project_Search_Hit{path = strings.clone(h.path), is_dir = h.is_dir, sub = h.sub, sub_name = strings.clone(h.sub_name), sub_kind = strings.clone(h.sub_kind)})
     }
     // Map iteration order is unstable: sorted, rows keep their places.
-    slice.sort_by(_pv.search_hits[:], proc(a, b: Project_Search_Hit) -> bool { return a.path < b.path })
+    slice.sort_by(_pv.search_hits[:], proc(a, b: Project_Search_Hit) -> bool {
+        if (a.sub != 0) != (b.sub != 0) do return a.sub == 0
+        if a.path != b.path do return a.path < b.path
+        return a.sub_name < b.sub_name
+    })
     return _pv.search_hits[:]
 }
 
@@ -1539,7 +1572,7 @@ project_window_draw :: proc(w: ^wnd.Window) {
     // NoTabStop: Tab must switch panes (the keymap), never tab-focus the
     // search box. Clicking into it still works.
     im.PushItemFlag({.NoTabStop}, true)
-    im.InputTextWithHint("##prj_search", "Search", cstring(raw_data(_pv.search_buf[:])), c.size_t(len(_pv.search_buf)), {})
+    im.InputTextWithHint("##prj_search", "Search: name, t:Type, c:Component", cstring(raw_data(_pv.search_buf[:])), c.size_t(len(_pv.search_buf)), {})
     im.PopItemFlag()
     if query != "" {
         im.SameLine()

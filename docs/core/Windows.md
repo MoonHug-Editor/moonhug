@@ -210,3 +210,21 @@ The Game window draws its own toolbar above its image (`editor/window_game.odin`
 - **Scale**: zooms the rendered rect. 1x is the size's actual pixels and the maximum is 5x. The minimum is 1x, or the zoom that fits the size in the window when its pixels are larger, so the game is never cropped. Parking the slider at that floor means "match the window": the zoom follows the floor as the window resizes. A 1x button returns to actual pixels, and zoom is disabled on Free Aspect, which already fills the window.
 
 The rendered rect is centered in the area under the toolbar. When the zoom makes it larger than the area, the area scrolls: a scrollbar appears on each axis that overflows, the rect stays centered on an axis that fits, and the mouse wheel stays the game's input, so the bars are dragged. The input viewport follows the rect as it scrolls, so game mouse coordinates stay correct at any size, scale or scroll. Size, flip, scale, the Gizmos toggle and Stats are the copy's saved state (see Saved state), so each Game copy keeps its own.
+
+## Search fields
+
+The Hierarchy's Filter and the Project window's Search take the same kind of query: words separated by spaces, and an item must match every word. Case does not matter. The command palette's Scene Objects mode (`@`) takes the Hierarchy's words and its Assets mode (`#`) the Project window's ([Keymaps](Keymaps.md)): each pair asks one finder, so a word added to it works in both.
+
+| Word | Hierarchy | Project window |
+|---|---|---|
+| `enemy` | part of an object's name | part of a file's, a folder's or a sub-asset's name |
+| `c:light` | an object with a component whose type name has "light" in it | a scene file whose root object has such a component |
+| `t:material` | | an asset of that type |
+| `c:sprite$`, `t:mat$` | the whole name: Sprite, not SpriteRenderer | the same |
+
+- `t:` matches part of any of an asset's type names: its file extension (`mat`, `png`), its type's name in Assets > Create without spaces (`Material`, `NoiseMap`), and its importer's name (`texture`, `mesh`, `shader`, `audio`, `animation`). `t:folder` is a folder.
+- `c:` in the Project window reads the asset database's root-component index, the one the object picker uses ([Object Picker](ObjectPicker.md)). It sees the components of a scene file's root object, not of its children.
+- A scene file's sub-assets are results of their own, by name and by `t:`, shown after the files with their file in brackets ([Sub-assets and Embedded Assets](SubAssets.md)). A model's parts and clips and a texture's sprites are not: the database does not list them.
+- A search reads no file. Every answer comes from the asset database, so its cost does not grow with file sizes.
+- A plain word with a slash matches the path in the Project window and the palette: `ui/` lists a folder's assets.
+- The finders: `asset_search` (`moonhug/editor/asset_search.odin`) for assets and `scene_object_has_components` (`plugins/engine/editor/scene_windows/window_hierarchy.odin`) for objects. The caller gives the test for plain words: a search field matches parts of a name, the palette ranks by its own word matching. The words are parsed by `widgets.search_terms`, `widgets.search_split`, `widgets.search_tag` and `widgets.search_tag_match`. A new search field that takes tagged words uses them.

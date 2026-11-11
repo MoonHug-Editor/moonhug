@@ -144,8 +144,8 @@ Window/Command Palette, Ctrl+T or the key left of 1, opens a popup over the edit
 | Mode | Prefix | Opens with | Lists | Enter |
 |---|---|---|---|---|
 | Commands | none | Ctrl+T, `` ` `` | the commands with their first two chords | runs the command |
-| Assets | `#` | Ctrl+Shift+A | every asset file by name with its Project window icon, its folder beside it | selects it and opens it, as a double-click in the Project window does |
-| Scene Objects | `@` | Ctrl+Shift+O | every object of the open scenes in hierarchy order with its Hierarchy glyph, its scene and parents beside it | selects it, reveals it in the Hierarchy and frames it |
+| Assets | `#` | Ctrl+Shift+A | every asset file by name with its Project window icon, its folder beside it, and every scene sub-asset with its file beside it. The words of the Project window's search work: `#t:material`, `#c:light` ([Search fields](Windows.md#search-fields)) | selects it and opens it, as a double-click in the Project window does |
+| Scene Objects | `@` | Ctrl+Shift+O | every object of the open scenes in hierarchy order with its Hierarchy glyph, its scene and parents beside it. `@c:light` lists the objects with such a component, as the Hierarchy's filter does | selects it, reveals it in the Hierarchy and frames it |
 | Windows | `:` | no default | every window with its icon, the open ones marked | brings an open window forward, in its Workspace frame when it is in one, or opens a closed one |
 
 - The key left of 1 is the menu item's second chord. It is one key on every layout, shown as `` ` ``: imgui's SDL backend maps it by position, so it opens the palette where a German layout types `^`, a French one `²` and a Nordic one `§`. It is a plain key, so a text field being edited gets it as a character, and the game gets it while it runs in a focused Game window.
@@ -162,7 +162,7 @@ Window/Command Palette, Ctrl+T or the key left of 1, opens a popup over the edit
 A mode is declared with `@(command_palette_mode)` on a proc that lists its rows:
 
 ```odin
-@(command_palette_mode={name="Assets", prefix="#", run=command_palette_assets_run, shortcut="Ctrl+Shift+A", help="Finds an asset by name or folder and opens it"})
+@(command_palette_mode={name="Assets", prefix="#", run=command_palette_assets_run, shortcut="Ctrl+Shift+A", help="Finds an asset by name, folder, type (t:) or root component (c:) and opens it"})
 command_palette_assets :: proc(query: string, rows: ^[dynamic]command_palette.Row) { ... }
 
 command_palette_assets_run :: proc(row: command_palette.Row) { ... }

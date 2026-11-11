@@ -244,7 +244,7 @@ edit_before_play_is_saved_after_stop :: proc(t: ^testing.T) {
 }
 
 // The Hierarchy's filter: a word is part of an object's name, and a word that
-// starts with "t:" is part of a component type the object has.
+// starts with "c:" is part of a component type the object has.
 @(test)
 hierarchy_filter_finds_objects_by_component :: proc(t: ^testing.T) {
 	r := begin(t)
@@ -268,8 +268,8 @@ hierarchy_filter_finds_objects_by_component :: proc(t: ^testing.T) {
 	TYPE :: `{{"steps":[{{"type":"text","text":%q}},{{"type":"wait","frames":3}}]}}`
 
 	click(r, field.x + 4, field.y + field[3] / 2)
-	call(r, "input", fmt.tprintf(TYPE, "t:light"))
-	testing.expect(t, listed(r, "Sun"), "t:light lists the object with a Light")
+	call(r, "input", fmt.tprintf(TYPE, "c:light"))
+	testing.expect(t, listed(r, "Sun"), "c:light lists the object with a Light")
 	testing.expect(t, !listed(r, "Marble") && !listed(r, "Camera"), "and no object without one")
 
 	call(r, "input", fmt.tprintf(TYPE, " su"))
@@ -278,20 +278,80 @@ hierarchy_filter_finds_objects_by_component :: proc(t: ^testing.T) {
 	testing.expect(t, !listed(r, "Sun"), "a name word that does not match hides it")
 
 	// The field is still typed in: its text is erased key by key.
-	for _ in 0 ..< len("t:light sux") {
+	for _ in 0 ..< len("c:light sux") {
 		call(r, "input", `{"steps":[{"type":"key","name":"Backspace"},{"type":"key","name":"Backspace","down":false}]}`)
 	}
 	frames(r, 3)
 	testing.expect(t, listed(r, "Camera"), "an empty filter lists everything again")
-	call(r, "input", fmt.tprintf(TYPE, "t:mesh"))
+	call(r, "input", fmt.tprintf(TYPE, "c:mesh"))
 	testing.expect(t, listed(r, "Marble"), "part of a type name lists the objects with a MeshRenderer")
 	// "$" marks the end of the type's name: no type is named Mesh.
 	call(r, "input", fmt.tprintf(TYPE, "$"))
-	testing.expect(t, !listed(r, "Marble"), "t:mesh$ is the whole name, and MeshRenderer is not Mesh")
+	testing.expect(t, !listed(r, "Marble"), "c:mesh$ is the whole name, and MeshRenderer is not Mesh")
 	call(r, "input", `{"steps":[{"type":"key","name":"Backspace"},{"type":"key","name":"Backspace","down":false}]}`)
 	call(r, "input", fmt.tprintf(TYPE, "renderer$ mar"))
-	testing.expect(t, listed(r, "Marble"), "t:meshrenderer$ mar lists Marble")
+	testing.expect(t, listed(r, "Marble"), "c:meshrenderer$ mar lists Marble")
 	testing.expect(t, !listed(r, "Lava") && !listed(r, "Sun"), "and not the other meshes or the light")
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	editor_quit(r)
+}
+
+// The Project window's search: a name word, "t:" for the asset's type, "c:"
+// for a component on a scene file's root object, and "$" for the end of a
+// tagged name. A scene file's sub-assets are hits of their own.
+@(test)
+project_search_finds_assets_by_type_and_root_component :: proc(t: ^testing.T) {
+	r := begin(t)
+	meshes :: "plugins/essentials/assets/meshes/"
+	for file in ([]string{"Sphere.glb", "Sphere.glb.meta", "Cube.glb", "Cube.glb.meta"}) {
+		project_copy(r, fmt.tprintf("%s%s", meshes, file), fmt.tprintf("assets/%s", file))
+	}
+	project_copy(r, "plugins/app/assets/demo_sub_assets/demo_sub_assets.scene", "assets/demo.scene")
+	project_copy(r, "plugins/essentials/assets/materials/Default.mat", "assets/Plain.mat")
+	SCENE_HEAD :: `{"root": 1, "transforms": [{"local_id": 1, "name": "Root", "is_active": true, "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1, "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}}, "children": [], `
+	project_write(r, "assets/lamp.scene", SCENE_HEAD + `"components": [{"local_id": 3}]}], "components": [{"__type": "9f36ee91-34b6-4636-a360-ee872af0436b", "base": {"local_id": 3, "enabled": true}, "color": [1, 1, 1, 1]}]}`)
+	project_write(r, "assets/bare.scene", SCENE_HEAD + `"components": []}], "components": []}`)
+	editor_start(r)
+	window_open(r, "Project")
+	frames(r, 5)
+	listed :: proc(r: ^Run, name: string) -> bool {
+		_, ok := item_rect(r, "Project", name)
+		return ok
+	}
+	field, found := item_rect(r, "Project", "Search: name")
+	if !testing.expect(t, found, "the Project window has its search field") do return
+	// Types a query over the last one, which is erased key by key.
+	typed := 0
+	search :: proc(r: ^Run, typed: ^int, query: string) {
+		for _ in 0 ..< typed^ {
+			call(r, "input", `{"steps":[{"type":"key","name":"Backspace"},{"type":"key","name":"Backspace","down":false}]}`)
+		}
+		call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"text","text":%q}},{{"type":"wait","frames":3}}]}}`, query))
+		typed^ = len(query)
+	}
+	click(r, field.x + 4, field.y + field[3] / 2)
+
+	search(r, &typed, "marble")
+	testing.expect(t, listed(r, "Marble  ("), "a name finds the scene's sub-asset")
+	testing.expect(t, !listed(r, "Plain.mat"), "and no file with another name")
+
+	search(r, &typed, "t:material")
+	testing.expect(t, listed(r, "Plain.mat"), "t:material lists the material file")
+	testing.expect(t, listed(r, "Marble  ("), "and the scene's material sub-asset")
+	testing.expect(t, !listed(r, "lamp.scene") && !listed(r, "Sphere.glb"), "and no other type")
+
+	search(r, &typed, "t:mat$")
+	testing.expect(t, listed(r, "Plain.mat"), "t:mat$ is the whole extension")
+	search(r, &typed, "t:materia$")
+	testing.expect(t, !listed(r, "Plain.mat"), "t:materia$ is no whole type name")
+
+	search(r, &typed, "t:scene c:light")
+	testing.expect(t, listed(r, "lamp.scene"), "c:light lists the scene whose root has a Light")
+	testing.expect(t, !listed(r, "bare.scene") && !listed(r, "demo.scene"), "and no scene whose root has none")
+	testing.expect(t, !listed(r, "Marble  ("), "a sub-asset has no root object")
+
+	search(r, &typed, "t:mesh")
+	testing.expect(t, listed(r, "Sphere.glb"), "t:mesh is the importer's name: the models")
 	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
 	editor_quit(r)
 }
