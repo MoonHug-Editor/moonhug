@@ -15,6 +15,7 @@ package inspector
 //   - When the data changes under it (its file was reverted or reloaded),
 //     the document is read again.
 
+import "base:runtime"
 import "core:fmt"
 import strings "core:strings"
 import "moonhug:editor/subassets"
@@ -25,9 +26,9 @@ import "moonhug:libs/log"
 // The file the reference field drawn now belongs to: the scene of the
 // object being inspected, or the file of the sub-asset whose document is
 // drawn. A picker lists that file's own sub-assets first, and makes a new
-// sub-asset in it (New, Make Unique). Not set for a file asset's field. The
-// scene inspector sets it around an object's components, draw_asset_doc
-// around a document.
+// sub-asset in it (the "(sub-asset)" rows). Not set for a file asset's
+// field. The scene inspector sets it around an object's components,
+// draw_asset_doc around a document.
 Sub_Asset_Scope :: struct {
 	set:   bool,
 	owner: core.Asset_GUID, // empty for a file never saved
@@ -112,6 +113,7 @@ _sub_asset_doc_store :: proc(doc: ^Asset_Doc) -> bool {
 		}
 		// The stored text: what a later read compares with.
 		if stored, read := p.text(doc.ref); read do _applied_set(doc, stored)
+		if doc.ref.guid == core.EMBEDDED_ASSETS do _embedded_holder_changed(doc.ref)
 		return true
 	}
 	if p.save == nil {
@@ -172,6 +174,62 @@ _sub_asset_doc_discard :: proc(doc: ^Asset_Doc) {
 	_from_file = true
 	_doc_replace(doc, fresh, dirty = false)
 	_from_file = false
+}
+
+// --- What holds an embedded asset ----------------------------------------------
+//
+// An embedded asset is part of the field that holds it, so its edit is an
+// edit of what holds that field: the scene of the object, the asset document,
+// or a settings struct. The holder is the inspector's owner where the
+// embedded asset is edited from: its foldout under the field, and the picker
+// row that made it.
+
+@(private = "file")
+_Embedded_Holder :: struct {
+	kind:      undo.Owner_Kind,
+	scene:     undo.Scene_Ref, // .Pooled
+	asset:     core.PPtr,      // .Asset
+	asset_doc: undo.Doc_Kind,  // .Asset
+}
+
+// By the embedded asset's id. Default allocator: lives for the session, as the
+// embedded assets do.
+@(private = "file")
+_embedded_holders: map[core.Local_ID]_Embedded_Holder
+
+// The inspector's current owner holds the field with the embedded asset `ref`.
+embedded_holder_set :: proc(ref: core.PPtr) {
+	if ref.guid != core.EMBEDDED_ASSETS do return
+	o, ok := undo.current_owner()
+	if !ok do return
+	if _embedded_holders == nil do _embedded_holders = make(map[core.Local_ID]_Embedded_Holder, runtime.default_allocator())
+	_embedded_holders[ref.local_id] = {kind = o.kind, scene = o.scene, asset = o.asset, asset_doc = o.asset_doc}
+}
+
+// The embedded asset `ref` changed: its holder is edited.
+//   - A scene object's field: the scene is marked edited, and its save
+//     writes the new data inside the field.
+//   - An asset document's field: the document takes the change as its own
+//     edit. A sub-asset's document stores it into its file, which goes on to
+//     its own holder when it is embedded too.
+//   - A settings struct: nothing. Its window saves it when its text changes.
+@(private = "file")
+_embedded_holder_changed :: proc(ref: core.PPtr) {
+	h, known := _embedded_holders[ref.local_id]
+	if !known {
+		log.errorf("embedded asset %d changed with no known holder: nothing is marked edited", i64(ref.local_id))
+		return
+	}
+	switch h.kind {
+	case .Pooled:
+		undo.scene_mark_dirty(h.scene)
+	case .Asset:
+		holder, found := _docs[Doc_Key{h.asset, .File}]
+		if !found || h.asset_doc != .File do return
+		asset_doc_mark_edited(holder)
+		asset_doc_changed(holder)
+	case .Raw, .None:
+	}
 }
 
 @(private = "file")

@@ -108,7 +108,7 @@ _pptr_picker_make_rows :: proc(ctx: ^Ctx, ref_ptr: ^core.PPtr) {
                 free(instance.data)
             }
             if make_embedded {
-                if created, made := embedded.create(core.EMBEDDED_ASSETS, c.kind, "", instance); made do _pptr_set(ref_ptr, created)
+                if created, made := embedded.create(core.EMBEDDED_ASSETS, c.kind, "", instance); made do _pptr_put_embedded(ref_ptr, created)
             } else {
                 _pptr_put_new(ctx, ref_ptr, file, c.kind, c.title, instance, label)
             }
@@ -120,7 +120,7 @@ _pptr_picker_make_rows :: proc(ctx: ^Ctx, ref_ptr: ^core.PPtr) {
     source := asset_doc_get_ref(ref_ptr^)
     if source == nil do return
     if can_embed && ref_ptr.guid != core.EMBEDDED_ASSETS && !core.type_no_embed(source.data.id) && im.Selectable("Copy (embedded)") {
-        if created, made := embedded.create(core.EMBEDDED_ASSETS, kind, "", source.data); made do _pptr_set(ref_ptr, created)
+        if created, made := embedded.create(core.EMBEDDED_ASSETS, kind, "", source.data); made do _pptr_put_embedded(ref_ptr, created)
         return
     }
     if can_sub && im.Selectable("Copy (sub-asset)") {
@@ -164,6 +164,14 @@ _pptr_put_new :: proc(ctx: ^Ctx, ref_ptr: ^core.PPtr, p: subassets.Provider, kin
     undo.group_commit(&g)
     if ctx.path != "" do record_nested_override(ref_ptr, typeid_of(core.PPtr), ctx.path, true)
     mark_inspector_changed()
+}
+
+// Puts a new embedded asset in the field. The row's own edit records it, and
+// the inspector's owner now is what holds it (embedded_holder_set).
+@(private = "file")
+_pptr_put_embedded :: proc(ref_ptr: ^core.PPtr, created: core.PPtr) {
+    embedded_holder_set(created)
+    _pptr_set(ref_ptr, created)
 }
 
 // What stands for the name of a file that has no path yet

@@ -8,6 +8,7 @@ import "core:strings"
 import "base:builtin"
 import core "moonhug:libs/core"
 import "moonhug:libs/log"
+import ser "moonhug:libs/serialization"
 
 MAX_ENTRIES :: 128
 
@@ -589,6 +590,17 @@ capture_json :: proc(ptr: rawptr, tid: typeid) -> []byte {
 		return nil
 	}
 	return data
+}
+
+// capture_json for a value an undo step keeps: an embedded asset in it is
+// written with its id, so putting the step back gives the field the same
+// embedded asset (serialization.pptr_embedded_ids). Only for text that goes
+// back into the field it came from.
+capture_snapshot :: proc(ptr: rawptr, tid: typeid) -> []byte {
+	prev := ser.pptr_embedded_ids
+	ser.pptr_embedded_ids = true
+	defer ser.pptr_embedded_ids = prev
+	return capture_json(ptr, tid)
 }
 
 push_value :: proc(s: ^Undo_Stack, t: Property_Target, old_json, new_json: []byte, label := "") {

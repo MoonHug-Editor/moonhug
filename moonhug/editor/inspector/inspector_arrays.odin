@@ -218,8 +218,7 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 		elem_ptr := rawptr(uintptr(da.data) + uintptr(i * elem_ti.size))
 		// The remove button and, with `expand` on the array field, the arrow
 		// take their width from the element, not from the row.
-		_, expandable := expand_ref(elem_ptr, elem_ti.id)
-		expands := current_field_expand && expandable
+		expands := expand_shown(elem_ptr, elem_ti.id)
 		trailing := ARRAY_REMOVE_BTN_W + (expands ? EXPAND_BTN_W : 0)
 		current_field_trailing_w = trailing
 		im.SetNextItemWidth(im.GetContentRegionAvail().x - trailing)

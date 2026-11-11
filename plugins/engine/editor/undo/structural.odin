@@ -6,6 +6,7 @@ package scene_undo
 
 import "core:encoding/json"
 import shell "moonhug:editor/undo"
+import ser "moonhug:libs/serialization"
 import engine "moonhug:packages/engine"
 import "moonhug:packages/engine/editor/undo_ops"
 
@@ -87,6 +88,10 @@ record_reparent :: proc(node: engine.Transform_Handle, old_parent, new_parent: e
 // resolve.
 @(private = "file")
 _capture_subtree :: proc(root: engine.Transform_Handle) -> []byte {
+	// With embedded assets' ids, as every undo snapshot (shell.capture_snapshot).
+	prev := ser.pptr_embedded_ids
+	ser.pptr_embedded_ids = true
+	defer ser.pptr_embedded_ids = prev
 	return engine.scene_copy_subtree(root, include_nested_owned = engine.transform_is_nested_owned(root))
 }
 
@@ -174,7 +179,7 @@ record_add_component :: proc(owner_tH: engine.Transform_Handle, comp_handle: eng
 	scene, owner_lid, ok := transform_scene_and_local_id(owner_tH)
 	if !ok do return
 
-	payload := shell.capture_json(base, tid)
+	payload := shell.capture_snapshot(base, tid)
 	cmd := undo_ops.Add_Component_Command{
 		scene = scene_ref(scene),
 		owner_local_id = owner_lid,
@@ -198,7 +203,7 @@ record_remove_component_pre :: proc(owner_tH: engine.Transform_Handle, comp_hand
 	scene, owner_lid, ok := transform_scene_and_local_id(owner_tH)
 	if !ok do return {}, false
 
-	payload := shell.capture_json(base, tid)
+	payload := shell.capture_snapshot(base, tid)
 	return undo_ops.Remove_Component_Command{
 		scene = scene_ref(scene),
 		owner_local_id = owner_lid,

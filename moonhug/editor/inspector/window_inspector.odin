@@ -1208,8 +1208,7 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             // Ref_Local: picker button + "X" clear) and OpenPopupOnItemClick
             // only tests the last one — right-click would then work only on
             // the tiny X (or only when no value meant no X).
-            _, expandable := expand_ref(field_ptr, field_type.id)
-            expands := current_field_expand && expandable
+            expands := expand_shown(field_ptr, field_type.id)
             if expands do current_field_trailing_w = EXPAND_BTN_W
             im.BeginGroup()
             fctx := Ctx{

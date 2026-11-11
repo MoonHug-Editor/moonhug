@@ -30,8 +30,17 @@ pptr_write_hook: proc(p: ^core.PPtr)
 // {"embedded": "<type>", "data": {...}}. The engine installs both.
 // The type and data of the embedded asset `p` names, false for any other reference.
 pptr_embedded_write: proc(p: core.PPtr) -> (type: string, data_json: string, ok: bool)
-// The reference to a new embedded asset of `type` with `data_json`.
-pptr_embedded_read: proc(type: string, data_json: string) -> core.PPtr
+// The reference to an embedded asset of `type` with `data_json`: the one
+// `id` names when it is not 0 and still there, else a new one.
+pptr_embedded_read: proc(type: string, data_json: string, id: core.Local_ID) -> core.PPtr
+
+// While set, an embedded asset is written with its id, `"id": 7`, and a read
+// of that text gives the field the same embedded asset back. Undo sets it
+// around the snapshots it takes, so a step put back does not make a new
+// embedded asset and the asset's own edit steps still reach it. Nothing else
+// writes the id: a file, a copy and a multi-edit each make an embedded asset
+// of their own, so two fields never share one.
+pptr_embedded_ids: bool
 
 pptr_marshal :: proc(w: io.Writer, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
 	p := (cast(^core.PPtr)v.data)^
@@ -39,7 +48,13 @@ pptr_marshal :: proc(w: io.Writer, v: any, opt: ^json.Marshal_Options) -> json.M
 		if type, data, embedded := pptr_embedded_write(p); embedded {
 			io.write_string(w, `{"embedded": "`)
 			io.write_string(w, type)
-			io.write_string(w, `", "data": `)
+			if pptr_embedded_ids {
+				io.write_string(w, `", "id": `)
+				io.write_u64(w, u64(p.local_id))
+				io.write_string(w, `, "data": `)
+			} else {
+				io.write_string(w, `", "data": `)
+			}
 			io.write_string(w, data)
 			io.write_string(w, "}")
 			return nil
@@ -65,7 +80,12 @@ pptr_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
 		if type, embedded := x["embedded"].(json.String); embedded && pptr_embedded_read != nil {
 			data, merr := json.marshal(x["data"], {spec = .JSON, sort_maps_by_key = true}, context.temp_allocator)
 			if merr != nil do return json.Unmarshal_Data_Error.Invalid_Data
-			(cast(^core.PPtr)v.data)^ = pptr_embedded_read(string(type), string(data))
+			id: core.Local_ID
+			#partial switch n in x["id"] {
+			case json.Integer: id = core.Local_ID(n)
+			case json.Float:   id = core.Local_ID(n)
+			}
+			(cast(^core.PPtr)v.data)^ = pptr_embedded_read(string(type), string(data), id)
 			return nil
 		}
 		if g, has := x["guid"].(json.String); has {

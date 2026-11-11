@@ -6,11 +6,14 @@ package engine_tests
 // asset_source. A nested prefab's records stay with the prefab's file and
 // every instance shares them.
 
+import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
 import "core:strings"
 import "core:testing"
 import asset_pipeline "moonhug:editor/assets"
+import "moonhug:libs/catalog"
+import ser "moonhug:libs/serialization"
 import "moonhug:packages/engine"
 
 @(private = "file")
@@ -303,4 +306,143 @@ test_embedded_asset_is_written_inside_its_field :: proc(t: ^testing.T) {
 	testing.expect(t, engine.embedded_asset_store(again, `{"color":[0,0,1,1]}`))
 	first_text, _ := engine.scene_sub_asset_text(ref)
 	testing.expect(t, strings.contains(first_text, "[0,1,0,1]") || strings.contains(first_text, "0,1,0,1"), "the first keeps its data")
+}
+
+// An undo snapshot writes an embedded asset with its id, and putting it back
+// gives the field the same embedded asset with the snapshot's data. Any other
+// text makes a new one, so two fields never share an embedded asset.
+@(test)
+test_embedded_asset_snapshot_keeps_its_id :: proc(t: ^testing.T) {
+	ref, added := engine.embedded_asset_add("mat", `{"color":[0,1,0,1]}`)
+	if !testing.expect(t, added) do return
+
+	ser.pptr_embedded_ids = true
+	snapshot, merr := json.marshal(ref, allocator = context.temp_allocator)
+	ser.pptr_embedded_ids = false
+	if !testing.expect(t, merr == nil) do return
+	testing.expectf(t, strings.contains(string(snapshot), `"id"`), "the snapshot names the embedded asset, got %s", snapshot)
+	plain, _ := json.marshal(ref, allocator = context.temp_allocator)
+	testing.expectf(t, !strings.contains(string(plain), `"id"`), "other text does not, got %s", plain)
+
+	testing.expect(t, engine.embedded_asset_store(ref, `{"color":[0,0,1,1]}`))
+	back: engine.PPtr
+	testing.expect(t, json.unmarshal(snapshot, &back) == nil)
+	testing.expect_value(t, back, ref)
+	text, _ := engine.scene_sub_asset_text(ref)
+	testing.expectf(t, strings.contains(text, "[0,1,0,1]"), "with the snapshot's data, got %s", text)
+
+	copy: engine.PPtr
+	testing.expect(t, json.unmarshal(plain, &copy) == nil)
+	testing.expectf(t, copy.guid == engine.EMBEDDED_ASSETS && copy.local_id != ref.local_id, "a copy gets an embedded asset of its own")
+}
+
+// An export of a scene that uses a material another scene file holds and an
+// embedded material that names a texture. The closure ships the other scene
+// file and the texture, and leaves out a texture nothing names. With the
+// sources gone, the exported scene loads both materials from the export.
+@(test)
+test_export_ships_sub_assets_and_embedded_assets :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc, "")
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+
+	src_dir :: "moonhug/tests/fixtures/_export_sub_assets_tmp"
+	tex :: src_dir + "/tex.png"
+	unused :: src_dir + "/unused.png"
+	lib :: src_dir + "/lib.scene"
+	boot :: src_dir + "/boot.scene"
+	data_dir :: src_dir + "_data"
+	os.make_directory(src_dir)
+	defer {
+		_remove_tree(src_dir)
+		_remove_tree(data_dir)
+		_remove_tree(engine.library_dir())
+	}
+	png, rerr := os.read_entire_file("moonhug/tests/fixtures/textures/circle-256.png", context.temp_allocator)
+	if !testing.expect(t, rerr == nil) do return
+	testing.expect(t, os.write_entire_file(tex, png) == nil)
+	// One byte more: an artifact of its own, not the referenced one's.
+	other := make([]byte, len(png) + 1, context.temp_allocator)
+	copy(other, png)
+	testing.expect(t, os.write_entire_file(unused, other) == nil)
+	// Placeholders: the scan mints the guids the real texts name.
+	for p in ([]string{lib, boot}) do testing.expect(t, os.write_entire_file(p, transmute([]byte)string("{}")) == nil)
+
+	asset_pipeline.asset_pipeline_init()
+	engine.asset_db_init(src_dir)
+	for p in ([]string{tex, unused}) do _ = asset_pipeline.asset_pipeline_import_asset(p)
+	tex_raw, tok := engine.asset_db_get_guid(tex)
+	unused_raw, uok := engine.asset_db_get_guid(unused)
+	lib_raw, lok := engine.asset_db_get_guid(lib)
+	boot_raw, bok := engine.asset_db_get_guid(boot)
+	if !testing.expect(t, tok && uok && lok && bok, "the scan registers every file") do return
+	tex_str := uuid.to_string(tex_raw, context.temp_allocator)
+	lib_str := uuid.to_string(lib_raw, context.temp_allocator)
+
+	lib_text := `{
+  "root": 1,
+  "transforms": [
+    {"local_id": 1, "name": "Lib", "is_active": true,
+     "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+     "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}},
+     "children": [], "components": []}
+  ],
+  "components": [],
+  "assets": [{"local_id": 77, "type": "mat", "name": "Green", "data": {"color": [0, 1, 0, 1]}}]
+}`
+	boot_text := strings.concatenate({`{
+  "root": 1,
+  "transforms": [
+    {"local_id": 1, "name": "Cube", "is_active": true,
+     "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+     "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}},
+     "children": [], "components": [{"local_id": 3}]}
+  ],
+  "components": [
+    {"__type": "`, _MESH_RENDERER_GUID, `",
+     "base": {"local_id": 3, "enabled": true},
+     "materials": [
+       {"local_id": 77, "guid": "`, lib_str, `"},
+       {"embedded": "mat", "data": {"color": [0, 0, 1, 1], "texture": "`, tex_str, `"}}
+     ]}
+  ]
+}`}, context.temp_allocator)
+	testing.expect(t, os.write_entire_file(lib, transmute([]byte)string(lib_text)) == nil)
+	testing.expect(t, os.write_entire_file(boot, transmute([]byte)boot_text) == nil)
+
+	testing.expect(t, catalog.build_to_file("", {src_dir}, engine.library_dir(), engine.asset_catalog_path()), "the catalog builds from the files")
+	engine.asset_db_shutdown()
+	testing.expect(t, catalog.export_from(engine.asset_catalog_path(), data_dir, boot_scene = boot), "the export succeeds")
+
+	// Only the export is left.
+	_remove_tree(src_dir)
+	_remove_tree(engine.library_dir())
+	testing.expect(t, engine.asset_db_init_from_catalog(data_dir + "/catalog.json"), "the catalog pipeline reads the export")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	_, has_lib := engine.asset_db_get_path(lib_raw)
+	_, has_tex := engine.asset_db_get_path(tex_raw)
+	_, has_unused := engine.asset_db_get_path(unused_raw)
+	testing.expect(t, has_lib, "the scene file that holds the used material ships")
+	testing.expect(t, has_tex, "the texture the embedded material names ships")
+	testing.expect(t, !has_unused, "a texture nothing names does not ship")
+
+	boot_path, _ := engine.asset_db_get_path(boot_raw)
+	scene := engine.scene_load_single_path(boot_path)
+	if !testing.expect(t, scene != nil, "the exported scene loads") do return
+	tc.scene = scene
+	_, mr := engine.transform_get_comp(engine.Transform_Handle(scene.root.handle), engine.MeshRenderer)
+	if !testing.expect(t, mr != nil && len(mr.materials) == 2, "with both material slots") do return
+
+	engine.material_cache_init()
+	defer engine.material_cache_shutdown()
+	green, green_ok := engine.material_load(engine.asset_key(mr.materials[0]))
+	testing.expectf(t, green_ok && green.color == {0, 1, 0, 1}, "the other scene's material loads from the export, got %v", green.color)
+	testing.expect(t, mr.materials[1].guid == engine.EMBEDDED_ASSETS, "the second slot is embedded")
+	blue, blue_ok := engine.material_load(engine.asset_key(mr.materials[1]))
+	testing.expectf(t, blue_ok && blue.color == {0, 0, 1, 1}, "the embedded material loads, got %v", blue.color)
+	testing.expect(t, blue_ok && blue.texture.guid == engine.Asset_GUID(tex_raw), "and names the shipped texture")
 }

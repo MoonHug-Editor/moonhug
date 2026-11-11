@@ -535,3 +535,168 @@ embedded_asset_is_stored_inside_its_slot :: proc(t: ^testing.T) {
 	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
 	editor_quit(r)
 }
+
+// An embedded material is edited through the foldout under its slot. The edit
+// is the edit of the scene that holds the slot, also while another scene is
+// the active one: that scene shows as edited and its save writes the change.
+// Undo and redo of the edit still reach the material after the slot itself
+// was undone and redone.
+@(test)
+embedded_asset_edit_belongs_to_its_scene :: proc(t: ^testing.T) {
+	r := begin(t)
+	SCENE :: "assets/demo.scene"
+	OTHER :: "assets/other.scene"
+	meshes :: "plugins/essentials/assets/meshes/"
+	for file in ([]string{"Sphere.glb", "Sphere.glb.meta", "Cube.glb", "Cube.glb.meta"}) {
+		project_copy(r, fmt.tprintf("%s%s", meshes, file), fmt.tprintf("assets/%s", file))
+	}
+	project_copy(r, "plugins/app/assets/demo_sub_assets/demo_sub_assets.scene", SCENE)
+	project_write(r, OTHER, _ONE_OBJECT_SCENE)
+	editor_start(r)
+	call(r, "open_scene", fmt.tprintf(`{{"path":%q}}`, OTHER))
+	frames(r, 3)
+	select_asset(r, SCENE)
+	call(r, "invoke_menu", `{"path":"Assets/Open Scene Additive"}`)
+	frames(r, 5)
+	if !testing.expectf(t, as_string(at(call(r, "editor_state"), "scene")) == OTHER, "the other scene stays the active one") do return
+
+	// The slot gets an embedded copy of its material, and the scene is saved.
+	// Marble is picked in the Hierarchy: select names objects of the active
+	// scene only.
+	window_open(r, "Hierarchy")
+	window_open(r, "Inspector")
+	frames(r, 3)
+	marble, listed := item_rect(r, "Hierarchy", "Marble")
+	if !testing.expectf(t, listed, "the Hierarchy lists Marble") do return
+	click(r, marble.x + 4, marble.y + marble[3] / 2)
+	list, found := item_rect(r, "Inspector", "materials")
+	if !testing.expectf(t, found, "the Inspector shows the MeshRenderer's materials") do return
+	click(r, list.x + 4, list.y + list[3] / 2)
+	slot, named := item_rect(r, "Inspector", "demo / Marble")
+	if !testing.expectf(t, named, "the slot names the scene's material") do return
+	win, _ := window_rect(r, "Inspector")
+	click(r, win.x + win[2] - 69, slot.y + slot[3] / 2)
+	row, offered := item_rect(r, "popup", "Copy (embedded)")
+	if !testing.expectf(t, offered, "the picker offers an embedded copy") do return
+	click(r, row.x + 4, row.y + row[3] / 2)
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 5)
+	other_before := string(os.read_entire_file(project_path(r, OTHER), context.temp_allocator) or_else nil)
+
+	// The foldout under the slot edits the material.
+	click(r, win.x + win[2] - 44, slot.y + slot[3] / 2)
+	clip, shown := item_rect(r, "Inspector", "alpha_clip")
+	if !testing.expectf(t, shown, "the foldout shows the material's rows") do return
+	click(r, clip.x + clip[3] / 2, clip.y + clip[3] / 2)
+
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 5)
+	testing.expectf(t, _saved_alpha_clip(r, SCENE) == 1, "the save writes the edit inside the slot of its own scene")
+	other_after := string(os.read_entire_file(project_path(r, OTHER), context.temp_allocator) or_else nil)
+	testing.expectf(t, other_after == other_before, "the active scene is not touched")
+
+	// Undo of the edit, then of the slot. Redo of both brings the edit back.
+	// Each state is read from a save: the bridge reads the active scene only.
+	for _ in 0 ..< 2 do call(r, "invoke_menu", `{"path":"Edit/Undo"}`)
+	frames(r, 3)
+	_, back := item_rect(r, "Inspector", "demo / Marble")
+	testing.expectf(t, back, "undo puts the reference back")
+	for _ in 0 ..< 2 do call(r, "invoke_menu", `{"path":"Edit/Redo"}`)
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 5)
+	testing.expectf(t, _saved_alpha_clip(r, SCENE) == 1, "redo brings the edit back to the slot's material")
+	call(r, "invoke_menu", `{"path":"Edit/Undo"}`)
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 5)
+	testing.expectf(t, _saved_alpha_clip(r, SCENE) == 0, "undo takes it away again, and the scene saves that")
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	editor_quit(r)
+}
+
+// A scene of one object, for a second scene beside the one a test edits.
+@(private = "file")
+_ONE_OBJECT_SCENE :: `{
+  "root": 1001,
+  "transforms": [
+    {
+      "local_id": 1001,
+      "name": "Other",
+      "is_active": true,
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [1.0, 1.0, 1.0],
+      "render_layer": 1,
+      "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [],
+      "components": []
+    }
+  ],
+  "components": []
+}`
+
+// The alpha_clip of the embedded material in the saved scene's slots: 1 on,
+// 0 off, -1 when no slot holds an embedded material.
+@(private = "file")
+_saved_alpha_clip :: proc(r: ^Run, scene: string) -> int {
+	components, _ := at(project_json(r, scene), "components").(json.Array)
+	for c in components {
+		materials, _ := at(c, "materials").(json.Array)
+		for m in materials {
+			if as_string(at(m, "embedded")) != "mat" do continue
+			return as_bool(at(m, "data", "alpha_clip")) ? 1 : 0
+		}
+	}
+	return -1
+}
+
+// A material file holds a noise map embedded in its texture field. The noise
+// map is made from the field's picker and edited in the foldout under the
+// field, which every embedded asset has. The edit is the material's: its
+// save writes the noise map inside the field, and undo takes the edit back.
+@(test)
+embedded_asset_in_a_material_file :: proc(t: ^testing.T) {
+	r := begin(t)
+	MAT :: "assets/Plain.mat"
+	project_copy(r, "plugins/essentials/assets/materials/Default.mat", MAT)
+	editor_start(r)
+	window_open(r, "Project Inspector")
+	select_asset(r, MAT)
+	frames(r, 3)
+	texture, found := item_rect(r, "Project Inspector", "texture")
+	if !testing.expectf(t, found, "the Inspector shows the material's texture field") do return
+	win, _ := window_rect(r, "Project Inspector")
+	click(r, win.x + win[2] - 20, texture.y + texture[3] / 2)
+	row, offered := item_rect(r, "popup", "New Noise Map (embedded)")
+	if !testing.expectf(t, offered, "the picker offers a new embedded noise map") do return
+	click(r, row.x + 4, row.y + row[3] / 2)
+	_, embedded := item_rect(r, "Project Inspector", "Noise Map (embedded)")
+	testing.expectf(t, embedded, "the field holds an embedded noise map")
+
+	// The foldout under the field edits the noise map.
+	click(r, win.x + win[2] - 20, texture.y + texture[3] / 2)
+	seed, shown := item_rect(r, "Project Inspector", "seed")
+	if !testing.expectf(t, shown, "the foldout shows the noise map's rows") do return
+	call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":1}},{{"type":"key","name":"cmd"}},{{"type":"down"}},{{"type":"up"}},{{"type":"key","name":"cmd","down":false}},{{"type":"wait","frames":1}},{{"type":"key","name":"a"}},{{"type":"text","text":"77"}},{{"type":"key","name":"enter"}},{{"type":"key","name":"enter","down":false}},{{"type":"wait","frames":3}}]}}`, seed.x + seed[2] / 2, seed.y + seed[3] / 2))
+
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 5)
+	saved := project_json(r, MAT)
+	testing.expectf(t, as_string(at(saved, "texture", "embedded")) == "noise", "the material file holds the noise map in its field, got %v", at(saved, "texture"))
+	testing.expectf(t, as_int(at(saved, "texture", "data", "seed")) == 77, "with the edit, got %v", at(saved, "texture", "data", "seed"))
+	testing.expectf(t, at(saved, "texture", "id") == nil, "and no session id")
+
+	call(r, "invoke_menu", `{"path":"Edit/Undo"}`)
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 5)
+	saved = project_json(r, MAT)
+	testing.expectf(t, as_string(at(saved, "texture", "embedded")) == "noise" && as_int(at(saved, "texture", "data", "seed")) != 77, "undo takes the edit back and keeps the noise map, got %v", at(saved, "texture"))
+
+	editor_restart(r)
+	window_open(r, "Project Inspector")
+	select_asset(r, MAT)
+	frames(r, 3)
+	_, embedded = item_rect(r, "Project Inspector", "Noise Map (embedded)")
+	testing.expectf(t, embedded, "the field holds the embedded noise map after a restart")
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	editor_quit(r)
+}

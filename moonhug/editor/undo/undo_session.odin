@@ -209,7 +209,7 @@ edit_session_end :: proc(sess: ^Edit_Session) {
 			e.old_json = nil
 			continue
 		}
-		new_json := capture_json(ptr, e.target.type_id)
+		new_json := capture_snapshot(ptr, e.target.type_id)
 		if new_json == nil {
 			delete(e.old_json)
 			e.old_json = nil
@@ -311,7 +311,7 @@ _entry_begin :: proc(t: Edit_Target) -> (_Edit_Entry, bool) {
 		if t.asset_tid == nil do return {}, false
 		doc_ptr := _asset_doc_ptr(t.asset, t.asset_doc)
 		if doc_ptr == nil do return {}, false
-		old := capture_json(doc_ptr, t.asset_tid)
+		old := capture_snapshot(doc_ptr, t.asset_tid)
 		if old == nil do return {}, false
 		return _Edit_Entry{
 			target = make_asset_target(t.asset, t.asset_tid, t.asset_doc),
@@ -331,7 +331,7 @@ _entry_begin :: proc(t: Edit_Target) -> (_Edit_Entry, bool) {
 		} else {
 			offset = uintptr(field_ptr) - uintptr(base)
 		}
-		old := capture_json(field_ptr, field_tid)
+		old := capture_snapshot(field_ptr, field_tid)
 		if old == nil do return {}, false
 		return _Edit_Entry{
 			target = make_raw_target(base, offset, field_tid),
@@ -363,7 +363,7 @@ _entry_begin :: proc(t: Edit_Target) -> (_Edit_Entry, bool) {
 			offset = uintptr(field_ptr) - uintptr(base)
 		}
 
-		old := capture_json(field_ptr, field_tid)
+		old := capture_snapshot(field_ptr, field_tid)
 		if old == nil do return {}, false
 		return _Edit_Entry{
 			target = make_pooled_target(t.handle, offset, field_tid),

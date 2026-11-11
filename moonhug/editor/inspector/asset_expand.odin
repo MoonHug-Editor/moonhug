@@ -28,6 +28,14 @@ expand_ref :: proc(ptr: rawptr, tid: typeid) -> (ref: core.PPtr, ok: bool) {
 	return {}, false
 }
 
+// Whether the reference row of the field at `ptr` has the arrow: a field with
+// the `expand` tag, and any reference to an embedded asset. The foldout is the
+// only place an embedded asset is edited, since no file or Project row shows it.
+expand_shown :: proc(ptr: rawptr, tid: typeid) -> bool {
+	ref, ok := expand_ref(ptr, tid)
+	return ok && (current_field_expand || ref.guid == core.EMBEDDED_ASSETS)
+}
+
 // The arrow at the end of the reference row. Open state lives in imgui's
 // window storage under the row's id, the way TreeNode keeps its own, so it
 // survives reselection and needs no map here. Disabled for an empty slot.
@@ -54,6 +62,8 @@ draw_expanded_asset :: proc(ref: core.PPtr) {
 	if ref == {} do return
 	doc := asset_doc_get_ref(ref)
 	if doc == nil do return
+	// An embedded asset's edit is an edit of what holds this row.
+	embedded_holder_set(ref)
 
 	im.Indent()
 	defer im.Unindent()

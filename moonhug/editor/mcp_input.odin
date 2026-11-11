@@ -375,8 +375,14 @@ _owned_by_open_popup :: proc(name: string) -> bool {
 }
 
 // Whether imgui window `name` is `window` or a child of it ("<parent>/<child>_<id>").
+// Compared by the part from "###" on, the window's id: a title that changes
+// (" *" on an edited document) leaves its child windows with the old title in
+// their names.
 @(private = "file")
 _owned_by :: proc(name, window: string) -> bool {
+	name, window := name, window
+	if at := strings.index(window, "###"); at >= 0 do window = window[at:]
+	if at := strings.index(name, "###"); at >= 0 do name = name[at:]
 	if name == window do return true
 	return len(name) > len(window) && strings.has_prefix(name, window) && name[len(window)] == '/'
 }

@@ -188,8 +188,13 @@ scene_sub_asset_store :: proc(ref: PPtr, data_json: string) -> bool {
 //   - Reading a file makes a record with a new id for each embedded asset, and
 //     writing puts each record's data back in its field. A copy of an object
 //     that goes through its text has embedded assets of its own.
+//   - An undo snapshot also holds the id (serialization.pptr_embedded_ids):
+//     a step put back gives the field the record it had, with the data of
+//     the snapshot.
 //   - The ids last for the session and the records until exit: the data is
 //     small text, and nothing tracks which field still uses one.
+//   - What holds the field (a scene, an asset) is the editor's to know: an
+//     edit marks it edited there, not here.
 //   - A reference inside the data names its file by guid. The "this file"
 //     form of a scene's own sub-assets is not used inside embedded data.
 
@@ -209,8 +214,7 @@ embedded_asset_add :: proc(type, data_json: string) -> (ref: PPtr, ok: bool) {
 	return PPtr{guid = core.EMBEDDED_ASSETS, local_id = _embedded_next}, true
 }
 
-// Replaces the data of the embedded asset `ref`: the editor's edit. The scene
-// being edited holds the field, so it is marked edited.
+// Replaces the data of the embedded asset `ref`: the editor's edit.
 embedded_asset_store :: proc(ref: PPtr, data_json: string) -> bool {
 	if ref.guid != core.EMBEDDED_ASSETS do return false
 	o := _owner(core.EMBEDDED_ASSETS)
@@ -221,7 +225,6 @@ embedded_asset_store :: proc(ref: PPtr, data_json: string) -> bool {
 	type := strings.clone(old.type, context.temp_allocator)
 	_record_set(o, ref.local_id, type, "", data)
 	texture_unload(asset_key(ref))
-	if s := sm_scene_get_active(); s != nil do s.dirty = true
 	return true
 }
 
@@ -241,8 +244,15 @@ _embedded_write :: proc(p: PPtr) -> (type: string, data_json: string, ok: bool) 
 	return rec.type, rec.text, true
 }
 
+// The record `id` names when it is still there with the same type: an undo
+// step put back. A new one otherwise.
 @(private = "file")
-_embedded_read :: proc(type: string, data_json: string) -> PPtr {
+_embedded_read :: proc(type: string, data_json: string, id: Local_ID) -> PPtr {
+	if id != 0 {
+		ref := PPtr{guid = core.EMBEDDED_ASSETS, local_id = id}
+		rec, has := _owner(core.EMBEDDED_ASSETS).records[id]
+		if has && rec.type == type && embedded_asset_store(ref, data_json) do return ref
+	}
 	ref, _ := embedded_asset_add(type, data_json)
 	return ref
 }
