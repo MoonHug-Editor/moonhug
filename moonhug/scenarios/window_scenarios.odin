@@ -283,8 +283,14 @@ hierarchy_filter_finds_objects_by_component :: proc(t: ^testing.T) {
 	}
 	frames(r, 3)
 	testing.expect(t, listed(r, "Camera"), "an empty filter lists everything again")
-	call(r, "input", fmt.tprintf(TYPE, "t:meshrenderer mar"))
-	testing.expect(t, listed(r, "Marble"), "t:meshrenderer mar lists Marble")
+	call(r, "input", fmt.tprintf(TYPE, "t:mesh"))
+	testing.expect(t, listed(r, "Marble"), "part of a type name lists the objects with a MeshRenderer")
+	// "$" marks the end of the type's name: no type is named Mesh.
+	call(r, "input", fmt.tprintf(TYPE, "$"))
+	testing.expect(t, !listed(r, "Marble"), "t:mesh$ is the whole name, and MeshRenderer is not Mesh")
+	call(r, "input", `{"steps":[{"type":"key","name":"Backspace"},{"type":"key","name":"Backspace","down":false}]}`)
+	call(r, "input", fmt.tprintf(TYPE, "renderer$ mar"))
+	testing.expect(t, listed(r, "Marble"), "t:meshrenderer$ mar lists Marble")
 	testing.expect(t, !listed(r, "Lava") && !listed(r, "Sun"), "and not the other meshes or the light")
 	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
 	editor_quit(r)

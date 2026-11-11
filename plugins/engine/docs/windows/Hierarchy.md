@@ -18,7 +18,7 @@ The loaded scenes and their objects, each scene a section with its objects as a 
 - Drag objects onto another to reparent them, or between rows to reorder them.
 - Right-click empty space for the GameObject menu's create items. A new object becomes the selection in the same undo step.
 - A scene's header menu has Discard, which reloads the scene from its file, Unload and Save Scene As.
-- The Filter field shows only the objects that match every word in it. A word matches inside an object's name. A word that starts with `t:` matches a component type: `t:light` shows the objects with a Light, and `t:mesh enemy` the objects named like "enemy" that have a mesh component.
+- The Filter field shows only the objects that match every word in it. A word matches inside an object's name. A word that starts with `t:` matches part of a component type's name: `t:sprite` shows the objects with a Sprite or a SpriteRenderer. A `$` at the end marks the end of the name: `t:sprite$` shows the objects with a Sprite only. So `t:light` shows the objects with a light component, and `t:mesh enemy` the objects named like "enemy" that have a mesh component.
 - An object that is a nested scene's instance has a `>` button that opens its source scene in place of the current one. `<` returns to the scene it came from.
 
 ## Keys

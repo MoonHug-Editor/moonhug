@@ -315,7 +315,7 @@ hierarchy_window_draw :: proc(w: ^wnd.Window) {
 	im.SetNextItemWidth(-(clear_btn_w + im.GetStyle().ItemSpacing.x) if filter_query != "" else -1)
 	// NoTabStop: keyboard tabbing must never land in the filter box.
 	im.PushItemFlag({.NoTabStop}, true)
-	im.InputTextWithHint("##hier_filter", "Filter: name, t:Component", cstring(raw_data(_hv.filter_buf[:])), c.size_t(len(_hv.filter_buf)), {})
+	im.InputTextWithHint("##hier_filter", "Filter: name, t:Component$", cstring(raw_data(_hv.filter_buf[:])), c.size_t(len(_hv.filter_buf)), {})
 	im.PopItemFlag()
 	if filter_query != "" {
 		im.SameLine()
@@ -575,8 +575,10 @@ hierarchy_row_icon :: proc(sc: ^engine.Scene, tH: engine.Transform_Handle, host_
 
 // Whether the object passes the filter's words (widgets.search_terms, so
 // lowercase). Every word must match:
-//   - "t:light" matches an object with a component whose type name has
-//     "light" in it: Light, Point_Light
+//   - "t:sprite" matches an object with a component whose type name has
+//     "sprite" in it: Sprite, SpriteRenderer
+//   - "t:sprite$" matches the whole type name: Sprite only. The "$" marks
+//     the end of the name
 //   - any other word matches inside the object's name
 // So "t:mesh enemy" lists the objects named like "enemy" that have a mesh
 // component.
@@ -586,6 +588,8 @@ _hierarchy_filter_match :: proc(t: ^engine.Transform, terms: []string) -> bool {
 	for term in terms {
 		by_type := strings.has_prefix(term, "t:")
 		type := strings.trim_prefix(term, "t:")
+		exact := strings.has_suffix(type, "$")
+		type = strings.trim_suffix(type, "$")
 		if !by_type {
 			if !strings.contains(name, term) do return false
 			continue
@@ -596,7 +600,8 @@ _hierarchy_filter_match :: proc(t: ^engine.Transform, terms: []string) -> bool {
 			if tid == nil do continue
 			named, is_named := type_info_of(tid).variant.(runtime.Type_Info_Named)
 			if !is_named do continue
-			if strings.contains(strings.to_lower(named.name, context.temp_allocator), type) {
+			type_name := strings.to_lower(named.name, context.temp_allocator)
+			if exact ? type_name == type : strings.contains(type_name, type) {
 				has = true
 				break
 			}
