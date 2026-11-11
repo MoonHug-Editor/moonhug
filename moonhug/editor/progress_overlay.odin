@@ -31,6 +31,21 @@ progress_overlay_install :: proc() {
 	progress.set_sink(_progress_pump)
 }
 
+// A frame of the startup screen drawn now, whatever the throttle says. The
+// main loop's start calls it before and after it shows the window, so the
+// window's first image is already in the theme's colours.
+progress_overlay_first_frame :: proc() {
+	_progress_last_pump = {}
+	_progress_pump("Starting MoonHug", "", -1)
+}
+
+// What the main window is cleared to before imgui draws: the theme's window
+// colour, so a frame with nothing over part of the window is still in theme.
+theme_clear_color :: proc() -> [4]f32 {
+	c := im.GetStyle().Colors[im.Col.WindowBg]
+	return {c.x, c.y, c.z, 1}
+}
+
 progress_overlay_frame_scope :: proc(active: bool) {
 	_in_main_frame = active
 }
@@ -73,7 +88,7 @@ _progress_pump :: proc(title, info: string, fraction: f32) {
 	im.Render()
 	dd := im.GetDrawData()
 	im_sdlgpu.PrepareDrawData(dd, gfx.command_buffer())
-	if gfx.pass_begin_swapchain([4]f32{0.96, 0.96, 0.96, 1}, depth = false) {
+	if gfx.pass_begin_swapchain(theme_clear_color(), depth = false) {
 		gfx.pass_end(proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURenderPass) {
 			im_sdlgpu.RenderDrawData(im.GetDrawData(), cmd, rp)
 		})

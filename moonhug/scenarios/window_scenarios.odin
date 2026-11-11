@@ -242,3 +242,50 @@ edit_before_play_is_saved_after_stop :: proc(t: ^testing.T) {
 	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
 	editor_quit(r)
 }
+
+// The Hierarchy's filter: a word is part of an object's name, and a word that
+// starts with "t:" is part of a component type the object has.
+@(test)
+hierarchy_filter_finds_objects_by_component :: proc(t: ^testing.T) {
+	r := begin(t)
+	SCENE :: "assets/demo.scene"
+	meshes :: "plugins/essentials/assets/meshes/"
+	for file in ([]string{"Sphere.glb", "Sphere.glb.meta", "Cube.glb", "Cube.glb.meta"}) {
+		project_copy(r, fmt.tprintf("%s%s", meshes, file), fmt.tprintf("assets/%s", file))
+	}
+	project_copy(r, "plugins/app/assets/demo_sub_assets/demo_sub_assets.scene", SCENE)
+	editor_start(r)
+	call(r, "open_scene", fmt.tprintf(`{{"path":%q}}`, SCENE))
+	window_open(r, "Hierarchy")
+	frames(r, 5)
+	listed :: proc(r: ^Run, name: string) -> bool {
+		_, ok := item_rect(r, "Hierarchy", name)
+		return ok
+	}
+	if !testing.expect(t, listed(r, "Sun") && listed(r, "Marble") && listed(r, "Camera"), "the scene's objects are listed") do return
+	field, found := item_rect(r, "Hierarchy", "Filter: name")
+	if !testing.expect(t, found, "the Hierarchy has its filter field") do return
+	TYPE :: `{{"steps":[{{"type":"text","text":%q}},{{"type":"wait","frames":3}}]}}`
+
+	click(r, field.x + 4, field.y + field[3] / 2)
+	call(r, "input", fmt.tprintf(TYPE, "t:light"))
+	testing.expect(t, listed(r, "Sun"), "t:light lists the object with a Light")
+	testing.expect(t, !listed(r, "Marble") && !listed(r, "Camera"), "and no object without one")
+
+	call(r, "input", fmt.tprintf(TYPE, " su"))
+	testing.expect(t, listed(r, "Sun"), "a name word narrows it: the Sun stays")
+	call(r, "input", fmt.tprintf(TYPE, "x"))
+	testing.expect(t, !listed(r, "Sun"), "a name word that does not match hides it")
+
+	// The field is still typed in: its text is erased key by key.
+	for _ in 0 ..< len("t:light sux") {
+		call(r, "input", `{"steps":[{"type":"key","name":"Backspace"},{"type":"key","name":"Backspace","down":false}]}`)
+	}
+	frames(r, 3)
+	testing.expect(t, listed(r, "Camera"), "an empty filter lists everything again")
+	call(r, "input", fmt.tprintf(TYPE, "t:meshrenderer mar"))
+	testing.expect(t, listed(r, "Marble"), "t:meshrenderer mar lists Marble")
+	testing.expect(t, !listed(r, "Lava") && !listed(r, "Sun"), "and not the other meshes or the light")
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	editor_quit(r)
+}

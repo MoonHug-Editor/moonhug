@@ -89,7 +89,8 @@ main :: proc() {
     } else if !has_saved_settings {
         apply_default_window_size()
     }
-    if !hidden do gfx.show_window()
+    // The window is shown further down, once the theme is applied and a frame
+    // in its colours is ready: it never shows black or another theme's colours.
     // Dock icon is applied AFTER the first focus event (see the main loop),
     // NOT here: setApplicationIconImage during the launch activation
     // handshake could wedge key-window status when a click landed early —
@@ -152,6 +153,11 @@ main :: proc() {
     // From here reports draw pumped frames — startup shows progress instead
     // of a black window (progress_overlay.odin).
     progress_overlay_install()
+    // A frame in the theme's colours before the window shows and one right
+    // after: where a hidden window takes no frame, the second one is the first.
+    progress_overlay_first_frame()
+    if !hidden do gfx.show_window()
+    progress_overlay_first_frame()
 
     // The installed engine's user context, world and caches, from its
     // EngineInit subscribers. nil with no engine.
@@ -375,7 +381,7 @@ main :: proc() {
         im.Render()
         dd := im.GetDrawData()
         im_sdlgpu.PrepareDrawData(dd, gfx.command_buffer())
-        if gfx.pass_begin_swapchain([4]f32{0.96, 0.96, 0.96, 1}, depth = false) {
+        if gfx.pass_begin_swapchain(theme_clear_color(), depth = false) {
             gfx.pass_end(proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURenderPass) {
                 im_sdlgpu.RenderDrawData(im.GetDrawData(), cmd, rp)
             })

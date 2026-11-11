@@ -308,13 +308,14 @@ hierarchy_window_draw :: proc(w: ^wnd.Window) {
 	_hierarchy_dimmed_color = {text_col[0] * 0.5, text_col[1] * 0.5, text_col[2] * 0.5, text_col[3]}
 
 	// Filter row (drawn before the compact style vars so it matches the
-	// Project window's search box). "x" or Esc clears it.
+	// Project window's search box). "x" or Esc clears it. A word is part of
+	// a name, or "t:" and part of a component type (_hierarchy_filter_match).
 	filter_query := strings.trim_space(string(cstring(raw_data(_hv.filter_buf[:]))))
 	clear_btn_w := im.GetFrameHeight()
 	im.SetNextItemWidth(-(clear_btn_w + im.GetStyle().ItemSpacing.x) if filter_query != "" else -1)
 	// NoTabStop: keyboard tabbing must never land in the filter box.
 	im.PushItemFlag({.NoTabStop}, true)
-	im.InputTextWithHint("##hier_filter", "Filter", cstring(raw_data(_hv.filter_buf[:])), c.size_t(len(_hv.filter_buf)), {})
+	im.InputTextWithHint("##hier_filter", "Filter: name, t:Component", cstring(raw_data(_hv.filter_buf[:])), c.size_t(len(_hv.filter_buf)), {})
 	im.PopItemFlag()
 	if filter_query != "" {
 		im.SameLine()
@@ -572,6 +573,39 @@ hierarchy_row_icon :: proc(sc: ^engine.Scene, tH: engine.Transform_Handle, host_
 	return icons.ICON_MD_STACKS
 }
 
+// Whether the object passes the filter's words (widgets.search_terms, so
+// lowercase). Every word must match:
+//   - "t:light" matches an object with a component whose type name has
+//     "light" in it: Light, Point_Light
+//   - any other word matches inside the object's name
+// So "t:mesh enemy" lists the objects named like "enemy" that have a mesh
+// component.
+@(private = "file")
+_hierarchy_filter_match :: proc(t: ^engine.Transform, terms: []string) -> bool {
+	name := strings.to_lower(t.name, context.temp_allocator)
+	for term in terms {
+		by_type := strings.has_prefix(term, "t:")
+		type := strings.trim_prefix(term, "t:")
+		if !by_type {
+			if !strings.contains(name, term) do return false
+			continue
+		}
+		has := false
+		for c in t.components {
+			tid := engine.get_typeid_by_type_key(c.handle.type_key)
+			if tid == nil do continue
+			named, is_named := type_info_of(tid).variant.(runtime.Type_Info_Named)
+			if !is_named do continue
+			if strings.contains(strings.to_lower(named.name, context.temp_allocator), type) {
+				has = true
+				break
+			}
+		}
+		if !has do return false
+	}
+	return true
+}
+
 @(private)
 _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, host_ns: map[engine.Transform_Handle]^engine.NestedScene, is_root := false, parent_inactive := false, parent_nested := false, filter: []string = nil) {
 	w := engine.ctx_world()
@@ -590,7 +624,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	// context menu and the ">" enter button all work as usual); non-matching
 	// nodes draw nothing and only recurse to find deeper matches.
 	filtered := len(filter) > 0
-	if filtered && !widgets.search_match(t.name, filter) {
+	if filtered && !_hierarchy_filter_match(t, filter) {
 		children_copy := make([]engine.Ref, len(t.children), context.temp_allocator)
 		copy(children_copy, t.children[:])
 		for child in children_copy {
