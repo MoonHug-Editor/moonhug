@@ -1,3 +1,10 @@
+## [0.163.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.163.0...v0.163.1) (2026-11-11)
+
+### Bug Fixes
+
+* embedded assets mark their holder edited and keep their id through undo ([cf3e53a](https://github.com/MoonHug-Editor/moonhug/commit/cf3e53afaa5357f30abe080b31c19000f73a6ac0))
+* nested variants keep their base's sub-assets, Play keeps embedded assets, only types without an importer can be sub-assets or embedded assets ([fcc9373](https://github.com/MoonHug-Editor/moonhug/commit/fcc9373cedfee8ed46968e1e1c77f7f0ee900715))
+
 ## [0.163.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.162.0...v0.163.0) (2026-11-11)
 
 ### Features
