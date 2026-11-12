@@ -445,6 +445,19 @@ project_keys_step_over_sub_asset_rows :: proc(t: ^testing.T) {
 	run(r, "Project/Expand")
 	run(r, "Project/Expand")
 	testing.expect(t, !material_shown(r), "grid: Ctrl+Left folds the file, so Right steps over the next files")
+
+	// Search results are a grid too while the zoom slider is on the grid:
+	// the sub-asset is a cell, and the keys move between cells.
+	select_asset(r, "assets/Cube.glb")
+	click(r, field.x + 4, field.y + field[3] / 2)
+	call(r, "input", `{"steps":[{"type":"text","text":"marble"},{"type":"wait","frames":3}]}`)
+	_, cell_named := item_rect(r, "Project", "Marble")
+	testing.expect(t, cell_named, "search grid: the sub-asset result is a cell with its name")
+	_, row_named := item_rect(r, "Project", "Marble  (")
+	testing.expect(t, !row_named, "search grid: and not a row with its file beside it")
+	testing.expect(t, !material_shown(r), "search grid: a model is still the selection")
+	run(r, "Project/Expand")
+	testing.expect(t, material_shown(r), "search grid: Right selects the first cell, the material")
 	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
 	editor_quit(r)
 }

@@ -241,4 +241,4 @@ The arrow keys work on the pane the keyboard is in. A sub-asset's row or cell is
 | Ctrl+Right, Ctrl+Left | | unfolds, folds the file's sub-assets, and moves nothing | the same |
 | Shift with an arrow | | adds the row to the selection | adds the cell |
 
-Search results are always rows, so they take the list's keys. Ctrl is Cmd on macOS.
+Search results follow the zoom slider like a folder does: rows at its low end, with each result's path, and a grid of cells above it. They take the keys of the one shown. Ctrl is Cmd on macOS.

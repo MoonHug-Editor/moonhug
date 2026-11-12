@@ -965,8 +965,10 @@ _project_draw_grid_sub_cell :: proc(parent_path: string, guid: core.Asset_GUID, 
     im.DrawList_PopClipRect(dl)
 }
 
-_project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool, cell: f32, is_link := false) {
-    _project_list_row_add(display, full_path, is_dir)
+// One grid cell. `listed`: the caller already put it in list_rows, the
+// keyboard navigation list (the search results' grid).
+_project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool, cell: f32, is_link := false, listed := false) {
+    if !listed do _project_list_row_add(display, full_path, is_dir)
 
     label_h := im.GetTextLineHeightWithSpacing()
     im.PushIDStr(strings.clone_to_cstring(full_path, context.temp_allocator), nil)
@@ -1351,11 +1353,102 @@ _project_item_extras :: proc(full_path: string, is_dir: bool, drag_label: cstrin
     }
 }
 
-// Search results, shown as root-relative paths: what asset_search finds
-// (asset_search.odin has the query's words), files first, then sub-assets.
+// The search results as a grid: a cell per file hit, the cells of its
+// sub-assets after an unfolded one, then a cell per sub-asset hit. Every cell
+// joins the keyboard navigation list, and only the rows of cells on screen
+// are drawn: a cell asks for its thumbnail, and a sub-asset's asks its file's
+// provider for the sub-asset, which may load the file (a texture's sprites).
+@(private = "file")
+_project_draw_search_grid :: proc(hits: []Project_Search_Hit, cell: f32) {
+    Cell :: struct {
+        path:   string,
+        is_dir: bool,
+        sub:    subassets.Sub_Asset, // id 0: a file's or a folder's cell
+        hit:    bool,                // a sub-asset hit: its entry is the database's until it is drawn
+    }
+    cells := make([dynamic]Cell, 0, len(hits), context.temp_allocator)
+    for h in hits {
+        if h.sub != 0 do continue
+        append(&cells, Cell{path = h.path, is_dir = h.is_dir})
+        if !h.is_dir && _pv.expanded[h.path] {
+            sub, _ := _project_sub_assets(h.path, false)
+            for s in sub do append(&cells, Cell{path = h.path, sub = s})
+        }
+    }
+    unfolded := len(cells)
+    for h in hits {
+        if h.sub == 0 do continue
+        // Once: an unfolded file hit has its cell already.
+        listed := false
+        if _pv.expanded[h.path] {
+            for cl in cells[:unfolded] do if cl.sub.id == h.sub && cl.path == h.path {
+                listed = true
+                break
+            }
+        }
+        if !listed do append(&cells, Cell{path = h.path, sub = {id = h.sub, name = h.sub_name, kind = h.sub_kind}, hit = true})
+    }
+    for cl in cells {
+        if cl.sub.id != 0 do _project_list_row_add(cl.sub.name, cl.path, false, cl.sub.id)
+        else do _project_list_row_add(filepath.base(cl.path), cl.path, cl.is_dir)
+    }
+    if len(cells) == 0 do return
+
+    pad := im.GetStyle().ItemSpacing.x
+    lead := pad * 0.5
+    cols := max(int((im.GetContentRegionAvail().x - lead + pad) / (cell + pad)), 1)
+    _pv.grid_cols = cols
+    rows := (len(cells) + cols - 1) / cols
+    clipper: im.ListClipper
+    im.ListClipper_Begin(&clipper, i32(rows))
+    if _pv.scroll_to_list_sel && _pv.active_pane == .List {
+        for cl, i in cells {
+            selected := cl.sub.id != 0 ? sel_proj_is_sub(cl.path, cl.sub.id) : sel_proj_is(cl.path)
+            if selected do im.ListClipper_IncludeItemByIndex(&clipper, i32(i / cols))
+        }
+    }
+    for im.ListClipper_Step(&clipper) {
+        for row in clipper.DisplayStart ..< clipper.DisplayEnd {
+            for col in 0 ..< cols {
+                i := int(row) * cols + col
+                if i >= len(cells) do break
+                cl := cells[i]
+                if col > 0 do im.SameLine()
+                else do im.SetCursorPosX(im.GetCursorPosX() + lead)
+                if cl.sub.id == 0 {
+                    _project_draw_grid_cell(filepath.base(cl.path), cl.path, cl.is_dir, cell, listed = true)
+                    continue
+                }
+                raw_guid, known := assets.asset_db_get_guid(cl.path)
+                provider, has := subassets.find(strings.to_lower(filepath.ext(cl.path), context.temp_allocator))
+                if !known || !has {
+                    im.Dummy(im.Vec2{cell, cell + im.GetTextLineHeightWithSpacing()})
+                    continue
+                }
+                entry := cl.sub
+                if cl.hit {
+                    for s in provider.list(cl.path, context.temp_allocator) do if s.id == cl.sub.id {
+                        entry = s
+                        break
+                    }
+                }
+                _project_draw_grid_sub_cell(cl.path, core.Asset_GUID(raw_guid), entry, i, provider, cell)
+            }
+        }
+    }
+}
+
+// Search results: what asset_search finds (asset_search.odin has the query's
+// words), files first, then sub-assets. Rows with root-relative paths, or a
+// grid of cells with the zoom slider above its low end.
 // Returns the match count for the status line.
 _project_draw_search_results :: proc(query: string) -> int {
     hits := _project_search_hits(query)
+    // The zoom slider picks rows or a grid for the results, as for a folder.
+    if editor_settings.project_zoom > 0 {
+        _project_draw_search_grid(hits, 40 + editor_settings.project_zoom * 56)
+        return len(hits)
+    }
     prefix := strings.concatenate({projectWindowData.rootPath, "/"}, context.temp_allocator)
     items := make([dynamic]_Project_List_Item, 0, len(hits), context.temp_allocator)
     for h in hits {
