@@ -738,6 +738,62 @@ _scene_sub_assets_load_begin :: proc(sf: ^SceneFile, s: ^Scene, scope: Asset_GUI
 	_binding = true
 }
 
+// The scene file text `data` of the prefab `scope`, with every reference to a
+// record of that file, or of a base it is a variant of, given the file's
+// guid: what a load of the content gives the live objects. For comparing
+// live prefab content with its file. False when no reference changes.
+// Temp-allocated.
+@(private)
+_scene_sub_assets_bind_text :: proc(data: []byte, scope: Asset_GUID) -> (out: []byte, ok: bool) {
+	owners := make([dynamic]Asset_GUID, context.temp_allocator)
+	g := scope
+	for depth := 0; !asset_guid_is_empty(g) && depth <= 32; depth += 1 {
+		// Most prefabs have no record: nothing to parse.
+		o := _owner(g)
+		if !o.loaded do _owner_read_file(g, o)
+		if len(o.records) > 0 do append(&owners, g)
+		g = _variant_bases[g]
+	}
+	if len(owners) == 0 do return nil, false
+
+	context.allocator = context.temp_allocator
+	root, err := json.parse(data, .JSON, true)
+	if err != nil do return nil, false
+	changed := false
+	_bind_value(root, owners[:], &changed)
+	if !changed do return nil, false
+	bytes, merr := json.marshal(root, json.Marshal_Options{spec = .JSON, pretty = false})
+	if merr != nil do return nil, false
+	return bytes, true
+}
+
+@(private = "file")
+_bind_value :: proc(v: json.Value, owners: []Asset_GUID, changed: ^bool) {
+	#partial switch x in v {
+	case json.Object:
+		obj := x
+		if gs, has := x["guid"].(json.String); has && gs == "00000000-0000-0000-0000-000000000000" {
+			id: Local_ID
+			#partial switch n in x["local_id"] {
+			case json.Integer: id = Local_ID(n)
+			case json.Float:   id = Local_ID(n)
+			}
+			if id != 0 {
+				for owner in owners {
+					if !scene_sub_asset_has(owner, id) do continue
+					// The key exists: the write does not grow the map.
+					obj["guid"] = json.String(uuid.to_string(uuid.Identifier(owner), context.temp_allocator))
+					changed^ = true
+					break
+				}
+			}
+		}
+		for _, child in x do _bind_value(child, owners, changed)
+	case json.Array:
+		for child in x do _bind_value(child, owners, changed)
+	}
+}
+
 // A nested variant's flattened content holds the content of `base`.
 @(private)
 _scene_sub_assets_variant_base_set :: proc(variant, base: Asset_GUID) {

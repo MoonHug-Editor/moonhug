@@ -5,8 +5,9 @@ package app
 // DemoMenu component points at the List. At play one Text row per scene
 // authored on the component is created under the List, labels from the
 // asset paths, each a Button (mhgui) over its Text. A click or the number
-// key (1..9) loads that scene additively and hides the menu root (camera
-// included); the loaded scene gets a small HUD canvas of its own with the
+// key (1..9) loads that scene additively over the next frames
+// (engine.scene_load_async), with the menu still drawn, then hides the menu
+// root (camera included); the loaded scene gets a small HUD canvas of its own with the
 // ESC hint, itself a Button, and ESC or that click unloads it back to the
 // menu. A per-frame update, so it
 // runs in the app and under the editor's Simulate alike.
@@ -21,6 +22,7 @@ import mhgui "moonhug:packages/mhgui"
 import text "moonhug:packages/text"
 
 @(private = "file") _current_demo: ^engine.Scene
+@(private = "file") _loading: engine.Scene_Load_Handle // the demo being loaded, 0 for none
 @(private = "file") _hud_back: ^mhgui.Button // "ESC: back to menu" in the running demo's scene
 @(private = "file") _hud_hint: ^text.Text    // the F3 line under it
 @(private = "file") _hud_colliders: bool     // what the hint last said about F3
@@ -59,6 +61,20 @@ demo_menu_tick :: proc(dt: f32) {
         return
     }
 
+    // A demo is loading: the menu stays until its scene is awake.
+    if _loading != 0 {
+        if !engine.scene_load_done(_loading) do return
+        _current_demo = engine.scene_load_scene(_loading)
+        _loading = 0
+        if _current_demo != nil {
+            phase_run(.SceneLoaded)
+            _hud_build(_current_demo)
+            // Hide the menu scene (incl. its camera) while a demo runs.
+            _menu_root_set_active(menu, false)
+        }
+        return
+    }
+
     for guid, i in menu.demos {
         if i >= 9 do break // number keys only reach 9
         path, ok := engine.asset_db_get_path(uuid.Identifier(guid))
@@ -66,13 +82,8 @@ demo_menu_tick :: proc(dt: f32) {
         // leak into the loaded demo (a click is a release already).
         clicked := i < len(_rows) && mhgui.button_clicked(_rows[i])
         if ok && (clicked || input.key_released(input.Key(int(input.Key._1) + i))) {
-            _current_demo = engine.scene_load_additive_path(path)
-            if _current_demo != nil {
-                phase_run(.SceneLoaded)
-                _hud_build(_current_demo)
-                // Hide the menu scene (incl. its camera) while a demo runs.
-                _menu_root_set_active(menu, false)
-            }
+            _loading = engine.scene_load_async(path, additive = true)
+            break
         }
     }
 }
@@ -83,6 +94,7 @@ demo_menu_tick :: proc(dt: f32) {
 _menu_build :: proc(menu: ^DemoMenu) {
     clear(&_rows)
     _current_demo = nil // a rebuild means the scene was reloaded or restored: nothing of the run is left
+    _loading = 0
     _hud_back = nil
     _hud_hint = nil
     list := engine.Transform_Handle(menu.list.handle)

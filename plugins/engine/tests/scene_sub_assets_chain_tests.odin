@@ -255,3 +255,52 @@ test_variant_of_a_prefab_keeps_the_base_files_sub_asset :: proc(t: ^testing.T) {
 		testing.expectf(t, loaded && col == {0, 0, 1, 1}, "%s: the embedded material loads blue, got %v", what, col)
 	}
 }
+
+// The `materials` overrides in the scene file at `path`.
+@(private = "file")
+_materials_overrides :: proc(t: ^testing.T, path: string) -> int {
+	sf, ok := engine.scene_file_load(path)
+	if !testing.expectf(t, ok, "%s parses", path) do return -1
+	defer engine.scene_file_destroy(&sf)
+	n := 0
+	for ns in sf.nested_scenes {
+		for ov in ns.overrides do if ov.property_path == "materials" do n += 1
+	}
+	return n
+}
+
+// A prefab's reference to a record of its own file is not an override of an
+// untouched instance: saving the host, and a host of a variant of it, writes
+// none. A slot the host changes is still one.
+@(test)
+test_untouched_instance_saves_no_override_for_the_prefabs_own_sub_asset :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc, "")
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	engine.material_cache_init()
+	defer engine.material_cache_shutdown()
+	dir :: "moonhug/tests/fixtures/_sub_assets_no_override_tmp"
+	defer _remove_tree(dir)
+	defer engine.scene_lib_shutdown()
+	defer engine.asset_db_shutdown()
+	c, ok := _chain_author(t, tc, dir)
+	if !ok do return
+	testing.expectf(t, _materials_overrides(t, c.middle) == 0, "middle, which nests inner untouched, has no materials override")
+
+	host := engine.scene_load_single_path(c.host)
+	if !testing.expect(t, host != nil, "host loads") do return
+	tc.scene = host
+	engine.sm_scene_set_active(host)
+	testing.expect(t, engine.scene_instantiate_guid_nested(c.variant_guid, engine.Transform_Handle(host.root.handle)) != {}, "the variant nests into host")
+	if !testing.expect(t, engine.scene_save(host, c.host), "host saves") do return
+	testing.expectf(t, _materials_overrides(t, c.host) == 0, "host, which nests the variant untouched, has no materials override")
+
+	// A changed slot is an override.
+	mrs := _renderers(tc, host)
+	if !testing.expect(t, len(mrs) == 1) do return
+	mrs[0].materials[0] = {}
+	if !testing.expect(t, engine.scene_save(host, c.host), "host saves again") do return
+	testing.expectf(t, _materials_overrides(t, c.host) == 1, "a cleared slot is one materials override")
+}

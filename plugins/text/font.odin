@@ -520,3 +520,9 @@ font_import :: proc(source_path, artifact_path: string, settings: rawptr) -> boo
 	return true
 }
 
+
+// A scene load reads the fonts the scene references (engine/asset_preload.odin).
+@(asset_preload={ext="ttf,otf"})
+asset_preload_font :: proc(ref: engine.PPtr) {
+	font_load(ref.guid)
+}

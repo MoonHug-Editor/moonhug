@@ -692,6 +692,10 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 	// save captures every such field as a spurious override.
 	diff_base := base_raw
 	if normalized, nok := _normalize_component_records(base_raw); nok do diff_base = normalized
+	// The file names its own sub-assets with an empty guid, the live content
+	// with the file's guid: without this, an unchanged save captures each
+	// such reference as an override.
+	if bound, bok := _scene_sub_assets_bind_text(diff_base, ns.source_prefab); bok do diff_base = bound
 
 	diff := nested_scene_diff_overrides(diff_base, work_raw, ns.source_prefab)
 	defer {
@@ -1639,6 +1643,8 @@ scene_load_single_path :: proc(path: string) -> ^Scene {
 	if g, gok := asset_db_get_guid(path); gok {
 		scene_guid = Asset_GUID(g)
 	}
+	// A game loads the scene's assets now. The editor loads each on first use.
+	if !application_is_editor() do scene_file_preload_assets(&sf, scene_guid)
 	s := _scene_load_single(&sf, scene_guid)
 	if s != nil {
 		s.path = strings.clone(path)
@@ -1718,6 +1724,8 @@ scene_load_additive_path :: proc(path: string) -> ^Scene {
 	if g, gok := asset_db_get_guid(path); gok {
 		scene_guid = Asset_GUID(g)
 	}
+	// A game loads the scene's assets now. The editor loads each on first use.
+	if !application_is_editor() do scene_file_preload_assets(&sf, scene_guid)
 	s := _scene_load_additive(&sf, scene_guid)
 	if s != nil {
 		s.path = strings.clone(path)

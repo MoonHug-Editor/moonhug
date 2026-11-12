@@ -21,7 +21,8 @@ Tick_Hooks :: struct {
 	late_update:  proc(dt: f32),
 }
 
-// One frame of simulation, the only place the order is written: the fixed
+// One frame of simulation, the only place the order is written: the scene
+// loads in progress (scene_load_async.odin), then the fixed
 // ticks the accumulator owes (each latching input first), then the frame
 // tick, then the late tick, then the objects transform_destroy_later queued.
 // `step` runs exactly one fixed tick and one frame tick at the fixed delta,
@@ -29,6 +30,7 @@ Tick_Hooks :: struct {
 frame_tick :: proc(hooks: Tick_Hooks, dt: f32, step := false) {
 	// A debug build checks that no writer bypassed the enable hooks.
 	when ODIN_DEBUG do enabled_verify()
+	scene_loads_step()
 	fdt := fixed_dt()
 	steps := 1 if step else fixed_frame_ticks(dt)
 	for _ in 0 ..< steps {

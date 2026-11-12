@@ -464,6 +464,7 @@ scene_rebind_unbound_refs :: proc(s: ^Scene) {
 }
 
 sm_shutdown :: proc() {
+    scene_loads_cancel()
     scene_manager := ctx_scene_manager()
     for i in 0..<scene_manager.count {
         if scene_manager.loaded[i] != nil {

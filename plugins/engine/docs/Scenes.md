@@ -102,6 +102,43 @@ scene_load_additive_path :: proc(path: string) -> ^Scene  // additive
 
 The manager stores up to `MAX_SCENES = 100` scenes in a fixed array. `active_scene` is a `Scene_ID` (i16) index into that array.
 
+## Loading over frames
+
+`scene_load_async` loads a scene over several frames, so a running game keeps its frame rate and can show a loading screen.
+
+```odin
+h := engine.scene_load_async("assets/level2.scene")   // or additive = true
+// each frame:
+bar := engine.scene_load_progress(h)                   // 0 to 1
+if engine.scene_load_done(h) {
+    level := engine.scene_load_scene(h)                // nil when the load failed
+}
+```
+
+The stages, in order:
+
+- Read and parse the scene file.
+- List the assets the scene references. Each nested prefab is opened and its references are listed too.
+- Load those assets: textures, meshes, materials with their shader and textures, audio clips, animation clips, fonts.
+- Create the objects and awake them. A load that is not additive unloads the loaded scenes right before this stage, so they run until then.
+
+Rules:
+
+- `frame_tick` runs the loads at the start of each frame for `SCENE_LOAD_FRAME_BUDGET_MS` (4 ms). All work is on the main thread.
+- One piece of work always finishes: one file parse, one asset, the creation of the objects. A large texture or a large scene can take more than the budget in its frame.
+- `activate = false` stops the load before the last stage, with the assets loaded. `scene_load_ready(h)` is true then, and `scene_load_activate(h)` lets it finish. Use it for "press a key to continue" or to finish a fade first.
+- Outside a running game no frame runs the loads, so the call loads the whole scene before it returns.
+- A load ends with the game: Stop in the editor drops the loads in progress.
+- The sync loads stay. The editor and the boot scene use them. In a game they load the scene's assets in the same call. In the editor each asset loads on first use.
+
+What is not loaded ahead:
+
+- An asset no component of the scene names, such as one a script picks by guid.
+- The assets of a scene that a field names (a list of levels, a prefab a script spawns). Only nested prefabs are opened.
+- `engine.asset_preload(ref)` loads either by hand. For a prefab it loads every asset the prefab references.
+
+An asset type joins the preload with `@(asset_preload={ext="mp3,wav,ogg"})` on a proc named `asset_preload_<name>` that takes the `PPtr` and calls the type's loader (`plugins/engine/asset_preload.odin`). Several procs can name one extension: a model file holds mesh parts and clips, the engine's proc loads a part id and the animation plugin's proc loads a clip id.
+
 ## Scene lifetime
 
 ```

@@ -889,3 +889,19 @@ animation_wrap_time :: proc(time, length: f32, wrap: Animation_Wrap) -> (t: f32,
 	}
 	return time, false
 }
+
+// A scene load loads the clips the scene references (engine/asset_preload.odin):
+// an .anim file, or a clip inside a model. A model's other sub-assets, its
+// mesh parts, are the engine's to load.
+@(asset_preload={ext="anim,glb,gltf"})
+asset_preload_animation_clip :: proc(ref: engine.PPtr) {
+	if engine.asset_ref_type(ref) == "anim" {
+		animation_clip_load(ref)
+		return
+	}
+	for clip in engine.mesh_clips(ref.guid) {
+		if clip.id != ref.local_id do continue
+		animation_clip_load(ref)
+		return
+	}
+}

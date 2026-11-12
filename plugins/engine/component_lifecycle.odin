@@ -278,6 +278,7 @@ application_set_playing :: proc(playing: bool) {
 		return
 	}
 	_on_destroy_all()
+	scene_loads_cancel() // a load the game started ends with the game
 	if game_running() do _destroy_queue_drop(ctx_world())
 	uc.is_playing = false
 }

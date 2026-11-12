@@ -93,3 +93,9 @@ clip_cache_shutdown :: proc() {
 	delete(clip_cache)
 	clip_cache = nil
 }
+
+// A scene load decodes the clips the scene references (engine/asset_preload.odin).
+@(asset_preload={ext="mp3,wav,ogg"})
+asset_preload_audio_clip :: proc(ref: engine.PPtr) {
+	clip_load(ref.guid)
+}
