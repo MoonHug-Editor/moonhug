@@ -80,7 +80,9 @@ _owners: map[Asset_GUID]^_Owner
 // Default allocator.
 @(private = "file")
 _bind_owners: [dynamic]Asset_GUID
-@(private = "file")
+// Per thread: a scene file parsed on a worker (scene_load_async.odin) binds
+// nothing, the way a parse on the main thread outside a load binds nothing.
+@(private = "file", thread_local)
 _binding: bool
 
 // A variant's base, by the variant's guid. A nested variant loads from

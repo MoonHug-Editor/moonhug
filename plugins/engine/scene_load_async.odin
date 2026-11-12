@@ -8,21 +8,22 @@ package engine
 //   ...scene_load_done(h): the scene is loaded and awake
 //
 // The stages, in order:
-// - read and parse the scene file
-// - list the assets the scene references, and open each nested prefab to list
-//   the assets it references
+// - read and parse the scene file on a worker thread (asset_jobs.odin)
+// - list the assets the scene references, and the assets of each nested
+//   prefab. Each prefab file parses on a worker thread, once per process:
+//   its list is kept until an asset changes
 // - load those assets (asset_preload.odin). Each asset's file is read and
-//   decoded on a worker thread (asset_jobs.odin), all at once. The load waits
-//   until every one is in its cache
+//   decoded on a worker thread, all at once. The load waits until every one
+//   is in its cache
 // - create the objects and awake them. A load that is not additive unloads
 //   the loaded scenes right before this stage, so they run until then
 //
 // frame_tick runs the loads at the start of each frame for a few
 // milliseconds (SCENE_LOAD_FRAME_BUDGET_MS). On the main thread that is: the
-// file parses, the short last part of each asset's load (a GPU upload), and
-// the creation of the objects. Parsing one file and creating the objects are
-// one piece of work each, so a large scene can still take more than the
-// budget in those two frames.
+// walk of the parsed file for its asset references, the short last part of
+// each asset's load (a GPU upload), and the creation of the objects. Creating
+// the objects is one piece of work, so a large scene can still take more than
+// the budget in that frame.
 //
 // - `activate = false` stops before the last stage, with the assets loaded,
 //   until scene_load_activate: for "press a key to continue", or to finish a
@@ -37,6 +38,9 @@ package engine
 //   scene's assets too.
 
 import "base:runtime"
+import "core:encoding/json"
+import "core:encoding/uuid"
+import "core:fmt"
 import "core:strings"
 import "core:time"
 
@@ -48,7 +52,8 @@ SCENE_LOAD_FRAME_BUDGET_MS :: 4.0
 
 @(private = "file")
 _Stage :: enum {
-	Parse,
+	Read, // start the file's parse on a worker
+	Parse, // until the parse is done
 	Scan, // nested prefabs
 	Assets, // start each asset's load
 	Jobs, // until the asset jobs are done
@@ -66,13 +71,15 @@ _Load :: struct {
 	additive:  bool,
 	activate:  bool,
 	stage:     _Stage,
-	allocator: runtime.Allocator, // of `sf` and `refs`
 	sf:        SceneFile,
+	parsed:    bool, // `sf` holds the parsed file
+	sf_allocator: runtime.Allocator, // of `sf`: the scene takes parts of it, so the scene is built on it too
 	guid:      Asset_GUID,
 	refs:      Scene_Asset_Refs,
 	scanned:   int, // refs.scenes read so far
 	loaded:    int, // refs.assets started so far
-	jobs:      int, // the asset jobs pending when the Jobs stage began
+	mark:      u64, // the last asset job started by the Assets stage
+	jobs:      int, // of the jobs up to `mark`, the pending ones when the Jobs stage began
 	jobs_done: int, // of those, the most seen done
 	progress:  f32, // the highest value scene_load_progress gave out
 	scene:     u32, // session id of the result
@@ -93,17 +100,19 @@ _next_load_id: Scene_Load_Handle
 // call returns.
 scene_load_async :: proc(path: string, additive := false, activate := true) -> Scene_Load_Handle {
 	_next_load_id += 1
-	l := new(_Load, runtime.default_allocator())
-	l.id = _next_load_id
-	l.world = ctx_world()
-	l.path = strings.clone(path, runtime.default_allocator())
-	l.additive = additive
-	l.activate = activate
-	l.allocator = context.allocator
-	l.refs.assets = make([dynamic]PPtr, l.allocator)
-	l.refs.scenes = make([dynamic]Asset_GUID, l.allocator)
+	l: ^_Load
 	{
+		// The load's own state lives across frames: never on the caller's
+		// allocator, which can be the temp allocator. The scene file is on
+		// the allocator of the step that parses it (_advance).
 		context.allocator = runtime.default_allocator()
+		l = new(_Load)
+		l.id = _next_load_id
+		l.world = ctx_world()
+		l.path = strings.clone(path)
+		l.additive = additive
+		l.activate = activate
+		l.refs = _refs_make(runtime.default_allocator())
 		append(&_loads, l)
 	}
 	if !game_running() {
@@ -120,7 +129,7 @@ scene_load_progress :: proc(h: Scene_Load_Handle) -> f32 {
 	l := _find(h)
 	if l == nil do return 0
 	if l.stage == .Done || l.stage == .Failed do return 1
-	if l.stage == .Parse do return 0
+	if l.stage == .Read || l.stage == .Parse do return 0
 	// The file, each nested prefab and the objects are one piece each. An
 	// asset is two: its load started, its load done.
 	assets := len(l.refs.assets)
@@ -185,7 +194,8 @@ scene_loads_step :: proc(budget_ms := SCENE_LOAD_FRAME_BUDGET_MS) {
 }
 
 // Drops every load of the current world, finished or not. The world's
-// shutdown calls it.
+// shutdown calls it. A parse still running on a worker is dropped when it
+// ends.
 scene_loads_cancel :: proc() {
 	w := ctx_world()
 	for i := len(_loads) - 1; i >= 0; i -= 1 {
@@ -201,13 +211,13 @@ scene_loads_cancel :: proc() {
 // Loads every asset the scene file references, nested prefabs included,
 // before the call returns. scene_load calls it in a game.
 scene_file_preload_assets :: proc(sf: ^SceneFile, guid: Asset_GUID) {
-	refs: Scene_Asset_Refs
-	refs.assets = make([dynamic]PPtr, context.temp_allocator)
-	refs.scenes = make([dynamic]Asset_GUID, context.temp_allocator)
+	refs := _refs_make(context.temp_allocator)
 	scene_file_asset_refs(sf, guid, &refs)
-	for i := 0; i < len(refs.scenes); i += 1 do _scan_prefab(refs.scenes[i], &refs)
+	_scan_all(&refs)
 	for ref in refs.assets do asset_preload(ref)
-	asset_jobs_wait_all()
+	// A job started earlier can hold one of these assets: a second start of
+	// an asset's load starts no job.
+	asset_jobs_wait_all(asset_jobs_mark())
 }
 
 // asset_preload on a prefab: every asset the prefab references, its nested
@@ -215,11 +225,9 @@ scene_file_preload_assets :: proc(sf: ^SceneFile, guid: Asset_GUID) {
 @(asset_preload={ext="scene"})
 asset_preload_scene :: proc(ref: PPtr) {
 	if ref.local_id != 0 do return
-	refs: Scene_Asset_Refs
-	refs.assets = make([dynamic]PPtr, context.temp_allocator)
-	refs.scenes = make([dynamic]Asset_GUID, context.temp_allocator)
+	refs := _refs_make(context.temp_allocator)
 	append(&refs.scenes, ref.guid)
-	for i := 0; i < len(refs.scenes); i += 1 do _scan_prefab(refs.scenes[i], &refs)
+	_scan_all(&refs)
 	for r in refs.assets do asset_preload(r)
 }
 
@@ -234,42 +242,68 @@ _finished :: proc(l: ^_Load) -> bool {
 	return l.stage == .Done || l.stage == .Failed
 }
 
-// One piece of work of the load. False when the load waits: for the asset
-// jobs, or for scene_load_activate.
+// One piece of work of the load. False when the load waits: for a worker,
+// or for scene_load_activate.
 @(private = "file")
 _advance :: proc(l: ^_Load) -> bool {
-	context.allocator = l.allocator
 	switch l.stage {
-	case .Parse:
-		sf, ok := scene_file_load(l.path)
-		if !ok {
-			_fail(l)
+	case .Read:
+		if g, gok := asset_db_get_guid(l.path); gok do l.guid = Asset_GUID(g)
+		l.stage = .Parse
+		if !game_running() {
+			// The call loads the whole scene: the parse runs here, on the
+			// caller's allocator, as in scene_load.
+			sf, ok := scene_file_load(l.path)
+			if !ok {
+				_fail(l)
+				return true
+			}
+			if !application_is_editor() do scene_log_missing_assets(l.path)
+			l.sf, l.sf_allocator, l.parsed = sf, context.allocator, true
 			return true
 		}
-		l.sf = sf
-		if !application_is_editor() do scene_log_missing_assets(l.path)
-		if g, gok := asset_db_get_guid(l.path); gok do l.guid = Asset_GUID(g)
+		// The worker parses on the allocator of this step: the frame's, which
+		// the scene lives on. The heap and the tracking allocator are safe
+		// on any thread. The load's id in the reference makes the job this
+		// load's own: two loads of one scene parse it once each, since each
+		// build uses up its parsed file.
+		_parse_start(PPtr{guid = l.guid, local_id = Local_ID(l.id)}, l.path, _load_job_finish, context.allocator)
+	case .Parse:
+		if !l.parsed do return false
 		scene_file_asset_refs(&l.sf, l.guid, &l.refs)
 		l.stage = .Scan
 	case .Scan:
-		if l.scanned < len(l.refs.scenes) {
-			_scan_prefab(l.refs.scenes[l.scanned], &l.refs)
-			l.scanned += 1
-		} else {
-			l.stage = .Assets
+		// Each listed prefab's references come from the cache, or from a
+		// parse on a worker. All of them parse at once.
+		waiting := false
+		for g in l.refs.scenes[l.scanned:] {
+			if g in _prefab_refs do continue
+			_prefab_scan_start(g)
+			if g not_in _prefab_refs do waiting = true
 		}
+		if waiting do return false
+		for l.scanned < len(l.refs.scenes) {
+			g := l.refs.scenes[l.scanned]
+			// A prefab that a merge added: the next step starts its parse.
+			if g not_in _prefab_refs do return true
+			r := _prefab_refs[g]
+			_refs_merge(&l.refs, r)
+			l.scanned += 1
+		}
+		l.stage = .Assets
 	case .Assets:
 		if l.loaded < len(l.refs.assets) {
 			asset_preload(l.refs.assets[l.loaded])
 			l.loaded += 1
 		} else {
-			l.jobs = asset_jobs_pending()
+			// The load waits for the jobs started up to now. A job started
+			// earlier can hold one of its assets, a job started later cannot.
+			l.mark = asset_jobs_mark()
+			l.jobs = asset_jobs_pending(l.mark)
 			l.stage = .Jobs
 		}
 	case .Jobs:
-		// Every pending job counts, another load's too: this load's assets
-		// are in their caches when none is left.
-		pending := asset_jobs_pending()
+		pending := asset_jobs_pending(l.mark)
 		l.jobs_done = max(l.jobs_done, l.jobs - min(pending, l.jobs))
 		if pending > 0 do return false
 		l.stage = .Wait
@@ -277,6 +311,7 @@ _advance :: proc(l: ^_Load) -> bool {
 		if !l.activate do return false
 		l.stage = .Build
 	case .Build:
+		context.allocator = l.sf_allocator
 		s := _scene_load_additive(&l.sf, l.guid) if l.additive else _scene_load_single(&l.sf, l.guid)
 		if s == nil {
 			_fail(l)
@@ -300,9 +335,13 @@ _fail :: proc(l: ^_Load) {
 // Frees the file and the lists: a finished load keeps only its result.
 @(private = "file")
 _release :: proc(l: ^_Load) {
-	context.allocator = l.allocator
-	scene_file_destroy(&l.sf)
+	if l.parsed {
+		context.allocator = l.sf_allocator
+		scene_file_destroy(&l.sf)
+	}
+	context.allocator = runtime.default_allocator()
 	l.sf = {}
+	l.parsed = false
 	delete(l.refs.assets)
 	delete(l.refs.scenes)
 	l.refs = {}
@@ -312,16 +351,171 @@ _release :: proc(l: ^_Load) {
 	l.jobs_done = 0
 }
 
-// Adds the asset references of the nested prefab `guid` to `refs`.
 @(private = "file")
-_scan_prefab :: proc(guid: Asset_GUID, refs: ^Scene_Asset_Refs) {
-	if !scene_lib_register(guid) do return
-	raw := scene_lib[guid]
-	// The parse gets a copy, as in _prefab_resolved_bytes.
-	bytes := make([]byte, len(raw), context.temp_allocator)
-	copy(bytes, raw)
-	sf: SceneFile
-	if scene_file_unmarshal(bytes, &sf) != nil do return
-	defer scene_file_destroy(&sf)
-	scene_file_asset_refs(&sf, guid, refs)
+_refs_make :: proc(allocator: runtime.Allocator) -> Scene_Asset_Refs {
+	return {assets = make([dynamic]PPtr, allocator), scenes = make([dynamic]Asset_GUID, allocator)}
+}
+
+// Adds what `src` lists and `dst` does not.
+@(private = "file")
+_refs_merge :: proc(dst: ^Scene_Asset_Refs, src: Scene_Asset_Refs) {
+	outer: for r in src.assets {
+		for d in dst.assets do if d == r do continue outer
+		append(&dst.assets, r)
+	}
+	outer2: for g in src.scenes {
+		for d in dst.scenes do if d == g do continue outer2
+		append(&dst.scenes, g)
+	}
+}
+
+// --- Parsing on a worker -------------------------------------------------------
+
+// A scene file a worker parses, in `job.user`.
+@(private = "file")
+_Parsed :: struct {
+	allocator: runtime.Allocator, // of `sf`, safe on any thread
+	sf:        SceneFile,
+	err:       json.Unmarshal_Error,
+}
+
+// Starts the parse of the scene file at `path` on a worker, into `allocator`.
+@(private = "file")
+_parse_start :: proc(ref: PPtr, path: string, finish: Asset_Job_Finish, allocator: runtime.Allocator) {
+	if asset_job_pending(ref, finish) do return
+	p := new(_Parsed, runtime.default_allocator())
+	p.allocator = allocator
+	asset_job_start(ref, path, finish, _parse_job_work, user = p)
+}
+
+// Worker thread. The parse reads references with the PPtr read hook unbound
+// (scene_sub_assets.odin keeps that state per thread).
+@(private = "file")
+_parse_job_work :: proc(job: ^Asset_Job) {
+	p := cast(^_Parsed)job.user
+	context.allocator = p.allocator
+	p.err = scene_file_unmarshal(job.data, &p.sf)
+	job.failed = p.err != nil
+}
+
+@(private = "file")
+_parsed_free :: proc(p: ^_Parsed) {
+	context.allocator = p.allocator
+	scene_file_destroy(&p.sf)
+	free(p, runtime.default_allocator())
+}
+
+// The scene file of a load: handed to the load, or dropped when the load is
+// gone.
+@(private = "file")
+_load_job_finish :: proc(job: ^Asset_Job) {
+	p := cast(^_Parsed)job.user
+	l := _find(Scene_Load_Handle(job.ref.local_id))
+	if l != nil && l.stage != .Parse do l = nil
+	if job.discard || job.failed {
+		if !job.discard {
+			if job.read_failed {
+				fmt.printf("[Scene] Failed to read file: %s\n", job.path)
+			} else {
+				fmt.printf("[Scene] Failed to unmarshal scene: %v\n", p.err)
+			}
+		}
+		_parsed_free(p)
+		if l != nil do _fail(l)
+		return
+	}
+	if l == nil {
+		_parsed_free(p)
+		return
+	}
+	// The bytes are at hand: a game logs each reference to an asset its
+	// catalog does not have.
+	if !application_is_editor() do scene_log_missing_assets(job.path, job.data)
+	l.sf, l.sf_allocator, l.parsed = p.sf, p.allocator, true
+	free(p, runtime.default_allocator())
+}
+
+// --- The references of nested prefabs ---------------------------------------------
+
+// The references of each prefab file, by its guid: its assets and its own
+// nested prefabs. A prefab parses once per process: any asset change clears
+// the list, since a change can add an asset a prefab names.
+@(private = "file")
+_prefab_refs: map[Asset_GUID]Scene_Asset_Refs
+
+@(private = "file")
+_prefab_refs_store :: proc(guid: Asset_GUID, refs: Scene_Asset_Refs) {
+	if guid in _prefab_refs {
+		delete(refs.assets)
+		delete(refs.scenes)
+		return
+	}
+	context.allocator = runtime.default_allocator()
+	_prefab_refs[guid] = refs
+}
+
+@(private = "file")
+_prefab_refs_clear :: proc() {
+	for _, r in _prefab_refs {
+		delete(r.assets)
+		delete(r.scenes)
+	}
+	clear(&_prefab_refs)
+}
+
+// Starts the parse of the prefab `guid` on a worker, unless its references
+// are known or a job parses it. A prefab with no file gets an empty list now.
+@(private = "file")
+_prefab_scan_start :: proc(guid: Asset_GUID) {
+	if guid in _prefab_refs do return
+	path, ok := asset_db_get_path(uuid.Identifier(guid))
+	if !ok {
+		_prefab_refs_store(guid, _refs_make(runtime.default_allocator()))
+		return
+	}
+	// Only the reference lists stay: the file is parsed on the default
+	// allocator and dropped.
+	_parse_start(PPtr{guid = guid}, path, _scan_job_finish, runtime.default_allocator())
+}
+
+// The prefab's references, in the list. A prefab that does not parse gets
+// an empty list: the build reports it.
+@(private = "file")
+_scan_job_finish :: proc(job: ^Asset_Job) {
+	p := cast(^_Parsed)job.user
+	defer _parsed_free(p)
+	if job.discard do return
+	refs := _refs_make(runtime.default_allocator())
+	if !job.failed do scene_file_asset_refs(&p.sf, job.ref.guid, &refs)
+	_prefab_refs_store(job.ref.guid, refs)
+}
+
+// Adds the references of every nested prefab `refs` lists, their own nested
+// prefabs included, before it returns. The prefabs parse on the workers
+// together.
+@(private = "file")
+_scan_all :: proc(refs: ^Scene_Asset_Refs) {
+	for g in refs.scenes do _prefab_scan_start(g)
+	for i := 0; i < len(refs.scenes); i += 1 {
+		g := refs.scenes[i]
+		if g not_in _prefab_refs {
+			// A prefab that a merge added.
+			_prefab_scan_start(g)
+			asset_job_wait(PPtr{guid = g}, _scan_job_finish)
+		}
+		r := _prefab_refs[g]
+		_refs_merge(refs, r)
+	}
+}
+
+@(asset_on_changed)
+asset_on_changed_prefab_refs :: proc(guid: Asset_GUID, path: string, change: Asset_Change) {
+	if len(_prefab_refs) > 0 do _prefab_refs_clear()
+}
+
+@(phase={key=EngineShutdown, order=20})
+engine_shutdown_prefab_refs :: proc() {
+	_prefab_refs_clear()
+	delete(_prefab_refs)
+	_prefab_refs = nil
 }

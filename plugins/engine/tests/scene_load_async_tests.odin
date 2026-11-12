@@ -204,15 +204,18 @@ test_scene_load_async_in_a_game_runs_over_steps_and_holds_activation :: proc(t: 
 	h := engine.scene_load_async(f.host, additive = true, activate = false)
 	testing.expect(t, !engine.scene_load_done(h) && engine.scene_load_progress(h) == 0, "nothing runs in the call")
 
-	// A budget of 0 runs one piece per step.
+	// A budget of 0 runs one piece per step. The file parses on a worker:
+	// the steps go on until the parse is in, for up to two seconds.
 	last := f32(0)
 	steps := 0
-	for !engine.scene_load_ready(h) && steps < 64 {
+	start := time.tick_now()
+	for !engine.scene_load_ready(h) && time.duration_seconds(time.tick_since(start)) < 2 {
 		engine.scene_loads_step(0)
 		steps += 1
 		p := engine.scene_load_progress(h)
 		testing.expectf(t, p >= last, "progress never goes back: %v after %v", p, last)
 		last = p
+		time.sleep(100 * time.Microsecond)
 	}
 	testing.expectf(t, engine.scene_load_ready(h), "the load reaches its hold, after %d steps", steps)
 	testing.expectf(t, steps > 3, "the work is spread over steps, got %d", steps)
@@ -275,10 +278,16 @@ test_scene_load_async_waits_for_asset_jobs :: proc(t: ^testing.T) {
 	defer engine.application_set_playing(false)
 
 	h := engine.scene_load_async(f.host, additive = true)
-	// The steps before the job's 40 ms are over: the load is not done.
-	for _ in 0 ..< 12 do engine.scene_loads_step(0)
+	// Steps until the slow job starts: the file parses on a worker first.
+	p: f32
+	for _ in 0 ..< 200 {
+		engine.scene_loads_step(0)
+		p = engine.scene_load_progress(h)
+		if p > 0.5 do break
+		time.sleep(100 * time.Microsecond)
+	}
+	// The job's 40 ms are not over: the load is not done.
 	testing.expect(t, !engine.scene_load_done(h) && _slow_done == 0, "the load waits for the job")
-	p := engine.scene_load_progress(h)
 	testing.expectf(t, p > 0 && p < 1, "progress is part way, got %v", p)
 
 	longest: f64

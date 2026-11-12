@@ -147,6 +147,7 @@ _texture_job_finish :: proc(job: ^Asset_Job) {
         free(d, runtime.default_allocator())
     }
     guid := job.ref.guid
+    if job.discard do return
     if job.read_failed {
         artifact_fail(guid, 0, fmt.tprintf("%s is unreadable", job.path))
         return

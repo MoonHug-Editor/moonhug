@@ -151,6 +151,8 @@ For more details see [Architecture](docs/core/Architecture.md)
   - consumers decide what a path means: move a transform along it, aim a camera, place objects at intervals
   - first consumer: a sequencer track that drives a transform along a spline
 
+- asset unloading: the asset caches (textures, meshes, materials, shaders, audio clips, fonts, animation clips) never drop an asset, so a game that loads level after level keeps every level's assets in memory. A non-additive scene load should free the assets that no loaded scene references any more
+
 - project file ops: Windows trash/reveal (darwin-only today, see project_os_stub.odin)
 
 - physics2d follow-ups:

@@ -323,6 +323,7 @@ animation_clip_load_start :: proc(ref: engine.PPtr) {
 @(private = "file")
 _clip_job_finish :: proc(job: ^engine.Asset_Job) {
 	ref := job.ref
+	if job.discard do return
 	if job.read_failed {
 		engine.artifact_fail(ref.guid, ref.local_id, fmt.tprintf("%s is unreadable", job.path))
 		return

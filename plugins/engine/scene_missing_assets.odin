@@ -78,6 +78,22 @@ scene_missing_assets :: proc(data: []byte, resolves: proc(guid: uuid.Identifier)
 	return out[:]
 }
 
+// Whether the scene file `data` holds a guid that scene_missing_assets
+// reports, found without parsing the file: a scan of the bytes for quoted
+// guids. Every guid that scene_missing_assets reports is one, so a file with
+// nothing missing skips the parse that names the holders.
+scene_has_missing_assets :: proc(data: []byte, resolves: proc(guid: uuid.Identifier) -> bool = scene_asset_resolves) -> bool {
+	for i := 0; i + 37 < len(data); i += 1 {
+		if data[i] != '"' || data[i + 37] != '"' do continue
+		id, perr := uuid.read(string(data[i + 1:i + 37]))
+		if perr != nil || id == {} do continue
+		i += 37
+		if _, is_type := core.get_typeid_by_guid_ok(id); is_type do continue
+		if !resolves(id) do return true
+	}
+	return false
+}
+
 @(private = "file")
 _missing_walk :: proc(v: json.Value, field, object, component: string, resolves: proc(guid: uuid.Identifier) -> bool, out: ^[dynamic]Missing_Asset_Ref) {
 	switch x in v {
@@ -106,10 +122,16 @@ _missing_walk :: proc(v: json.Value, field, object, component: string, resolves:
 }
 
 // Logs every reference in the scene file at `path` that names an asset the
-// asset database does not have, one error each.
-scene_log_missing_assets :: proc(path: string) {
-	data, err := os.read_entire_file(path, context.temp_allocator)
-	if err != nil do return
+// asset database does not have, one error each. `data` is the file's bytes
+// when the caller has them, else the file is read.
+scene_log_missing_assets :: proc(path: string, data: []byte = nil) {
+	data := data
+	if data == nil {
+		bytes, err := os.read_entire_file(path, context.temp_allocator)
+		if err != nil do return
+		data = bytes
+	}
+	if !scene_has_missing_assets(data) do return
 	for m in scene_missing_assets(data) {
 		where_ := fmt.tprintf("%s.%s", m.component, m.field) if m.component != "" else m.field
 		if m.object != "" do where_ = fmt.tprintf("%s, %s", m.object, where_)

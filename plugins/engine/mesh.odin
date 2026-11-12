@@ -339,7 +339,7 @@ mesh_load_start :: proc(guid: Asset_GUID, part: i32 = 0) {
 @(private = "file")
 _mesh_job_finish :: proc(job: ^Asset_Job) {
     key := Mesh_Key{job.ref.guid, i32(uintptr(job.user))}
-    if key in mesh_cache || key in _mesh_failed do return
+    if job.discard || key in mesh_cache || key in _mesh_failed do return
     if job.read_failed {
         artifact_fail(job.ref.guid, job.ref.local_id, fmt.tprintf("%s is unreadable", job.path))
         return

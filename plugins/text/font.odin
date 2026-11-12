@@ -442,11 +442,14 @@ _font_job_finish :: proc(job: ^engine.Asset_Job) {
 	defer if f != nil do free(f, runtime.default_allocator())
 	guid := job.ref.guid
 	if job.failed {
-		engine.artifact_fail(guid, 0, fmt.tprintf("%s does not load as a font", job.path))
+		if job.discard do return
+		reason := "is unreadable" if job.read_failed else "does not load as a font"
+		engine.artifact_fail(guid, 0, fmt.tprintf("%s %s", job.path, reason))
 		return
 	}
-	// Loaded another way while the job ran: this copy goes, its bytes with the job.
-	if guid in _fonts {
+	// Discarded, or loaded another way while the job ran: this copy goes, its
+	// bytes with the job.
+	if job.discard || guid in _fonts {
 		delete(f.glyphs)
 		delete(f.kerns)
 		return

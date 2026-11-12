@@ -117,15 +117,16 @@ if engine.scene_load_done(h) {
 
 The stages, in order:
 
-- Read and parse the scene file.
-- List the assets the scene references. Each nested prefab is opened and its references are listed too.
+- Read and parse the scene file on a worker thread.
+- List the assets the scene references. Each nested prefab file is parsed on a worker thread and its references are listed too. A prefab's list is kept until an asset changes, so each prefab parses once per process.
 - Load those assets: textures, meshes, materials with their shader and textures, audio clips, animation clips, fonts. Each asset's file is read and decoded on a worker thread, all at the same time. The load waits until every one is in its cache.
 - Create the objects and awake them. A load that is not additive unloads the loaded scenes right before this stage, so they run until then.
 
 Rules:
 
-- `frame_tick` runs the loads at the start of each frame for `SCENE_LOAD_FRAME_BUDGET_MS` (4 ms). On the main thread that is the file parses, the short last part of each asset's load (a GPU upload), and the creation of the objects.
-- One piece of work always finishes: one file parse, one asset's last part, the creation of the objects. A large scene can take more than the budget in the frame that parses it and the frame that creates its objects.
+- `frame_tick` runs the loads at the start of each frame for `SCENE_LOAD_FRAME_BUDGET_MS` (4 ms). On the main thread that is the walk of the parsed file for its asset references, the short last part of each asset's load (a GPU upload), and the creation of the objects.
+- One piece of work always finishes: one reference walk, one asset's last part, the creation of the objects. A large scene can take more than the budget in the frame that creates its objects.
+- The load waits for the asset jobs started up to the end of its asset stage. A job that starts later, such as another load's, does not hold it back.
 - `activate = false` stops the load before the last stage, with the assets loaded. `scene_load_ready(h)` is true then, and `scene_load_activate(h)` lets it finish. Use it for "press a key to continue" or to finish a fade first.
 - Outside a running game no frame runs the loads, so the call loads the whole scene before it returns.
 - A load ends with the game: Stop in the editor drops the loads in progress.
@@ -154,17 +155,22 @@ One job loads one asset in three parts (`plugins/engine/asset_jobs.odin`):
 | Audio clip | file read and decode | cache |
 | Font | file read, parse | atlas upload |
 | Animation clip | file read | parse |
+| Scene file, nested prefab | file read, parse | reference walk |
 | Material, shader | | all of it |
 
 Rules for a `work` proc:
 
 - It reads `job.data` and `job.path`, and writes `job.user` and `job.failed`.
-- It allocates with `runtime.default_allocator()`, or with `context.temp_allocator` for scratch memory.
+- It allocates with `runtime.default_allocator()`, with an allocator the start passed in `job.user` that is safe on any thread, or with `context.temp_allocator` for scratch memory. The scene file parse gets the frame's allocator this way, since the scene takes parts of the parsed file.
 - It touches no cache, no asset database, no GPU and no engine global, and it does not log. `finish` reports a failed job.
 
 A loader starts with `asset_job_wait(ref, finish)`. So a draw or a `scene_load` that needs an asset while its job runs waits for that one job, and nothing sees a half-loaded asset. An asset that changes on disk ends its jobs before the caches drop it.
 
-An animation clip is parsed on the main thread because reading a reference uses engine state. A material is a small file. A shader's cost is the GPU pipeline, which the main thread makes.
+Jobs are numbered in the order they start. `asset_jobs_mark()` gives the number of the last one, and `asset_jobs_pending(until)` and `asset_jobs_wait_all(until)` count only the jobs started up to that mark.
+
+At engine shutdown every job is discarded: `job.discard` is set, and `finish` only frees what `work` made.
+
+An animation clip is parsed on the main thread because reading a reference uses engine state. A scene file parse reads references too, through a hook whose state is per thread: a parse on a worker binds nothing, the same as a parse on the main thread outside a scene build. A material is a small file. A shader's cost is the GPU pipeline, which the main thread makes.
 
 ## Scene lifetime
 

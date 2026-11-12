@@ -68,12 +68,12 @@ _clip_job_work :: proc(job: ^engine.Asset_Job) {
 _clip_job_finish :: proc(job: ^engine.Asset_Job) {
 	guid := job.ref.guid
 	if job.failed {
-		engine.artifact_fail(guid, 0, fmt.tprintf("%s does not load as audio", job.path))
+		if !job.discard do engine.artifact_fail(guid, 0, fmt.tprintf("%s does not load as audio", job.path))
 		return
 	}
 	audio := cast(^mix.Audio)job.user
-	// Loaded another way while the job ran.
-	if guid in clip_cache {
+	// Discarded, or loaded another way while the job ran.
+	if job.discard || guid in clip_cache {
 		mix.DestroyAudio(audio)
 		return
 	}

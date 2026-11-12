@@ -31,7 +31,14 @@ package engine
 //
 // `finish` always runs, on the main thread, also for a failed job: it frees
 // what `work` put in `job.user`. The job system frees `job.data` after
-// `finish`, unless `finish` took the bytes and set `job.data = nil`.
+// `finish`, unless `finish` took the bytes and set `job.data = nil`. When
+// `job.discard` is set, `finish` only frees: the engine shuts down and the
+// caches go next, so a GPU upload would be wasted.
+//
+// Jobs are numbered in the order they start. asset_jobs_mark gives the
+// number of the last one, and asset_jobs_pending and asset_jobs_wait_all
+// take a mark to count only the jobs started up to it. A scene load waits
+// for the jobs it started this way, not for jobs that started after it.
 //
 // asset_jobs_finish runs the finish procs of the jobs whose work is done.
 // frame_tick calls it at the start of each frame through scene_loads_step.
@@ -56,6 +63,8 @@ Asset_Job :: struct {
 	work:        Asset_Job_Work,
 	finish:      Asset_Job_Finish,
 	read:        bool,
+	discard:     bool, // finish frees what work made and stores nothing
+	order:       u64, // the job's number in the order jobs start, from 1
 	state:       _Job_State, // guarded by _job_mutex
 }
 
@@ -73,6 +82,10 @@ _JOB_THREADS_MAX :: 4
 // Every job that has not finished. Main thread only.
 @(private = "file")
 _jobs: [dynamic]^Asset_Job
+
+// The number of the last job started. Main thread only.
+@(private = "file")
+_jobs_started: u64
 
 @(private = "file")
 _job_mutex: sync.Mutex
@@ -101,6 +114,8 @@ asset_job_start :: proc(ref: PPtr, path: string, finish: Asset_Job_Finish, work:
 	job.work = work
 	job.read = read
 	job.user = user
+	_jobs_started += 1
+	job.order = _jobs_started
 	append(&_jobs, job)
 	_threads_ensure()
 	sync.lock(&_job_mutex)
@@ -115,9 +130,19 @@ asset_job_pending :: proc(ref: PPtr, finish: Asset_Job_Finish) -> bool {
 	return false
 }
 
-// The jobs that have not finished.
-asset_jobs_pending :: proc() -> int {
-	return len(_jobs)
+// The number of the last job started: a mark for asset_jobs_pending and
+// asset_jobs_wait_all.
+asset_jobs_mark :: proc() -> u64 {
+	return _jobs_started
+}
+
+// The jobs that have not finished. With `until`, only the jobs started up to
+// that mark.
+asset_jobs_pending :: proc(until := max(u64)) -> int {
+	if until == max(u64) do return len(_jobs)
+	n := 0
+	for j in _jobs do if j.order <= until do n += 1
+	return n
 }
 
 // Waits for the job that loads `ref` for `finish`, and finishes it. False
@@ -133,10 +158,18 @@ asset_job_wait :: proc(ref: PPtr, finish: Asset_Job_Finish) -> bool {
 	return false
 }
 
-// Waits for every job and finishes it.
-asset_jobs_wait_all :: proc() {
-	for len(_jobs) > 0 {
-		j := pop(&_jobs)
+// Waits for every job and finishes it. With `until`, only the jobs started
+// up to that mark. A finish can start a job: it ends too when it is in range.
+asset_jobs_wait_all :: proc(until := max(u64)) {
+	for {
+		found := -1
+		for j, i in _jobs do if j.order <= until {
+			found = i
+			break
+		}
+		if found < 0 do return
+		j := _jobs[found]
+		unordered_remove(&_jobs, found)
 		_job_complete(j)
 	}
 }
@@ -175,9 +208,11 @@ asset_jobs_finish :: proc(budget_ms: f64) {
 	}
 }
 
-// Finishes every job and stops the worker threads. The next job starts them
+// Ends every job and stops the worker threads. The jobs' results are
+// discarded: their finish procs only free. The next job starts the threads
 // again.
 asset_jobs_shutdown :: proc() {
+	for j in _jobs do j.discard = true
 	asset_jobs_wait_all()
 	if len(_job_threads) == 0 do return
 	sync.lock(&_job_mutex)
