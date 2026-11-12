@@ -44,8 +44,12 @@ SIZE :: 128
 _THUMB_JOBS_PER_FRAME :: 2
 _THUMB_CACHE_DIR :: "library/thumbnails"
 _THUMB_FILE_MAGIC :: u32(0x4254484D) // "MHTB"
-// Bump when the render style changes — every disk entry invalidates.
-_THUMB_FILE_VERSION :: u32(2) // v2: mesh-part thumbs lit
+// Bump when the render style changes, or when a fix changes what a
+// thumbnail shows: every disk entry invalidates. A cached picture is kept
+// until its file changes, so without the bump a wrong one outlives its fix.
+// v2: mesh-part thumbs lit. v3: a scene's thumbnail holds only that scene (a
+// live preview's kept instance was drawn into it).
+_THUMB_FILE_VERSION :: u32(3)
 
 _Thumb :: struct {
 	tex:   ^gfx.Texture, // nil = generation produced nothing, keep the icon
