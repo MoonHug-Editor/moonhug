@@ -61,7 +61,7 @@ test_undo_delete_restores_refs_outside_subtree :: proc(t: ^testing.T) {
 	undo.install(s)
 	defer { undo.destroy(s); free(s) }
 
-	loaded := engine.scene_load_single_path(path)
+	loaded := engine.scene_load(path)
 	testing.expect(t, loaded != nil, "scene loads")
 	if loaded == nil do return
 	tc.scene = loaded
@@ -163,7 +163,7 @@ test_undo_group_delete_restores_cross_subtree_refs :: proc(t: ^testing.T) {
 	undo.install(s)
 	defer { undo.destroy(s); free(s) }
 
-	loaded := engine.scene_load_single_path(path)
+	loaded := engine.scene_load(path)
 	testing.expect(t, loaded != nil, "scene loads")
 	if loaded == nil do return
 	tc.scene = loaded

@@ -21,7 +21,7 @@ test_overrides_list_covers_every_record_kind :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -102,7 +102,7 @@ test_overrides_revert_removes_only_the_named_record :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -189,7 +189,7 @@ test_overrides_dropdown_revert_is_undoable :: proc(t: ^testing.T) {
 	undo.install(u)
 	defer { undo.destroy(u); free(u) }
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	if loaded == nil do return
 	tc_mem.scene = loaded
 
@@ -308,7 +308,7 @@ test_override_baseline_materializes_prefab_values :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	if loaded == nil do return
 	tc_mem.scene = loaded
 
@@ -392,7 +392,7 @@ test_override_tree_groups_rows_by_component :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	if loaded == nil do return
 	tc_mem.scene = loaded
 

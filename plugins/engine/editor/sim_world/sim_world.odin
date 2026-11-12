@@ -140,7 +140,7 @@ _restore :: proc(snapshot: []byte) -> (scene: engine.Scene_Ref, ok: bool) {
 	}
 	for l in snap.loaded {
 		if engine.sm_scene_find_by_session_id(l.id) != nil || l.path == "" do continue
-		engine.scene_load_additive_path(l.path)
+		engine.scene_load(l.path, additive = true)
 	}
 
 	target := engine.sm_scene_find_by_session_id(snap.scene_id)

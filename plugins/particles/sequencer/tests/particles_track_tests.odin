@@ -101,7 +101,7 @@ test_timeline_sample_scene :: proc(t: ^testing.T) {
 	seq.register_builtin_tracks()
 	particles_seq.particles_track_init()
 
-	loaded := engine.scene_load_single_path("moonhug/packages/animation/samples/timeline_sample/assets/timeline_demo.scene")
+	loaded := engine.scene_load("moonhug/packages/animation/samples/timeline_sample/assets/timeline_demo.scene")
 	testing.expect(t, loaded != nil, "demo scene should load")
 	if loaded == nil do return
 	tc_mem.scene = loaded

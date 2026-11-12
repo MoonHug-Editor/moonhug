@@ -360,7 +360,7 @@ test_tool_move_records_the_override_on_a_prefab_instance :: proc(t: ^testing.T) 
 	saved := _tool_save()
 	defer _tool_restore(saved)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	host := find_transform_named(&tc.world, loaded, "RootC", false)

@@ -89,16 +89,16 @@ test_prefab_save_propagates_to_all_loaded_scenes :: proc(t: ^testing.T) {
 	testing.expect(t, engine.scene_save(tc.scene, b_path), "save host B")
 
 	// Editor state: A open, B open additively, P open additively.
-	sA := engine.scene_load_single_path(a_path)
+	sA := engine.scene_load(a_path)
 	testing.expect(t, sA != nil, "host A loads")
 	if sA == nil do return
 	tc.scene = sA
 	engine.sm_scene_set_active(sA)
-	sB := engine.scene_load_additive_path(b_path)
+	sB := engine.scene_load(b_path, additive = true)
 	testing.expect(t, sB != nil, "host B loads additively")
 	if sB == nil do return
 	defer engine.sm_scene_destroy_or_unload(sB)
-	sP := engine.scene_load_additive_path(p_path)
+	sP := engine.scene_load(p_path, additive = true)
 	testing.expect(t, sP != nil, "prefab P loads additively")
 	if sP == nil do return
 	defer engine.sm_scene_destroy_or_unload(sP)
@@ -191,9 +191,9 @@ test_additive_unload_slot_reuse_keeps_survivors_intact :: proc(t: ^testing.T) {
 	testing.expect(t, gok, "x.scene registered")
 
 	// Two additive copies of X share the pools with the base scene.
-	x1 := engine.scene_load_additive_path(x_path)
+	x1 := engine.scene_load(x_path, additive = true)
 	testing.expect(t, x1 != nil, "x1 loads")
-	x2 := engine.scene_load_additive_path(x_path)
+	x2 := engine.scene_load(x_path, additive = true)
 	testing.expect(t, x2 != nil, "x2 loads")
 	if x1 == nil || x2 == nil do return
 	defer engine.sm_scene_destroy_or_unload(x2)
@@ -293,7 +293,7 @@ test_scene_destroy_sweeps_rootless_content :: proc(t: ^testing.T) {
 		for _ in engine.pool_next(&it) do baseline += 1
 	}
 
-	s := engine.scene_load_additive_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	s := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene", additive = true)
 	testing.expect(t, s != nil, "scene loads")
 	if s == nil do return
 
@@ -374,7 +374,7 @@ test_reload_in_place_path_discards_edits_and_keeps_the_slot :: proc(t: ^testing.
 	context.user_ptr = &tc.uc
 	defer teardown(tc)
 
-	d := engine.scene_load_additive_path(d_path)
+	d := engine.scene_load(d_path, additive = true)
 	testing.expect(t, d != nil, "d.scene loads")
 	if d == nil do return
 	slot_before := _scene_slot(d)

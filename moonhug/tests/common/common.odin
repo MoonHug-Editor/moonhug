@@ -104,7 +104,7 @@ setup :: proc(tc: ^TestCtx, path: string = "") {
 
 teardown :: proc(tc: ^TestCtx) {
 	// Destroy every scene still registered with the scene manager — NOT
-	// tc.scene by pointer: scene_load_single_path destroys all loaded scenes
+	// tc.scene by pointer: scene_load destroys all loaded scenes
 	// (tc.scene included), so that pointer may be stale, and the scenes the
 	// test loaded afterwards live only in the manager's slots.
 	engine.sm_shutdown()

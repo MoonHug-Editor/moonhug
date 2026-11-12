@@ -211,7 +211,7 @@ Per-field revert and Apply stay on the property context menu, listing the same t
 Unity-style "prefab mode": double-click / `>` a nested scene to **open its source `.scene` asset** for editing; a `<` in the scene header goes back up. Decided model:
 
 - **Enter opens the source asset itself.** Clicking `>` on a nested-scene host resolves that host's `NestedScene.source_prefab` GUID → path (`asset_db_get_path`) and opens that `.scene` as the editing target. Edits there save to the prefab file and propagate to instances (existing `prefab_propagate`), exactly like editing the asset directly. (This is NOT instance-override isolation; it edits the shared prefab.)
-- **Single active scene, replace model.** Entering **unloads** the current scene and loads the source scene (`scene_load_single_path`). Going up reloads the parent. The hierarchy shows exactly one scene at a time. (Matches Unity leaving the main scene to enter prefab mode.)
+- **Single active scene, replace model.** Entering **unloads** the current scene and loads the source scene (`scene_load`). Going up reloads the parent. The hierarchy shows exactly one scene at a time. (Matches Unity leaving the main scene to enter prefab mode.)
 - **Editor-only stack.** A `[dynamic]Scene_Edit_Frame` lives in the editor (hierarchy_window/app state), not the engine. Each frame stores what's needed to restore the parent on pop: the parent scene's path/guid, and the selection to restore. The engine is unchanged except using the existing load-by-path helpers.
 
 Stack frame:
@@ -219,12 +219,12 @@ Stack frame:
 Scene_Edit_Frame { path: string, guid: Asset_GUID }   // the scene that was open before entering
 ```
 
-- **`>` button** (per nested-scene host row, `_draw_hierarchy_node`, shown where the `[nested scene]` suffix is): push the *current* scene's frame, then `scene_load_single_path(source_path)`. Selection/undo cleared on enter (as double-click open already does).
-- **`<` button** (scene header, `_draw_scene_section`, left of the name; shown only when `len(stack) > 0`): pop the top frame and `scene_load_single_path(frame.path)` to restore the parent.
+- **`>` button** (per nested-scene host row, `_draw_hierarchy_node`, shown where the `[nested scene]` suffix is): push the *current* scene's frame, then `scene_load(source_path)`. Selection/undo cleared on enter (as double-click open already does).
+- **`<` button** (scene header, `_draw_scene_section`, left of the name; shown only when `len(stack) > 0`): pop the top frame and `scene_load(frame.path)` to restore the parent.
 - Depth is `len(stack)`; the spec's "stack > 1" = at least one entered level = `len(stack) >= 1` → show `<`.
 - Save/Discard on exit is deferred — for v1, edits are saved explicitly via the existing header **Save**, and `<` just navigates (the prefab file is the source of truth; unsaved live edits are lost on navigate, same as switching scenes today). A Save/Discard prompt on `<` is a later refinement.
 
-**Cycle guard — never push self/an ancestor.** If the scene being entered is already open or already present in the stack (its guid matches the current scene or any frame), do NOT push a frame — just `scene_load_single_path` to (re)load it. A prefab can't meaningfully contain itself, so this should not occur, but if it does the stack stays finite instead of looping. (Normal case — entering a *different* nested scene — pushes a frame as usual.)
+**Cycle guard — never push self/an ancestor.** If the scene being entered is already open or already present in the stack (its guid matches the current scene or any frame), do NOT push a frame — just `scene_load` to (re)load it. A prefab can't meaningfully contain itself, so this should not occur, but if it does the stack stays finite instead of looping. (Normal case — entering a *different* nested scene — pushes a frame as usual.)
 
 **Opening from the project panel clears the stack.** Double-clicking a `.scene` in the Project window is a fresh navigation, so it resets the edit stack to empty (it's not a "child of" the previously-entered scene). Expose an editor proc (e.g. `hierarchy_edit_stack_clear()`) that `project_window`'s open path calls.
 

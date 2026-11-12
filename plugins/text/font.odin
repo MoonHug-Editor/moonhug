@@ -399,6 +399,11 @@ font_cache_insert :: proc(guid: engine.Asset_GUID, f: Font) {
 // unreadable one once, and reports a failure once.
 font_load :: proc(guid: engine.Asset_GUID) -> (^Font, bool) {
 	if f, ok := &_fonts[guid]; ok do return f, f.header.glyph_count > 0
+	// A job is loading it (engine/asset_jobs.odin): wait for that job.
+	if engine.asset_job_wait(engine.PPtr{guid = guid}, _font_job_finish) {
+		f, ok := &_fonts[guid]
+		return f, ok && f.header.glyph_count > 0
+	}
 	f: Font
 	// The font keeps the bytes it parsed, so they leave temp memory.
 	parse :: proc(data: []byte, f: ^Font) -> (ok: bool) {
@@ -410,6 +415,45 @@ font_load :: proc(guid: engine.Asset_GUID) -> (^Font, bool) {
 	if !engine.artifact_load(guid, 0, "font", &f, parse) do return nil, false
 	font_cache_insert(guid, f)
 	return &_fonts[guid], true
+}
+
+// Starts loading the font on a worker thread (engine/asset_jobs.odin): the
+// file read and the parse run there, the atlas upload on the main thread when
+// the job finishes. A loaded font needs no job.
+font_load_start :: proc(guid: engine.Asset_GUID) {
+	if guid in _fonts do return
+	path, ok := engine.artifact_file(guid)
+	if !ok do return
+	engine.asset_job_start(engine.PPtr{guid = guid}, path, _font_job_finish, _font_job_work)
+}
+
+@(private = "file")
+_font_job_work :: proc(job: ^engine.Asset_Job) {
+	f := new(Font, runtime.default_allocator())
+	ok: bool
+	f^, ok = font_parse(job.data, runtime.default_allocator())
+	job.user = f
+	job.failed = !ok
+}
+
+@(private = "file")
+_font_job_finish :: proc(job: ^engine.Asset_Job) {
+	f := cast(^Font)job.user
+	defer if f != nil do free(f, runtime.default_allocator())
+	guid := job.ref.guid
+	if job.failed {
+		engine.artifact_fail(guid, 0, fmt.tprintf("%s does not load as a font", job.path))
+		return
+	}
+	// Loaded another way while the job ran: this copy goes, its bytes with the job.
+	if guid in _fonts {
+		delete(f.glyphs)
+		delete(f.kerns)
+		return
+	}
+	// The font keeps the bytes it parsed.
+	job.data = nil
+	font_cache_insert(guid, f^)
 }
 
 // A changed or rebaked font leaves the cache so the next draw reloads it.
@@ -524,5 +568,5 @@ font_import :: proc(source_path, artifact_path: string, settings: rawptr) -> boo
 // A scene load reads the fonts the scene references (engine/asset_preload.odin).
 @(asset_preload={ext="ttf,otf"})
 asset_preload_font :: proc(ref: engine.PPtr) {
-	font_load(ref.guid)
+	font_load_start(ref.guid)
 }

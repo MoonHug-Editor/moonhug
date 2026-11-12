@@ -20,7 +20,7 @@ install_asset_actions :: proc() {
 @(private = "file")
 _open :: proc(path: string) -> bool {
 	if filepath.ext(path) != ".scene" do return false
-	scene := engine.scene_load_single_path(path)
+	scene := engine.scene_load(path)
 	engine.sm_scene_set_active(scene)
 	return scene != nil
 }
@@ -28,5 +28,5 @@ _open :: proc(path: string) -> bool {
 @(private = "file")
 _open_additive :: proc(path: string) -> bool {
 	if filepath.ext(path) != ".scene" do return false
-	return engine.scene_load_additive_path(path) != nil
+	return engine.scene_load(path, additive = true) != nil
 }

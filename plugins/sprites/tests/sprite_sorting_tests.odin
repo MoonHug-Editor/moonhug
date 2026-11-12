@@ -165,7 +165,7 @@ test_sprite_sort_group_survives_scene_load :: proc(t: ^testing.T) {
 	_ = outsider
 
 	testing.expect(t, engine.scene_save(tc_mem.scene, tc_mem.path), "scene_save should succeed")
-	loaded := engine.scene_load_single_path(tc_mem.path)
+	loaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, loaded != nil, "scene_load should return non-nil")
 	tc_mem.scene = loaded
 

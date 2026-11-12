@@ -205,7 +205,7 @@ _hierarchy_enter_scene :: proc(source_path: string, source_guid: engine.Asset_GU
 	}
 	undo.purge_scenes(undo.get())
 	session.select_clear()
-	scene := engine.scene_load_single_path(source_path)
+	scene := engine.scene_load(source_path)
 	engine.sm_scene_set_active(scene)
 }
 
@@ -217,7 +217,7 @@ _hierarchy_exit_scene :: proc() {
 	defer delete(frame.path)
 	undo.purge_scenes(undo.get())
 	session.select_clear()
-	scene := engine.scene_load_single_path(frame.path)
+	scene := engine.scene_load(frame.path)
 	engine.sm_scene_set_active(scene)
 }
 
@@ -298,7 +298,7 @@ hierarchy_window_draw :: proc(w: ^wnd.Window) {
 		if payload != nil && payload.Data != nil {
 			path := string(([^]byte)(payload.Data)[:payload.DataSize])
 			if strings.has_suffix(path, ".scene") {
-				engine.scene_load_additive_path(path)
+				engine.scene_load(path, additive = true)
 			}
 		}
 		im.EndDragDropTarget()

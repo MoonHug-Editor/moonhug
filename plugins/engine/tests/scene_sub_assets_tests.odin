@@ -50,7 +50,7 @@ test_scene_sub_asset_material_loads_and_round_trips :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(string(text), `"assets"`), "the file holds the record")
 	testing.expect(t, strings.contains(string(text), `"type": "mat"`), "with its type")
 
-	scene := engine.scene_load_single_path(tc.path)
+	scene := engine.scene_load(tc.path)
 	if !testing.expect(t, scene != nil, "the scene loads") do return
 	tc.scene = scene
 	testing.expect_value(t, len(scene.assets), 1)
@@ -155,7 +155,7 @@ test_nested_prefab_shares_its_sub_asset_material :: proc(t: ^testing.T) {
 	}
 
 	// The prefab opened by itself: the same reference.
-	p := engine.scene_load_additive_path(prefab)
+	p := engine.scene_load(prefab, additive = true)
 	if !testing.expect(t, p != nil, "the prefab opens") do return
 	_, pmr := engine.transform_get_comp(engine.Transform_Handle(p.root.handle), engine.MeshRenderer)
 	if !testing.expect(t, pmr != nil && len(pmr.materials) == 2) do return
@@ -294,7 +294,7 @@ test_embedded_asset_is_written_inside_its_field :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(string(text), `"embedded": "mat"`), "the slot holds the material's data")
 	testing.expect(t, !strings.contains(string(text), `"assets"`), "and the file has no sub-asset for it")
 
-	scene := engine.scene_load_single_path(tc.path)
+	scene := engine.scene_load(tc.path)
 	if !testing.expect(t, scene != nil, "the scene loads") do return
 	_, loaded_mr := engine.transform_get_comp(engine.Transform_Handle(scene.root.handle), engine.MeshRenderer)
 	if !testing.expect(t, loaded_mr != nil && len(loaded_mr.materials) == 1) do return
@@ -432,7 +432,7 @@ test_export_ships_sub_assets_and_embedded_assets :: proc(t: ^testing.T) {
 	testing.expect(t, !has_unused, "a texture nothing names does not ship")
 
 	boot_path, _ := engine.asset_db_get_path(boot_raw)
-	scene := engine.scene_load_single_path(boot_path)
+	scene := engine.scene_load(boot_path)
 	if !testing.expect(t, scene != nil, "the exported scene loads") do return
 	tc.scene = scene
 	_, mr := engine.transform_get_comp(engine.Transform_Handle(scene.root.handle), engine.MeshRenderer)

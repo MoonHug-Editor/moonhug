@@ -279,7 +279,7 @@ _load_scene_without_new_fields :: proc(t: ^testing.T, tc_mem: ^TestCtx) -> engin
 	werr := os.write_entire_file(tc_mem.path, transmute([]byte)scene_json)
 	testing.expect(t, werr == nil, "fixture write should succeed")
 
-	loaded := engine.scene_load_single_path(tc_mem.path)
+	loaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, loaded != nil, "scene should load")
 	if loaded == nil do return {}
 	tc_mem.scene = loaded

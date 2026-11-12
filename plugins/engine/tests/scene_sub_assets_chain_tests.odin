@@ -114,7 +114,7 @@ test_sub_assets_load_through_nested_prefab_and_variant :: proc(t: ^testing.T) {
 	if !ok do return
 	want := engine.PPtr{guid = c.inner_guid, local_id = 77}
 
-	host := engine.scene_load_single_path(c.host)
+	host := engine.scene_load(c.host)
 	if !testing.expect(t, host != nil, "host loads") do return
 	tc.scene = host
 	engine.sm_scene_set_active(host)
@@ -144,13 +144,13 @@ test_sub_assets_load_through_nested_prefab_and_variant :: proc(t: ^testing.T) {
 
 	// Saved and loaded again.
 	testing.expect(t, engine.scene_save(host, c.host), "host saves")
-	again := engine.scene_load_single_path(c.host)
+	again := engine.scene_load(c.host)
 	if !testing.expect(t, again != nil, "host loads again") do return
 	tc.scene = again
 	check(t, tc, again, want, 2, "host reloaded")
 
 	// The variant opened by itself.
-	v := engine.scene_load_single_path(c.variant)
+	v := engine.scene_load(c.variant)
 	if !testing.expect(t, v != nil, "the variant opens") do return
 	tc.scene = v
 	check(t, tc, v, want, 1, "variant")
@@ -175,7 +175,7 @@ test_variant_overrides_name_its_own_sub_asset_and_embedded_asset :: proc(t: ^tes
 	c, ok := _chain_author(t, tc, dir)
 	if !ok do return
 
-	v := engine.scene_load_single_path(c.variant)
+	v := engine.scene_load(c.variant)
 	if !testing.expect(t, v != nil, "the variant opens") do return
 	tc.scene = v
 	engine.sm_scene_set_active(v)
@@ -191,7 +191,7 @@ test_variant_overrides_name_its_own_sub_asset_and_embedded_asset :: proc(t: ^tes
 	text, _ := os.read_entire_file(c.variant, context.temp_allocator)
 	testing.expectf(t, len(text) > 0, "the variant file is written")
 
-	host := engine.scene_load_single_path(c.host)
+	host := engine.scene_load(c.host)
 	if !testing.expect(t, host != nil, "host loads") do return
 	tc.scene = host
 	engine.sm_scene_set_active(host)
@@ -238,9 +238,9 @@ test_variant_of_a_prefab_keeps_the_base_files_sub_asset :: proc(t: ^testing.T) {
 		what := pass == 0 ? "opened" : "nested"
 		s: ^engine.Scene
 		if pass == 0 {
-			s = engine.scene_load_single_path(iv)
+			s = engine.scene_load(iv)
 		} else {
-			s = engine.scene_load_single_path(c.host)
+			s = engine.scene_load(c.host)
 			if s != nil do testing.expect(t, engine.scene_instantiate_guid_nested(iv_guid, engine.Transform_Handle(s.root.handle)) != {}, "the variant nests into host")
 		}
 		if !testing.expectf(t, s != nil, "%s: loads", what) do return
@@ -289,7 +289,7 @@ test_untouched_instance_saves_no_override_for_the_prefabs_own_sub_asset :: proc(
 	if !ok do return
 	testing.expectf(t, _materials_overrides(t, c.middle) == 0, "middle, which nests inner untouched, has no materials override")
 
-	host := engine.scene_load_single_path(c.host)
+	host := engine.scene_load(c.host)
 	if !testing.expect(t, host != nil, "host loads") do return
 	tc.scene = host
 	engine.sm_scene_set_active(host)

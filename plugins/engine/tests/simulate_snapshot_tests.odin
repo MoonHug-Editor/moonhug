@@ -146,7 +146,7 @@ test_simulate_restore_preserves_additive_scenes :: proc(t: ^testing.T) {
 	testing.expect(t, fixture_write_empty_scene(extra_path, "ExtraRoot"),
 		"wrote the additive fixture")
 	defer os.remove(extra_path)
-	extra := engine.scene_load_additive_path(extra_path)
+	extra := engine.scene_load(extra_path, additive = true)
 	testing.expect(t, extra != nil, "additive scene loaded")
 	if extra == nil do return
 
@@ -238,7 +238,7 @@ test_simulate_snapshot_preserves_nested_override :: proc(t: ^testing.T) {
 
 	// bullet_Variant is a variant whose inherited content carries an override —
 	// the shape Simulate actually meets in a real scene.
-	loaded := engine.scene_load_single_path(fx.bv_path)
+	loaded := engine.scene_load(fx.bv_path)
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded

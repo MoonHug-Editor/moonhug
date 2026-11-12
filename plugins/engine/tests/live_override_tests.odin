@@ -54,7 +54,7 @@ test_live_override_visible_before_save :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -95,7 +95,7 @@ test_live_override_is_sticky_at_base_value :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -152,7 +152,7 @@ test_live_override_revert_removes_it :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -199,7 +199,7 @@ test_live_override_no_duplicate_entries :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -251,7 +251,7 @@ test_live_override_reports_created_once :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
 	if loaded == nil do return
 	tc_mem.scene = loaded
 
@@ -292,7 +292,7 @@ test_unrecord_override_removes_only_the_record :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
 	if loaded == nil do return
 	tc_mem.scene = loaded
 
@@ -336,7 +336,7 @@ test_live_override_deep_chain_redo_finds_field :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -398,7 +398,7 @@ test_override_restore_after_revert :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
 	if loaded == nil do return
 	tc_mem.scene = loaded
 
@@ -463,7 +463,7 @@ test_component_removal_survives_save_and_reload :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -510,7 +510,7 @@ test_component_removal_survives_save_and_reload :: proc(t: ^testing.T) {
 	// that matters — the component must NOT come back.
 	engine.sm_scene_destroy_or_unload(loaded)
 	engine.sm_scene_set_active(nil)
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -534,7 +534,7 @@ test_component_addition_survives_save_and_reload :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -577,7 +577,7 @@ test_component_addition_survives_save_and_reload :: proc(t: ^testing.T) {
 
 	engine.sm_scene_destroy_or_unload(loaded)
 	engine.sm_scene_set_active(nil)
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -611,7 +611,7 @@ test_component_edits_no_bad_free :: proc(t: ^testing.T) {
 		context.user_ptr = &tc_mem.uc
 		defer teardown(tc_mem)
 
-		loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+		loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 		if loaded == nil do return
 		tc_mem.scene = loaded
 
@@ -637,7 +637,7 @@ test_component_edits_no_bad_free :: proc(t: ^testing.T) {
 
 		engine.sm_scene_destroy_or_unload(loaded)
 		engine.sm_scene_set_active(nil)
-		reloaded := engine.scene_load_single_path(tc_mem.path)
+		reloaded := engine.scene_load(tc_mem.path)
 		testing.expect(t, reloaded != nil, "the scene must load without crashing")
 		tc_mem.scene = reloaded
 
@@ -654,7 +654,7 @@ test_component_edits_no_bad_free :: proc(t: ^testing.T) {
 					testing.expect(t, engine.scene_save(reloaded, tc_mem.path))
 					engine.sm_scene_destroy_or_unload(reloaded)
 					engine.sm_scene_set_active(nil)
-					r3 := engine.scene_load_single_path(tc_mem.path)
+					r3 := engine.scene_load(tc_mem.path)
 					testing.expect(t, r3 != nil, "reload after a removal must not crash")
 					tc_mem.scene = r3
 				}
@@ -681,7 +681,7 @@ test_object_addition_survives_save_and_reload :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -712,7 +712,7 @@ test_object_addition_survives_save_and_reload :: proc(t: ^testing.T) {
 	// assertion that matters — the added object must be grafted back.
 	engine.sm_scene_destroy_or_unload(loaded)
 	engine.sm_scene_set_active(nil)
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -740,7 +740,7 @@ test_object_removal_survives_save_and_reload :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -774,7 +774,7 @@ test_object_removal_survives_save_and_reload :: proc(t: ^testing.T) {
 
 	engine.sm_scene_destroy_or_unload(loaded)
 	engine.sm_scene_set_active(nil)
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -803,7 +803,7 @@ test_nested_delete_undo_restores_object :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown_undo(tc_mem, u)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -866,7 +866,7 @@ test_nested_create_child_undo_redo :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown_undo(tc_mem, u)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded

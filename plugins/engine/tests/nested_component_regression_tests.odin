@@ -52,7 +52,7 @@ test_unparseable_component_preserved :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 
-	s := engine.scene_load_single_path(path)
+	s := engine.scene_load(path)
 	testing.expect(t, s != nil, "load")
 	if s == nil do return
 	tc.scene = s
@@ -171,14 +171,14 @@ test_open_host_then_open_prefab_and_save :: proc(t: ^testing.T) {
 	asset_pipeline.asset_db_refresh()
 
 	// Step 1: open the host (as the editor auto-loads it from settings).
-	host := engine.scene_load_single_path(host_path)
+	host := engine.scene_load(host_path)
 	testing.expect(t, host != nil, "host should load")
 	if host == nil do return
 	tc.scene = host
 	engine.sm_scene_set_active(host)
 
 	// Step 2: open the prefab directly (unloads the host), save a copy.
-	s := engine.scene_load_single_path(p_path)
+	s := engine.scene_load(p_path)
 	testing.expect(t, s != nil, "prefab should load")
 	if s == nil do return
 	tc.scene = s
@@ -246,14 +246,14 @@ test_unknown_component_no_duplicate_entries :: proc(t: ^testing.T) {
 	}
 
 	// Save twice (load → save → reload → save): the entry count must stay 1.
-	s := engine.scene_load_single_path(path)
+	s := engine.scene_load(path)
 	testing.expect(t, s != nil, "load")
 	if s == nil do return
 	tc.scene = s
 	testing.expect(t, engine.scene_save(s, path), "save 1")
 	testing.expect_value(t, count_entries(t, path), 1)
 
-	s2 := engine.scene_load_single_path(path)
+	s2 := engine.scene_load(path)
 	testing.expect(t, s2 != nil, "reload")
 	if s2 == nil do return
 	tc.scene = s2
@@ -299,7 +299,7 @@ test_remove_and_restore_unknown_component :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 
-	s := engine.scene_load_single_path(path)
+	s := engine.scene_load(path)
 	testing.expect(t, s != nil, "load")
 	if s == nil do return
 	tc.scene = s
@@ -393,7 +393,7 @@ test_float_canonical_formatting :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 
-	s := engine.scene_load_single_path(path)
+	s := engine.scene_load(path)
 	testing.expect(t, s != nil, "load")
 	if s == nil do return
 	tc.scene = s

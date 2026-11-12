@@ -338,7 +338,7 @@ test_sim_stop_restores_scene_set :: proc(t: ^testing.T) {
 	kept_path := "moonhug/tests/fixtures/_test_sim_set_kept.scene"
 	testing.expect(t, fixture_write_empty_scene(kept_path, "KeptRoot"))
 	defer os.remove(kept_path)
-	kept := engine.scene_load_additive_path(kept_path)
+	kept := engine.scene_load(kept_path, additive = true)
 	testing.expect(t, kept != nil)
 	at_start := loaded_count()
 
@@ -348,7 +348,7 @@ test_sim_stop_restores_scene_set :: proc(t: ^testing.T) {
 	extra_path := "moonhug/tests/fixtures/_test_sim_set_extra.scene"
 	testing.expect(t, fixture_write_empty_scene(extra_path, "ExtraRoot"))
 	defer os.remove(extra_path)
-	extra := engine.scene_load_additive_path(extra_path)
+	extra := engine.scene_load(extra_path, additive = true)
 	testing.expect(t, extra != nil)
 	engine.sm_scene_unload(kept)
 	testing.expect_value(t, loaded_count(), at_start)

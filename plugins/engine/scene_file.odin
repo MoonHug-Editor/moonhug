@@ -1633,7 +1633,10 @@ resolve_handle :: proc(local_id: Local_ID, id_map: map[Local_ID]Handle) -> (Hand
 	return {}, false
 }
 
-scene_load_single_path :: proc(path: string) -> ^Scene {
+// Loads the scene file at `path` before it returns. `additive` keeps the
+// loaded scenes, else they are unloaded first. scene_load_async is the same
+// load over several frames.
+scene_load :: proc(path: string, additive := false) -> ^Scene {
 	sf, ok := scene_file_load(path)
 	if !ok do return nil
 	defer scene_file_destroy(&sf)
@@ -1645,7 +1648,7 @@ scene_load_single_path :: proc(path: string) -> ^Scene {
 	}
 	// A game loads the scene's assets now. The editor loads each on first use.
 	if !application_is_editor() do scene_file_preload_assets(&sf, scene_guid)
-	s := _scene_load_single(&sf, scene_guid)
+	s := _scene_load_additive(&sf, scene_guid) if additive else _scene_load_single(&sf, scene_guid)
 	if s != nil {
 		s.path = strings.clone(path)
 	}
@@ -1653,7 +1656,7 @@ scene_load_single_path :: proc(path: string) -> ^Scene {
 }
 
 // Load a scene from BYTES in the on-disk scene format, replacing everything
-// loaded: the in-memory twin of scene_load_single_path. `path` and `guid` are
+// loaded: the in-memory twin of scene_load. `path` and `guid` are
 // restated by the caller, since bytes carry neither.
 scene_load_single_bytes :: proc(data: []byte, guid: Asset_GUID = {}, path := "") -> ^Scene {
 	sf: SceneFile
@@ -1710,25 +1713,6 @@ scene_reload_in_place_path :: proc(target: ^Scene, path: string) -> ^Scene {
 	s := scene_reload_in_place(target, &sf, scene_guid)
 	if s != nil {
 		s.path = strings.clone(p)
-	}
-	return s
-}
-
-scene_load_additive_path :: proc(path: string) -> ^Scene {
-	sf, ok := scene_file_load(path)
-	if !ok do return nil
-	defer scene_file_destroy(&sf)
-	if !application_is_editor() do scene_log_missing_assets(path)
-
-	scene_guid: Asset_GUID = {}
-	if g, gok := asset_db_get_guid(path); gok {
-		scene_guid = Asset_GUID(g)
-	}
-	// A game loads the scene's assets now. The editor loads each on first use.
-	if !application_is_editor() do scene_file_preload_assets(&sf, scene_guid)
-	s := _scene_load_additive(&sf, scene_guid)
-	if s != nil {
-		s.path = strings.clone(path)
 	}
 	return s
 }

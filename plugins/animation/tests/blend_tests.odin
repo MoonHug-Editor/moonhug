@@ -291,7 +291,7 @@ test_animation_demo_scene_loads :: proc(t: ^testing.T) {
 	_load_model_clips(t, "plugins/essentials/assets/meshes/characters/UAL1_Standard.glb", {"Walk_Loop", "Jog_Fwd_Loop", "Idle_Loop"})
 
 	PATH :: "plugins/animation/samples/animation_sample/assets/animation_demo.scene"
-	s := engine.scene_load_single_path(PATH)
+	s := engine.scene_load(PATH)
 	testing.expect(t, s != nil, "the sample scene parses and loads")
 	if s == nil do return
 	tc.scene = s

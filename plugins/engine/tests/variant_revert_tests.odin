@@ -23,7 +23,7 @@ test_variant_root_revert_restores_value :: proc(t: ^testing.T) {
 	defer teardown(tc_mem)
 
 	// SpriteRootVariant overrides Light.color to blue on the base root.
-	loaded := engine.scene_load_single_path(
+	loaded := engine.scene_load(
 		"moonhug/tests/fixtures/nested_scenes/SpriteRootVariant.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
@@ -89,7 +89,7 @@ test_variant_root_overrides_are_listable :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path(
+	loaded := engine.scene_load(
 		"moonhug/tests/fixtures/nested_scenes/SpriteRootVariant.scene")
 	if loaded == nil do return
 	tc_mem.scene = loaded

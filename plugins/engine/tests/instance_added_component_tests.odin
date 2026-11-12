@@ -79,7 +79,7 @@ _sim_uninstall :: proc() {
 @(private = "file")
 _expect_round_trip :: proc(t: ^testing.T, w: ^engine.World, s: ^engine.Scene, lid: engine.Local_ID, records: int, path: string, what: string) -> ^engine.Scene {
 	testing.expect(t, engine.scene_save(s, path))
-	scene := engine.scene_load_single_path(path)
+	scene := engine.scene_load(path)
 	testing.expectf(t, scene != nil, "%s: reloads", what)
 	if scene == nil do return nil
 	testing.expectf(t, _count_comps(w, _by_lid(w, scene, lid), .Groups) == 1, "%s: one Groups after the reload", what)
@@ -106,7 +106,7 @@ test_instance_content_added_component_round_trips :: proc(t: ^testing.T) {
 	_sim_install()
 	defer _sim_uninstall()
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	sprite_tH := find_transform_named(&tc.world, loaded, "SpriteA", true)
@@ -153,7 +153,7 @@ test_instance_host_added_component_round_trips :: proc(t: ^testing.T) {
 	_sim_install()
 	defer _sim_uninstall()
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	sprite_tH := find_transform_named(&tc.world, loaded, "SpriteA", true)

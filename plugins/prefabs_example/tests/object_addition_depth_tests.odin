@@ -40,7 +40,7 @@ test_object_addition_survives_at_every_depth :: proc(t: ^testing.T) {
 			{"moonhug/packages/prefabs_example/assets/", c.scene},
 			context.temp_allocator,
 		)
-		loaded := engine.scene_load_single_path(src)
+		loaded := engine.scene_load(src)
 		testing.expectf(t, loaded != nil, "%v should load", c.scene)
 		if loaded != nil {
 			tc_mem.scene = loaded
@@ -55,7 +55,7 @@ test_object_addition_survives_at_every_depth :: proc(t: ^testing.T) {
 
 				engine.sm_scene_destroy_or_unload(loaded)
 				engine.sm_scene_set_active(nil)
-				reloaded := engine.scene_load_single_path(tc_mem.path)
+				reloaded := engine.scene_load(tc_mem.path)
 				tc_mem.scene = reloaded
 				testing.expectf(t, reloaded != nil, "%v: reload", c.scene)
 

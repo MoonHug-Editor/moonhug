@@ -31,7 +31,7 @@ test_nested_instance_keeps_asset_pptr_part_ids :: proc(t: ^testing.T) {
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
 
-	s := engine.scene_load_additive_path(tmp + "/demo_prefabs/demo_prefabs.scene")
+	s := engine.scene_load(tmp + "/demo_prefabs/demo_prefabs.scene", additive = true)
 	testing.expect(t, s != nil, "demo_prefabs loads")
 	if s == nil do return
 

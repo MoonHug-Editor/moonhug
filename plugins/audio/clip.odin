@@ -24,6 +24,11 @@ clip_cache: map[engine.Asset_GUID]Audio_Clip
 clip_load :: proc(guid: engine.Asset_GUID) -> (^Audio_Clip, bool) {
 	if guid == {} do return nil, false
 	if clip, ok := &clip_cache[guid]; ok do return clip, true
+	// A job is loading it (engine/asset_jobs.odin): wait for that job.
+	if engine.asset_job_wait(engine.PPtr{guid = guid}, _clip_job_finish) {
+		clip, ok := &clip_cache[guid]
+		return clip, ok
+	}
 	if !_mixer_ensure() do return nil, false
 
 	// engine.artifact_file imports a missing artifact in the editor and
@@ -38,6 +43,45 @@ clip_load :: proc(guid: engine.Asset_GUID) -> (^Audio_Clip, bool) {
 		return nil, false
 	}
 
+	return _clip_store(guid, audio)
+}
+
+// Starts loading the clip on a worker thread (engine/asset_jobs.odin): the
+// file read and the decode run there. A loaded clip needs no job.
+clip_load_start :: proc(guid: engine.Asset_GUID) {
+	if guid == {} || guid in clip_cache || !_mixer_ensure() do return
+	path, ok := engine.artifact_file(guid)
+	if !ok do return
+	engine.asset_job_start(engine.PPtr{guid = guid}, path, _clip_job_finish, _clip_job_work, read = false, user = _audio_state.mixer)
+}
+
+// SDL_mixer reads and decodes the file itself, from any thread.
+@(private = "file")
+_clip_job_work :: proc(job: ^engine.Asset_Job) {
+	cpath := strings.clone_to_cstring(job.path, context.temp_allocator)
+	audio := mix.LoadAudio(cast(^mix.Mixer)job.user, cpath, predecode = true)
+	job.user = audio
+	job.failed = audio == nil
+}
+
+@(private = "file")
+_clip_job_finish :: proc(job: ^engine.Asset_Job) {
+	guid := job.ref.guid
+	if job.failed {
+		engine.artifact_fail(guid, 0, fmt.tprintf("%s does not load as audio", job.path))
+		return
+	}
+	audio := cast(^mix.Audio)job.user
+	// Loaded another way while the job ran.
+	if guid in clip_cache {
+		mix.DestroyAudio(audio)
+		return
+	}
+	_clip_store(guid, audio)
+}
+
+@(private = "file")
+_clip_store :: proc(guid: engine.Asset_GUID, audio: ^mix.Audio) -> (^Audio_Clip, bool) {
 	spec: sdl.AudioSpec
 	_ = mix.GetAudioFormat(audio, &spec)
 
@@ -94,8 +138,9 @@ clip_cache_shutdown :: proc() {
 	clip_cache = nil
 }
 
-// A scene load decodes the clips the scene references (engine/asset_preload.odin).
+// A scene load decodes the clips the scene references, on worker threads
+// (engine/asset_preload.odin).
 @(asset_preload={ext="mp3,wav,ogg"})
 asset_preload_audio_clip :: proc(ref: engine.PPtr) {
-	clip_load(ref.guid)
+	clip_load_start(ref.guid)
 }

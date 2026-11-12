@@ -161,7 +161,7 @@ fixture_chain_author :: proc(t: ^testing.T, tc: ^TestCtx, dir: string) -> (fx: F
 	// The deep override, authored the editor way: open the variant, edit the
 	// INHERITED light (nested-owned content from c via bullet), save — the
 	// capture lands on the variant's root NS.
-	bv := engine.scene_load_single_path(fx.bv_path)
+	bv := engine.scene_load(fx.bv_path)
 	testing.expect(t, bv != nil, "fixture: bullet_Variant loads")
 	if bv == nil do return fx, false
 	tc.scene = bv
@@ -181,7 +181,7 @@ fixture_chain_author :: proc(t: ^testing.T, tc: ^TestCtx, dir: string) -> (fx: F
 		return fx, false
 	}
 	asset_pipeline.asset_db_refresh()
-	host := engine.scene_load_single_path(fx.host_path)
+	host := engine.scene_load(fx.host_path)
 	testing.expect(t, host != nil, "fixture: host loads")
 	if host == nil do return fx, false
 	tc.scene = host

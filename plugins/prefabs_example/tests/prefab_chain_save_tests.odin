@@ -31,7 +31,7 @@ test_unchanged_save_invents_no_component_edits :: proc(t: ^testing.T) {
 	// host.scene nests a chain deep enough that inner levels own components
 	// the capturing level cannot un-project.
 	for path in ([]string{ASSETS + "/host.scene", ASSETS + "/blobs.scene", ASSETS + "/blobs_Variant.scene"}) {
-		loaded := engine.scene_load_single_path(path)
+		loaded := engine.scene_load(path)
 		testing.expectf(t, loaded != nil, "load %s", path)
 		if loaded == nil do continue
 		tc_mem.scene = loaded
@@ -76,7 +76,7 @@ test_unchanged_save_invents_no_object_edits :: proc(t: ^testing.T) {
 	defer common.teardown(tc_mem)
 
 	for path in ([]string{ASSETS + "/host.scene", ASSETS + "/blobs.scene", ASSETS + "/blobs_Variant.scene"}) {
-		loaded := engine.scene_load_single_path(path)
+		loaded := engine.scene_load(path)
 		testing.expectf(t, loaded != nil, "load %s", path)
 		if loaded == nil do continue
 		tc_mem.scene = loaded
@@ -120,7 +120,7 @@ test_variant_root_revert_undo_restores_override :: proc(t: ^testing.T) {
 	undo.install(u)
 	defer { undo.destroy(u); free(u) }
 
-	loaded := engine.scene_load_single_path(
+	loaded := engine.scene_load(
 		"moonhug/packages/prefabs_example/assets/c_Variant.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return

@@ -533,7 +533,7 @@ test_timeline_animator_demo_scene_loads :: proc(t: ^testing.T) {
 	_load_sample_clip("plugins/animation/samples/timeline_sample/assets/rig_swing_prop.anim")
 
 	PATH :: "plugins/animation/samples/timeline_sample/assets/timeline_animator_demo.scene"
-	s := engine.scene_load_single_path(PATH)
+	s := engine.scene_load(PATH)
 	testing.expect(t, s != nil, "the sample scene parses and loads")
 	if s == nil do return
 	tc.scene = s

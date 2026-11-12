@@ -571,7 +571,7 @@ test_undo_ref_clear_restores_resolved_handle :: proc(t: ^testing.T) {
 }`
 	testing.expect(t, os.write_entire_file(path, transmute([]byte)scene_json) == nil)
 
-	loaded := engine.scene_load_single_path(path)
+	loaded := engine.scene_load(path)
 	testing.expect(t, loaded != nil, "scene loads")
 	if loaded == nil do return
 	tc_mem.scene = loaded

@@ -100,7 +100,7 @@ test_resolve_host_and_breadcrumb_when_nested_file_id_matches_native :: proc(t: ^
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 	testing.expect(t, loaded != nil, "TestA load failed (asset DB or path)")
 	if loaded == nil do return
 	tc_mem.scene = loaded

@@ -256,6 +256,11 @@ animation_clip_load :: proc(ref: engine.PPtr) -> (^AnimationClip, bool) {
 		return clip, true
 	}
 	if !_animation_clip_cache_ready do return nil, false
+	// A job is loading it (engine/asset_jobs.odin): wait for that job.
+	if engine.asset_job_wait(ref, _clip_job_finish) {
+		clip, ok := &animation_clip_cache[ref]
+		return clip, ok
+	}
 
 	// A CACHE ENTRY OUTLIVES THE CALL, so it never borrows the caller's
 	// allocator. A clip first loaded under a temp allocator left the cache
@@ -278,21 +283,60 @@ animation_clip_load :: proc(ref: engine.PPtr) -> (^AnimationClip, bool) {
 		}
 	}
 	clip: AnimationClip
-	parse :: proc(data: []byte, clip: ^AnimationClip) -> bool {
-		if json.unmarshal(data, clip, .JSON, context.allocator) == nil {
-			if msg, vok := animation_clip_validate(clip); !vok {
-				log.errorf("[Clip] %s: the file is not loaded", msg)
-			} else {
-				return true
-			}
-		}
-		type_cleanup_AnimationClip(clip)
-		return false
-	}
-	if !engine.artifact_load(ref.guid, ref.local_id, "clip", &clip, parse) do return nil, false
+	if !engine.artifact_load(ref.guid, ref.local_id, "clip", &clip, _clip_parse) do return nil, false
 	animation_clip_cache[ref] = clip
 	_animation_clip_owned[ref] = true
 	return &animation_clip_cache[ref], true
+}
+
+// Parses a clip artifact into `clip`, on context.allocator.
+@(private = "file")
+_clip_parse :: proc(data: []byte, clip: ^AnimationClip) -> bool {
+	if json.unmarshal(data, clip, .JSON, context.allocator) == nil {
+		if msg, vok := animation_clip_validate(clip); !vok {
+			log.errorf("[Clip] %s: the file is not loaded", msg)
+		} else {
+			return true
+		}
+	}
+	type_cleanup_AnimationClip(clip)
+	return false
+}
+
+// Starts loading the clip (engine/asset_jobs.odin): a worker thread reads the
+// file, and the parse runs on the main thread when the job finishes, because
+// reading a reference uses engine state. A loaded clip needs no job.
+animation_clip_load_start :: proc(ref: engine.PPtr) {
+	if ref in animation_clip_cache || !_animation_clip_cache_ready do return
+	if ref.local_id != 0 {
+		// A clip the model does not list: the sync load reports it.
+		if _, iok := engine.mesh_clip_index(ref.guid, ref.local_id); !iok {
+			animation_clip_load(ref)
+			return
+		}
+	}
+	path, ok := engine.artifact_file(ref.guid, ref.local_id)
+	if !ok do return
+	engine.asset_job_start(ref, path, _clip_job_finish)
+}
+
+@(private = "file")
+_clip_job_finish :: proc(job: ^engine.Asset_Job) {
+	ref := job.ref
+	if job.read_failed {
+		engine.artifact_fail(ref.guid, ref.local_id, fmt.tprintf("%s is unreadable", job.path))
+		return
+	}
+	// Loaded another way while the job ran.
+	if ref in animation_clip_cache do return
+	context.allocator = runtime.default_allocator() // the cache outlives every caller
+	clip: AnimationClip
+	if !_clip_parse(job.data, &clip) {
+		engine.artifact_fail(ref.guid, ref.local_id, fmt.tprintf("%s does not load as a clip", job.path))
+		return
+	}
+	animation_clip_cache[ref] = clip
+	_animation_clip_owned[ref] = true
 }
 
 animation_clip_unload :: proc(ref: engine.PPtr) {
@@ -896,12 +940,8 @@ animation_wrap_time :: proc(time, length: f32, wrap: Animation_Wrap) -> (t: f32,
 @(asset_preload={ext="anim,glb,gltf"})
 asset_preload_animation_clip :: proc(ref: engine.PPtr) {
 	if engine.asset_ref_type(ref) == "anim" {
-		animation_clip_load(ref)
+		animation_clip_load_start(ref)
 		return
 	}
-	for clip in engine.mesh_clips(ref.guid) {
-		if clip.id != ref.local_id do continue
-		animation_clip_load(ref)
-		return
-	}
+	if _, ok := engine.mesh_clip_index(ref.guid, ref.local_id); ok do animation_clip_load_start(ref)
 }

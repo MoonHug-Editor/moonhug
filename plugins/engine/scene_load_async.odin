@@ -11,14 +11,18 @@ package engine
 // - read and parse the scene file
 // - list the assets the scene references, and open each nested prefab to list
 //   the assets it references
-// - load those assets (asset_preload.odin)
+// - load those assets (asset_preload.odin). Each asset's file is read and
+//   decoded on a worker thread (asset_jobs.odin), all at once. The load waits
+//   until every one is in its cache
 // - create the objects and awake them. A load that is not additive unloads
 //   the loaded scenes right before this stage, so they run until then
 //
 // frame_tick runs the loads at the start of each frame for a few
-// milliseconds (SCENE_LOAD_FRAME_BUDGET_MS). All work is on the main thread.
-// Parsing one file and creating the objects are one piece of work each, so a
-// large scene can still take more than the budget in those two frames.
+// milliseconds (SCENE_LOAD_FRAME_BUDGET_MS). On the main thread that is: the
+// file parses, the short last part of each asset's load (a GPU upload), and
+// the creation of the objects. Parsing one file and creating the objects are
+// one piece of work each, so a large scene can still take more than the
+// budget in those two frames.
 //
 // - `activate = false` stops before the last stage, with the assets loaded,
 //   until scene_load_activate: for "press a key to continue", or to finish a
@@ -28,9 +32,9 @@ package engine
 // - An asset the scene does not reference still loads on first use. So do
 //   the assets of a prefab that a field names and a script spawns: only
 //   nested prefabs are opened. asset_preload loads either by hand.
-// - The sync loads (scene_load_single_path, scene_load_additive_path) stay:
-//   the editor and the boot scene use them. In a game they load the scene's
-//   assets too, in the same call.
+// - scene_load is the same load in one call, with the same `additive`
+//   parameter. The editor and the boot scene use it. In a game it loads the
+//   scene's assets too.
 
 import "base:runtime"
 import "core:strings"
@@ -46,7 +50,8 @@ SCENE_LOAD_FRAME_BUDGET_MS :: 4.0
 _Stage :: enum {
 	Parse,
 	Scan, // nested prefabs
-	Assets,
+	Assets, // start each asset's load
+	Jobs, // until the asset jobs are done
 	Wait, // for scene_load_activate
 	Build,
 	Done,
@@ -66,7 +71,10 @@ _Load :: struct {
 	guid:      Asset_GUID,
 	refs:      Scene_Asset_Refs,
 	scanned:   int, // refs.scenes read so far
-	loaded:    int, // refs.assets loaded so far
+	loaded:    int, // refs.assets started so far
+	jobs:      int, // the asset jobs pending when the Jobs stage began
+	jobs_done: int, // of those, the most seen done
+	progress:  f32, // the highest value scene_load_progress gave out
 	scene:     u32, // session id of the result
 }
 
@@ -100,7 +108,9 @@ scene_load_async :: proc(path: string, additive := false, activate := true) -> S
 	}
 	if !game_running() {
 		l.activate = true
-		for !_finished(l) do _advance(l)
+		for !_finished(l) {
+			if !_advance(l) do asset_jobs_wait_all()
+		}
 	}
 	return l.id
 }
@@ -111,9 +121,20 @@ scene_load_progress :: proc(h: Scene_Load_Handle) -> f32 {
 	if l == nil do return 0
 	if l.stage == .Done || l.stage == .Failed do return 1
 	if l.stage == .Parse do return 0
-	// The file, each nested prefab, each asset and the objects are one piece each.
-	total := 2 + len(l.refs.scenes) + len(l.refs.assets)
-	return f32(1 + l.scanned + l.loaded) / f32(total)
+	// The file, each nested prefab and the objects are one piece each. An
+	// asset is two: its load started, its load done.
+	assets := len(l.refs.assets)
+	total := 2 + len(l.refs.scenes) + 2 * assets
+	done := 1 + l.scanned + l.loaded
+	if l.stage == .Wait || l.stage == .Build {
+		done += assets
+	} else if l.stage == .Jobs && l.jobs > 0 {
+		done += assets * l.jobs_done / l.jobs
+	}
+	// Opening a nested prefab adds its assets to the total: the value given
+	// out never goes back.
+	l.progress = max(l.progress, f32(done) / f32(total))
+	return l.progress
 }
 
 // The load ended: the scene is loaded and awake, or the load failed.
@@ -142,20 +163,22 @@ scene_load_scene :: proc(h: Scene_Load_Handle) -> ^Scene {
 	return sm_scene_find_by_session_id(l.scene)
 }
 
-// Runs the loads of the current world for `budget_ms`. frame_tick calls it at
-// the start of each frame. A piece of work that started always finishes, so
-// one call can take longer than the budget.
+// Finishes the asset jobs whose work is done, then runs the loads of the
+// current world, for `budget_ms` in all. frame_tick calls it at the start of
+// each frame. A piece of work that started always finishes, so one call can
+// take longer than the budget.
 scene_loads_step :: proc(budget_ms := SCENE_LOAD_FRAME_BUDGET_MS) {
-	if len(_loads) == 0 do return
-	w := ctx_world()
 	start := time.tick_now()
+	asset_jobs_finish(budget_ms)
+	if len(_loads) == 0 do return
+	if time.duration_milliseconds(time.tick_since(start)) >= budget_ms && asset_jobs_pending() > 0 do return
+	w := ctx_world()
 	// By index: a load's awake procs can start another load.
 	for i := 0; i < len(_loads); i += 1 {
 		l := _loads[i]
 		if l.world != w || _finished(l) do continue
 		for !_finished(l) {
-			if l.stage == .Wait && !l.activate do break
-			_advance(l)
+			if !_advance(l) do break
 			if time.duration_milliseconds(time.tick_since(start)) >= budget_ms do return
 		}
 	}
@@ -176,7 +199,7 @@ scene_loads_cancel :: proc() {
 }
 
 // Loads every asset the scene file references, nested prefabs included,
-// before the call returns. The sync loads of a game call it.
+// before the call returns. scene_load calls it in a game.
 scene_file_preload_assets :: proc(sf: ^SceneFile, guid: Asset_GUID) {
 	refs: Scene_Asset_Refs
 	refs.assets = make([dynamic]PPtr, context.temp_allocator)
@@ -184,6 +207,7 @@ scene_file_preload_assets :: proc(sf: ^SceneFile, guid: Asset_GUID) {
 	scene_file_asset_refs(sf, guid, &refs)
 	for i := 0; i < len(refs.scenes); i += 1 do _scan_prefab(refs.scenes[i], &refs)
 	for ref in refs.assets do asset_preload(ref)
+	asset_jobs_wait_all()
 }
 
 // asset_preload on a prefab: every asset the prefab references, its nested
@@ -210,16 +234,17 @@ _finished :: proc(l: ^_Load) -> bool {
 	return l.stage == .Done || l.stage == .Failed
 }
 
-// One piece of work of the load.
+// One piece of work of the load. False when the load waits: for the asset
+// jobs, or for scene_load_activate.
 @(private = "file")
-_advance :: proc(l: ^_Load) {
+_advance :: proc(l: ^_Load) -> bool {
 	context.allocator = l.allocator
 	switch l.stage {
 	case .Parse:
 		sf, ok := scene_file_load(l.path)
 		if !ok {
 			_fail(l)
-			return
+			return true
 		}
 		l.sf = sf
 		if !application_is_editor() do scene_log_missing_assets(l.path)
@@ -238,15 +263,24 @@ _advance :: proc(l: ^_Load) {
 			asset_preload(l.refs.assets[l.loaded])
 			l.loaded += 1
 		} else {
-			l.stage = .Wait
+			l.jobs = asset_jobs_pending()
+			l.stage = .Jobs
 		}
+	case .Jobs:
+		// Every pending job counts, another load's too: this load's assets
+		// are in their caches when none is left.
+		pending := asset_jobs_pending()
+		l.jobs_done = max(l.jobs_done, l.jobs - min(pending, l.jobs))
+		if pending > 0 do return false
+		l.stage = .Wait
 	case .Wait:
-		if l.activate do l.stage = .Build
+		if !l.activate do return false
+		l.stage = .Build
 	case .Build:
 		s := _scene_load_additive(&l.sf, l.guid) if l.additive else _scene_load_single(&l.sf, l.guid)
 		if s == nil {
 			_fail(l)
-			return
+			return true
 		}
 		s.path = strings.clone(l.path)
 		l.scene = s.session_id
@@ -254,6 +288,7 @@ _advance :: proc(l: ^_Load) {
 		l.stage = .Done
 	case .Done, .Failed:
 	}
+	return true
 }
 
 @(private = "file")
@@ -273,6 +308,8 @@ _release :: proc(l: ^_Load) {
 	l.refs = {}
 	l.scanned = 0
 	l.loaded = 0
+	l.jobs = 0
+	l.jobs_done = 0
 }
 
 // Adds the asset references of the nested prefab `guid` to `refs`.

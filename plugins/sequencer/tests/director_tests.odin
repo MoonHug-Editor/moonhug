@@ -234,7 +234,7 @@ test_timeline_prefab_instance_targets_host_object :: proc(t: ^testing.T) {
 	if !gok do return
 
 	// Host scene with an actor and an instance of the prefab.
-	host := engine.scene_load_single_path(tl_path)
+	host := engine.scene_load(tl_path)
 	testing.expect(t, host != nil)
 	if host == nil do return
 	tc.scene = host

@@ -93,11 +93,11 @@ scene_load_additive :: proc(sf: ^SceneFile) -> ^Scene
 scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle, s: ^Scene) -> Transform_Handle
 ```
 
-Convenience path wrappers handle the file → SceneFile → Scene pipeline:
+`scene_load` handles the file → SceneFile → Scene pipeline, and `scene_load_async` is the same load over several frames (see "Loading over frames"):
 
 ```odin
-scene_load_path          :: proc(path: string) -> ^Scene  // single
-scene_load_additive_path :: proc(path: string) -> ^Scene  // additive
+scene_load       :: proc(path: string, additive := false) -> ^Scene
+scene_load_async :: proc(path: string, additive := false, activate := true) -> Scene_Load_Handle
 ```
 
 The manager stores up to `MAX_SCENES = 100` scenes in a fixed array. `active_scene` is a `Scene_ID` (i16) index into that array.
@@ -119,17 +119,17 @@ The stages, in order:
 
 - Read and parse the scene file.
 - List the assets the scene references. Each nested prefab is opened and its references are listed too.
-- Load those assets: textures, meshes, materials with their shader and textures, audio clips, animation clips, fonts.
+- Load those assets: textures, meshes, materials with their shader and textures, audio clips, animation clips, fonts. Each asset's file is read and decoded on a worker thread, all at the same time. The load waits until every one is in its cache.
 - Create the objects and awake them. A load that is not additive unloads the loaded scenes right before this stage, so they run until then.
 
 Rules:
 
-- `frame_tick` runs the loads at the start of each frame for `SCENE_LOAD_FRAME_BUDGET_MS` (4 ms). All work is on the main thread.
-- One piece of work always finishes: one file parse, one asset, the creation of the objects. A large texture or a large scene can take more than the budget in its frame.
+- `frame_tick` runs the loads at the start of each frame for `SCENE_LOAD_FRAME_BUDGET_MS` (4 ms). On the main thread that is the file parses, the short last part of each asset's load (a GPU upload), and the creation of the objects.
+- One piece of work always finishes: one file parse, one asset's last part, the creation of the objects. A large scene can take more than the budget in the frame that parses it and the frame that creates its objects.
 - `activate = false` stops the load before the last stage, with the assets loaded. `scene_load_ready(h)` is true then, and `scene_load_activate(h)` lets it finish. Use it for "press a key to continue" or to finish a fade first.
 - Outside a running game no frame runs the loads, so the call loads the whole scene before it returns.
 - A load ends with the game: Stop in the editor drops the loads in progress.
-- The sync loads stay. The editor and the boot scene use them. In a game they load the scene's assets in the same call. In the editor each asset loads on first use.
+- `scene_load` is the same load in one call. The editor and the boot scene use it. In a game it loads the scene's assets in the same call. In the editor each asset loads on first use.
 
 What is not loaded ahead:
 
@@ -137,7 +137,34 @@ What is not loaded ahead:
 - The assets of a scene that a field names (a list of levels, a prefab a script spawns). Only nested prefabs are opened.
 - `engine.asset_preload(ref)` loads either by hand. For a prefab it loads every asset the prefab references.
 
-An asset type joins the preload with `@(asset_preload={ext="mp3,wav,ogg"})` on a proc named `asset_preload_<name>` that takes the `PPtr` and calls the type's loader (`plugins/engine/asset_preload.odin`). Several procs can name one extension: a model file holds mesh parts and clips, the engine's proc loads a part id and the animation plugin's proc loads a clip id.
+An asset type joins the preload with `@(asset_preload={ext="mp3,wav,ogg"})` on a proc named `asset_preload_<name>` that takes the `PPtr` and starts the asset's load (`plugins/engine/asset_preload.odin`). Several procs can name one extension: a model file holds mesh parts and clips, the engine's proc loads a part id and the animation plugin's proc loads a clip id.
+
+### Asset jobs
+
+One job loads one asset in three parts (`plugins/engine/asset_jobs.odin`):
+
+- **Begin**, main thread: the asset type finds the file and calls `asset_job_start(ref, path, finish, work)`.
+- **Work**, worker thread: the job system reads the file into `job.data`, then the type's `work` proc decodes it into plain memory.
+- **Finish**, main thread: the type's `finish` proc uploads to the GPU and puts the result in its cache. `frame_tick` runs the finish procs of the jobs that are done.
+
+| Asset | Worker thread | Main thread |
+|---|---|---|
+| Texture | file read, image decode | GPU upload |
+| Mesh | file read | GPU buffers |
+| Audio clip | file read and decode | cache |
+| Font | file read, parse | atlas upload |
+| Animation clip | file read | parse |
+| Material, shader | | all of it |
+
+Rules for a `work` proc:
+
+- It reads `job.data` and `job.path`, and writes `job.user` and `job.failed`.
+- It allocates with `runtime.default_allocator()`, or with `context.temp_allocator` for scratch memory.
+- It touches no cache, no asset database, no GPU and no engine global, and it does not log. `finish` reports a failed job.
+
+A loader starts with `asset_job_wait(ref, finish)`. So a draw or a `scene_load` that needs an asset while its job runs waits for that one job, and nothing sees a half-loaded asset. An asset that changes on disk ends its jobs before the caches drop it.
+
+An animation clip is parsed on the main thread because reading a reference uses engine state. A material is a small file. A shader's cost is the GPU pipeline, which the main thread makes.
 
 ## Scene lifetime
 

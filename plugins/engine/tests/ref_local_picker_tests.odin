@@ -25,7 +25,7 @@ test_ref_local_pick_nested_target_roundtrips :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 	testing.expect(t, loaded != nil, "TestA load failed")
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -61,7 +61,7 @@ test_ref_local_pick_nested_target_roundtrips :: proc(t: ^testing.T) {
 	testing.expect(t, ok, "scene_save failed")
 	if !ok do return
 
-	reloaded := engine.scene_load_single_path(path)
+	reloaded := engine.scene_load(path)
 	testing.expect(t, reloaded != nil, "reload after save failed")
 	if reloaded == nil do return
 	tc_mem.scene = reloaded

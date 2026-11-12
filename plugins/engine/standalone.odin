@@ -124,7 +124,7 @@ standalone_load_boot_scene :: proc() -> bool {
 		return false
 	}
 	log.infof("booting %s", path)
-	scene_load_single_path(path)
+	scene_load(path)
 	input.set_game_scope(true) // the whole frame is the game's; window focus gates it
 	return true
 }

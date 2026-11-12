@@ -9,6 +9,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:testing"
+import "core:time"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:packages/engine"
 
@@ -229,4 +230,66 @@ test_scene_load_async_in_a_game_runs_over_steps_and_holds_activation :: proc(t: 
 	if !testing.expect(t, s != nil, "the scene is loaded") do return
 	testing.expect(t, s != tc.scene && engine.sm_scene_is_loaded(tc.scene), "additive: the first scene stays")
 	testing.expectf(t, _renderer_count(tc, s) == 1, "inner's renderer is in the new scene")
+}
+
+@(private = "file")
+_slow_done: int
+
+@(private = "file")
+_slow_work :: proc(job: ^engine.Asset_Job) {
+	time.sleep(40 * time.Millisecond)
+}
+
+@(private = "file")
+_slow_finish :: proc(job: ^engine.Asset_Job) {
+	_slow_done += 1
+}
+
+// An asset type that loads on a worker thread.
+@(private = "file")
+_slow_preload :: proc(ref: engine.PPtr) {
+	engine.asset_job_start(ref, "", _slow_finish, _slow_work, read = false)
+}
+
+// A load waits for the asset jobs its preload procs start: the scene is not
+// created while a job runs, and the frame steps stay short meanwhile.
+@(test)
+test_scene_load_async_waits_for_asset_jobs :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc, "")
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	dir :: "moonhug/tests/fixtures/_scene_load_jobs_tmp"
+	defer _remove_tree(dir)
+	defer engine.scene_lib_shutdown()
+	defer engine.asset_db_shutdown()
+	defer engine.asset_jobs_shutdown()
+	f, ok := _author(t, tc, dir)
+	if !ok do return
+	engine.asset_preload_add("zzpre", _slow_preload)
+	_zz_loaded = make([dynamic]engine.PPtr, context.temp_allocator)
+	_slow_done = 0
+
+	engine.application_set_playing(true)
+	defer engine.application_set_playing(false)
+
+	h := engine.scene_load_async(f.host, additive = true)
+	// The steps before the job's 40 ms are over: the load is not done.
+	for _ in 0 ..< 12 do engine.scene_loads_step(0)
+	testing.expect(t, !engine.scene_load_done(h) && _slow_done == 0, "the load waits for the job")
+	p := engine.scene_load_progress(h)
+	testing.expectf(t, p > 0 && p < 1, "progress is part way, got %v", p)
+
+	longest: f64
+	for _ in 0 ..< 400 {
+		start := time.tick_now()
+		engine.scene_loads_step(1)
+		longest = max(longest, time.duration_milliseconds(time.tick_since(start)))
+		if engine.scene_load_done(h) do break
+		time.sleep(2 * time.Millisecond)
+	}
+	testing.expect(t, engine.scene_load_done(h) && engine.scene_load_scene(h) != nil, "the load ends after the job")
+	testing.expectf(t, _slow_done == 1, "the job finished once, got %d", _slow_done)
+	testing.expectf(t, longest < 30, "no step waits for the 40 ms job, the longest took %.1f ms", longest)
 }

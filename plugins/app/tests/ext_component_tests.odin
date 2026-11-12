@@ -132,7 +132,7 @@ test_ext_component_override_round_trip :: proc(t: ^testing.T) {
 	testing.expect(t, captured, "editing an ext component inside a prefab instance should capture a 'speed' override")
 
 	// Reload from disk: apply must restore the edit.
-	loaded := engine.scene_load_single_path(host_path)
+	loaded := engine.scene_load(host_path)
 	testing.expect(t, loaded != nil, "host should reload")
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -377,7 +377,7 @@ test_ext_component_ref_override_round_trip :: proc(t: ^testing.T) {
 	testing.expect(t, captured, "repointing a ref inside a prefab instance should capture a 'turret.local_id' override")
 
 	// Reload: the override must apply and the ref must resolve to Barrel.
-	loaded := engine.scene_load_single_path(host_path)
+	loaded := engine.scene_load(host_path)
 	testing.expect(t, loaded != nil, "host should reload")
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -523,7 +523,7 @@ test_host_ref_into_nested_instance_round_trip :: proc(t: ^testing.T) {
 	testing.expect(t, engine.scene_save(tc_mem.scene, host_path), "host save should succeed")
 
 	// Reload: the composed lid must re-derive identically and rebind to Turret.
-	loaded := engine.scene_load_single_path(host_path)
+	loaded := engine.scene_load(host_path)
 	testing.expect(t, loaded != nil, "host should reload")
 	if loaded == nil do return
 	tc_mem.scene = loaded

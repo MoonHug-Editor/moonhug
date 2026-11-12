@@ -411,7 +411,7 @@ test_particles_nested_scene_save :: proc(t: ^testing.T) {
 	testing.expect(t, engine.scene_save(tc_mem.scene, host_path), "host save should succeed")
 
 	// Reload: the bursts must survive the round trip.
-	loaded := engine.scene_load_single_path(host_path)
+	loaded := engine.scene_load(host_path)
 	testing.expect(t, loaded != nil, "host should reload")
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -488,7 +488,7 @@ test_particles_museum_nested_save :: proc(t: ^testing.T) {
 	testing.expect(t, hostH2 != {}, "museum should instantiate a second time")
 	testing.expect(t, engine.scene_save(tc_mem.scene, host_path), "second save should succeed")
 
-	loaded := engine.scene_load_single_path(host_path)
+	loaded := engine.scene_load(host_path)
 	testing.expect(t, loaded != nil, "host should reload")
 	if loaded != nil do tc_mem.scene = loaded
 }

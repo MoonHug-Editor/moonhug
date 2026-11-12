@@ -12,6 +12,7 @@ import gfx "moonhug:libs/gfx"
 import "moonhug:libs/log"
 import "base:runtime"
 import "core:encoding/uuid"
+import "core:fmt"
 import "core:math/rand"
 import "core:strings"
 
@@ -307,12 +308,65 @@ mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
     }
     // Known bad: do not re-import it again this session.
     if key in _mesh_failed do return nil, false
+    // A job is loading it (asset_jobs.odin): wait for that job.
+    if asset_jobs_pending() > 0 {
+        if sub, sok := _mesh_part_sub(key); sok && asset_job_wait(PPtr{guid = guid, local_id = sub}, _mesh_job_finish) {
+            mesh, ok := &mesh_cache[key]
+            return mesh, ok && !mesh.empty
+        }
+    }
     // Headless contexts (tests, scene tooling) have no GPU device.
     if gfx.device() == nil do return nil, false
 
     blob, header, vertices, indices, submeshes, parse_ok := _mesh_artifact_read(key)
     if !parse_ok do return nil, false
+    return _mesh_build(key, blob, header, vertices, indices, submeshes)
+}
 
+// Starts loading the mesh on a worker thread (asset_jobs.odin): the worker
+// reads the artifact, the GPU upload runs on the main thread when the job
+// finishes. A loaded mesh and a headless run need no job.
+mesh_load_start :: proc(guid: Asset_GUID, part: i32 = 0) {
+    key := Mesh_Key{guid, part}
+    if key in mesh_cache || key in _mesh_failed || gfx.device() == nil do return
+    sub, sok := _mesh_part_sub(key)
+    if !sok do return
+    path, ok := artifact_file(guid, sub)
+    if !ok do return
+    asset_job_start(PPtr{guid = guid, local_id = sub}, path, _mesh_job_finish, user = rawptr(uintptr(part)))
+}
+
+@(private = "file")
+_mesh_job_finish :: proc(job: ^Asset_Job) {
+    key := Mesh_Key{job.ref.guid, i32(uintptr(job.user))}
+    if key in mesh_cache || key in _mesh_failed do return
+    if job.read_failed {
+        artifact_fail(job.ref.guid, job.ref.local_id, fmt.tprintf("%s is unreadable", job.path))
+        return
+    }
+    header, vertices, indices, submeshes, ok := _mesh_artifact_parse(job.data)
+    if !ok {
+        artifact_fail(job.ref.guid, job.ref.local_id, fmt.tprintf("%s does not load as a mesh", job.path))
+        return
+    }
+    _mesh_build(key, job.data, header, vertices, indices, submeshes)
+}
+
+// The sub-asset id of the part's file: 0 for the whole model.
+@(private = "file")
+_mesh_part_sub :: proc(key: Mesh_Key) -> (sub: Local_ID, ok: bool) {
+    if key.part <= 0 do return 0, true
+    parts := mesh_parts(key.guid)
+    if int(key.part) > len(parts) do return 0, false
+    return parts[key.part - 1].id, true
+}
+
+// The GPU mesh of a parsed artifact, in the cache. Main thread. The slices
+// point into `blob`, which the mesh does not keep.
+@(private = "file")
+_mesh_build :: proc(key: Mesh_Key, blob: []byte, header: Mesh_Artifact_Header, vertices: []gfx.Vertex, indices: []u32, submeshes: []Mesh_Submesh) -> (^Mesh, bool) {
+    guid, part := key.guid, key.part
+    context.allocator = runtime.default_allocator() // the cache outlives every caller
     // A part with no triangles gets no GPU buffers.
     gpu: gfx.Mesh
     if len(indices) > 0 do gpu = gfx.mesh_create(vertices, indices)

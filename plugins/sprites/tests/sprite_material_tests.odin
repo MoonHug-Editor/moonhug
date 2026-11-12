@@ -34,7 +34,7 @@ test_save_load_scene_with_sprite_material :: proc(t: ^testing.T) {
 	ok := engine.scene_save(tc_mem.scene, tc_mem.path)
 	testing.expect(t, ok, "scene_save should succeed")
 
-	loaded := engine.scene_load_single_path(tc_mem.path)
+	loaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, loaded != nil, "scene_load should return non-nil")
 	if loaded == nil do return
 	tc_mem.scene = loaded

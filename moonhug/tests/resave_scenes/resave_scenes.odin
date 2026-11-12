@@ -89,7 +89,7 @@ main :: proc() {
 
 			total += 1
 			before, _ := os.read_entire_file(path, context.temp_allocator)
-			s := engine.scene_load_single_path(path)
+			s := engine.scene_load(path)
 			if s == nil {
 				fmt.printfln("SKIP (load failed) %s", path)
 				continue

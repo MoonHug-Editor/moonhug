@@ -176,7 +176,7 @@ test_scene_from_gltf :: proc(t: ^testing.T) {
 	testing.expect(t, ok, "scene_from_gltf should save")
 	if !ok do return
 
-	s := engine.scene_load_single_path(out)
+	s := engine.scene_load(out)
 	testing.expect(t, s != nil, "extracted scene should load")
 	if s == nil do return
 

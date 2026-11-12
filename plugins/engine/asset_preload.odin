@@ -18,7 +18,9 @@ package engine
 // - Several procs can name one extension. Each gets the reference and loads
 //   it only when it is its own: a model's file holds mesh parts and clips, the
 //   mesh proc loads a part id and the animation proc loads a clip id.
-// - The proc calls the type's loader, so a loaded asset costs a cache lookup.
+// - The proc starts the asset's load on a worker thread (asset_jobs.odin),
+//   or calls the type's loader when the load is small. A loaded asset costs a
+//   cache lookup.
 // - A reference to a sub-asset of a scene file is a PPtr, and a loader that
 //   takes one guid gets `asset_key(ref)`.
 
@@ -92,26 +94,25 @@ asset_ref_type :: proc(ref: PPtr) -> string {
 asset_preload_texture :: proc(ref: PPtr) {
 	// A sprite is {texture, sprite id}: the texture holds every sprite.
 	// A noise map can be a sub-asset of a scene file, loaded by its key.
-	texture_load(asset_key(ref) if asset_ref_type(ref) == "noise" else ref.guid)
+	texture_load_start(asset_key(ref) if asset_ref_type(ref) == "noise" else ref.guid)
 }
 
 @(asset_preload={ext="glb,gltf"})
 asset_preload_mesh :: proc(ref: PPtr) {
-	if ref.local_id == 0 {
-		mesh_load(ref.guid)
-		return
-	}
-	for part in mesh_parts(ref.guid) {
-		if part.id != ref.local_id do continue
-		mesh_load(ref.guid, i32(ref.local_id))
-		return
-	}
+	// A clip id of the model is the animation plugin's.
+	if part, ok := mesh_ref_part(ref); ok do mesh_load_start(ref.guid, part)
 }
 
-// The material, its shader and its textures.
+// The material, its shader and its textures. The material is a small file
+// and loads here. Each texture starts its own load.
 @(asset_preload={ext="mat"})
 asset_preload_material :: proc(ref: PPtr) {
-	_resolve_material(asset_key(ref))
+	mat, ok := material_load(asset_key(ref))
+	if !ok do return
+	if mat.custom_shader != {} do asset_preload(mat.custom_shader)
+	textures := [5]PPtr{mat.texture, mat.lit.metallic_roughness_map, mat.lit.normal_map, mat.lit.occlusion_map, mat.lit.emission_map}
+	for t in textures do if t != {} do asset_preload(t)
+	for mt in mat.textures do if mt.texture != {} do asset_preload(mt.texture)
 }
 
 @(asset_preload={ext="glsl,shadergraph"})

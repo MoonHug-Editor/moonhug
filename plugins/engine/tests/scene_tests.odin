@@ -56,7 +56,7 @@ test_save_reload_regular_transforms_not_marked_nested :: proc(t: ^testing.T) {
 	testing.expect(t, ok)
 	if !ok do return
 
-	loaded := engine.scene_load_single_path(tc_mem.path)
+	loaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -93,7 +93,7 @@ test_save_load_empty_scene :: proc(t: ^testing.T) {
 		want_root_lid = rt.local_id
 	}
 
-	loaded := engine.scene_load_single_path(tc_mem.path)
+	loaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, loaded != nil, "scene_load should return non-nil")
 	if loaded == nil do return
 
@@ -120,7 +120,7 @@ test_save_load_scene_with_transform :: proc(t: ^testing.T) {
 	ok := engine.scene_save(tc_mem.scene, tc_mem.path)
 	testing.expect(t, ok, "scene_save should succeed")
 
-	loaded := engine.scene_load_single_path(tc_mem.path)
+	loaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, loaded != nil, "scene_load should return non-nil")
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -155,7 +155,7 @@ test_save_load_scene_with_component :: proc(t: ^testing.T) {
 	ok := engine.scene_save(tc_mem.scene, tc_mem.path)
 	testing.expect(t, ok, "scene_save should succeed")
 
-	loaded := engine.scene_load_single_path(tc_mem.path)
+	loaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, loaded != nil, "scene_load should return non-nil")
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -362,7 +362,7 @@ test_revert_override_restores_base_value :: proc(t: ^testing.T) {
 	// world. nested_scene_revert_override walks the transform pool by local_id,
 	// and TestA produces two TransformC instances which makes the test
 	// ambiguous in a way unrelated to the revert path itself.
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestB.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestB.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -403,7 +403,7 @@ test_revert_override_restores_base_value :: proc(t: ^testing.T) {
 
 	// Reload from disk so the override comes through the same path the editor
 	// uses when re-entering a saved scene. _scene_load_single unloads `loaded`.
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -464,7 +464,7 @@ test_revert_override_scoped_to_owning_instance :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -488,7 +488,7 @@ test_revert_override_scoped_to_owning_instance :: proc(t: ^testing.T) {
 	t_c2.position = {22, 22, 22}
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -556,7 +556,7 @@ test_revert_nested_light_respects_transform_scope_for_duplicate_comp_local_ids :
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -636,7 +636,7 @@ test_revert_uses_outer_prefab_baked_base :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -660,7 +660,7 @@ test_revert_uses_outer_prefab_baked_base :: proc(t: ^testing.T) {
 	t_tc.position = {99, 99, 99}
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -726,7 +726,7 @@ test_inspector_marks_inner_nested_override :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -789,7 +789,7 @@ test_deep_override_4_level_chain :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -841,7 +841,7 @@ test_deep_override_4_level_chain :: proc(t: ^testing.T) {
 			"saved file must contain an override targeting TestD's prefab guid")
 	}
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -869,7 +869,7 @@ test_save_nested_b_to_c_writes_overrides_for_modified_c :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 	testing.expect(t, loaded != nil, "TestA load failed")
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -920,7 +920,7 @@ test_save_nested_b_to_c_writes_overrides_for_modified_c :: proc(t: ^testing.T) {
 
 	// Round-trip: reload the saved file and verify TransformC's position is
 	// the edited value, not TestC.scene's base value.
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil, "reload after save failed")
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -955,7 +955,7 @@ test_deep_override_disambiguates_duplicate_inner_prefab :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -1008,7 +1008,7 @@ test_deep_override_disambiguates_duplicate_inner_prefab :: proc(t: ^testing.T) {
 		testing.expect_value(t, owning_ns_count, 2)
 	}
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -1054,7 +1054,7 @@ test_deep_override_survives_inner_prefab_restructure :: proc(t: ^testing.T) {
 		delete(original_testc)
 	}
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -1094,7 +1094,7 @@ test_deep_override_survives_inner_prefab_restructure :: proc(t: ^testing.T) {
 	engine.sm_scene_destroy_or_unload(loaded)
 	engine.sm_scene_set_active(nil)
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -1141,7 +1141,7 @@ test_apply_override_shallow_writes_prefab_field :: proc(t: ^testing.T) {
 	defer teardown(tc_mem)
 
 	// TestB hosts exactly one TestC, so there's a single TransformC.
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestB.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestB.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -1158,7 +1158,7 @@ test_apply_override_shallow_writes_prefab_field :: proc(t: ^testing.T) {
 	t_c.position = {99, 99, 99}
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -1241,7 +1241,7 @@ test_apply_override_deep_writes_parent_record :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -1257,7 +1257,7 @@ test_apply_override_deep_writes_parent_record :: proc(t: ^testing.T) {
 	t_c.position = want_pos
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -1337,7 +1337,7 @@ test_apply_levels_owner_plus_ancestor :: proc(t: ^testing.T) {
 
 	// Load TestA so the chain is 2 deep: native NS = TestB, TestB nests TestC,
 	// field in TestC. This makes the TestC override DEEP (mirrors s>bullet>c).
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -1352,7 +1352,7 @@ test_apply_levels_owner_plus_ancestor :: proc(t: ^testing.T) {
 	t_c.position = {3, 6, 9}
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -1417,7 +1417,7 @@ test_apply_override_propagates_to_peers :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -1442,7 +1442,7 @@ test_apply_override_propagates_to_peers :: proc(t: ^testing.T) {
 	t_c0.position = want_pos
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -1504,7 +1504,7 @@ test_apply_override_file_round_trip :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestB.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestB.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -1519,7 +1519,7 @@ test_apply_override_file_round_trip :: proc(t: ^testing.T) {
 	t_c.position = {5, 6, 7}
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -1588,7 +1588,7 @@ test_apply_override_multilevel_grandparent :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -1604,7 +1604,7 @@ test_apply_override_multilevel_grandparent :: proc(t: ^testing.T) {
 	t_d.position = want_pos
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -1710,7 +1710,7 @@ test_apply_override_clears_shadowing_intermediate :: proc(t: ^testing.T) {
 	// Helper: load TestA, set TransformD.position, save+reload, locate the
 	// matching root override, Apply at `lvl`.
 	edit_and_apply :: proc(t: ^testing.T, path: string, guid_d_a: engine.Asset_GUID, world: ^engine.World, want: [3]f32, lvl: int) -> ^engine.Scene {
-		loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+		loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 		if loaded == nil { testing.expect(t, false, "load TestA"); return nil }
 		host_b1 := find_transform_named(world, loaded, "TestB", false)
 		td := find_nested_named_under_host(world, loaded, host_b1, "TransformD")
@@ -1720,7 +1720,7 @@ test_apply_override_clears_shadowing_intermediate :: proc(t: ^testing.T) {
 		t_d.position = want
 		testing.expect(t, engine.scene_save(loaded, path))
 
-		reloaded := engine.scene_load_single_path(path)
+		reloaded := engine.scene_load(path)
 		if reloaded == nil { testing.expect(t, false, "reload"); return nil }
 
 		ons: ^engine.NestedScene
@@ -1842,7 +1842,7 @@ test_reresolve_duplicate_instances_stable :: proc(t: ^testing.T) {
 	if ea != nil do return
 	defer { _ = os.write_entire_file(testa_path, orig_a); delete(orig_a) }
 
-	loaded := engine.scene_load_single_path(testa_path)
+	loaded := engine.scene_load(testa_path)
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -1863,7 +1863,7 @@ test_reresolve_duplicate_instances_stable :: proc(t: ^testing.T) {
 		testing.expect(t, engine.scene_save(loaded, testa_path))
 		engine.sm_scene_destroy_or_unload(loaded)
 		engine.sm_scene_set_active(nil)
-		loaded = engine.scene_load_single_path(testa_path)
+		loaded = engine.scene_load(testa_path)
 		testing.expect(t, loaded != nil)
 		if loaded == nil do return
 		tc_mem.scene = loaded
@@ -1951,11 +1951,11 @@ test_additive_load_deep_overrides_no_dangling :: proc(t: ^testing.T) {
 
 	// Load several deep-override scenes additively (they coexist, sharing the
 	// transform/NS pools) — the editor's open path.
-	a := engine.scene_load_additive_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	a := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene", additive = true)
 	testing.expect(t, a != nil, "TestA loaded")
-	b := engine.scene_load_additive_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	b := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostVariant.scene", additive = true)
 	testing.expect(t, b != nil, "HostVariant loaded")
-	c := engine.scene_load_additive_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	c := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene", additive = true)
 	testing.expect(t, c != nil, "second TestA loaded")
 	tc_mem.scene = c
 
@@ -1987,7 +1987,7 @@ test_variant_loads_base_plus_overrides :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
 	testing.expect(t, loaded != nil, "VariantC.scene should load")
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -2033,7 +2033,7 @@ test_variant_inspector_host_and_override_lookup :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -2082,7 +2082,7 @@ test_variant_save_round_trip :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -2120,7 +2120,7 @@ test_variant_save_round_trip :: proc(t: ^testing.T) {
 	}
 
 	// Reload the saved variant and confirm the resolved tree is intact.
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -2151,7 +2151,7 @@ test_variant_edit_captures_override :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -2235,7 +2235,7 @@ test_create_scene_variant_file :: proc(t: ^testing.T) {
 	// the .meta via asset_db_refresh; load only needs the BASE guid, already
 	// indexed, so we skip the refresh — its crypto-RNG GUID mint isn't wired in
 	// the test context.)
-	loaded := engine.scene_load_single_path(out_path)
+	loaded := engine.scene_load(out_path)
 	testing.expect(t, loaded != nil, "created variant should load + resolve")
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -2289,7 +2289,7 @@ test_variant_nested_in_scene :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
 	testing.expect(t, loaded != nil, "HostVariant.scene should load")
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -2342,7 +2342,7 @@ test_variant_root_override_round_trip :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -2379,7 +2379,7 @@ test_variant_root_override_round_trip :: proc(t: ^testing.T) {
 	}
 
 	// Reload: the override is applied to the live root.
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -2406,7 +2406,7 @@ test_variant_root_component_override_round_trip :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/SpriteRootVariant.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/SpriteRootVariant.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -2422,7 +2422,7 @@ test_variant_root_component_override_round_trip :: proc(t: ^testing.T) {
 	lt.color = {0, 1, 0, 1}
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -2446,7 +2446,7 @@ test_variant_nested_in_scene_round_trip :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -2480,7 +2480,7 @@ test_variant_nested_in_scene_round_trip :: proc(t: ^testing.T) {
 		}
 	}
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -2515,10 +2515,10 @@ test_variant_nesting_cycle_does_not_crash :: proc(t: ^testing.T) {
 
 	// Load the cyclic variant directly, and the prefab that nests it. Neither
 	// should crash; both should return a finite scene.
-	v := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/CycleAVariant.scene")
+	v := engine.scene_load("moonhug/tests/fixtures/nested_scenes/CycleAVariant.scene")
 	testing.expect(t, v != nil, "cyclic variant should load without crashing")
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/CycleA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/CycleA.scene")
 	testing.expect(t, loaded != nil, "prefab nesting its own variant should load without crashing")
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -2550,7 +2550,7 @@ test_variant_nested_revert :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -2566,7 +2566,7 @@ test_variant_nested_revert :: proc(t: ^testing.T) {
 	// Override it in the host, save+reload so the override lands on the host NS.
 	ct.position = {7, 7, 7}
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -2620,7 +2620,7 @@ test_variant_nest_variant_round_trip :: proc(t: ^testing.T) {
 	defer teardown(tc_mem)
 
 	// Open VariantC (itself a variant of TestC).
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -2652,7 +2652,7 @@ test_variant_nest_variant_round_trip :: proc(t: ^testing.T) {
 	}
 
 	// Reload: both the variant's own content and the nested variant survive.
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -2685,7 +2685,7 @@ test_variant_nested_in_variant_edit_round_trip :: proc(t: ^testing.T) {
 	defer teardown(tc_mem)
 
 	// Open VariantC (itself a variant of TestC).
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -2737,7 +2737,7 @@ test_variant_nested_in_variant_edit_round_trip :: proc(t: ^testing.T) {
 
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path), "save should succeed")
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -2833,7 +2833,7 @@ test_prefab_chain_authoring_semantics :: proc(t: ^testing.T) {
 		testing.expect(t, captured, "authoring must capture the deep override on the root NS with the exact value")
 	}
 
-	loaded := engine.scene_load_single_path(tmp)
+	loaded := engine.scene_load(tmp)
 	testing.expect(t, loaded != nil, "bullet_Variant.scene should load")
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -2874,7 +2874,7 @@ test_prefab_chain_authoring_semantics :: proc(t: ^testing.T) {
 
 	testing.expect(t, engine.scene_save(loaded, tmp), "save should succeed")
 
-	reloaded := engine.scene_load_single_path(tmp)
+	reloaded := engine.scene_load(tmp)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -2955,7 +2955,7 @@ test_prefab_chain_authoring_semantics :: proc(t: ^testing.T) {
 		os.remove(strings.concatenate({fresh_path, ".meta"}, context.temp_allocator))
 	}
 	asset_pipeline.asset_db_refresh()
-	fresh := engine.scene_load_single_path(fresh_path)
+	fresh := engine.scene_load(fresh_path)
 	testing.expect(t, fresh != nil, "fresh host loads")
 	if fresh == nil do return
 	tc_mem.scene = fresh
@@ -3081,7 +3081,7 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
 }`
 	testing.expect(t, os.write_entire_file(host_path, transmute([]byte)host_json) == nil)
 	asset_pipeline.asset_db_refresh()
-	host := engine.scene_load_single_path(host_path)
+	host := engine.scene_load(host_path)
 	testing.expect(t, host != nil, "empty host loads")
 	if host == nil do return
 	tc_mem.scene = host
@@ -3098,7 +3098,7 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
 
 	// Edit the variant's own value for the same color and save it.
 	{
-		bv := engine.scene_load_single_path(bv_path)
+		bv := engine.scene_load(bv_path)
 		testing.expect(t, bv != nil, "variant loads")
 		if bv == nil do return
 		tc_mem.scene = bv
@@ -3110,7 +3110,7 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
 	}
 
 	// Fresh host: the host override still wins over the edited variant.
-	host2 := engine.scene_load_single_path(host_path)
+	host2 := engine.scene_load(host_path)
 	testing.expect(t, host2 != nil, "host reloads")
 	if host2 == nil do return
 	tc_mem.scene = host2
@@ -3166,7 +3166,7 @@ test_apply_entries_shallow_field_and_added_component :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -3195,7 +3195,7 @@ test_apply_entries_shallow_field_and_added_component :: proc(t: ^testing.T) {
 	testing.expect(t, rec_ok)
 
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -3275,7 +3275,7 @@ test_apply_entries_shallow_field_and_added_component :: proc(t: ^testing.T) {
 	}
 	engine.sm_scene_destroy_or_unload(reloaded)
 	engine.sm_scene_set_active(nil)
-	r2 := engine.scene_load_single_path(tc_mem.path)
+	r2 := engine.scene_load(tc_mem.path)
 	testing.expect(t, r2 != nil)
 	if r2 == nil do return
 	tc_mem.scene = r2
@@ -3319,7 +3319,7 @@ test_apply_entries_deep_added_component :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/TestA.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -3345,7 +3345,7 @@ test_apply_entries_deep_added_component :: proc(t: ^testing.T) {
 	testing.expect(t, rec_ok)
 
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -3454,7 +3454,7 @@ test_apply_variant_record_target :: proc(t: ^testing.T) {
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -3470,7 +3470,7 @@ test_apply_variant_record_target :: proc(t: ^testing.T) {
 	t_c.position = want_pos
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -3568,7 +3568,7 @@ test_apply_variant_owner_bake_clears_variant_override :: proc(t: ^testing.T) {
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -3584,7 +3584,7 @@ test_apply_variant_owner_bake_clears_variant_override :: proc(t: ^testing.T) {
 	t_c.position = want_pos
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
 
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -3684,7 +3684,7 @@ test_apply_variant_structural_record :: proc(t: ^testing.T) {
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
 
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -3710,7 +3710,7 @@ test_apply_variant_structural_record :: proc(t: ^testing.T) {
 	testing.expect(t, rec_ok)
 
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
-	reloaded := engine.scene_load_single_path(tc_mem.path)
+	reloaded := engine.scene_load(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
@@ -3783,7 +3783,7 @@ test_apply_variant_structural_record :: proc(t: ^testing.T) {
 	// And from a completely fresh load of the host scene.
 	engine.sm_scene_destroy_or_unload(reloaded)
 	engine.sm_scene_set_active(nil)
-	fresh := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	fresh := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
 	testing.expect(t, fresh != nil)
 	if fresh == nil do return
 	tc_mem.scene = fresh

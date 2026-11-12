@@ -129,7 +129,7 @@ test_prefabs_example_byte_stable :: proc(t: ^testing.T) {
 			disk, rerr := os.read_entire_file(path, context.temp_allocator)
 			testing.expectf(t, rerr == nil, "read %s", path)
 
-			s := engine.scene_load_single_path(path)
+			s := engine.scene_load(path)
 			testing.expectf(t, s != nil, "pass %d: load %s", pass, path)
 			if s == nil do continue
 			tc.scene = s
@@ -168,7 +168,7 @@ test_prefabs_example_no_spurious_overrides :: proc(t: ^testing.T) {
 	defer os.remove(tmp)
 
 	for path in _scene_paths() {
-		s := engine.scene_load_single_path(path)
+		s := engine.scene_load(path)
 		testing.expectf(t, s != nil, "load %s", path)
 		if s == nil do continue
 		tc.scene = s
@@ -224,7 +224,7 @@ test_prefabs_example_variant_edit_propagates :: proc(t: ^testing.T) {
 	new_color := [4]f32{0.111, 0.222, 0.333, 1}
 
 	// EDITOR FLOW: open the variant single, edit inherited content, save.
-	variant := engine.scene_load_single_path(bv_path)
+	variant := engine.scene_load(bv_path)
 	testing.expectf(t, variant != nil, "%s should load", bv_path)
 	if variant == nil do return
 	tc.scene = variant
@@ -236,7 +236,7 @@ test_prefabs_example_variant_edit_propagates :: proc(t: ^testing.T) {
 	testing.expect(t, engine.scene_save(variant, bv_path), "variant save")
 
 	// A fresh host load must show the edit in its nested copy.
-	host := engine.scene_load_single_path(host_path)
+	host := engine.scene_load(host_path)
 	testing.expect(t, host != nil, "host should load")
 	if host == nil do return
 	tc.scene = host
@@ -333,7 +333,7 @@ test_prefabs_example_deep_override_revert :: proc(t: ^testing.T) {
 
 	vpath, vok := _find_root_variant_path(t)
 	if !vok do return
-	loaded := engine.scene_load_single_path(vpath)
+	loaded := engine.scene_load(vpath)
 	testing.expectf(t, loaded != nil, "%s loads", vpath)
 	if loaded == nil do return
 	tc.scene = loaded

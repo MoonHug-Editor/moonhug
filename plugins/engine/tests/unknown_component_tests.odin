@@ -41,7 +41,7 @@ test_unknown_component_survives_resave :: proc(t: ^testing.T) {
 	testing.expect(t, werr == nil, "fixture write should succeed")
 	defer os.remove(path)
 
-	s := engine.scene_load_single_path(path)
+	s := engine.scene_load(path)
 	testing.expect(t, s != nil, "scene should load despite the unknown component")
 	if s == nil do return
 	testing.expect_value(t, len(s.unknown_components), 1)

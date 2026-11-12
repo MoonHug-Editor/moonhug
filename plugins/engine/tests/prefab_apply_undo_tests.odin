@@ -37,7 +37,7 @@ test_prefab_apply_undoes_and_redoes :: proc(t: ^testing.T) {
 	// An instance with a field override and an added component, saved and
 	// reloaded so both are records on the instance (same shape as
 	// test_apply_entries_shallow_field_and_added_component).
-	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	loaded := engine.scene_load("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	sprite_tH := find_transform_named(&tc.world, loaded, "SpriteA", true)
@@ -58,7 +58,7 @@ test_prefab_apply_undoes_and_redoes :: proc(t: ^testing.T) {
 	)
 	testing.expect(t, rec_ok)
 	testing.expect(t, engine.scene_save(loaded, host_path))
-	scene := engine.scene_load_single_path(host_path)
+	scene := engine.scene_load(host_path)
 	testing.expect(t, scene != nil, "reloads the saved host scene")
 	if scene == nil do return
 
