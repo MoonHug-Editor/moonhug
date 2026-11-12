@@ -2,7 +2,8 @@ package run_debug
 
 import rc "moonhug:editor/runconfig"
 
-SCENE :: "packages/app/assets/demo_menu/menu.scene"
+// The boot scene by its asset guid, so a rename or a move keeps the config valid.
+SCENE :: "b794d34b-3067-4b7e-ac2d-5cd46c16c5c1" // demo_menu.scene
 
 main :: proc() {
 	rc.play({

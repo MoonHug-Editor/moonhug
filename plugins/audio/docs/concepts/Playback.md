@@ -9,7 +9,7 @@ How the plugin plays sound. The code is `playback.odin`, `clip.odin` and `spatia
 
 ## The mixer and its tracks
 
-- One SDL3_mixer mixer, made on the first play. Each playing [AudioSource](../components/AudioSource.md) owns one track on it, and each one-shot gets a track of its own.
+- One SDL3_mixer mixer. The engine start opens its playback device (`EngineInit`), so the first sound does not wait for the device. Each playing [AudioSource](../components/AudioSource.md) owns one track on it, and each one-shot gets a track of its own.
 - `clip_load(guid)` loads a clip's artifact once and caches it by guid, the way the engine caches textures. A missing artifact is imported on demand.
 - Every frame (`@(update)`) the plugin finds the listener, starts `play_on_awake` sources, applies each playing source's volume, pitch, mute, fade and pan, and frees finished one-shots. It runs in play mode in the editor and always in a game.
 - Leaving play mode stops every source and clears every one-shot.

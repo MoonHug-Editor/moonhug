@@ -33,7 +33,7 @@ The mhgui plugin draws UI. It adds the Image graphic, the Button control and the
 
 ## Building UI in code
 
-Plain object and component creation: `transform_new`, then `transform_add_comp` for RectTransform, CanvasRenderer and the graphic, with the fields set directly. Text needs a font and the SDF material (`text.default_font_guid`, `text.default_material_guid`). The app's demo menu is built this way: `menu.scene` holds a canvas and a List with a vertical LayoutGroup, and `plugins/app/demo_menu.odin` adds one Text row per scene, each the graphic of a Button.
+Plain object and component creation: `transform_new`, then `transform_add_comp` for RectTransform, CanvasRenderer and the graphic, with the fields set directly. Text needs a font and the SDF material (`text.default_font_guid`, `text.default_material_guid`). The app's demo menu is built this way: `demo_menu.scene` holds a canvas and a List with a vertical LayoutGroup, and `plugins/app/demo_menu.odin` adds one Text row per scene, each the graphic of a Button.
 
 ## Extending
 

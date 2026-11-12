@@ -102,11 +102,14 @@ standalone_catalog_init :: proc() {
 	}
 }
 
-// Loads the boot scene: the program argument, else the catalog's exported
+// Loads the boot scene: the program argument (a path or an asset guid), else the catalog's exported
 // boot scene, else the Player setting's fallback. False, with the reason
 // logged, when none names a file.
 standalone_load_boot_scene :: proc() -> bool {
 	path := _scene_arg
+	if guid, gerr := uuid.read(path); gerr == nil {
+		path, _ = asset_db_get_path(guid)
+	}
 	if path == "" {
 		if boot := asset_db_boot_scene(); boot != {} {
 			path, _ = asset_db_get_path(uuid.Identifier(boot))

@@ -132,7 +132,7 @@ A package that can run as a program (the `app` package, a future headless server
           package_path = "moonhug/packages/app",
           out          = "builds/app_debug",
           flags        = {"-debug"},
-      }, "packages/app/assets/demo_menu/menu.scene")
+      }, "b794d34b-3067-4b7e-ac2d-5cd46c16c5c1") // demo_menu.scene, by asset guid
   }
   ```
 

@@ -113,8 +113,8 @@ scene_arg :: proc() -> string {
 // THE one-call config: build, export the data dir, run the export. The
 // modifiers (see FLAGS) turn the same call into a dev run, a run of the last
 // build, or a build with no run, so one config file and one toolbar button
-// cover every way of playing. `scene` is the pinned boot scene, moonhug-
-// relative. An invoker scene (the editor's live snapshot) is what the run
+// cover every way of playing. `scene` is the pinned boot scene: its asset
+// guid, or its moonhug-relative path. An invoker scene (the editor's live snapshot) is what the run
 // boots, and its assets are staged beside the pinned scene's. Does not
 // return.
 play :: proc(cfg: Config, scene := "") {
@@ -169,7 +169,7 @@ write_dev_catalog :: proc() -> bool {
 // Stage the build's data dir: <out>_data beside the binary (Unity's
 // Game + Game_Data layout), copied from the project's files through a
 // catalog built from them, with a relocatable catalog written beside it. `scene`
-// is the config's pinned boot scene (moonhug-relative asset path), stamped
+// is the config's pinned boot scene (asset guid or moonhug-relative path), stamped
 // as the export's boot scene, so a bare launch boots it. An invoker scene
 // (scene_arg, the editor's live snapshot, which the run procs forward)
 // stages its assets too: it is not a catalog entry, so without that the run

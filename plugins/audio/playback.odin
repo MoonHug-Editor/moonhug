@@ -1,8 +1,9 @@
 package audio
 
-// Playback: one lazily created SDL3_mixer device mixer, one track per
-// playing AudioSource. Headless contexts (tests, tooling) fall back to a
-// deviceless mixer — loading and decoding work, nothing is audible.
+// Playback: one SDL3_mixer device mixer, opened at engine start, one track
+// per playing AudioSource. Headless contexts (tests, tooling) run no engine
+// start: the first use creates a deviceless mixer. Loading and decoding work,
+// nothing is audible.
 //
 // The @(update) subscriber lands in the generated per-frame dispatcher, so
 // sources tick in play mode (editor) and always (app).
@@ -68,6 +69,13 @@ _mixer_ensure :: proc() -> bool {
 	if m == nil do m = _create_deviceless_mixer()
 	_audio_state.mixer = m
 	return m != nil
+}
+
+// Opens the playback device at engine start. Opening it takes about 150 ms,
+// so the first clip load or the first sound does not pay for it mid-game.
+@(phase={key=EngineInit, order=20})
+engine_init_audio_device :: proc() {
+	_mixer_ensure()
 }
 
 // Start (or restart) the source's clip on its track.

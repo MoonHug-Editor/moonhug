@@ -106,8 +106,9 @@ save :: proc(cf: ^File, path: string) -> bool {
 // - artifacts read from the artifacts/ dir beside the source catalog. That
 //   rule covers both layouts: library/catalog.json sits beside
 //   library/artifacts, an exported catalog sits beside its artifacts/.
-// - `boot_scene` is an entry path resolved to its guid; "" skips the stamp
-//   and a path not in the catalog fails the export.
+// - `boot_scene` is the guid of an entry, or an entry path resolved to its
+//   guid. "" skips the stamp. A guid or a path that is not in the catalog
+//   fails the export.
 // - `extra_roots` are files that are not catalog entries but run against the
 //   export, such as the editor's live-scene snapshot: their references ship,
 //   the boot scene stamp stays. Read through `root` like entry sources. A
@@ -140,7 +141,11 @@ export_from :: proc(src_catalog: string, data_dir: string, boot_scene := "", roo
 export :: proc(src: ^File, src_dir: string, data_dir: string, boot_scene := "", root := "", extra_roots: []string = nil) -> bool {
 	boot_guid: string
 	if boot_scene != "" {
-		for guid_str, entry in src.assets do if entry.path == boot_scene do boot_guid = guid_str
+		if boot_scene in src.assets {
+			boot_guid = boot_scene
+		} else {
+			for guid_str, entry in src.assets do if entry.path == boot_scene do boot_guid = guid_str
+		}
 		if boot_guid == "" {
 			fmt.eprintfln("[Catalog] export: boot scene %s is not in the catalog", boot_scene)
 			return false

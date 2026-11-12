@@ -101,7 +101,9 @@ test_asset_catalog_export_is_self_contained :: proc(t: ^testing.T) {
 	// The editor's auto-maintained catalog, then the config-side export from it.
 	testing.expect(t, catalog.build_to_file("", {src_dir}, engine.library_dir(), engine.asset_catalog_path()), "the catalog builds from the files")
 	engine.asset_db_shutdown()
-	testing.expect(t, catalog.export_from(engine.asset_catalog_path(), data_dir, boot_scene = png),
+	// The boot asset by its guid, the way a run config names it. The other
+	// exports here name it by path.
+	testing.expect(t, catalog.export_from(engine.asset_catalog_path(), data_dir, boot_scene = uuid.to_string(raw_guid, context.temp_allocator)),
 		"export from the catalog should succeed")
 
 	// Sever the working tree: source, meta and library all gone.

@@ -1,6 +1,6 @@
 package app
 
-// In-game demo hub on mhgui. The static part is authored in menu.scene: a
+// In-game demo hub on mhgui. The static part is authored in demo_menu.scene: a
 // canvas, a List node with a vertical LayoutGroup and the title row; the
 // DemoMenu component points at the List. At play one Text row per scene
 // authored on the component is created under the List, labels from the
