@@ -13,6 +13,7 @@ import im "moonhug:external/odin-imgui"
 import "moonhug:editor/inspector"
 import "moonhug:packages/engine/editor/drawers"
 import "moonhug:editor/subassets"
+import assets "moonhug:libs/assets"
 import sprites "moonhug:packages/sprites"
 
 _TEXTURE_EXTS := [?]string{".png", ".jpg", ".jpeg", ".bmp"}
@@ -32,6 +33,25 @@ sprites_inspector_install :: proc() {
 			open = _open_sprite_editor_at,
 		})
 	}
+}
+
+// Publishes a texture's sprites to the asset database, from the import
+// settings in its .meta: what a search finds without loading the texture.
+@(provider_install)
+sprites_index_install :: proc() {
+	for ext in _TEXTURE_EXTS do assets.asset_db_add_indexer(ext, _index_texture_sprites, reads_file = false)
+}
+
+@(private = "file")
+_index_texture_sprites :: proc(guid: engine.Asset_GUID, path: string, data: []byte) {
+	settings, ok := engine.asset_pipeline_get_settings(path, context.temp_allocator)
+	if !ok do return
+	ts, is_texture := settings.(engine.TextureSettings)
+	if !is_texture || len(ts.sprites) == 0 do return
+	list := make([dynamic]assets.Asset_Sub_Info, 0, len(ts.sprites), context.temp_allocator)
+	// A slice with no id yet cannot be referenced: the Sprite Editor gives it one.
+	for s in ts.sprites do if s.id != 0 do append(&list, assets.Asset_Sub_Info{id = s.id, name = s.name, kind = "sprite"})
+	assets.asset_db_sub_assets_set(guid, list[:])
 }
 
 _texture_sub_assets :: proc(path: string, allocator: runtime.Allocator) -> []subassets.Sub_Asset {

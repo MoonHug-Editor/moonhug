@@ -31,7 +31,28 @@ _is_model_path :: proc(path: string) -> bool {
 mesh_editor_install :: proc() {
 	for ext in _MODEL_EXTS {
 		subassets.register(ext, subassets.Provider{list = _model_sub_assets})
+		// Its sub-assets in the asset database, for a search.
+		assets.asset_db_add_indexer(ext, _index_model_sub_assets, reads_file = false)
 	}
+}
+
+// Publishes a model's sub-assets to the asset database, from the import
+// settings in its .meta: what a search finds without loading the model. The
+// same rows _model_sub_assets lists, each with what it is as its kind.
+@(private = "file")
+_index_model_sub_assets :: proc(guid: engine.Asset_GUID, path: string, data: []byte) {
+	settings, ok := engine.asset_pipeline_get_settings(path, context.temp_allocator)
+	if !ok do return
+	ms, is_mesh := settings.(engine.MeshSettings)
+	if !is_mesh do return
+	list := make([dynamic]assets.Asset_Sub_Info, 0, len(ms.parts) + len(ms.clips) + len(ms.hull_sets), context.temp_allocator)
+	for p in ms.parts do append(&list, assets.Asset_Sub_Info{id = p.id, name = p.name, kind = "mesh"})
+	for c in ms.clips {
+		name := c.orphan ? fmt.tprintf("%s (missing)", c.name) : c.name
+		append(&list, assets.Asset_Sub_Info{id = c.id, name = name, kind = "anim"})
+	}
+	for st in ms.hull_sets do append(&list, assets.Asset_Sub_Info{id = st.id, name = hull_set_name(guid, st), kind = "hulls"})
+	assets.asset_db_sub_assets_set(guid, list[:])
 }
 
 // Parts first, then the clips baked from the model's animations

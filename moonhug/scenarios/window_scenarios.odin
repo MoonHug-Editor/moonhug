@@ -350,8 +350,101 @@ project_search_finds_assets_by_type_and_root_component :: proc(t: ^testing.T) {
 	testing.expect(t, !listed(r, "bare.scene") && !listed(r, "demo.scene"), "and no scene whose root has none")
 	testing.expect(t, !listed(r, "Marble  ("), "a sub-asset has no root object")
 
-	search(r, &typed, "t:mesh")
-	testing.expect(t, listed(r, "Sphere.glb"), "t:mesh is the importer's name: the models")
+	search(r, &typed, "t:mesh sphere")
+	testing.expect(t, listed(r, "Sphere.glb"), "t:mesh is the importer's name: the model")
+	testing.expect(t, listed(r, "Sphere  ("), "and the model's part, a sub-asset the model's import settings list")
+	testing.expect(t, !listed(r, "Cube.glb"), "the name word still narrows it")
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	editor_quit(r)
+}
+
+// The arrow keys step over sub-asset rows as over file rows: a search result
+// that is a sub-asset, and the rows and cells under an unfolded file, in the
+// list and in the grid. Each step is read from the Project Inspector, which
+// shows the selected sub-asset's own rows.
+@(test)
+project_keys_step_over_sub_asset_rows :: proc(t: ^testing.T) {
+	r := begin(t)
+	SCENE :: "assets/demo.scene"
+	meshes :: "plugins/essentials/assets/meshes/"
+	for file in ([]string{"Sphere.glb", "Sphere.glb.meta", "Cube.glb", "Cube.glb.meta"}) {
+		project_copy(r, fmt.tprintf("%s%s", meshes, file), fmt.tprintf("assets/%s", file))
+	}
+	project_copy(r, "plugins/app/assets/demo_sub_assets/demo_sub_assets.scene", SCENE)
+	editor_start(r)
+	window_open(r, "Project")
+	window_open(r, "Project Inspector")
+	frames(r, 5)
+	// A material's rows are shown: a sub-asset of the scene is selected.
+	material_shown :: proc(r: ^Run) -> bool {
+		frames(r, 3)
+		_, ok := item_rect(r, "Project Inspector", "alpha_clip")
+		return ok
+	}
+	down :: proc(r: ^Run) {
+		call(r, "run_command", `{"command":"Project/Select Down"}`)
+	}
+
+	// A search result that is a sub-asset.
+	field, found := item_rect(r, "Project", "Search: name")
+	if !testing.expect(t, found, "the Project window has its search field") do return
+	click(r, field.x + 4, field.y + field[3] / 2)
+	call(r, "input", `{"steps":[{"type":"text","text":"marble"},{"type":"wait","frames":3}]}`)
+	testing.expect(t, !material_shown(r), "nothing is selected yet")
+	down(r)
+	testing.expect(t, material_shown(r), "Down selects the sub-asset result")
+	for _ in 0 ..< len("marble") {
+		call(r, "input", `{"steps":[{"type":"key","name":"Backspace"},{"type":"key","name":"Backspace","down":false}]}`)
+	}
+
+	run :: proc(r: ^Run, command: string) {
+		call(r, "run_command", fmt.tprintf(`{{"command":%q}}`, command))
+	}
+
+	// The list's rows, as in the Hierarchy. Right unfolds the selected file,
+	// and with nothing to unfold it is the next row. Left steps from a
+	// sub-asset back to its file, folds the file, and with nothing to fold it
+	// is the previous row. The scene's first sub-asset is a noise map, its
+	// second a material.
+	call(r, "editor_setting", `{"name":"project_zoom","value":"0"}`)
+	select_asset(r, SCENE)
+	testing.expect(t, !material_shown(r), "list: the scene file is selected")
+	run(r, "Project/Expand")
+	run(r, "Project/Expand")
+	testing.expect(t, !material_shown(r), "list: Right unfolds the file, Right again is the next row, a noise map")
+	run(r, "Project/Expand")
+	testing.expect(t, material_shown(r), "list: Right on a sub-asset is the next row, a material")
+	run(r, "Project/Collapse")
+	testing.expect(t, !material_shown(r), "list: Left on a sub-asset selects its file")
+	run(r, "Project/Collapse")
+	run(r, "Project/Expand")
+	run(r, "Project/Expand")
+	run(r, "Project/Expand")
+	testing.expect(t, material_shown(r), "list: Left folds the file, and three Rights unfold it and reach the material again")
+	for _ in 0 ..< 2 do run(r, "Project/Collapse")
+	run(r, "Project/Collapse")
+	down(r)
+	testing.expect(t, !material_shown(r), "list: Left to the file, Left folds it, Left is the row before it: Down is the folded file")
+
+	// The grid's cells. Left and Right move between cells, and the file
+	// unfolds and folds on their Ctrl chords.
+	call(r, "editor_setting", `{"name":"project_zoom","value":"0.5"}`)
+	select_asset(r, SCENE)
+	run(r, "Project/Unfold Sub-assets")
+	// A second Ctrl+Right on the unfolded file does nothing: the file stays selected.
+	run(r, "Project/Unfold Sub-assets")
+	run(r, "Project/Unfold Sub-assets")
+	run(r, "Project/Expand")
+	testing.expect(t, !material_shown(r), "grid: Ctrl+Right unfolds the file, Right steps onto the next cell, the noise map")
+	run(r, "Project/Expand")
+	testing.expect(t, material_shown(r), "grid: Right again steps onto the material's cell")
+	run(r, "Project/Collapse")
+	run(r, "Project/Collapse")
+	testing.expect(t, !material_shown(r), "grid: Left twice steps back onto the file's cell")
+	run(r, "Project/Fold Sub-assets")
+	run(r, "Project/Expand")
+	run(r, "Project/Expand")
+	testing.expect(t, !material_shown(r), "grid: Ctrl+Left folds the file, so Right steps over the next files")
 	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
 	editor_quit(r)
 }

@@ -64,6 +64,10 @@ Project_Window :: struct {
     tree_reveal: bool,
     scroll_to_tree_sel: bool,
     scroll_to_list_sel: bool,
+    // The list pane drew a grid at its last draw, this many cells in a row:
+    // the arrow keys then move between cells, Up and Down by a row of them.
+    // 0: it drew rows.
+    grid_cols: int,
     // Which pane keyboard input routes to, set when a pane is clicked or
     // hovered, toggled by Tab.
     active_pane: Project_Pane,
@@ -191,6 +195,7 @@ Project_Row :: struct {
     path:   string, // full path; drives selection/rename/activation (display
                     // names collide across folders in search results)
     is_dir: bool,
+    sub:    core.Local_ID, // not 0: the sub-asset of the file at `path` with this id
 }
 
 // Which pane the keymap's commands act on. Tracked here rather than through
@@ -255,7 +260,9 @@ _project_set_selected :: proc(path: string) {
 _project_apply_range :: proc(target: string) {
     anchor := projectWindowData.selectedFile
     a_idx, t_idx := -1, -1
+    // The range runs between file rows. A sub-asset's row between them joins it.
     for r, i in _pv.list_rows {
+        if r.sub != 0 do continue
         if r.path == anchor do a_idx = i
         if r.path == target do t_idx = i
     }
@@ -266,7 +273,7 @@ _project_apply_range :: proc(target: string) {
     sel_proj_clear()
     step := 1 if a_idx <= t_idx else -1
     for i := a_idx; ; i += step {
-        sel_proj_add(_pv.list_rows[i].path)
+        sel_proj_add(_pv.list_rows[i].path, _pv.list_rows[i].sub)
         if i == t_idx do break
     }
     _project_set_active(target)
@@ -433,7 +440,7 @@ _project_open_selected :: proc() {
     sel := projectWindowData.selectedFile
     if sel == "" do return
     for r in _pv.list_rows {
-        if r.path != sel do continue
+        if r.path != sel || r.sub != 0 do continue
         if r.is_dir {
             _project_enter_dir(r.path)
         } else {
@@ -805,6 +812,10 @@ _project_list_ensure_selection :: proc() {
     for r in _pv.list_rows {
         if r.path == projectWindowData.selectedFile do return // already valid
     }
+    if _pv.list_rows[0].sub != 0 {
+        _project_list_select(0, false)
+        return
+    }
     _project_set_selected(_pv.list_rows[0].path)
     _pv.scroll_to_list_sel = true
 }
@@ -855,6 +866,7 @@ _project_draw_grid :: proc(path: string, cell: f32) {
     // inside the pane instead of clipping on its left border.
     lead := pad * 0.5
     cols := max(int((im.GetContentRegionAvail().x - lead + pad) / (cell + pad)), 1)
+    _pv.grid_cols = cols
     col := 0
     for pass in 0 ..< 2 {
         for entry in entries {
@@ -876,6 +888,7 @@ _project_draw_grid :: proc(path: string, cell: f32) {
                 if len(sub) > 0 {
                     if raw_guid, gok := assets.asset_db_get_guid(entry_path); gok {
                         guid := core.Asset_GUID(raw_guid)
+                        _project_list_rows_add_subs(entry_path, sub)
                         for s, si in sub {
                             if col > 0 do im.SameLine()
                             else do im.SetCursorPosX(im.GetCursorPosX() + lead)
@@ -908,6 +921,7 @@ _project_draw_grid_sub_cell :: proc(parent_path: string, guid: core.Asset_GUID, 
         _project_sub_asset_right_click(parent_path, s)
         _project_sub_asset_drag(guid, s, fmt.ctprintf("%s%s", icons.ICON_MD_IMAGE, s.name))
         _project_item_ping_flash(parent_path, s.id)
+        _project_sub_scroll_to_selection(is_selected)
     }
 
     dl := im.GetWindowDrawList()
@@ -1141,6 +1155,7 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool,
     }
 
     if len(sub) > 0 && _pv.expanded[full_path] {
+        if !listed do _project_list_rows_add_subs(full_path, sub)
         _project_draw_sub_asset_rows(full_path, sub, sub_provider, arrow_w)
     }
 }
@@ -1233,6 +1248,15 @@ _project_draw_sub_asset_rows :: proc(parent_path: string, sub: []subassets.Sub_A
     im.Unindent(indent * 2)
 }
 
+// After a sub-asset's row or cell, the LAST item: the keys moved the selection
+// onto it, so it scrolls into view, as a file's row does.
+@(private = "file")
+_project_sub_scroll_to_selection :: proc(selected: bool) {
+    if !selected || !_pv.scroll_to_list_sel do return
+    im.SetScrollHereY()
+    _pv.scroll_to_list_sel = false
+}
+
 // One sub-asset's row: under its unfolded file, or as a search hit. The
 // caller pushes an id of its own around it.
 _project_draw_sub_asset_row :: proc(parent_path: string, guid: core.Asset_GUID, s: subassets.Sub_Asset, provider: subassets.Provider, label: cstring) {
@@ -1243,6 +1267,7 @@ _project_draw_sub_asset_row :: proc(parent_path: string, guid: core.Asset_GUID, 
     selected := sel_proj_is_sub(parent_path, s.id)
     pressed := im.Selectable(label, selected, {.AllowDoubleClick})
     if pressed do _project_sub_asset_clicked(parent_path, guid, s, provider)
+    _project_sub_scroll_to_selection(_pv.active_pane == .List && selected)
     _project_sub_asset_right_click(parent_path, s)
     _project_sub_asset_drag(guid, s, label)
     _project_item_ping_flash(parent_path, s.id)
@@ -1341,19 +1366,53 @@ _project_draw_search_results :: proc(query: string) -> int {
     }
     _project_draw_rows(items[:])
 
-    // Sub-asset hits: the row a file's unfolded sub-asset has, with its file.
+    // Sub-asset hits: the row a file's unfolded sub-asset has, with its file
+    // beside its name. Every one joins the keyboard navigation list, and only
+    // the ones on screen are drawn: a row asks its file's provider for the
+    // sub-asset, which may load the file (a texture's sprites).
+    subs := make([dynamic]Project_Search_Hit, 0, len(hits), context.temp_allocator)
+    for h in hits do if h.sub != 0 {
+        append(&subs, h)
+        // Once in the navigation list: an unfolded file hit listed it already.
+        listed := false
+        if _pv.expanded[h.path] {
+            for r in _pv.list_rows do if r.sub == h.sub && r.path == h.path {
+                listed = true
+                break
+            }
+        }
+        if !listed do _project_list_row_add(h.sub_name, h.path, false, h.sub)
+    }
+    if len(subs) == 0 do return len(hits)
     im.PushIDStr("##sub_hits", nil)
-    for h, i in hits {
-        if h.sub == 0 do continue
-        raw_guid, known := assets.asset_db_get_guid(h.path)
-        provider, has := subassets.find(strings.to_lower(filepath.ext(h.path), context.temp_allocator))
-        if !known || !has do continue
-        display := h.path
-        if strings.has_prefix(h.path, prefix) do display = h.path[len(prefix):]
-        im.PushIDInt(c.int(i))
-        label := fmt.ctprintf("%s%s  (%s)", icons.ICON_MD_IMAGE, h.sub_name, display)
-        _project_draw_sub_asset_row(h.path, core.Asset_GUID(raw_guid), subassets.Sub_Asset{id = h.sub, name = h.sub_name, kind = h.sub_kind}, provider, label)
-        im.PopID()
+    clipper: im.ListClipper
+    im.ListClipper_Begin(&clipper, i32(len(subs)))
+    if _pv.scroll_to_list_sel && _pv.active_pane == .List {
+        for h, i in subs do if sel_proj_is_sub(h.path, h.sub) do im.ListClipper_IncludeItemByIndex(&clipper, i32(i))
+    }
+    for im.ListClipper_Step(&clipper) {
+        for i in clipper.DisplayStart ..< clipper.DisplayEnd {
+            h := subs[i]
+            raw_guid, known := assets.asset_db_get_guid(h.path)
+            provider, has := subassets.find(strings.to_lower(filepath.ext(h.path), context.temp_allocator))
+            display := h.path
+            if strings.has_prefix(h.path, prefix) do display = h.path[len(prefix):]
+            label := fmt.ctprintf("%s%s  (%s)", icons.ICON_MD_IMAGE, h.sub_name, display)
+            if !known || !has {
+                im.TextDisabled("%s", label)
+                continue
+            }
+            // The provider's own entry, with its preview. The database's when
+            // the provider does not list it now.
+            entry := subassets.Sub_Asset{id = h.sub, name = h.sub_name, kind = h.sub_kind}
+            for s in provider.list(h.path, context.temp_allocator) do if s.id == h.sub {
+                entry = s
+                break
+            }
+            im.PushIDInt(c.int(i))
+            _project_draw_sub_asset_row(h.path, core.Asset_GUID(raw_guid), entry, provider, label)
+            im.PopID()
+        }
     }
     im.PopID()
     return len(hits)
@@ -1414,7 +1473,13 @@ _Project_List_Item :: struct {
 // one being renamed) all draw.
 @(private = "file")
 _project_draw_rows :: proc(items: []_Project_List_Item) {
-    for it in items do _project_list_row_add(it.display, it.path, it.is_dir)
+    for it in items {
+        _project_list_row_add(it.display, it.path, it.is_dir)
+        if _pv.expanded[it.path] {
+            sub, _ := _project_sub_assets(it.path, it.is_dir)
+            _project_list_rows_add_subs(it.path, sub)
+        }
+    }
     uneven := _pv.rename_active && !_pv.rename_in_tree
     if !uneven {
         for it in items do if _pv.expanded[it.path] {
@@ -1628,6 +1693,7 @@ project_window_draw :: proc(w: ^wnd.Window) {
 
     clear(&_pv.list_rows)
     virtual.arena_free_all(&_pv.list_arena)
+    _pv.grid_cols = 0
 
     // Where the list is, or what the selection is: above the rows, where
     // the search box used to sit. Text height, not frame height — nothing
@@ -1713,9 +1779,16 @@ _project_tree_row_add :: proc(path: string, open: bool) {
 }
 
 @(private = "file")
-_project_list_row_add :: proc(name, path: string, is_dir: bool) {
+_project_list_row_add :: proc(name, path: string, is_dir: bool, sub: core.Local_ID = 0) {
     a := virtual.arena_allocator(&_pv.list_arena)
-    append(&_pv.list_rows, Project_Row{name = strings.clone(name, a), path = strings.clone(path, a), is_dir = is_dir})
+    append(&_pv.list_rows, Project_Row{name = strings.clone(name, a), path = strings.clone(path, a), is_dir = is_dir, sub = sub})
+}
+
+// The rows of an unfolded file's sub-assets join the keyboard navigation
+// list after their file's row, in the order they are drawn.
+@(private = "file")
+_project_list_rows_add_subs :: proc(path: string, sub: []subassets.Sub_Asset) {
+    for s in sub do _project_list_row_add(s.name, path, false, s.id)
 }
 
 // The row index of the shown folder in the tree, -1 for none.
@@ -1728,7 +1801,8 @@ _project_tree_index :: proc() -> int {
 // The row index of the active selection in the list, -1 for none.
 @(private = "file")
 _project_list_index :: proc() -> int {
-    for r, i in _pv.list_rows do if r.path == projectWindowData.selectedFile do return i
+    _, sub, _ := _project_selected_sub()
+    for r, i in _pv.list_rows do if r.path == projectWindowData.selectedFile && r.sub == sub do return i
     return -1
 }
 
@@ -1744,11 +1818,17 @@ _project_tree_select :: proc(idx: int) {
 // stepped-onto row joins the selection and becomes active.
 @(private = "file")
 _project_list_select :: proc(idx: int, extend: bool) {
-    path := _pv.list_rows[idx].path
-    if extend {
-        sel_proj_add(path)
+    path, sub := _pv.list_rows[idx].path, _pv.list_rows[idx].sub
+    switch {
+    case extend:
+        sel_proj_add(path, sub)
         _project_set_active(path)
-    } else {
+    case sub != 0:
+        // A sub-asset's row: the entry is {file, sub-asset}, and the active
+        // file stays its file, as a click on the row does.
+        sel_proj_only(path, sub)
+        _project_set_active(path)
+    case:
         _project_set_selected(path)
     }
     _project_inspectors_refresh()
@@ -1756,7 +1836,8 @@ _project_list_select :: proc(idx: int, extend: bool) {
 }
 
 // Up and Down step through the active pane's rows. With nothing selected
-// both land on the first row.
+// both land on the first row. In the grid they move by a row of cells: to
+// the cell above or below, or to the last cell from the row above it.
 @(private = "file")
 _project_nav_step :: proc(step: int, extend: bool) {
     switch _pv.active_pane {
@@ -1770,15 +1851,66 @@ _project_nav_step :: proc(step: int, extend: bool) {
             _project_tree_select(cur + step)
         }
     case .List:
-        n := len(_pv.list_rows)
-        if n == 0 do return
-        cur := _project_list_index()
-        if cur == -1 {
-            _project_list_select(0, false)
-        } else if cur + step >= 0 && cur + step < n {
-            _project_list_select(cur + step, extend)
-        }
+        _project_list_step(step * max(_pv.grid_cols, 1), extend)
     }
+}
+
+// Moves the list pane's selection by `by` rows or cells.
+@(private = "file")
+_project_list_step :: proc(by: int, extend: bool) {
+    n := len(_pv.list_rows)
+    if n == 0 do return
+    cur := _project_list_index()
+    if cur == -1 {
+        _project_list_select(0, false)
+        return
+    }
+    to := cur + by
+    // Down from the row above the grid's last, shorter row: its last cell.
+    if to >= n && by > 1 && cur / by < (n - 1) / by do to = n - 1
+    if to >= 0 && to < n do _project_list_select(to, extend)
+}
+
+// The selected row of the list pane when it is a file with sub-assets, or a
+// sub-asset: the file, and whether its sub-assets are unfolded.
+@(private = "file")
+_project_list_foldable :: proc() -> (cur: int, path: string, on_sub: bool, open: bool, ok: bool) {
+    cur = _project_list_index()
+    if cur == -1 do return
+    row := _pv.list_rows[cur]
+    if row.is_dir do return
+    sub, _ := _project_sub_assets(row.path, false)
+    if len(sub) == 0 do return
+    return cur, row.path, row.sub != 0, _pv.expanded[row.path], true
+}
+
+// Unfolds the selected file's sub-assets. False when there is nothing to
+// unfold: the row is a folder, a sub-asset, a file without sub-assets, or a
+// file already unfolded.
+@(private = "file")
+_project_list_unfold :: proc() -> bool {
+    _, path, on_sub, open, ok := _project_list_foldable()
+    if !ok || on_sub || open do return false
+    _project_unfold_sub_assets(path)
+    return true
+}
+
+// Folds the selected file's sub-assets, or from a sub-asset selects its
+// file. False when the row is neither: a folder, a file without sub-assets,
+// or a file already folded.
+@(private = "file")
+_project_list_fold :: proc() -> bool {
+    _, path, on_sub, open, ok := _project_list_foldable()
+    if !ok do return false
+    if on_sub {
+        _project_set_selected(path)
+        _project_inspectors_refresh()
+        _pv.scroll_to_list_sel = true
+        return true
+    }
+    if !open do return false
+    _pv.expanded[path] = false
+    return true
 }
 
 @(command={name="Project/Select Down", palette=false, help="Selects the next row"})
@@ -1794,9 +1926,18 @@ project_extend_down :: proc() { _project_nav_step(1, true) }
 @(command={name="Project/Extend Selection Up", palette=false, help="Adds the previous row to the selection"})
 project_extend_up :: proc() { _project_nav_step(-1, true) }
 
-// Right opens a closed folder and steps into an open one.
-@(command={name="Project/Expand", enabled=project_tree_active, palette=false, help="Opens the selected folder, or steps into it"})
+// Right, by where the keyboard is:
+//   - the folder tree: opens a closed folder and steps into an open one
+//   - the list's rows: unfolds the selected file's sub-assets. With nothing
+//     to unfold, the next row, as in the Hierarchy
+//   - the grid: the next cell
+@(command={name="Project/Expand", palette=false, help="Opens the selected folder, or steps into an open one. In the file list, unfolds the selected file's sub-assets, or selects the next row. In the grid, selects the next cell"})
 project_expand :: proc() {
+    if _pv.active_pane == .List {
+        if _pv.grid_cols > 0 do _project_list_step(1, false)
+        else if !_project_list_unfold() do _project_list_step(1, false)
+        return
+    }
     cur := _project_tree_index()
     if cur == -1 do return
     row := _pv.tree_rows[cur]
@@ -1808,11 +1949,21 @@ project_expand :: proc() {
     }
 }
 
-// Left collapses an open folder first, even one that shows no subfolders
-// (imgui still tracks its open state). A closed folder steps to its parent:
-// package roots go to the Packages node, roots stay (_project_parent_dir).
-@(command={name="Project/Collapse", enabled=project_tree_active, palette=false, help="Closes the selected folder, or steps to its parent"})
+// Left, by where the keyboard is:
+//   - the folder tree: collapses an open folder first, even one that shows
+//     no subfolders (imgui still tracks its open state). A closed folder
+//     steps to its parent: package roots go to the Packages node, roots stay
+//     (_project_parent_dir)
+//   - the list's rows: from a sub-asset to its file, then folds the file.
+//     With nothing to fold, the previous row
+//   - the grid: the previous cell
+@(command={name="Project/Collapse", palette=false, help="Closes the selected folder, or steps to its parent. In the file list, folds the selected file's sub-assets, or selects the previous row. In the grid, selects the previous cell"})
 project_collapse :: proc() {
+    if _pv.active_pane == .List {
+        if _pv.grid_cols > 0 do _project_list_step(-1, false)
+        else if !_project_list_fold() do _project_list_step(-1, false)
+        return
+    }
     cur := _project_tree_index()
     if cur == -1 do return
     row := _pv.tree_rows[cur]
@@ -1822,6 +1973,25 @@ project_collapse :: proc() {
         _project_set_current(parent)
         _pv.scroll_to_tree_sel = true
     }
+}
+
+// In the grid Left and Right move between cells, so the sub-assets of the
+// selected file unfold and fold on these two. They work on the list's rows too.
+@(command={name="Project/Unfold Sub-assets", enabled=project_list_active, palette=false, help="Shows the selected file's sub-assets"})
+project_unfold :: proc() { _project_list_unfold() }
+
+@(command={name="Project/Fold Sub-assets", enabled=project_list_active, palette=false, help="Hides the selected file's sub-assets. On a sub-asset, selects its file"})
+project_fold :: proc() { _project_list_fold() }
+
+// Shift with Left and Right grows the grid's selection by the next cell.
+@(command={name="Project/Extend Selection Right", enabled=project_grid_active, palette=false, help="Adds the next cell to the selection"})
+project_extend_right :: proc() { _project_list_step(1, true) }
+
+@(command={name="Project/Extend Selection Left", enabled=project_grid_active, palette=false, help="Adds the previous cell to the selection"})
+project_extend_left :: proc() { _project_list_step(-1, true) }
+
+project_grid_active :: proc() -> bool {
+    return (_pv.active_pane == .List && _pv.grid_cols > 0) || keymap.disabled("Works in the file grid only")
 }
 
 // Tab into the list selects its first row when nothing there is selected.
@@ -1861,8 +2031,6 @@ project_has_search :: proc() -> bool {
     return strings.trim_space(string(cstring(raw_data(_pv.search_buf[:])))) != "" || keymap.disabled("The Project window has no search")
 }
 
-project_tree_active :: proc() -> bool { return _pv.active_pane == .Tree || keymap.disabled("Works in the folder tree only") }
-
 project_list_active :: proc() -> bool { return _pv.active_pane == .List || keymap.disabled("Works in the file list only") }
 
 // Not while a row is being renamed, nor the frame the rename closed.
@@ -1882,6 +2050,10 @@ project_keymap :: proc(km: ^keymap.Keymap) {
     keymap.bind(km, "Shift+Up", "Project/Extend Selection Up", repeat = true)
     keymap.bind(km, "Right", "Project/Expand", repeat = true)
     keymap.bind(km, "Left", "Project/Collapse", repeat = true)
+    keymap.bind(km, "Ctrl+Right", "Project/Unfold Sub-assets")
+    keymap.bind(km, "Ctrl+Left", "Project/Fold Sub-assets")
+    keymap.bind(km, "Shift+Right", "Project/Extend Selection Right", repeat = true)
+    keymap.bind(km, "Shift+Left", "Project/Extend Selection Left", repeat = true)
     keymap.bind(km, "Tab", "Project/Switch Pane")
     // macOS renames on Enter and opens on Cmd+Down, as its file browser does.
     keymap.bind(km, "F2", "Project/Rename", mac = "Enter")

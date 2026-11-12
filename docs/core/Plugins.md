@@ -320,6 +320,8 @@ Any file's field can hold any sub-asset, as it can hold any file. A picker lists
 
 What sub-assets and embedded assets are for the user, how they are written and loaded, and their limits: [Sub-assets and Embedded Assets](SubAssets.md).
 
+A file type with sub-assets also publishes their names to the asset database, so a search finds them without loading the file: an indexer registered with `assets.asset_db_add_indexer(ext, proc, reads_file = false)` calls `assets.asset_db_sub_assets_set` when the file or its `.meta` changes. The model provider reads them from the model's import settings (`_index_model_sub_assets`), the sprites package from the texture's.
+
 A provider's `list` runs for every file of its kind each time a picker opens, so it must not read a file. The asset database keeps a list per file for this (`assets.asset_db_sub_assets_set`, `assets.asset_db_sub_assets`): the file's indexer sets it from the bytes it already parses, the editor of an open file sets it again on every change, and `list` reads it.
 
 The scene file's provider (`plugins/engine/editor/drawers/scene_sub_assets.odin`) is the reference for all of them.

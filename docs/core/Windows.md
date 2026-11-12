@@ -224,7 +224,21 @@ The Hierarchy's Filter and the Project window's Search take the same kind of que
 
 - `t:` matches part of any of an asset's type names: its file extension (`mat`, `png`), its type's name in Assets > Create without spaces (`Material`, `NoiseMap`), and its importer's name (`texture`, `mesh`, `shader`, `audio`, `animation`). `t:folder` is a folder.
 - `c:` in the Project window reads the asset database's root-component index, the one the object picker uses ([Object Picker](ObjectPicker.md)). It sees the components of a scene file's root object, not of its children.
-- A scene file's sub-assets are results of their own, by name and by `t:`, shown after the files with their file in brackets ([Sub-assets and Embedded Assets](SubAssets.md)). A model's parts and clips and a texture's sprites are not: the database does not list them.
+- Every sub-asset is a result of its own, by name and by `t:`, shown after the files with its file in brackets: a scene file's materials and noise maps (`t:mat`, `t:noise`), a model's parts, clips and convex decompositions (`t:mesh`, `t:anim`, `t:hulls`) and a texture's sprites (`t:sprite`) ([Sub-assets and Embedded Assets](SubAssets.md)).
 - A search reads no file. Every answer comes from the asset database, so its cost does not grow with file sizes.
 - A plain word with a slash matches the path in the Project window and the palette: `ui/` lists a folder's assets.
 - The finders: `asset_search` (`moonhug/editor/asset_search.odin`) for assets and `scene_object_has_components` (`plugins/engine/editor/scene_windows/window_hierarchy.odin`) for objects. The caller gives the test for plain words: a search field matches parts of a name, the palette ranks by its own word matching. The words are parsed by `widgets.search_terms`, `widgets.search_split`, `widgets.search_tag` and `widgets.search_tag_match`. A new search field that takes tagged words uses them.
+
+## Project window keys
+
+The arrow keys work on the pane the keyboard is in. A sub-asset's row or cell is a stop like a file's.
+
+| Key | Folder tree | File list | File grid |
+|---|---|---|---|
+| Up, Down | previous, next folder | previous, next row | the cell above, below |
+| Right | opens a folder, then steps into it | unfolds a file's sub-assets. With nothing to unfold, the next row | the next cell |
+| Left | closes a folder, then steps to its parent | from a sub-asset to its file, then folds the file. With nothing to fold, the previous row | the previous cell |
+| Ctrl+Right, Ctrl+Left | | unfolds, folds the file's sub-assets, and moves nothing | the same |
+| Shift with an arrow | | adds the row to the selection | adds the cell |
+
+Search results are always rows, so they take the list's keys. Ctrl is Cmd on macOS.

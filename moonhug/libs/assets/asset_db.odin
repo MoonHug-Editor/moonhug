@@ -68,7 +68,9 @@ AssetDB :: struct {
 Asset_Sub_Info :: struct {
     id:      core.Local_ID,
     name:    string,
-    // What a reference field's `ext:` tag matches: "mat", "noise".
+    // What the sub-asset is, spelled like a file extension without the dot:
+    // "mat" and "noise" in a scene file, "mesh", "anim" and "hulls" in a
+    // model, "sprite" in a texture. A search's "t:" word matches it.
     kind:    string,
 }
 
@@ -259,40 +261,51 @@ asset_db_new_guid :: proc() -> core.Asset_GUID {
     return core.Asset_GUID(_generate_guid())
 }
 
-// Indexers fill the root-info index from an asset's bytes. One registers per
-// extension (the engine registers ".scene" at @(init)), and
-// asset_db_reindex reads a file only when an indexer matches it.
+// Indexers fill the database's indexes for an asset: the root-info index
+// from a scene's bytes, a file's sub-asset list. One registers per extension
+// (the engine registers ".scene" at @(init)), and asset_db_reindex reads a
+// file only when an indexer that asked for its bytes matches it. One that
+// did not (`reads_file = false`) gets no bytes: it reads what it needs
+// itself, such as the import settings in the file's .meta.
 Asset_Indexer :: proc(guid: core.Asset_GUID, path: string, data: []byte)
 
 @(private = "file")
 _Indexer_Entry :: struct {
-    ext:  string, // static literal
-    proc_: Asset_Indexer,
+    ext:        string, // static literal
+    proc_:      Asset_Indexer,
+    reads_file: bool,
 }
 
 @(private = "file")
 _indexers: [dynamic]_Indexer_Entry
 
-asset_db_add_indexer :: proc(ext: string, indexer: Asset_Indexer) {
+asset_db_add_indexer :: proc(ext: string, indexer: Asset_Indexer, reads_file := true) {
     for e in _indexers {
         if e.ext == ext && e.proc_ == indexer do return
     }
     context.allocator = runtime.default_allocator()
-    append(&_indexers, _Indexer_Entry{ext = ext, proc_ = indexer})
+    append(&_indexers, _Indexer_Entry{ext = ext, proc_ = indexer, reads_file = reads_file})
 }
 
 // Clears the asset's index entries and runs the indexers registered for its
 // extension. Called by the refresh for every created or modified path.
 asset_db_reindex :: proc(path: string) {
     ext := filepath.ext(path)
-    matched := false
-    for e in _indexers do if e.ext == ext do matched = true
+    matched, reads := false, false
+    for e in _indexers do if e.ext == ext {
+        matched = true
+        reads ||= e.reads_file
+    }
     if !matched do return
     guid, ok := asset_db.path_to_guid[path]
     if !ok do return
     _index_remove(core.Asset_GUID(guid))
-    data, read_err := os.read_entire_file(path, context.temp_allocator)
-    if read_err != nil do return
+    data: []byte
+    if reads {
+        read_err: os.Error
+        data, read_err = os.read_entire_file(path, context.temp_allocator)
+        if read_err != nil do return
+    }
     for e in _indexers do if e.ext == ext do e.proc_(core.Asset_GUID(guid), path, data)
 }
 
