@@ -96,15 +96,22 @@ asset_on_changed_mesh :: proc(guid: Asset_GUID, path: string, change: Asset_Chan
     mesh_unload(guid)
 }
 
+// Frees a cache entry. _mesh_build makes it on the default allocator, and the
+// caller of a shutdown or an unload may run under another one (the debug
+// editor's tracking allocator panics on a free it did not make).
+@(private = "file")
+_mesh_free :: proc(mesh: ^Mesh) {
+    context.allocator = runtime.default_allocator()
+    gfx.mesh_destroy(&mesh.gpu)
+    delete(mesh.submeshes)
+    gfx.skin_source_destroy(&mesh.skin_gpu)
+    delete(mesh.inverse_binds)
+    for n in mesh.joint_names do delete(n)
+    delete(mesh.joint_names)
+}
+
 mesh_cache_shutdown :: proc() {
-    for _, &mesh in mesh_cache {
-        gfx.mesh_destroy(&mesh.gpu)
-        delete(mesh.submeshes)
-        gfx.skin_source_destroy(&mesh.skin_gpu)
-        delete(mesh.inverse_binds)
-        for n in mesh.joint_names do delete(n)
-        delete(mesh.joint_names)
-    }
+    for _, &mesh in mesh_cache do _mesh_free(&mesh)
     delete(mesh_cache)
     mesh_cache = nil
     delete(_mesh_failed)
@@ -495,13 +502,7 @@ mesh_unload :: proc(guid: Asset_GUID) {
         if key.guid == guid do append(&keys, key)
     }
     for key in keys {
-        mesh := &mesh_cache[key]
-        gfx.mesh_destroy(&mesh.gpu)
-        delete(mesh.submeshes)
-        gfx.skin_source_destroy(&mesh.skin_gpu)
-        delete(mesh.inverse_binds)
-        for n in mesh.joint_names do delete(n)
-        delete(mesh.joint_names)
+        _mesh_free(&mesh_cache[key])
         delete_key(&mesh_cache, key)
     }
 

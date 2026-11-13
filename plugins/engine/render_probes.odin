@@ -210,7 +210,10 @@ _probe_capture :: proc(p: ^Reflection_Probe, st: ^_Probe_State, key: _Probe_Key)
 }
 
 // Frees every probe's cubes and the capture's targets (engine shutdown).
+// reflection_probes_pass makes them on the default allocator, so they are
+// freed there.
 _render_probes_shutdown :: proc() {
+	context.allocator = runtime.default_allocator()
 	for _, &st in _probes.states {
 		gfx.cubemap_destroy(st.source)
 		gfx.cubemap_destroy(st.specular)

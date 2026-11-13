@@ -5,6 +5,7 @@ package text_tests
 // packages/text's layout. No GPU: the atlas texture stays empty, the
 // metrics and glyph placement do not.
 
+import "base:runtime"
 import "core:os"
 import "core:strings"
 import "core:testing"
@@ -61,10 +62,12 @@ test_font_bake_and_parse :: proc(t: ^testing.T) {
 test_sdf_backend_scales_metrics_and_lays_out :: proc(t: ^testing.T) {
 	ttf := _roboto(t)
 	if len(ttf) == 0 do return
-	artifact, ok := text.font_bake(ttf, text.FontSettings{sampling_size = 32, padding = 4, atlas_size = 256, latin1 = false})
+	// The cache frees a font on the default allocator, so it is made there.
+	alloc := runtime.default_allocator()
+	artifact, ok := text.font_bake(ttf, text.FontSettings{sampling_size = 32, padding = 4, atlas_size = 256, latin1 = false}, alloc)
 	testing.expect(t, ok, "bake")
 	if !ok do return
-	f, pok := text.font_parse(artifact)
+	f, pok := text.font_parse(artifact, alloc)
 	testing.expect(t, pok, "parse")
 	if !pok do return
 	guid: engine.Asset_GUID
@@ -102,10 +105,11 @@ test_sdf_backend_adds_glyphs_outside_the_bake :: proc(t: ^testing.T) {
 	ttf := _roboto(t)
 	if len(ttf) == 0 do return
 	s := text.FontSettings{sampling_size = 32, padding = 4, atlas_size = 256, latin1 = false} // ASCII only
-	artifact, ok := text.font_bake(ttf, s)
+	alloc := runtime.default_allocator()
+	artifact, ok := text.font_bake(ttf, s, alloc)
 	testing.expect(t, ok)
 	if !ok do return
-	f, pok := text.font_parse(artifact)
+	f, pok := text.font_parse(artifact, alloc)
 	testing.expect(t, pok)
 	if !pok do return
 	testing.expect(t, f.has_info, "the artifact carries the font file")

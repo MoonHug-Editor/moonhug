@@ -183,7 +183,8 @@ font_bake :: proc(ttf: []u8, s: FontSettings, allocator := context.allocator) ->
 	return out[:], true
 }
 
-// A loaded font: the artifact bytes (owned) with the tables viewed into them.
+// A loaded font: the artifact bytes (owned, on the default allocator) with the
+// tables viewed into them.
 Font :: struct {
 	data:    []u8,
 	header:  Font_Header,
@@ -256,7 +257,7 @@ font_destroy :: proc(f: ^Font) {
 			delete_key(&engine.texture_cache, f.dyn_texture)
 		}
 	}
-	delete(f.data)
+	delete(f.data, runtime.default_allocator())
 	f^ = {}
 }
 
@@ -385,7 +386,8 @@ _font_upload :: proc(guid: engine.Asset_GUID, f: ^Font) {
 }
 
 // Puts a parsed font in the cache under `guid` (tests, tooling). Takes
-// ownership of the font.
+// ownership of the font. Its bytes and tables must be on the default
+// allocator, as font_load makes them: the cache frees them there.
 font_cache_insert :: proc(guid: engine.Asset_GUID, f: Font) {
 	context.allocator = runtime.default_allocator()
 	if _fonts == nil do _fonts = make(map[engine.Asset_GUID]Font)
