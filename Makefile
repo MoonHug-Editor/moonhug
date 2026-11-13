@@ -8,7 +8,8 @@
 #
 # make play PKG=app:run FLAGS=--build-only runs a run configuration (PKG defaults to the one package shipping them).
 # make test NAME=pkg.test_name runs a single test. make deps NAME=<plugin>
-# gathers one plugin's dependencies.
+# gathers one plugin's dependencies. make build DEBUG=1 builds with -debug,
+# make setup FORCE=1 rebuilds vendored libraries that are already built.
 
 # mh itself is compiled once into builds/tools/ and rebuilt when its sources
 # change (Odin has no build cache, `odin run` recompiled it on every make), or
@@ -30,10 +31,10 @@ FORCE:
 .PHONY: help setup run debug build check-noplugins play test scenarios prebuild deps shaders docs mcp clean distclean
 
 help:      $(MH_BIN) ; @$(MH) help
-setup:     $(MH_BIN) ; @$(MH) setup
+setup:     $(MH_BIN) ; @$(MH) setup $(if $(FORCE),--force,)
 run:       $(MH_BIN) ; @$(MH) run
 debug:     $(MH_BIN) ; @$(MH) debug
-build:     $(MH_BIN) ; @$(MH) build $(if $(NOPLUGINS),--no-plugins,)
+build:     $(MH_BIN) ; @$(MH) build $(if $(DEBUG),--debug,) $(if $(NOPLUGINS),--no-plugins,)
 check-noplugins: $(MH_BIN) ; @$(MH) check-noplugins
 play:      $(MH_BIN) ; @$(MH) play $(PKG) $(FLAGS)
 prebuild:  $(MH_BIN) ; @$(MH) prebuild
