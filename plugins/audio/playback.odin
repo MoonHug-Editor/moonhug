@@ -71,10 +71,20 @@ _mixer_ensure :: proc() -> bool {
 	return m != nil
 }
 
-// Opens the playback device at engine start. Opening it takes about 150 ms,
-// so the first clip load or the first sound does not pay for it mid-game.
-@(phase={key=EngineInit, order=20})
+// When the playback device opens. Opening it takes about 190 ms and closing it
+// about 150 ms, so the first sound must not pay for it mid-game, and an
+// editor that plays nothing should not pay for it at all:
+// - A built game opens it at engine start.
+// - The editor opens it when Play starts.
+// - Anything else opens it on first use: a clip load or a sound calls
+//   _mixer_ensure (an audio clip previewed in the editor, a test).
+@(phase={key=EngineInit, order=20, mode=App})
 engine_init_audio_device :: proc() {
+	_mixer_ensure()
+}
+
+@(phase={key=EnteredPlayMode, mode=Editor})
+audio_entered_play_mode :: proc() {
 	_mixer_ensure()
 }
 
