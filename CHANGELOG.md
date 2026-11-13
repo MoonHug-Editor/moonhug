@@ -1,3 +1,26 @@
+## [0.164.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.163.1...v0.164.0) (2026-11-13)
+
+### Features
+
+* async scene loading, a scene load preloads the scene's assets, fix: an untouched prefab instance saves no override for the prefab's own sub-asset ([f6fd1d2](https://github.com/MoonHug-Editor/moonhug/commit/f6fd1d2581b6ca72cb2a150510e5ca4617989bf2))
+* async scene loading, assets load on worker threads ([7c0104d](https://github.com/MoonHug-Editor/moonhug/commit/7c0104d35ffbfd4d89e63a1e2be3d0be4675a94d))
+* every sub-asset is a search result, Project window keys ([42fddb0](https://github.com/MoonHug-Editor/moonhug/commit/42fddb0aa5a969ea949fb684d122c07c954d3f70))
+* Hierarchy filter finds objects by component, startup opens in the theme's colours ([a3e5cca](https://github.com/MoonHug-Editor/moonhug/commit/a3e5cca504583d977ec2957d2c1ec73881b95262))
+* one asset finder and one object filter for the search fields and the command palette ([45c4c0c](https://github.com/MoonHug-Editor/moonhug/commit/45c4c0cd060207c4fd2b296aedc154957b824daa))
+* Project search results are a grid when the zoom slider is on the grid ([d80e87d](https://github.com/MoonHug-Editor/moonhug/commit/d80e87d8d3f600c9ba883c4ffde1f693d397b198))
+* run configs name the boot scene by asset guid, the audio playback device opens at engine start ([c2b0f50](https://github.com/MoonHug-Editor/moonhug/commit/c2b0f50f886ffb42c2db358d575eb57000a23455))
+
+### Bug Fixes
+
+* "$" ends "t:" type name in the Hierarchy filter, part of a name is the default ([2f760d8](https://github.com/MoonHug-Editor/moonhug/commit/2f760d85778b65c578cb0f27a9c3798db124267e))
+* the debug editor no longer panics at quit freeing meshes, probe lanes and fonts ([2a010a3](https://github.com/MoonHug-Editor/moonhug/commit/2a010a307a90078a3a01640353a09ea499eac971))
+* thumbnails cached before the preview world fix render again ([f21108f](https://github.com/MoonHug-Editor/moonhug/commit/f21108fb0fc6c9268256039cc5020f364676b0ed))
+
+### Performance Improvements
+
+* scene files parse on worker threads, a load waits only for its own asset jobs ([4f2f305](https://github.com/MoonHug-Editor/moonhug/commit/4f2f30526cf4411682864f112b1c3b323b79ff36))
+* the editor opens the audio device at Play, a built game at engine start ([79cd359](https://github.com/MoonHug-Editor/moonhug/commit/79cd35919e0c76451330a80eef3b9ca326379433))
+
 ## [0.163.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.163.0...v0.163.1) (2026-11-11)
 
 ### Bug Fixes
