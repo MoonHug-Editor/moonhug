@@ -23,7 +23,7 @@ Changing `tint` on the Blackboard changes every field connected to it under Enem
 |---|---|---|
 | `entries` | empty | The entries. Each is drawn on one line: its name, its type, its value. |
 
-An entry's type is one of:
+An entry holds one value, a `Blackboard_Value`. Its type is one of the built-in ones or one another plugin adds:
 
 | Type | Value |
 |---|---|
@@ -31,9 +31,13 @@ An entry's type is one of:
 | Integer | `i32` |
 | Flag | `bool` |
 | Vector2, Vector3 | `[2]f32`, `[3]f32` |
-| Color | `[4]f32` |
-| Object | an object of the scene |
-| Asset | an asset or a sub-asset |
+| Color | `[4]f32`, drawn with a color picker |
+| Object | `core.Ref`, an object of the scene |
+| Asset | `core.PPtr`, an asset or a sub-asset |
+
+- Picking another type gives the entry a new value of that type: zero, a color white.
+- An entry fits a slot whose inline field has the value's type. A slot of `[4]f32` takes Color entries.
+- An Object entry is an ordinary reference: it follows its object through a reload, and a duplicate of the Blackboard's object with its object under it names the copy.
 
 ## Behavior
 
@@ -73,11 +77,33 @@ slots.write(m.hp, f32(4), slots.scope_of(m.owner))  // through a slot
 - `blackboard.entry_add(b, name)` makes an entry with a new id, and `blackboard.entry_override(b, from)` one that stands in for an entry above.
 - A reader needs nothing from this package: `slots.get(slot, inline, slots.scope_of(owner))`.
 
+## Adding a value type
+
+A plugin adds a type entries can hold by marking it with `@(blackboard_value)`:
+
+```odin
+package app_blackboard
+
+import _ "moonhug:packages/blackboard/values"
+
+@(typ_guid={guid = "..."})
+@(blackboard_value={name = "Team"})
+Team :: enum u8 { Red, Blue }
+```
+
+- The type goes in an integration subpackage named after this plugin, `<plugin>/blackboard`. The example is `plugins/app/blackboard`.
+- That package imports `moonhug:packages/blackboard/values` and never the plugin's root. The root's generated union imports the package, so an import back would be a cycle. The import also marks the package as needing the blackboard plugin, so prebuild leaves it out while the plugin is not installed.
+- The type carries `@(typ_guid)`, its identity in saved entries, and is plain data of 64 bytes at most (`slots.MAX_VALUE_SIZE`), with no strings or arrays it owns. A value is copied in and out of dictionaries as bytes.
+- `name` is what the type list shows, the type's name when left out.
+- On the next prebuild the blackboard plugin's generator (`plugins/blackboard/gen`) adds the type to `Blackboard_Value` and to the type list, after the built-in ones, by name.
+- Code reads such an entry as any other: `blackboard.get(object, "team", app_blackboard.Team)`, or through a slot whose inline field is a `Team`.
+
 ## Limits
 
 - A prefab instance that changes one entry overrides the whole list.
 - Two entries of one Blackboard with the same name are two entries. The picker lists both by that name.
 - An entry written by hand without an id is keyed by its name, as an entry code fills is.
+- The value types are fixed when the program is built: a plugin's new type joins on the next prebuild, not while the editor runs.
 
 ## See also
 

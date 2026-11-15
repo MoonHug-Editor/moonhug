@@ -67,6 +67,7 @@ package slots
 // Dictionaries are not shared between threads. Names and declarations are.
 
 import "base:runtime"
+import "core:fmt"
 import "core:strings"
 import "core:sync"
 import core "moonhug:libs/core"
@@ -194,6 +195,18 @@ put :: proc(d: ^Dict, slot: Slot, value: $T) {
 	e := Entry{type = T}
 	v := value
 	runtime.mem_copy(&e.data[0], &v, size_of(T))
+	d.entries[slot] = e
+}
+
+// Sets the entry `slot` connects to, to the `T` at `value`, for a caller that
+// knows the type only at run time: a union's active variant.
+put_raw :: proc(d: ^Dict, slot: Slot, T: typeid, value: rawptr) {
+	if slot == INLINE do return
+	size := type_info_of(T).size
+	fmt.assertf(size <= MAX_VALUE_SIZE, "slots: a %v is %d bytes, a value holds MAX_VALUE_SIZE (%d) at most", T, size, MAX_VALUE_SIZE)
+	_ensure(d)
+	e := Entry{type = T}
+	runtime.mem_copy(&e.data[0], value, size)
 	d.entries[slot] = e
 }
 

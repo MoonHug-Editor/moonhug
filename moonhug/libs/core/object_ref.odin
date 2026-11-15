@@ -11,6 +11,7 @@ asset_guid_is_empty :: proc(g: Asset_GUID) -> bool {
 
 // Persistent pointer — survives serialization/reload
 // guid == 0 is in same file (local). guid != 0 is cross-asset
+@(typ_guid={guid="6f01aa67-b26e-4a23-bd37-38ef514b28bd"})
 PPtr :: struct {
     local_id : Local_ID,
     guid : Asset_GUID,
@@ -23,6 +24,7 @@ Ref_Local :: struct {
 }
 
 // reference to local or cross-asset object
+@(typ_guid={guid="0e9cae0d-994c-4e0f-a530-a525064d8cd6"})
 Ref :: struct {
     pptr: PPtr,
     handle : Handle `json:"-"`,

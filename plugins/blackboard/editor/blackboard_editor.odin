@@ -1,7 +1,7 @@
 package blackboard_editor
 
 // Editor-only half of the blackboard plugin: an entry of a Blackboard drawn
-// on one line, its name, its type and the one value its type names.
+// on one line, its name, its type and its value.
 //
 // Each of the three goes through the inspector's row machinery
 // (field_edit_row), so it has its own undo step, reaches every selected
@@ -15,6 +15,7 @@ package blackboard_editor
 // its id.
 
 import "core:fmt"
+import "core:reflect"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/inspector"
@@ -35,52 +36,71 @@ property_drawer_Blackboard_Entry :: proc(ctx: ^inspector.Ctx) {
 	avail := im.GetContentRegionAvail().x - inspector.current_field_trailing_w
 	name_w := max((avail - _TYPE_W - gap * 2) * 0.4, _MIN_NAME_W)
 	value_w := max(avail - name_w - _TYPE_W - gap * 2, _MIN_NAME_W)
+	value_tid := typeid_of(blackboard.Blackboard_Value)
 
 	_entry_id_ensure(e)
 	_cell(ctx, &e.name, typeid_of(string), offset_of(e.name), "name", name_w)
 	im.SameLine(0, gap)
-	_cell(ctx, &e.type, typeid_of(blackboard.Value_Type), offset_of(e.type), "type", _TYPE_W)
+	// The type and the value are two rows over the one union field: picking a
+	// type is an edit of the value.
+	_cell(ctx, &e.value, value_tid, offset_of(e.value), "type", _TYPE_W, _type_drawer, lands_later = true)
 	im.SameLine(0, gap)
-	switch e.type {
-	case .Number:  _cell(ctx, &e.number, typeid_of(f32), offset_of(e.number), "number", value_w)
-	case .Integer: _cell(ctx, &e.integer, typeid_of(i32), offset_of(e.integer), "integer", value_w)
-	case .Flag:    _cell(ctx, &e.flag, typeid_of(bool), offset_of(e.flag), "flag", value_w)
-	case .Vector2: _cell(ctx, &e.vector2, typeid_of([2]f32), offset_of(e.vector2), "vector2", value_w)
-	case .Vector3: _cell(ctx, &e.vector3, typeid_of([3]f32), offset_of(e.vector3), "vector3", value_w)
-	case .Color:   _cell(ctx, &e.color, typeid_of([4]f32), offset_of(e.color), "color", value_w, _color_drawer)
-	case .Object:
-		// The field's tag says what the picker offers, as the field loop
-		// would have set it.
-		prev := inspector.field_tags_set(`ref:"Transform"`)
-		_cell(ctx, &e.object, typeid_of(core.Ref), offset_of(e.object), "object", value_w)
-		inspector.field_tags_restore(prev)
-	case .Asset:   _cell(ctx, &e.asset, typeid_of(core.PPtr), offset_of(e.asset), "asset", value_w)
-	}
+	_cell(ctx, &e.value, value_tid, offset_of(e.value), "value", value_w, _value_drawer, lands_later = inspector.is_enum_type(blackboard.value_typeid(e)))
 }
 
 // One field of the entry, `width` wide, as a row of its own for undo, the
-// other selected objects and the prefab override.
+// other selected objects and the prefab override. `name` is the field's.
+// `lands_later`: the drawer changes the value from a popup, a frame after the
+// click, so the row brackets the change after the fact.
 @(private = "file")
-_cell :: proc(ctx: ^inspector.Ctx, ptr: rawptr, tid: typeid, field_offset: uintptr, name: string, width: f32, drawer: proc(ptr: rawptr, tid: typeid, label: cstring) = nil) -> (finished: bool) {
-	im.PushIDStr(fmt.ctprintf("%s", name), nil)
+_cell :: proc(ctx: ^inspector.Ctx, ptr: rawptr, tid: typeid, field_offset: uintptr, id: string, width: f32, drawer: proc(ptr: rawptr, tid: typeid, label: cstring) = nil, lands_later := false) -> (finished: bool) {
+	im.PushIDStr(fmt.ctprintf("%s", id), nil)
 	defer im.PopID()
-	path := ctx.path_prefix == "" ? name : fmt.tprintf("%s.%s", ctx.path_prefix, name)
+	field := id == "type" ? "value" : id
+	path := ctx.path_prefix == "" ? field : fmt.tprintf("%s.%s", ctx.path_prefix, field)
 	offset := ctx.offset + field_offset
 	drawer := drawer
-	if drawer == nil {
-		if inspector.is_enum_type(tid) {
-			// An enum lands from a combo popup: the row brackets the change
-			// after the fact.
-			inspector.multi_probe_field(ptr, tid, offset)
-			drawer = inspector.draw_inspector_enum
-		} else {
-			drawer = inspector.resolve_property_drawer(tid)
-		}
-	}
+	if drawer == nil do drawer = inspector.resolve_property_drawer(tid)
+	if lands_later do inspector.multi_probe_field(ptr, tid, offset)
 	im.SetNextItemWidth(width)
-	finished = inspector.field_edit_row(ptr, tid, offset, name, drawer, "##cell")
+	finished = inspector.field_edit_row(ptr, tid, offset, field, drawer, "##cell")
 	inspector.record_nested_override(ptr, tid, path, finished)
 	return
+}
+
+// The entry's type: a list of every value type. Picking one gives the entry a
+// new value of that type.
+@(private = "file")
+_type_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+	v := cast(^blackboard.Blackboard_Value)ptr
+	current := reflect.union_variant_typeid(v^)
+	vt, _ := blackboard.value_type_of(current)
+	if !im.BeginCombo(label, strings.clone_to_cstring(vt.name, context.temp_allocator), {.HeightLarge}) do return
+	defer im.EndCombo()
+	for t, i in blackboard.value_types {
+		if !im.Selectable(fmt.ctprintf("%s##%d", t.name, i), t.type == current) || t.type == current do continue
+		v^ = blackboard.value_new(t.type)
+		inspector.mark_inspector_changed()
+	}
+}
+
+// The entry's value, with the drawer of the type it holds.
+@(private = "file")
+_value_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+	T := reflect.union_variant_typeid(any{ptr, tid})
+	switch {
+	case T == typeid_of([4]f32):
+		_color_drawer(ptr, T, label)
+	case T == typeid_of(core.Ref):
+		// The tag says what the picker offers, as the field loop would set it.
+		prev := inspector.field_tags_set(`ref:"Transform"`)
+		defer inspector.field_tags_restore(prev)
+		inspector.resolve_property_drawer(T)(ptr, T, label)
+	case inspector.is_enum_type(T):
+		inspector.draw_inspector_enum(ptr, T, label)
+	case:
+		inspector.resolve_property_drawer(T)(ptr, T, label)
+	}
 }
 
 // The Blackboard the inspector is drawing and its handle, nil when it draws
@@ -118,7 +138,7 @@ _entry_id_ensure :: proc(e: ^blackboard.Blackboard_Entry) {
 
 // Under the Blackboard's fields: Override Entry, which lists the entries of
 // the Blackboards above that this one has none for. Picking one adds an
-// entry with its id, name, type and value, so the slots under this object
+// entry with its id, name and value, so the slots under this object
 // that were connected to it take this one.
 @(property_drawer={type=blackboard.Blackboard, order="middle"})
 property_drawer_Blackboard_override :: proc(ctx: ^inspector.Ctx) {

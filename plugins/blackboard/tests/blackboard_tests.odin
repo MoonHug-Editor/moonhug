@@ -5,8 +5,10 @@ package blackboard_tests
 // from further up, then from the game-wide dictionary. Slots connect to an
 // entry's id, which stays through a rename.
 
+import "core:fmt"
 import "core:strings"
 import "core:testing"
+import core "moonhug:libs/core"
 import "moonhug:libs/slots"
 import blackboard "moonhug:packages/blackboard"
 import "moonhug:packages/engine"
@@ -23,8 +25,7 @@ _board :: proc(t: ^testing.T, object: engine.Transform_Handle) -> ^blackboard.Bl
 @(private = "file")
 _number :: proc(b: ^blackboard.Blackboard, name: string, value: f32) -> slots.Slot {
 	e := blackboard.entry_add(b, name)
-	e.type = .Number
-	e.number = value
+	e.value = value
 	return blackboard.entry_key(e)
 }
 
@@ -46,7 +47,7 @@ test_blackboard_lookup_up_the_tree :: proc(t: ^testing.T) {
 	far := _number(on_root, "far", 9)
 	// The enemy's Blackboard stands in for the root's speed: the same id.
 	on_enemy := _board(t, enemy)
-	blackboard.entry_override(on_enemy, &on_root.entries[0]).number = 2
+	blackboard.entry_override(on_enemy, &on_root.entries[0]).value = f32(2)
 
 	testing.expect_value(t, slots.get(speed, f32(0), slots.scope_of(legs)), 2)
 	testing.expect_value(t, slots.get(far, f32(0), slots.scope_of(legs)), 9)
@@ -99,10 +100,10 @@ test_blackboard_authored_edit_is_read_again :: proc(t: ^testing.T) {
 	s := _number(b, "edit", 1)
 	testing.expect_value(t, slots.get(s, f32(0), slots.scope_of(enemy)), 1)
 	// As the inspector edits it: in place, with nothing told.
-	b.entries[0].number = 4
+	b.entries[0].value = f32(4)
 	testing.expect_value(t, slots.get(s, f32(0), slots.scope_of(enemy)), 4)
 	// Another type for the same entry: it is a flag now.
-	b.entries[0].type = .Flag
+	b.entries[0].value = true
 	_, ok := slots.lookup(s, bool, slots.scope_of(enemy))
 	testing.expect(t, ok, "the entry is a flag now")
 }
@@ -124,7 +125,7 @@ test_blackboard_set_and_unset :: proc(t: ^testing.T) {
 	// Code names the entry, and the name finds its id.
 	testing.expect(t, blackboard.set(legs, "hp", f32(3)), "set reaches the Blackboard above the object")
 	testing.expect_value(t, slots.get(s, f32(0), slots.scope_of(legs)), 3)
-	testing.expect_value(t, b.entries[0].number, 10) // the authored entry is not touched
+	testing.expect_value(t, b.entries[0].value, blackboard.Blackboard_Value(f32(10))) // the authored entry is not touched
 	testing.expect(t, blackboard.unset(legs, "hp"), "unset reaches it too")
 	testing.expect_value(t, slots.get(s, f32(0), slots.scope_of(legs)), 10)
 	testing.expect(t, !blackboard.set(lone, "hp", f32(3)), "no Blackboard on the object or above it")
@@ -157,15 +158,15 @@ test_blackboard_write_through_a_slot :: proc(t: ^testing.T) {
 	value, ok := blackboard.get(bar, "hp", f32)
 	testing.expect(t, ok, "get finds the entry by name")
 	testing.expect_value(t, value, 4)
-	testing.expect_value(t, on_squad.entries[0].number, 10) // the authored entry is not touched
+	testing.expect_value(t, on_squad.entries[0].value, blackboard.Blackboard_Value(f32(10))) // the authored entry is not touched
 
 	// An edit of the entries rebuilds what is authored: the write stays over it.
-	on_squad.entries[0].number = 20
+	on_squad.entries[0].value = f32(20)
 	testing.expect_value(t, slots.get(hp, f32(0), slots.scope_of(bar)), 4)
 
 	// The leader's Blackboard overrides hp: a write under it stays there.
 	on_leader := _board(t, leader)
-	blackboard.entry_override(on_leader, &on_squad.entries[0]).number = 50
+	blackboard.entry_override(on_leader, &on_squad.entries[0]).value = f32(50)
 	testing.expect(t, slots.write(hp, f32(45), slots.scope_of(guard)), "the guard writes the override")
 	testing.expect_value(t, slots.get(hp, f32(0), slots.scope_of(guard)), 45)
 	testing.expect_value(t, slots.get(hp, f32(0), slots.scope_of(bar)), 4)
@@ -190,7 +191,7 @@ test_blackboard_offers_entries_by_type :: proc(t: ^testing.T) {
 	a := _number(on_root, "a", 1)
 	b := _number(on_root, "b", 1)
 	tint := blackboard.entry_add(on_root, "tint")
-	tint.type = .Color
+	tint.value = blackboard.value_new([4]f32)
 	on_enemy := _board(t, enemy)
 	testing.expect_value(t, len(blackboard.entries_above(on_enemy)), 3)
 	blackboard.entry_override(on_enemy, &on_root.entries[0])
@@ -208,4 +209,73 @@ test_blackboard_offers_entries_by_type :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, len(slots.scope_entries(enemy, [4]f32)), 1)
 	testing.expect_value(t, len(slots.scope_entries(enemy, [3]f32)), 0)
+}
+
+// A child of `parent` named `name`, {} for none.
+@(private = "file")
+_child :: proc(parent: engine.Transform_Handle, name: string) -> engine.Transform_Handle {
+	t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(parent))
+	if t == nil do return {}
+	for c in t.children {
+		ct := engine.pool_get(&engine.ctx_world().transforms, c.handle)
+		if ct != nil && ct.name == name do return engine.Transform_Handle(c.handle)
+	}
+	return {}
+}
+
+// Every built-in value type saves and loads, and an Object entry names the
+// object it named: after a reload, and in a duplicate, the copy's own object.
+@(test)
+test_blackboard_values_save_and_load :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	root := engine.transform_new("Level")
+	engine.scene_set_root(tc.scene, root)
+	squad := engine.transform_new("Squad", root)
+	target := engine.transform_new("Target", squad)
+	target_lid := engine.pool_get(&tc.world.transforms, engine.Handle(target)).local_id
+	b := _board(t, squad)
+	values := [?]blackboard.Blackboard_Value{
+		f32(1.5),
+		i32(-3),
+		true,
+		[2]f32{1, 2},
+		[3]f32{0, 2.5, 0},
+		[4]f32{1, 0, 0, 1},
+		core.PPtr{local_id = 7, guid = core.Asset_GUID{1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+		core.Ref{pptr = {local_id = target_lid}, handle = engine.Handle(target)},
+	}
+	for v, i in values do blackboard.entry_add(b, fmt.tprintf("v%d", i)).value = v
+
+	data, ok := engine.scene_serialize(tc.scene)
+	testing.expect(t, ok, "the scene saves")
+	if !ok do return
+	defer delete(data)
+	reloaded := engine.scene_reload_in_place_bytes(tc.scene, data)
+	testing.expect(t, reloaded != nil, "the scene loads")
+	if reloaded == nil do return
+	tc.scene = reloaded
+
+	squad = _child(engine.Transform_Handle(reloaded.root.handle), "Squad")
+	target, _ = engine.scene_find_selectable_transform_local_id(reloaded, target_lid)
+	b = blackboard.nearest(squad)
+	testing.expect(t, b != nil && len(b.entries) == len(values), "the entries load")
+	if b == nil || len(b.entries) != len(values) do return
+	for v, i in values[:7] do testing.expectf(t, b.entries[i].value == v, "entry %d is %v, want %v", i, b.entries[i].value, v)
+	ref, is_ref := b.entries[7].value.(core.Ref)
+	testing.expect(t, is_ref && ref.handle == engine.Handle(target), "the Object entry names the loaded object")
+	// Read through a slot, as a reader under the Blackboard does.
+	testing.expect_value(t, slots.get(blackboard.entry_key(&b.entries[4]), [3]f32{}, slots.scope_of(target)), [3]f32{0, 2.5, 0})
+
+	copy := engine.scene_duplicate_subtree(squad)
+	copy_target := _child(copy, "Target")
+	cb := blackboard.nearest(copy)
+	testing.expect(t, copy_target != {} && cb != nil && cb != b, "the duplicate has its own Target and Blackboard")
+	if cb == nil || len(cb.entries) != len(values) do return
+	copy_ref, _ := cb.entries[7].value.(core.Ref)
+	testing.expect(t, copy_ref.handle == engine.Handle(copy_target), "the copy's Object entry names the copy's Target")
 }

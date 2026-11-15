@@ -13,6 +13,7 @@ package type_guid_gen
 
 import "base:runtime"
 import "core:fmt"
+import "core:odin/ast"
 import "core:os"
 import "core:slice"
 import "core:strings"
@@ -111,6 +112,14 @@ _has_typ_guid_attr :: proc(attr_set: ^gen_facts.Attrs_GenComp, decl: ^db.DeclInf
 	return guid, makeProcName, create, has_create_menu, guid != ""
 }
 
+// True for `Name :: enum {...}`.
+@(private = "file")
+_is_enum_decl :: proc(decl: ^db.DeclInfo) -> bool {
+	if decl.decl == nil || len(decl.decl.values) == 0 do return false
+	_, is_enum := decl.decl.values[0].derived_expr.(^ast.Enum_Type)
+	return is_enum
+}
+
 _parse_cleanup_attr :: proc(attr_set: ^gen_facts.Attrs_GenComp) -> (target_type: string, priority: int, found: bool) {
 	args, ok := gen_facts.attr_find(attr_set, "cleanup")
 	if !ok do return "", 0, false
@@ -137,10 +146,11 @@ provide :: proc(w: ^db.World) -> bool {
 		pkg_name := decl.pkg.name
 		attr_set := db.get(attrs, entity)
 
-		// @typ_guid structs/unions. Editor subpackages are excluded: their
+		// @typ_guid structs, unions and enums. An enum is a union variant
+		// (a Blackboard value type). Editor subpackages are excluded: their
 		// types can't be referenced from the app-side registration file.
 		type_name := decl.name
-		if type_name != "" && db.has(structs, entity) && !strings.has_suffix(decl.pkg_path, "/editor") {
+		if type_name != "" && (db.has(structs, entity) || _is_enum_decl(decl)) && !strings.has_suffix(decl.pkg_path, "/editor") {
 			guid, make_proc, create, has_create_menu, found := _has_typ_guid_attr(attr_set, decl)
 			if _, is_asset := gen_facts.attr_find(attr_set, "asset"); is_asset && !found {
 				fmt.eprintf("type_guid_gen: %s.%s: @(asset) needs @(typ_guid) on the type, its identity in files\n", pkg_name, type_name)

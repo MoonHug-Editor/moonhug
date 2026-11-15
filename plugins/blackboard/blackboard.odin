@@ -31,43 +31,21 @@ package blackboard
 import "base:runtime"
 import "core:fmt"
 import "core:math/rand"
+import "core:reflect"
 import "core:strings"
 import "core:sync"
 import "moonhug:libs/slots"
+import blackboard_values "moonhug:packages/blackboard/values"
 import core "moonhug:libs/core"
 import engine "moonhug:packages/engine"
 
-// What an entry holds.
-Value_Type :: enum u8 {
-	Number,  // f32
-	Integer, // i32
-	Flag,    // bool
-	Vector2, // [2]f32
-	Vector3, // [3]f32
-	Color,   // [4]f32
-	Object,  // core.Ref, an object of the scene
-	Asset,   // core.PPtr, an asset or a sub-asset
-}
-
-// One authored entry: the value is the field its type names. `id` is what
-// slots connect to (entry_key), given when the entry is made (entry_id_new).
+// One authored entry: a name and a value. `id` is what slots connect to
+// (entry_key), given when the entry is made (entry_id_new).
 @(typ_guid={guid = "2f5ee6c0-4990-46a8-9c83-0759d649e16a"})
 Blackboard_Entry :: struct {
-	id:      u32 `inspect:"-"`,
-	name:    string,
-	type:    Value_Type,
-	number:  f32,
-	integer: i32,
-	flag:    bool,
-	vector2: [2]f32,
-	vector3: [3]f32,
-	color:   [4]f32,
-	object:  core.Ref `ref:"Transform"`,
-	asset:   core.PPtr,
-}
-
-type_reset_Blackboard_Entry :: proc(e: ^Blackboard_Entry) {
-	e.color = {1, 1, 1, 1}
+	id:    u32 `inspect:"-"`,
+	name:  string,
+	value: Blackboard_Value,
 }
 
 type_cleanup_Blackboard_Entry :: proc(e: ^Blackboard_Entry) {
@@ -89,19 +67,39 @@ type_cleanup_Blackboard :: proc(b: ^Blackboard) {
 	engine.comp_zero(b)
 }
 
-// The type of the value an entry of type `t` holds.
-value_typeid :: proc(t: Value_Type) -> typeid {
-	switch t {
-	case .Number:  return f32
-	case .Integer: return i32
-	case .Flag:    return bool
-	case .Vector2: return [2]f32
-	case .Vector3: return [3]f32
-	case .Color:   return [4]f32
-	case .Object:  return core.Ref
-	case .Asset:   return core.PPtr
-	}
-	return nil
+// A type an entry can hold, and the name the inspector lists it by. The
+// generated `value_types` has every one, in the order of Blackboard_Value.
+Value_Type :: blackboard_values.Value_Type
+
+// Makes a type one an entry can hold, next to the built-in Number (f32),
+// Integer (i32), Flag (bool), Vector2, Vector3, Color ([4]f32), Object
+// (core.Ref) and Asset (core.PPtr). `name` is what the inspector lists it by,
+// the type's name when left out.
+//
+// The type carries @(typ_guid), its identity in saved entries, and is plain
+// data of slots.MAX_VALUE_SIZE bytes at most: a value is copied in and out
+// of dictionaries as bytes. It is declared in an integration subpackage
+// named after this plugin (`<plugin>/blackboard`) that imports
+// `moonhug:packages/blackboard/values` and not this package, which the
+// generated union makes import it.
+//
+// Returns the value type of `T`, false for a type no entry can hold.
+@(extension_point={attribute="blackboard_value", target="type", fields="name"})
+value_type_of :: proc(T: typeid) -> (Value_Type, bool) {
+	for vt in value_types do if vt.type == T do return vt, true
+	return {}, false
+}
+
+// The type entry `e` holds now.
+value_typeid :: proc(e: ^Blackboard_Entry) -> typeid {
+	return reflect.union_variant_typeid(e.value)
+}
+
+// A new value of type `T`: zero, except a color, which starts white.
+value_new :: proc(T: typeid) -> (v: Blackboard_Value) {
+	reflect.set_union_variant_typeid(v, T)
+	if c, is_color := &v.([4]f32); is_color do c^ = {1, 1, 1, 1}
+	return
 }
 
 // A new entry id: random, never 0, which means "not given yet".
@@ -119,15 +117,15 @@ entry_key :: proc(e: ^Blackboard_Entry) -> slots.Slot {
 }
 
 // Adds an entry named `name` to `b` with a new id, and returns it. The
-// caller sets its type and value. The pointer holds until the list changes.
+// caller sets its value. The pointer holds until the list changes.
 entry_add :: proc(b: ^Blackboard, name: string) -> ^Blackboard_Entry {
-	append(&b.entries, Blackboard_Entry{id = entry_id_new(), name = strings.clone(name), color = {1, 1, 1, 1}})
+	append(&b.entries, Blackboard_Entry{id = entry_id_new(), name = strings.clone(name)})
 	return &b.entries[len(b.entries) - 1]
 }
 
 // Adds to `b` an entry that stands in for `from`, an entry of a Blackboard
 // above it: the same id, so the slots under `b` connected to `from` take this
-// one, starting from `from`'s name, type and value.
+// one, starting from `from`'s name and value.
 entry_override :: proc(b: ^Blackboard, from: ^Blackboard_Entry) -> ^Blackboard_Entry {
 	e := from^
 	e.name = strings.clone(from.name)
@@ -280,26 +278,10 @@ _stamp :: proc(b: ^Blackboard) -> u64 {
 		id := e.id
 		h = mix(h, ([^]u8)(&id)[:size_of(id)])
 		h = mix(h, transmute([]u8)e.name)
-		h = mix(h, {0xff, u8(e.type)})
-		ptr, size := _value_bytes(&e)
-		h = mix(h, ([^]u8)(ptr)[:size])
+		// The union's bytes hold its tag too, so a change of type counts.
+		h = mix(h, ([^]u8)(&e.value)[:size_of(Blackboard_Value)])
 	}
 	return h
-}
-
-@(private)
-_value_bytes :: proc(e: ^Blackboard_Entry) -> (rawptr, int) {
-	switch e.type {
-	case .Number:  return &e.number, size_of(e.number)
-	case .Integer: return &e.integer, size_of(e.integer)
-	case .Flag:    return &e.flag, size_of(e.flag)
-	case .Vector2: return &e.vector2, size_of(e.vector2)
-	case .Vector3: return &e.vector3, size_of(e.vector3)
-	case .Color:   return &e.color, size_of(e.color)
-	case .Object:  return &e.object, size_of(e.object)
-	case .Asset:   return &e.asset, size_of(e.asset)
-	}
-	return nil, 0
 }
 
 // The Blackboard's dictionary, its chain set for where the component is now.
@@ -314,16 +296,7 @@ _dict :: proc(b: ^Blackboard) -> ^slots.Dict {
 			// The first entry of a key is the one: a later one is a mistake
 			// the inspector shows.
 			if key == slots.INLINE || key in st.authored.entries do continue
-			switch e.type {
-			case .Number:  slots.put(&st.authored, key, e.number)
-			case .Integer: slots.put(&st.authored, key, e.integer)
-			case .Flag:    slots.put(&st.authored, key, e.flag)
-			case .Vector2: slots.put(&st.authored, key, e.vector2)
-			case .Vector3: slots.put(&st.authored, key, e.vector3)
-			case .Color:   slots.put(&st.authored, key, e.color)
-			case .Object:  slots.put(&st.authored, key, e.object)
-			case .Asset:   slots.put(&st.authored, key, e.asset)
-			}
+			slots.put_raw(&st.authored, key, value_typeid(&e), &e.value)
 		}
 	}
 	st.written.parent = &st.authored
@@ -358,7 +331,7 @@ _entries_of :: proc(owner: core.Transform_Handle, T: typeid) -> []slots.Scope_En
 		t := engine.pool_get(&w.transforms, engine.Handle(b.owner))
 		if t == nil do break
 		next: for &e in b.entries {
-			if e.name == "" || value_typeid(e.type) != T do continue
+			if e.name == "" || value_typeid(&e) != T do continue
 			key := entry_key(&e)
 			// A nearer Blackboard's entry of the key is the one a slot gets.
 			for have in out do if have.slot == key do continue next
