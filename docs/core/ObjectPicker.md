@@ -32,6 +32,15 @@ what the field's type can physically reference (see
   component/scene data, an app-side decision. Converting a field does NOT
   migrate old values: `{"local_id"}` data doesn't parse into
   `{"pptr":{...}}` — re-pick and save after converting.
+- Dropping a scene object: the value of a `Ref_Local` or `Ref` field accepts an
+  object dragged from the Hierarchy (`inspector.OBJECT_DRAG_TYPE`). The field
+  takes the object when it asks for transforms, or the component on it that
+  it asks for. A drop assigns only what the picker would list, so the field's
+  type, its `has:` filter and its scene scope hold.
+- An editor that draws reference fields with no inspector owner pushed, because
+  it records its own undo, names the owner with `inspector.ref_scope_begin` and
+  `ref_scope_end` around the draw. Without an owner or a scope a pick mints no
+  id and the field keeps nothing. The tween node editor does this.
 - Ping channels: `inspector_request_ping` (hierarchy reveal + fading flash,
   selection untouched), `inspector_request_select` (select + reveal + scroll),
   `inspector_request_ping_asset` (Project window reveal + flash), and

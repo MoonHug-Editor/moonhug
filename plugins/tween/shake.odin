@@ -73,11 +73,14 @@ apply_TweenShake :: proc(self: ^TweenShake, t: f32, ctx: TweenContext) {
     if self.punch {
         offset = self.strength * (math.sin(phase) * fade)
     } else {
-        // Two sines per axis with unrelated periods and starts: uneven enough
-        // to read as a shake, and the same on every run.
+        // Two sines per axis with unrelated periods: uneven enough to read
+        // as a shake, and the same on every run. Both are 0 at the start, so
+        // the object leaves from exactly where it is, and every second axis
+        // goes the other way first.
         for i in 0 ..< 3 {
             k := f32(i)
-            wobble := 0.6 * math.sin(phase * (1 + 0.13 * k) + 1.7 * k) + 0.4 * math.sin(phase * (1.9 + 0.21 * k) + 4.1 * k + 0.5)
+            wobble := 0.6 * math.sin(phase * (1 + 0.13 * k)) + 0.4 * math.sin(phase * (1.9 + 0.21 * k))
+            if i % 2 == 1 do wobble = -wobble
             offset[i] = self.strength[i] * wobble * fade
         }
     }

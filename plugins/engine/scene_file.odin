@@ -29,6 +29,14 @@ _resolve_lid :: proc(s: ^Scene, file_local: ^map[Local_ID]Handle, lid: Local_ID)
 	return bimap_get(&s.local_ids, lid)
 }
 
+// Binds the handles of every reference in a value from their saved ids, in
+// scene `s`. For a tool that builds a value from saved data outside a scene
+// load (an editor showing one node of an authored tree): the handles are not
+// saved, so without this every reference in it reads as missing.
+refs_resolve_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene) {
+	_resolve_refs_in_value(ptr, ti, s)
+}
+
 // `only_unbound` restricts resolution to refs whose handle is not currently a
 // live pool handle (zero, dead, or a synthetic breadcrumb placeholder). This is
 // how the post-migration sweep stays namespace-safe: a ref that already holds a

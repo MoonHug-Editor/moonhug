@@ -18,8 +18,10 @@ import "moonhug:editor/widgets"
 import "moonhug:editor/icons"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/keymap"
+import "moonhug:editor/inspector"
 
-HIERARCHY_DRAG_TYPE :: "HIERARCHY_TRANSFORM"
+// One engine.Transform_Handle. Reference fields in the inspector accept it too.
+HIERARCHY_DRAG_TYPE :: inspector.OBJECT_DRAG_TYPE
 
 _HANDLE_NONE :: engine.Transform_Handle{}
 

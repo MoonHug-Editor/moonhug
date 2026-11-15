@@ -33,16 +33,23 @@ picker_search_bar :: proc() -> []string {
 // Unity-like reference field row: Label [value][x][pick]. Single click on the
 // value pings the target, double click opens/selects it (out params); [x]
 // clears (shown before [pick] only when set); [pick] opens the picker popup.
+// The drag-and-drop payload of a scene object: one core.Transform_Handle.
+// The window that lists objects is its source (the Hierarchy), and a
+// reference field's value button accepts it.
+OBJECT_DRAG_TYPE :: "HIERARCHY_TRANSFORM"
+
 // Returns true when the popup should open. When dropped_asset is non-nil, the
 // value button accepts ASSET_PATH drag-drops and writes the dropped path
 // (temp-allocated) there. When dropped_pptr is non-nil it also accepts
 // ASSET_PPTR — a sub-asset dragged from the project window (a sprite slice,
-// later a mesh part) — and sets dropped_pptr_ok.
+// later a mesh part) — and sets dropped_pptr_ok. When dropped_object is
+// non-nil it also accepts a scene object dragged from the Hierarchy
+// (OBJECT_DRAG_TYPE) and writes its transform there.
 //
 // An EMPTY field ("None") has nothing to ping or open, so its value area acts
 // as the pick button — clicking anywhere on the row opens the picker instead of
 // hitting a dead zone.
-picker_field_row :: proc(label: cstring, display: string, has_value: bool, value_clicked: ^bool, cleared: ^bool, value_double_clicked: ^bool = nil, dropped_asset: ^string = nil, dropped_pptr: ^core.PPtr = nil, dropped_pptr_ok: ^bool = nil) -> bool {
+picker_field_row :: proc(label: cstring, display: string, has_value: bool, value_clicked: ^bool, cleared: ^bool, value_double_clicked: ^bool = nil, dropped_asset: ^string = nil, dropped_pptr: ^core.PPtr = nil, dropped_pptr_ok: ^bool = nil, dropped_object: ^core.Transform_Handle = nil) -> bool {
 	display, has_value := display, has_value
 	// Every reference drawer routes its value text through here, so the mixed
 	// substitution lives here too rather than in each drawer. Showing the active
@@ -91,7 +98,12 @@ picker_field_row :: proc(label: cstring, display: string, has_value: bool, value
 	if has_value && value_double_clicked != nil && im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) {
 		value_double_clicked^ = true
 	}
-	if (dropped_asset != nil || dropped_pptr != nil) && im.BeginDragDropTarget() {
+	if (dropped_asset != nil || dropped_pptr != nil || dropped_object != nil) && im.BeginDragDropTarget() {
+		if dropped_object != nil {
+			if payload := im.AcceptDragDropPayload(OBJECT_DRAG_TYPE); payload != nil && payload.Data != nil && payload.DataSize == size_of(core.Transform_Handle) {
+				dropped_object^ = (cast(^core.Transform_Handle)payload.Data)^
+			}
+		}
 		if dropped_asset != nil {
 			if payload := im.AcceptDragDropPayload("ASSET_PATH"); payload != nil && payload.Data != nil {
 				path := string((cast([^]u8)payload.Data)[:payload.DataSize])
@@ -140,8 +152,14 @@ property_drawer_Ref_Local :: proc(ctx: ^Ctx) {
 	)
 
 	value_clicked, value_double, cleared: bool
-	if picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double) {
+	dropped: core.Transform_Handle
+	if picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double, dropped_object = &dropped) {
 		im.OpenPopup(popup_id)
+	}
+	// An object dropped from the Hierarchy: the same assignment the picker makes.
+	if h, ok := object_for_drop(keys, owner_root_scene, dropped); ok {
+		ref_ptr.handle = h
+		ref_ptr.local_id = object_mint_local_id(owner_root_scene, h)
 	}
 	// Single click: ping (reveal + flash, selection untouched). Double click:
 	// select in the hierarchy.
@@ -199,6 +217,24 @@ property_drawer_Ref_Local :: proc(ctx: ^Ctx) {
 	}
 }
 
+// What a reference field takes from a dropped object: the object itself when
+// the field asks for transforms, or the component on it that the field asks
+// for. Only what the picker would list counts, so a drop obeys the field's
+// type, its `has:` filter and its scene scope.
+object_for_drop :: proc(keys: []core.TypeKey, scope: rawptr, dropped: core.Transform_Handle) -> (core.Handle, bool) {
+	if dropped == {} do return {}, false
+	want := core.Handle(dropped)
+	for obj in _find_objects_of_types(keys, scope) {
+		owner, ok := object_owner_of(obj.handle)
+		if !ok do continue
+		// The slot, not the whole handle: the two sides do not agree on the
+		// type key a transform handle carries.
+		got := core.Handle(owner)
+		if got.index == want.index && got.generation == want.generation do return obj.handle, true
+	}
+	return {}, false
+}
+
 // The object a ref points at (the component's owner for component refs).
 @(private)
 _ref_local_target_transform :: proc(r: core.Ref_Local) -> (core.Transform_Handle, bool) {
@@ -206,12 +242,31 @@ _ref_local_target_transform :: proc(r: core.Ref_Local) -> (core.Transform_Handle
 	return object_owner_of(r.handle)
 }
 
+@(private) _ref_scope_owner: core.Handle
+@(private) _ref_scope_set:   bool
+
+// Names the object whose scene reference fields pick from and mint ids
+// against, for an editor that draws them with no inspector owner pushed
+// because it records its own undo (the tween node editor). Between begin and
+// end, pickers and drops in reference fields work as they do in the
+// inspector. Without either this or a pushed owner, a pick mints no id and
+// the field keeps nothing.
+ref_scope_begin :: proc(owner: core.Handle) {
+	_ref_scope_owner = owner
+	_ref_scope_set = true
+}
+
+ref_scope_end :: proc() {
+	_ref_scope_set = false
+}
+
 // The scope a picked target's local_id is minted against: the owner's, from
 // the inspector owner stack (the owner's root scene with the engine installed).
 // A window drawing this picker OUTSIDE the inspector must push its owner
-// (undo.push_component_owner) or nothing is minted and the reference survives
-// only until the next scene reload.
+// (undo.push_component_owner) or name it with ref_scope_begin, or nothing is
+// minted and the reference is not kept.
 ref_local_owner_root_scene :: proc() -> rawptr {
+	if _ref_scope_set do return object_owner_scope(_ref_scope_owner)
 	o, ok := undo.current_owner()
 	if !ok || o.kind != .Pooled do return nil
 	return object_owner_scope(o.handle)

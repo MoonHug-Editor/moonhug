@@ -35,8 +35,18 @@ property_drawer_Ref :: proc(ctx: ^Ctx) {
 	)
 
 	value_clicked, value_double, cleared: bool
-	if picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double) {
+	dropped: core.Transform_Handle
+	if picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double, dropped_object = &dropped if allow_scene else nil) {
 		im.OpenPopup(popup_id)
+	}
+	// An object dropped from the Hierarchy: the same assignment the picker's
+	// Scene tab makes.
+	if h, ok := object_for_drop(keys, owner_root_scene, dropped); ok {
+		ref_ptr.handle = h
+		ref_ptr.pptr = {
+			local_id = object_mint_local_id(owner_root_scene, h),
+			guid     = {},
+		}
 	}
 	// Single click pings, double click opens/selects — routed by what the ref
 	// points at (asset vs scene object).

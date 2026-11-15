@@ -157,6 +157,9 @@ test_rewind_hold_and_run_list :: proc(t: ^testing.T) {
 	tween.chain(s, tween.position(a, {5, 1, 1}, 0.25))
 	tween.chain(s, tween.position(a, {5, 9, 1}, 0.25))
 	tween.group(s, tween.scale(b, {4, 4, 4}, 0.25))
+	// A shake starts at no offset, so putting it back is exact too.
+	tween.group(s, tween.shake_rotation(b, {10, 20, 30}, 0.25))
+	b_rotation := _tr(b).rotation
 
 	// The way a preview drives a run: paused for the game, held at its end,
 	// ticked by hand.
@@ -182,5 +185,6 @@ test_rewind_hold_and_run_list :: proc(t: ^testing.T) {
 	testing.expect(t, !tween.is_alive(s))
 	testing.expect_value(t, _tr(a).position, [3]f32{1, 1, 1})
 	testing.expect_value(t, _tr(b).scale, [3]f32{2, 2, 2})
+	testing.expect_value(t, _tr(b).rotation, b_rotation)
 	testing.expect_value(t, len(tween.run_infos()), 0)
 }

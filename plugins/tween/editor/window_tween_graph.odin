@@ -23,6 +23,7 @@ import "core:mem"
 import "core:reflect"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
+import "moonhug:libs/gfx"
 import engine "moonhug:packages/engine"
 import tween "moonhug:packages/tween"
 import ng "moonhug:packages/node_graph"
@@ -75,6 +76,9 @@ _preview_stop :: proc() {
 @(private = "file")
 _preview_tick :: proc() {
 	if !tween.is_alive(_state.preview) do return
+	// The editor draws at its idle rate when nothing happens. A preview moves
+	// with no input, so it asks for the full rate while it plays.
+	gfx.keep_awake()
 	dt := min(im.GetIO().DeltaTime, 0.1)
 	if tween.is_done(_state.preview) {
 		_state.preview_done += dt
@@ -564,6 +568,15 @@ _node_editor :: proc(owner: engine.Handle, root_idx: int, path: []i32, v: json.V
 		pp := inst
 		if json.unmarshal_any(bytes, any{&pp, ptr_tid}) != nil do return
 		engine.type_on_validate_by_typeid(tid, inst)
+		// The value holds references by saved id only. Bind their handles in
+		// the owner's scene, or the inspector shows every one as missing.
+		if w := engine.ctx_world(); w != nil {
+			if comp := cast(^engine.CompData)engine.world_pool_get(w, owner); comp != nil {
+				if t := engine.pool_get(&w.transforms, engine.Handle(comp.owner)); t != nil && t.scene != nil {
+					engine.refs_resolve_in_value(inst, type_info_of(tid), t.scene)
+				}
+			}
+		}
 		instance = inst
 		pb, perr := json.marshal(any{instance, tid}, {spec = .JSON}, context.temp_allocator)
 		if perr != nil do return
@@ -574,7 +587,11 @@ _node_editor :: proc(owner: engine.Handle, root_idx: int, path: []i32, v: json.V
 	// scope keeps their widgets distinct.
 	im.PushID(fmt.ctprintf("tw_node_%v", key))
 	target := instance
+	// No inspector owner is pushed here, since this editor records its own
+	// undo. Reference fields still need the owner's scene to pick from.
+	inspector.ref_scope_begin(owner)
 	inspector.draw_inspector(any{data = &target, id = ptr_tid})
+	inspector.ref_scope_end()
 	im.PopID()
 
 	if mine {
