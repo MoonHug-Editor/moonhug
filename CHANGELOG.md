@@ -1,3 +1,9 @@
+## [0.166.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.165.0...v0.166.0) (2026-11-15)
+
+### Features
+
+* Tween Graph follows the selection, locks per copy and saves its pick ([08558fd](https://github.com/MoonHug-Editor/moonhug/commit/08558fdfc6c443d26d85755efe9aa5fc9d2f212d))
+
 ## [0.165.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.164.0...v0.165.0) (2026-11-15)
 
 ### Features
