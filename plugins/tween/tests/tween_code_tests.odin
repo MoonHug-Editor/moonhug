@@ -233,3 +233,45 @@ test_sequence_waits_and_authored_steps :: proc(t: ^testing.T) {
 	testing.expect_value(t, _tr(a).position, [3]f32{2, 2, 0})
 	testing.expect_value(t, tween.run_count(), 0)
 }
+
+// Settings: a component's inspector field in place of a duration.
+@(test)
+test_settings_in_place_of_a_duration :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	tween.tween_init()
+	defer tween.stop_all()
+
+	a := engine.transform_new("A")
+	probe: _Probe
+
+	// Duration, ease, cycles, cycle mode and delay all come from the settings.
+	s := tween.Settings{duration = 0.5, ease = .Quad_In, cycles = 2, cycle_mode = .Yoyo, delay = 0.25}
+	h := tween.position(a, {8, 0, 0}, &s)
+	_tick(16)
+	testing.expect(t, _near(_tr(a).position.x, 0), "the settings' delay holds the tween")
+	_tick(16) // half of the first cycle, Quad_In: a quarter of the way
+	testing.expect(t, _near(_tr(a).position.x, 2))
+	_tick(49)
+	testing.expect(t, !tween.is_alive(h))
+	testing.expect_value(t, _tr(a).position, [3]f32{0, 0, 0})
+
+	// The options the settings do not hold still apply.
+	s = {duration = 1}
+	tween.custom(0, 10, &s, _set_number, &probe, opt = {clock = .Unscaled})
+	_tick(32)
+	testing.expect(t, _near(probe.number, 5))
+
+	// A curve in the settings is the ease, and the tween keeps its own copy.
+	s = {duration = 1, ease = .Curve}
+	append(&s.curve.keys, engine.Curve_Key{t = 0, value = 0}, engine.Curve_Key{t = 0.5, value = 1}, engine.Curve_Key{t = 1, value = 1})
+	h = tween.position(a, {4, 0, 0}, &s)
+	tween.type_cleanup_Settings(&s)
+	_tick(16) // a quarter of the time: half way up the curve's first segment
+	testing.expect(t, _near(_tr(a).position.x, 2))
+	_tick(49)
+	testing.expect_value(t, _tr(a).position, [3]f32{4, 0, 0})
+}

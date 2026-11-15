@@ -14,13 +14,13 @@ import sprites "moonhug:packages/sprites"
 import tween "moonhug:packages/tween"
 
 // A sprite's color from what it is to `to`.
-color :: proc(target: engine.Transform_Handle, to: [4]f32, duration: f32, ease := tween.Ease.Linear, opt := tween.Options{}) -> tween.Handle {
-	return tween.field(target, _color_of, to, duration, ease, opt)
+color :: proc(target: engine.Transform_Handle, to: [4]f32, timing: tween.Timing, ease := tween.Ease.Linear, opt := tween.Options{}) -> tween.Handle {
+	return tween.field(target, _color_of, to, timing, ease, opt)
 }
 
 // A sprite's alpha, its color staying what it is.
-alpha :: proc(target: engine.Transform_Handle, to: f32, duration: f32, ease := tween.Ease.Linear, opt := tween.Options{}) -> tween.Handle {
-	return tween.field_masked(target, _color_of, {0, 0, 0, to}, 4, {3}, duration, ease, opt)
+alpha :: proc(target: engine.Transform_Handle, to: f32, timing: tween.Timing, ease := tween.Ease.Linear, opt := tween.Options{}) -> tween.Handle {
+	return tween.field_masked(target, _color_of, {0, 0, 0, to}, 4, {3}, timing, ease, opt)
 }
 
 @(private = "file")

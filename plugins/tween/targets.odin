@@ -205,25 +205,26 @@ field :: proc {
     field_vec4,
 }
 
-field_f32 :: proc(target: engine.Transform_Handle, access: Field_Access, to: f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
-    return field_masked(target, access, {to, 0, 0, 0}, 1, {0}, duration, ease, opt)
+field_f32 :: proc(target: engine.Transform_Handle, access: Field_Access, to: f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+    return field_masked(target, access, {to, 0, 0, 0}, 1, {0}, timing, ease, opt)
 }
 
-field_vec2 :: proc(target: engine.Transform_Handle, access: Field_Access, to: [2]f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
-    return field_masked(target, access, {to.x, to.y, 0, 0}, 2, {0, 1}, duration, ease, opt)
+field_vec2 :: proc(target: engine.Transform_Handle, access: Field_Access, to: [2]f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+    return field_masked(target, access, {to.x, to.y, 0, 0}, 2, {0, 1}, timing, ease, opt)
 }
 
-field_vec3 :: proc(target: engine.Transform_Handle, access: Field_Access, to: [3]f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
-    return field_masked(target, access, {to.x, to.y, to.z, 0}, 3, {0, 1, 2}, duration, ease, opt)
+field_vec3 :: proc(target: engine.Transform_Handle, access: Field_Access, to: [3]f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+    return field_masked(target, access, {to.x, to.y, to.z, 0}, 3, {0, 1, 2}, timing, ease, opt)
 }
 
-field_vec4 :: proc(target: engine.Transform_Handle, access: Field_Access, to: [4]f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
-    return field_masked(target, access, to, 4, {0, 1, 2, 3}, duration, ease, opt)
+field_vec4 :: proc(target: engine.Transform_Handle, access: Field_Access, to: [4]f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+    return field_masked(target, access, to, 4, {0, 1, 2, 3}, timing, ease, opt)
 }
 
 // field for part of a field: `width` numbers are read, the ones in `mask`
 // are written. A color's alpha alone is width 4, mask {3}.
-field_masked :: proc(target: engine.Transform_Handle, access: Field_Access, to: [4]f32, width: u8, mask: Field_Mask, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
+field_masked :: proc(target: engine.Transform_Handle, access: Field_Access, to: [4]f32, width: u8, mask: Field_Mask, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+    d, e, o := timing_resolve(timing, ease, opt)
     assert(access != nil, "tween.field: needs a proc that finds the field")
     assert(width >= 1 && width <= 4, "tween.field: a field is 1 to 4 numbers")
     h, node := node_new(TweenField)
@@ -231,72 +232,76 @@ field_masked :: proc(target: engine.Transform_Handle, access: Field_Access, to: 
     node.width = width
     node.mask = mask
     node.access = access
-    node.duration = duration
-    node.speed = opt.speed
-    return start_value_node(h, &node.base, &node.anim, target, ease, opt)
+    node.duration = d
+    node.speed = o.speed
+    return start_value_node(h, &node.base, &node.anim, target, e, o)
 }
 
 // --- Code API over the nodes above -------------------------------------------------------
 
 // Moves the object's world position from where it is to `to`.
-world_position :: proc(target: engine.Transform_Handle, to: [3]f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
+world_position :: proc(target: engine.Transform_Handle, to: [3]f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+    d, e, o := timing_resolve(timing, ease, opt)
     h, node := node_new(TweenMoveToWorld)
     node.position = to
-    node.duration = duration
-    node.speed = opt.speed
-    return start_value_node(h, &node.base, &node.anim, target, ease, opt)
+    node.duration = d
+    node.speed = o.speed
+    return start_value_node(h, &node.base, &node.anim, target, e, o)
 }
 
 // Rotates the object from its world rotation to the quaternion `to`.
-world_rotation :: proc(target: engine.Transform_Handle, to: [4]f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
+world_rotation :: proc(target: engine.Transform_Handle, to: [4]f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+    d, e, o := timing_resolve(timing, ease, opt)
     assert(opt.speed == 0, "tween.world_rotation: no speed option, give a duration")
     h, node := node_new(TweenRotateToWorld)
     node.rotation = to
-    node.duration = duration
-    return start_value_node(h, &node.base, &node.anim, target, ease, opt)
+    node.duration = d
+    return start_value_node(h, &node.base, &node.anim, target, e, o)
 }
 
 // Moves a UI object's anchored position: canvas units from its anchors.
-anchored_position :: proc(target: engine.Transform_Handle, to: [3]f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
+anchored_position :: proc(target: engine.Transform_Handle, to: [3]f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+    d, e, o := timing_resolve(timing, ease, opt)
     h, node := node_new(TweenAnchoredPosition)
     node.position = to
-    node.duration = duration
-    node.speed = opt.speed
-    return start_value_node(h, &node.base, &node.anim, target, ease, opt)
+    node.duration = d
+    node.speed = o.speed
+    return start_value_node(h, &node.base, &node.anim, target, e, o)
 }
 
 // Resizes a UI object: its size delta, the size added to its anchor span.
-size_delta :: proc(target: engine.Transform_Handle, to: [2]f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
+size_delta :: proc(target: engine.Transform_Handle, to: [2]f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+    d, e, o := timing_resolve(timing, ease, opt)
     assert(opt.speed == 0, "tween.size_delta: no speed option, give a duration")
     h, node := node_new(TweenSizeDelta)
     node.size = to
-    node.duration = duration
-    return start_value_node(h, &node.base, &node.anim, target, ease, opt)
+    node.duration = d
+    return start_value_node(h, &node.base, &node.anim, target, e, o)
 }
 
 // Tints a UI graphic: the runtime color its CanvasRenderer multiplies the
 // graphic's own color with. It is not saved. An untinted graphic starts white.
-ui_tint :: proc(target: engine.Transform_Handle, to: [4]f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
-    return field(target, _tint_of, to, duration, ease, opt)
+ui_tint :: proc(target: engine.Transform_Handle, to: [4]f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+    return field(target, _tint_of, to, timing, ease, opt)
 }
 
 // Fades a UI graphic: the alpha of its tint, the color staying what it is.
-ui_alpha :: proc(target: engine.Transform_Handle, to: f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
-    return field_masked(target, _tint_of, {0, 0, 0, to}, 4, {3}, duration, ease, opt)
+ui_alpha :: proc(target: engine.Transform_Handle, to: f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+    return field_masked(target, _tint_of, {0, 0, 0, to}, 4, {3}, timing, ease, opt)
 }
 
 // A camera's vertical field of view in degrees.
-camera_fov :: proc(target: engine.Transform_Handle, to: f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
-    return field(target, _camera_fov_of, to, duration, ease, opt)
+camera_fov :: proc(target: engine.Transform_Handle, to: f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+    return field(target, _camera_fov_of, to, timing, ease, opt)
 }
 
-light_intensity :: proc(target: engine.Transform_Handle, to: f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
-    return field(target, _light_intensity_of, to, duration, ease, opt)
+light_intensity :: proc(target: engine.Transform_Handle, to: f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+    return field(target, _light_intensity_of, to, timing, ease, opt)
 }
 
 // A light's color. Its alpha is unused, so three numbers.
-light_color :: proc(target: engine.Transform_Handle, to: [3]f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
-    return field(target, _light_color_of, to, duration, ease, opt)
+light_color :: proc(target: engine.Transform_Handle, to: [3]f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+    return field(target, _light_color_of, to, timing, ease, opt)
 }
 
 @(private = "file")

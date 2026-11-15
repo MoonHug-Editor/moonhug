@@ -54,6 +54,36 @@ tween.position(enemy, waypoint, 0, opt = {speed = 3})   // 3 units per second
 | `curve` | The ease as a curve from 0 to 1 on both axes. The curve is copied. |
 | `speed` | Above 0: units per second. The duration argument is ignored and follows from the distance. For `position`, `world_position`, `anchored_position`, `custom` and `field`. |
 
+## Settings in the inspector
+
+`tween.Settings` holds a tween's timing as one inspector field. The component declares it, the scene sets it, and the code passes its address where a one-line tween takes its duration.
+
+```odin
+Door :: struct {
+	using base: engine.CompData `inspect:"-"`,
+	open: tween.Settings,
+}
+
+type_reset_Door :: proc(d: ^Door) {
+	d.open = {duration = 0.3, ease = .Back_Out}
+}
+
+tween.position(d.owner, {0, 2, 0}, &d.open)
+```
+
+| Field | What it does |
+|---|---|
+| `duration` | Seconds one cycle takes. |
+| `ease`, `curve` | The shape of the motion. The curve is used when `ease` is `Curve`. |
+| `cycles`, `cycle_mode` | How often it plays and what a later cycle does. |
+| `delay` | Seconds before it starts. |
+
+- With settings, the ease, cycles, cycle mode and delay come from them. The call's own `ease` argument is not used.
+- The clock and the speed are not in the settings. They stay in the options: `tween.position(d.owner, to, &d.open, opt = {clock = .Unscaled})`.
+- Every one-line tween and `custom` and `field` take settings this way. Shakes and punches take seconds.
+- The tween copies what it needs when it starts, so the settings can change or go away afterwards.
+- A component with a `Settings` field declares a `type_cleanup` that calls `tween.type_cleanup_Settings`, since the settings own their curve's keys.
+
 ## Any value
 
 `tween.custom` animates a value that is not a transform. It calls a proc every tick with the value between `from` and `to`.

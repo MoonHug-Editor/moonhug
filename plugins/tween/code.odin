@@ -38,39 +38,89 @@ Options :: struct {
 	speed:      f32,
 }
 
+// A tween's timing as one inspector field: a component declares
+// `move: tween.Settings`, the scene sets it, and the code passes `&d.move`
+// where a one-line tween takes its duration.
+//
+//   tween.position(door, {0, 2, 0}, &d.move)
+@(typ_guid={guid="1152800f-1bf5-48df-ba12-745f6571e5ae"})
+Settings :: struct {
+	duration:   f32 `decor:min(0)`,
+	ease:       Ease,
+	curve:      engine.Curve, // the shape when ease is Curve
+	// 0 and 1 play once, -1 repeats until stopped or completed.
+	cycles:     i32,
+	cycle_mode: Cycle_Mode,
+	delay:      f32 `decor:min(0)`,
+}
+
+type_cleanup_Settings :: proc(s: ^Settings) {
+	delete(s.curve.keys)
+	s^ = {}
+}
+
+// How long a one-line tween takes: seconds, or the settings a component
+// holds. With settings, the ease, cycles, cycle mode and delay come from them
+// and the call's own `ease` argument is not used.
+Timing :: union {
+	f32,
+	^Settings,
+}
+
+// The duration, ease and options a one-line tween runs with, from what the
+// call was given. A plugin's own one-line tween resolves its timing here.
+timing_resolve :: proc(timing: Timing, ease: Ease, opt: Options) -> (duration: f32, e: Ease, o: Options) {
+	o = opt
+	switch t in timing {
+	case f32:
+		return t, ease, o
+	case ^Settings:
+		assert(t != nil, "tween: the settings pointer is nil")
+		o.cycles = t.cycles
+		o.cycle_mode = t.cycle_mode
+		o.delay = t.delay
+		if t.ease == .Curve do o.curve = &t.curve
+		return t.duration, t.ease, o
+	}
+	return 0, ease, o
+}
+
 // --- One-line tweens ---------------------------------------------------------------
 
 // Moves the object's local position from where it is to `to`.
-position :: proc(target: engine.Transform_Handle, to: [3]f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
+position :: proc(target: engine.Transform_Handle, to: [3]f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+	d, e, o := timing_resolve(timing, ease, opt)
 	h, node := node_new(TweenMoveToLocal)
 	node.position = to
-	node.duration = duration
-	node.speed = opt.speed
-	return start_value_node(h, &node.base, &node.anim, target, ease, opt)
+	node.duration = d
+	node.speed = o.speed
+	return start_value_node(h, &node.base, &node.anim, target, e, o)
 }
 
 // Scales the object from its local scale to `to`.
-scale :: proc(target: engine.Transform_Handle, to: [3]f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
-	assert(opt.speed == 0, "tween.scale: no speed option, give a duration")
+scale :: proc(target: engine.Transform_Handle, to: [3]f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+	d, e, o := timing_resolve(timing, ease, opt)
+	assert(o.speed == 0, "tween.scale: no speed option, give a duration")
 	h, node := node_new(TweenScaleToLocal)
 	node.scale = to
-	node.duration = duration
-	return start_value_node(h, &node.base, &node.anim, target, ease, opt)
+	node.duration = d
+	return start_value_node(h, &node.base, &node.anim, target, e, o)
 }
 
 // Rotates the object from its local rotation to the quaternion `to`, along
 // the shortest arc.
-rotation :: proc(target: engine.Transform_Handle, to: [4]f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
-	assert(opt.speed == 0, "tween.rotation: no speed option, give a duration")
+rotation :: proc(target: engine.Transform_Handle, to: [4]f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+	d, e, o := timing_resolve(timing, ease, opt)
+	assert(o.speed == 0, "tween.rotation: no speed option, give a duration")
 	h, node := node_new(TweenRotateToLocal)
 	node.rotation = to
-	node.duration = duration
-	return start_value_node(h, &node.base, &node.anim, target, ease, opt)
+	node.duration = d
+	return start_value_node(h, &node.base, &node.anim, target, e, o)
 }
 
 // Rotates the object from its local rotation to Euler angles in degrees.
-euler_angles :: proc(target: engine.Transform_Handle, to: [3]f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
-	return rotation(target, engine.quat_from_euler_xyz(to.x, to.y, to.z), duration, ease, opt)
+euler_angles :: proc(target: engine.Transform_Handle, to: [3]f32, timing: Timing, ease := Ease.Linear, opt := Options{}) -> Handle {
+	return rotation(target, engine.quat_from_euler_xyz(to.x, to.y, to.z), timing, ease, opt)
 }
 
 // Animates any value: `set` is called every tick with the value between
@@ -83,20 +133,20 @@ custom :: proc {
 	custom_vec4,
 }
 
-custom_f32 :: proc(from, to: f32, duration: f32, set: proc(value: f32, user: rawptr), user: rawptr = nil, ease := Ease.Linear, opt := Options{}) -> Handle {
-	return _start_custom({from, 0, 0, 0}, {to, 0, 0, 0}, 1, rawptr(set), duration, user, ease, opt)
+custom_f32 :: proc(from, to: f32, timing: Timing, set: proc(value: f32, user: rawptr), user: rawptr = nil, ease := Ease.Linear, opt := Options{}) -> Handle {
+	return _start_custom({from, 0, 0, 0}, {to, 0, 0, 0}, 1, rawptr(set), timing, user, ease, opt)
 }
 
-custom_vec2 :: proc(from, to: [2]f32, duration: f32, set: proc(value: [2]f32, user: rawptr), user: rawptr = nil, ease := Ease.Linear, opt := Options{}) -> Handle {
-	return _start_custom({from.x, from.y, 0, 0}, {to.x, to.y, 0, 0}, 2, rawptr(set), duration, user, ease, opt)
+custom_vec2 :: proc(from, to: [2]f32, timing: Timing, set: proc(value: [2]f32, user: rawptr), user: rawptr = nil, ease := Ease.Linear, opt := Options{}) -> Handle {
+	return _start_custom({from.x, from.y, 0, 0}, {to.x, to.y, 0, 0}, 2, rawptr(set), timing, user, ease, opt)
 }
 
-custom_vec3 :: proc(from, to: [3]f32, duration: f32, set: proc(value: [3]f32, user: rawptr), user: rawptr = nil, ease := Ease.Linear, opt := Options{}) -> Handle {
-	return _start_custom({from.x, from.y, from.z, 0}, {to.x, to.y, to.z, 0}, 3, rawptr(set), duration, user, ease, opt)
+custom_vec3 :: proc(from, to: [3]f32, timing: Timing, set: proc(value: [3]f32, user: rawptr), user: rawptr = nil, ease := Ease.Linear, opt := Options{}) -> Handle {
+	return _start_custom({from.x, from.y, from.z, 0}, {to.x, to.y, to.z, 0}, 3, rawptr(set), timing, user, ease, opt)
 }
 
-custom_vec4 :: proc(from, to: [4]f32, duration: f32, set: proc(value: [4]f32, user: rawptr), user: rawptr = nil, ease := Ease.Linear, opt := Options{}) -> Handle {
-	return _start_custom(from, to, 4, rawptr(set), duration, user, ease, opt)
+custom_vec4 :: proc(from, to: [4]f32, timing: Timing, set: proc(value: [4]f32, user: rawptr), user: rawptr = nil, ease := Ease.Linear, opt := Options{}) -> Handle {
+	return _start_custom(from, to, 4, rawptr(set), timing, user, ease, opt)
 }
 
 // Waits `seconds`, then calls `call` with `user`. With no call it is a
@@ -263,17 +313,18 @@ register_code_nodes :: proc() {
 // --- Internals -----------------------------------------------------------------------------
 
 @(private = "file")
-_start_custom :: proc(from, to: [4]f32, width: u8, set_raw: rawptr, duration: f32, user: rawptr, ease: Ease, opt: Options) -> Handle {
+_start_custom :: proc(from, to: [4]f32, width: u8, set_raw: rawptr, timing: Timing, user: rawptr, ease: Ease, opt: Options) -> Handle {
 	assert(set_raw != nil, "tween.custom: needs a proc that takes the value")
+	d, e, o := timing_resolve(timing, ease, opt)
 	h, node := node_new(TweenCustom)
 	node.from = from
 	node.to = to
 	node.width = width
 	node.set_raw = set_raw
 	node.user = user
-	node.duration = duration
-	if opt.speed > 0 do node.duration = linalg.length(to - from) / opt.speed
-	return start_value_node(h, &node.base, &node.anim, {}, ease, opt)
+	node.duration = d
+	if o.speed > 0 do node.duration = linalg.length(to - from) / o.speed
+	return start_value_node(h, &node.base, &node.anim, {}, e, o)
 }
 
 @(private = "file")

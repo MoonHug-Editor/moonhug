@@ -64,6 +64,24 @@ h := tween.run(&a, tween.TweenContext{subject = cube})
 
 The plugin ticks its runs itself, every frame and every fixed tick.
 
+## Demo
+
+`plugins/app/assets/demo_tweens/demo_tweens.scene` shows the plugin on a field of cubes, and `plugins/app/component_TweenDemo.odin` is the code behind it. Open the scene and press Play, or pick it from the demo menu.
+
+| Cubes | Show |
+|---|---|
+| Red row | the same hop with six eases: Linear, Quad In Out, Back In Out, Bounce Out, Elastic Out, Expo In Out |
+| Spin | Incremental cycles: a turn that keeps going |
+| Pulse | a scale that goes out and back forever |
+| Punch, Shake | `punch_scale` and `shake_position`, repeated by a bound `delay` |
+| Unscaled | a tween on the `Unscaled` clock. Press T for slow motion: it keeps its speed |
+| Orbit | `custom`: an angle written as a place on a circle |
+| Sequence | `sequence`, `chain`, `group` and `chain_delay`, restarted from its completion |
+| Speed | `world_position` with the speed option |
+| Tree Actor, Tree Other | an authored tree. The code starts it on Tree Actor, and one node names Tree Other as its own subject |
+
+The hop and the spin read their timing from `tween.Settings` fields on the TweenDemo component, so the inspector changes them.
+
 ## Extending
 
 The plugin declares no attributes. A node type registers with `register_tween` or `register_node` from a `SerializationInit` phase proc, from any plugin, and appears in every type picker ([Authored and live trees](concepts/AuthoredAndLive.md), "Adding a node type"). `plugins/plugin_example/tween_spinner.odin` is the reference.

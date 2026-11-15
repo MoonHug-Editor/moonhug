@@ -14,13 +14,13 @@ import "moonhug:packages/engine"
 import tween "moonhug:packages/tween"
 
 // An AudioSource's volume from what it is to `to`.
-volume :: proc(target: engine.Transform_Handle, to: f32, duration: f32, ease := tween.Ease.Linear, opt := tween.Options{}) -> tween.Handle {
-	return tween.field(target, _volume_of, to, duration, ease, opt)
+volume :: proc(target: engine.Transform_Handle, to: f32, timing: tween.Timing, ease := tween.Ease.Linear, opt := tween.Options{}) -> tween.Handle {
+	return tween.field(target, _volume_of, to, timing, ease, opt)
 }
 
 // An AudioSource's pitch: its playback frequency ratio, 1 as authored.
-pitch :: proc(target: engine.Transform_Handle, to: f32, duration: f32, ease := tween.Ease.Linear, opt := tween.Options{}) -> tween.Handle {
-	return tween.field(target, _pitch_of, to, duration, ease, opt)
+pitch :: proc(target: engine.Transform_Handle, to: f32, timing: tween.Timing, ease := tween.Ease.Linear, opt := tween.Options{}) -> tween.Handle {
+	return tween.field(target, _pitch_of, to, timing, ease, opt)
 }
 
 @(private = "file")
