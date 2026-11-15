@@ -80,6 +80,22 @@ scene_file_load :: proc(filepath: string) -> (SceneFile, bool) {
 }
 ```
 
+### Unions
+
+A union field saves its active variant tagged with the variant's type (`libs/serialization/union_serialization.odin`):
+
+```json
+{ "__type_guid": "3d9b41f7-...", "clip": "...", "speed": 1 }
+{ "__type_guid": "6f0e1c52-...", "__value": 1 }
+{ "__type": "[3]f32", "__value": [0, 2.5, 0] }
+```
+
+- A struct variant has its fields next to its guid.
+- A declared variant that is not a struct, such as an enum, has its guid and its `__value`.
+- A literal type, one the language spells such as `f32`, `bool` or `[3]f32`, has no declaration to carry a guid. It is tagged with its text in `__type`, which the language fixes, and its `__value`.
+- `serialization.register_union_type(T)` makes a union save this way. `union_gen` calls it for every hand-written union whose variants all carry `@(typ_guid)`, and a generator that emits a union calls it itself. Every variant must have a guid or be a literal type, which is checked when the serializers are installed.
+- A variant tag no installed plugin knows is dangling data: the load fails for that value and does not crash.
+
 ## Scene Load Modes
 
 ```odin

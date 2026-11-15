@@ -1,8 +1,10 @@
 package serialization
 
 import "core:encoding/json"
+import "core:fmt"
 import core "moonhug:libs/core"
 import "base:runtime"
+import "base:intrinsics"
 
 component_marshalers:   map[typeid]json.User_Marshaler
 component_unmarshalers: map[typeid]json.User_Unmarshaler
@@ -25,10 +27,52 @@ _component_serializers_maps_init :: proc "contextless" () {
 // silently — exactly the failure this registration exists to prevent. @(init)
 // is the language's, needs no table, and runs whenever the file compiles.
 _pending_unions: [dynamic]typeid
+@(private) _unions_installed: bool
 
-register_union_type :: proc(T: typeid) {
+// Makes union `T` save as its active variant tagged with the variant's type
+// (union_marshal). Every variant is a type with @(typ_guid), or a literal
+// type such as `f32` or `[3]f32`, saved by its text (literal_type_text).
+// Another variant stops the program here: it could not be loaded back.
+register_union_type :: proc($T: typeid) where intrinsics.type_is_union(T) {
+	_register_variants(T, 0)
+	if _unions_installed {
+		_install_union(T)
+		return
+	}
 	if _pending_unions == nil do _pending_unions = make([dynamic]typeid, runtime.default_allocator())
 	append(&_pending_unions, T)
+}
+
+// Each variant of `U` from index `I` on, one instantiation per variant.
+@(private)
+_register_variants :: proc($U: typeid, $I: int) {
+	when I < intrinsics.type_union_variant_count(U) {
+		_register_variant(intrinsics.type_variant_type_of(U, I), U)
+		_register_variants(U, I + 1)
+	}
+}
+
+// A literal variant is recorded here, at program init. A declared one gets
+// its guid later, and _install_union checks it then.
+@(private)
+_register_variant :: proc($V: typeid, union_tid: typeid) {
+	text, literal := literal_type_text(V)
+	if !literal do return
+	core.register_pointer_type(V)
+	literal_type_register(text, V)
+}
+
+// Installs the union's marshalers, once every type has its guid.
+@(private)
+_install_union :: proc(T: typeid) {
+	info, _ := runtime.type_info_base(type_info_of(T)).variant.(runtime.Type_Info_Union)
+	for v in info.variants {
+		_, tagged := core.get_guid_by_typeid_ok(v.id)
+		_, literal := literal_type_saved_text(v.id)
+		fmt.assertf(tagged || literal, "union %v: variant %v needs @(typ_guid), or to be a literal type such as f32 or [3]f32", T, v.id)
+	}
+	json.register_user_marshaler(T, union_marshal)
+	json.register_user_unmarshaler(T, union_unmarshal)
 }
 
 Phase_Extra :: enum {
@@ -46,10 +90,8 @@ register_component_serializers :: proc() {
 
     // Unions queued at program init by generated code (prebuild/union_gen),
     // now that the maps they go into exist.
-    for tid in _pending_unions {
-        json.register_user_marshaler(tid, union_marshal)
-        json.register_user_unmarshaler(tid, union_unmarshal)
-    }
+    for tid in _pending_unions do _install_union(tid)
+    _unions_installed = true
 
     json.register_user_marshaler(core.Asset_GUID, asset_guid_marshal)
     json.register_user_unmarshaler(core.Asset_GUID, asset_guid_unmarshal)

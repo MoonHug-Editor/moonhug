@@ -2,6 +2,7 @@ package serialization
 
 import "core:reflect"
 import "core:encoding/json"
+import "core:fmt"
 import "core:encoding/uuid"
 import "core:io"
 import "core:mem"
@@ -41,19 +42,35 @@ union_marshal :: proc(w: io.Stream, v: any, opt: ^json.Marshal_Options) -> json.
         return nil
     }
 
-    guid := core.get_guid_by_typeid(tid)
-    guid_str := uuid.to_string(guid, context.temp_allocator)
-
-    _, e := io.write_string(w, "{\"__type_guid\":")
-    if e != .None do return .Unsupported_Type
-
-    if err := json.marshal_to_writer(w, guid_str, opt); err != nil do return err
+    // The tag: the variant's guid, or the text of a literal type
+    // (literal_types.odin). register_union_type checked that one exists.
+    tag_key, tag: string
+    if guid, tagged := core.get_guid_by_typeid_ok(tid); tagged {
+        tag_key = "__type_guid"
+        tag = uuid.to_string(guid, context.temp_allocator)
+    } else if text, literal := literal_type_saved_text(tid); literal {
+        tag_key = "__type"
+        tag = text
+    } else {
+        fmt.panicf("union %v: variant %v has no guid and is no registered literal type (register_union_type)", v.id, tid)
+    }
 
     variant_any := any{v.data, tid}
     variant_bytes, marshal_err := json.marshal(variant_any, opt^, context.temp_allocator)
     if marshal_err != nil do return marshal_err
 
-    if len(variant_bytes) > 1 && variant_bytes[0] == '{' {
+    _, e := io.write_string(w, "{\"")
+    if e != .None do return .Unsupported_Type
+    _, e = io.write_string(w, tag_key)
+    if e != .None do return .Unsupported_Type
+    _, e = io.write_string(w, "\":")
+    if e != .None do return .Unsupported_Type
+    if err := json.marshal_to_writer(w, tag, opt); err != nil do return err
+
+    // A struct variant's fields sit next to the tag. Any other value, a
+    // number, an array, a struct its marshaler writes as a string, is the
+    // tag's `__value`.
+    if tag_key == "__type_guid" && len(variant_bytes) > 1 && variant_bytes[0] == '{' {
         stripped := variant_bytes[1:]
         if len(stripped) > 0 && stripped[0] != '}' {
             _, e = io.write_string(w, ",")
@@ -61,11 +78,14 @@ union_marshal :: proc(w: io.Stream, v: any, opt: ^json.Marshal_Options) -> json.
         }
         _, e = io.write(w, stripped)
         if e != .None do return .Unsupported_Type
-    } else {
-        _, e = io.write_string(w, "}")
-        if e != .None do return .Unsupported_Type
+        return nil
     }
-
+    _, e = io.write_string(w, ",\"__value\":")
+    if e != .None do return .Unsupported_Type
+    _, e = io.write(w, variant_bytes)
+    if e != .None do return .Unsupported_Type
+    _, e = io.write_string(w, "}")
+    if e != .None do return .Unsupported_Type
     return nil
 }
 
@@ -89,18 +109,26 @@ union_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
     root, ok := obj_val.(json.Object)
     if !ok do return json.Unmarshal_Data_Error.Invalid_Data
 
-    type_val, has_type := root["__type_guid"]
-    if !has_type do return json.Unmarshal_Data_Error.Invalid_Data
-
-    guid_str, guid_ok := type_val.(json.String)
-    if !guid_ok do return json.Unmarshal_Data_Error.Invalid_Data
-
-    guid, guid_err := uuid.read(guid_str)
-    if guid_err != nil do return json.Unmarshal_Data_Error.Invalid_Data
-
     // A variant no installed plugin declares is dangling data, not a bug.
-    tid, known := core.get_typeid_by_guid_ok(guid)
+    tid: typeid
+    known: bool
+    if type_val, has_guid := root["__type_guid"]; has_guid {
+        guid_str, guid_ok := type_val.(json.String)
+        if !guid_ok do return json.Unmarshal_Data_Error.Invalid_Data
+        guid, guid_err := uuid.read(guid_str)
+        if guid_err != nil do return json.Unmarshal_Data_Error.Invalid_Data
+        tid, known = core.get_typeid_by_guid_ok(guid)
+    } else if type_val, has_text := root["__type"]; has_text {
+        text, text_ok := type_val.(json.String)
+        if !text_ok do return json.Unmarshal_Data_Error.Invalid_Data
+        tid, known = literal_type_of(text)
+    }
     if !known do return json.Unmarshal_Data_Error.Invalid_Data
+
+    // The variant's value: next to the tag for a struct variant, the tag's
+    // `__value` for any other.
+    value: json.Value = root
+    if wrapped, has_value := root["__value"]; has_value do value = wrapped
 
     ti := type_info_of(tid)
     // The variant's OWNED allocations (strings, arrays) go to
@@ -119,7 +147,7 @@ union_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
         return json.Unmarshal_Data_Error.Invalid_Data
     }
 
-    if uerr := core.unmarshal_value_over_reset(root, variant_ptr, tid, allocator = context.allocator); uerr != nil {
+    if uerr := core.unmarshal_value_over_reset(value, variant_ptr, tid, allocator = context.allocator); uerr != nil {
         mem.free(variant_ptr, context.allocator)
         return uerr
     }
