@@ -80,7 +80,7 @@ tweens_window_draw :: proc(w: ^wnd.Window) {
 			im.TableSetColumnIndex(5)
 			state := "running"
 			switch {
-			case r.done:    state = "done, held"
+			case r.done:    state = "done, kept"
 			case r.paused:  state = "paused"
 			case r.waiting: state = "waiting"
 			}

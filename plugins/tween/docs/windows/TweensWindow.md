@@ -14,7 +14,7 @@ Lists every running tween while a game plays. Open it from Window, Animation, Tw
 | Object | The object the run animates, and the object it is bound to when that is another one. |
 | Clock | The clock the run ticks on, with the run's own time scale when it is not 1. |
 | Time | Seconds advanced, as a bar against the run's length when the length is known. |
-| State | `running`, `paused`, `waiting` (held by `tween.wait_for`) or `done, held`. |
+| State | `running`, `paused`, `waiting` (held by `tween.wait_for`) or `done, kept` (set with `tween.set_keep_when_done`). |
 
 - Pause, Complete and Stop act on one run, the way `tween.set_paused`, `tween.complete` and `tween.stop` do.
 - Stop All stops every run.

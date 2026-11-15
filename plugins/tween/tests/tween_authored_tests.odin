@@ -1,8 +1,8 @@
 package tween_tests
 
 // What a tree authors beyond moves: shakes, field tweens, events and its own
-// clock. And what a preview and a tool need from a run: rewind, hold, a tick
-// of one run, and the list of runs.
+// clock. And what a preview and a tool need from a run: rewind, keeping a
+// finished run, a tick of one run, and the list of runs.
 
 import "core:encoding/json"
 import "core:strings"
@@ -161,10 +161,10 @@ test_rewind_hold_and_run_list :: proc(t: ^testing.T) {
 	tween.group(s, tween.shake_rotation(b, {10, 20, 30}, 0.25))
 	b_rotation := _tr(b).rotation
 
-	// The way a preview drives a run: paused for the game, held at its end,
+	// The way a preview drives a run: paused for the game, kept at its end,
 	// ticked by hand.
 	tween.set_paused(s, true)
-	tween.set_hold(s, true)
+	tween.set_keep_when_done(s, true)
 	_tick(64)
 	testing.expect_value(t, _tr(a).position, [3]f32{1, 1, 1})
 	for _ in 0 ..< 24 do tween.tick(s, _DT) // into the second step
@@ -177,7 +177,7 @@ test_rewind_hold_and_run_list :: proc(t: ^testing.T) {
 	testing.expect(t, infos[0].length_known && _near(infos[0].length, 0.5) && _near(infos[0].elapsed, 0.375))
 
 	for _ in 0 ..< 12 do tween.tick(s, _DT)
-	testing.expect(t, tween.is_alive(s) && tween.is_done(s), "a held run stays when its tree is done")
+	testing.expect(t, tween.is_alive(s) && tween.is_done(s), "a kept run stays when its tree is done")
 	testing.expect_value(t, _tr(a).position, [3]f32{5, 9, 1})
 	testing.expect(t, tween.run_infos()[0].done)
 
@@ -187,4 +187,64 @@ test_rewind_hold_and_run_list :: proc(t: ^testing.T) {
 	testing.expect_value(t, _tr(b).scale, [3]f32{2, 2, 2})
 	testing.expect_value(t, _tr(b).rotation, b_rotation)
 	testing.expect_value(t, len(tween.run_infos()), 0)
+}
+
+// The way a preview poses the world for a render only: replay before, unapply
+// after. Between the two the world holds authored values, and an edit made
+// there becomes the new start.
+@(test)
+test_unapply_and_replay :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	tween.tween_init()
+	defer tween.stop_all()
+
+	a := engine.transform_new("A")
+	_tr(a).position = {1, 0, 0}
+
+	// Two steps on the same value: the second starts where the first ended.
+	s := tween.sequence()
+	tween.chain(s, tween.position(a, {1, 4, 0}, 0.25))
+	tween.chain(s, tween.position(a, {5, 4, 0}, 0.25))
+	tween.set_paused(s, true)
+	tween.set_keep_when_done(s, true)
+
+	frame :: proc(h: tween.Handle, dt: f32) -> [3]f32 {
+		tween.replay(h)
+		tween.tick(h, dt)
+		posed := _tr_pos(h)
+		tween.unapply(h)
+		return posed
+	}
+	posed := frame(s, 0.125) // half of the first step
+	testing.expect(t, _near(posed.y, 2), "the render sees the pose")
+	testing.expect_value(t, _tr(a).position, [3]f32{1, 0, 0})
+
+	// An edit between frames moves the start, and the pose follows it.
+	_tr(a).position = {1, 0, 2}
+	posed = frame(s, 0)
+	testing.expect(t, _near(posed.y, 2) && _near(posed.z, 1), "half way from the edited start")
+	testing.expect_value(t, _tr(a).position, [3]f32{1, 0, 2})
+
+	// Into the second step: it starts where the first one ends.
+	posed = frame(s, 0.125) // the first step ends, the second gets the whole tick
+	testing.expect(t, _near(posed.x, 3) && _near(posed.y, 4), "half of the second step")
+	testing.expect_value(t, _tr(a).position, [3]f32{1, 0, 2})
+
+	posed = frame(s, 1)
+	testing.expect(t, tween.is_done(s))
+	testing.expect_value(t, posed, [3]f32{5, 4, 0})
+	testing.expect_value(t, _tr(a).position, [3]f32{1, 0, 2})
+}
+
+@(private = "file")
+_tr_pos :: proc(h: tween.Handle) -> [3]f32 {
+	for r in tween.run_infos() do if r.handle == h {
+		it := engine.pool_iterator(&engine.ctx_world().transforms)
+		for tr, _ in engine.pool_next(&it) do if tr.name == "A" do return tr.position
+	}
+	return {}
 }

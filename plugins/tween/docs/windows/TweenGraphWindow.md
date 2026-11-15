@@ -21,8 +21,10 @@ Shows a tween tree on a canvas and edits it node by node. Open it with an `Autho
 The Preview button plays the open tree on its object in edit mode, with no Play.
 
 - The tree runs on the object the component is on. A node with its own `subject` animates that object, as in a game.
-- When the tree is done it shows its end pose for a moment, then every value it changed is put back. Stop puts them back at once.
-- Closing the window, opening another tree and entering Play end the preview and put the values back too.
+- The pose shows in the Scene and Game views only. Everything else sees the authored values: a save, undo, the inspector and the gizmos. A preview never ends up in a saved scene, the same way the Animation and Sequencer previews work.
+- An edit made during a preview is kept, and the preview goes on from it.
+- When the tree is done it shows its end pose for a moment and ends. Stop ends it at once. Closing the window, opening another tree and entering Play end it too.
+- It keeps playing when the Tween Graph is a hidden tab.
 - A wait in the tree holds the preview, since nothing in edit mode ends it. Stop ends it.
 - An event node calls nothing in a preview: the code that listens is not running.
 - The button is off in Play, where the game starts the tree.

@@ -244,7 +244,7 @@ _tick_value_node :: proc(ptr: rawptr, desc: ^Node_Desc, dt: f32, ctx: TweenConte
 	cycles := int(anim.cycles)
 	if cycles == 0 do cycles = 1
 	if duration <= 0 {
-		desc.apply_thunk(desc.apply_raw, ptr, anim_end_factor(anim, max(cycles, 1)), ctx)
+		_apply_value(desc, ptr, anim, anim_end_factor(anim, max(cycles, 1)), ctx)
 		return .Done
 	}
 	// complete ends an endless node at the end of the cycle it is in.
@@ -252,15 +252,21 @@ _tick_value_node :: proc(ptr: rawptr, desc: ^Node_Desc, dt: f32, ctx: TweenConte
 	anim.elapsed += dt
 	cycle := int(anim.elapsed / duration)
 	if cycles > 0 && cycle >= cycles {
-		desc.apply_thunk(desc.apply_raw, ptr, anim_end_factor(anim, cycles), ctx)
+		_apply_value(desc, ptr, anim, anim_end_factor(anim, cycles), ctx)
 		return .Done
 	}
 	local := anim.elapsed / duration - f32(cycle)
-	desc.apply_thunk(desc.apply_raw, ptr, anim_factor(anim, cycle, local), ctx)
+	_apply_value(desc, ptr, anim, anim_factor(anim, cycle, local), ctx)
 	return .Running
 }
 
 @(private) _began_counter: u64
+
+@(private)
+_apply_value :: proc(desc: ^Node_Desc, ptr: rawptr, anim: ^Tween_Anim, t: f32, ctx: TweenContext) {
+	anim.last_t = t
+	desc.apply_thunk(desc.apply_raw, ptr, t, ctx)
+}
 
 @(private)
 _Began :: struct {
@@ -285,11 +291,27 @@ _collect_began :: proc(h: Node_Handle, out: ^[dynamic]_Began) {
 
 // Puts back what a live tree changed: every value node that began writes its
 // start value again, the newest first, so each one finds what it captured.
+// The tree keeps its place: node_replay poses it again.
 node_rewind :: proc(h: Node_Handle, ctx: TweenContext) {
 	began := make([dynamic]_Began, context.temp_allocator)
 	_collect_began(h, &began)
 	slice.sort_by(began[:], proc(a, b: _Began) -> bool { return a.began > b.began })
 	for b in began do b.desc.apply_thunk(b.desc.apply_raw, b.ptr, 0, ctx)
+}
+
+// Poses a live tree again where it is: every value node that began captures
+// its start from the world as it is now, the oldest first, and writes the
+// factor it last wrote. After node_rewind this gives back the same pose, and
+// a value someone changed in between becomes the new start.
+node_replay :: proc(h: Node_Handle, ctx: TweenContext) {
+	began := make([dynamic]_Began, context.temp_allocator)
+	_collect_began(h, &began)
+	slice.sort_by(began[:], proc(a, b: _Began) -> bool { return a.began < b.began })
+	for b in began {
+		if !b.desc.begin_thunk(b.desc.begin_raw, b.ptr, ctx) do continue
+		anim := cast(^Tween_Anim)(uintptr(b.ptr) + uintptr(b.desc.anim_offset))
+		b.desc.apply_thunk(b.desc.apply_raw, b.ptr, anim.last_t, ctx)
+	}
 }
 
 // Seconds a live tree takes from start to end, `ok` false when it cannot be

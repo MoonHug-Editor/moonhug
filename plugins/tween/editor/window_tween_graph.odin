@@ -31,6 +31,7 @@ import "moonhug:editor/inspector"
 import "moonhug:editor/undo"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/widgets"
+import "moonhug:editor/preview"
 
 @(private = "file")
 _state: struct {
@@ -46,35 +47,51 @@ _state: struct {
 
 	framed: bool, // frame_all once, on first draw with content
 
-	// The tree playing in edit mode. A held run, so it can put back what it
-	// changed when it stops.
-	preview:      tween.Handle,
-	preview_done: f32, // seconds the finished preview has shown its end pose
+	// The tree playing in edit mode. A paused run, kept when done: the game's ticks
+	// leave it alone, and the preview hooks below drive it.
+	preview:         tween.Handle,
+	preview_pending: f32, // seconds to advance at the next apply
+	preview_done:    f32, // seconds the finished preview has shown its end pose
 }
 
-// How long a finished preview shows its end pose before it puts things back.
+// How long a finished preview shows its end pose before it ends.
 @(private = "file")
 _PREVIEW_HOLD_SECONDS :: f32(0.75)
+
+// The preview poses the world only for the Scene and Game render, the way the
+// Animation and Sequencer windows do (moonhug:editor/preview): apply right
+// before the render, restore right after. Saves, undo and the inspector see
+// authored values, and an edit made during a preview is kept.
+@(phase={key=EditorInit, order=2, mode=Editor})
+tween_preview_install :: proc() {
+	preview.register({apply = _preview_apply, restore = _preview_restore})
+	preview.register_frame({frame = _preview_frame})
+}
 
 @(private = "file")
 _preview_start :: proc(owner: engine.Transform_Handle, root: ^tween.Authored) {
 	_preview_stop()
 	_state.preview = tween.run(root, tween.TweenContext{subject = owner})
-	tween.set_hold(_state.preview, true)
-	// The window ticks it. A paused run does not move when a game ticks runs.
+	tween.set_keep_when_done(_state.preview, true)
 	tween.set_paused(_state.preview, true)
+	// The tree begins at the next apply, inside the render bracket, so its
+	// starts are authored values and restore puts them back.
+	_state.preview_pending = 0
 	_state.preview_done = 0
 }
 
-// Ends the preview and puts back every value it changed.
+// Ends the preview. Outside the render the world holds authored values, so
+// nothing is left to put back.
 @(private = "file")
 _preview_stop :: proc() {
-	tween.rewind(_state.preview)
+	tween.stop(_state.preview)
 	_state.preview = {}
 }
 
+// Once per frame, before the windows draw, whether or not the Tween Graph is
+// on screen: time passes, and a finished preview ends after its hold.
 @(private = "file")
-_preview_tick :: proc() {
+_preview_frame :: proc() {
 	if !tween.is_alive(_state.preview) do return
 	// The editor draws at its idle rate when nothing happens. A preview moves
 	// with no input, so it asks for the full rate while it plays.
@@ -85,7 +102,22 @@ _preview_tick :: proc() {
 		if _state.preview_done >= _PREVIEW_HOLD_SECONDS do _preview_stop()
 		return
 	}
-	tween.tick(_state.preview, dt)
+	_state.preview_pending += dt
+}
+
+@(private = "file")
+_preview_apply :: proc() {
+	if !tween.is_alive(_state.preview) do return
+	tween.replay(_state.preview)
+	if !tween.is_done(_state.preview) && _state.preview_pending > 0 {
+		tween.tick(_state.preview, _state.preview_pending)
+	}
+	_state.preview_pending = 0
+}
+
+@(private = "file")
+_preview_restore :: proc() {
+	tween.unapply(_state.preview)
 }
 
 // Play starts from the scene as it was authored, not from a preview's pose.
@@ -137,7 +169,6 @@ tween_graph_window_draw :: proc(w: ^wnd.Window) {
 		return
 	}
 
-	_preview_tick()
 	_draw_toolbar(base, roots)
 	im.Separator()
 

@@ -122,6 +122,8 @@ Tween_Anim :: struct {
 	// The order the node began in, among all value nodes: rewind undoes them
 	// newest first.
 	began:   u64 `json:"-" inspect:"-"`,
+	// The factor the node last wrote: replay writes it again.
+	last_t:  f32 `json:"-" inspect:"-"`,
 }
 
 // Frees the curve's keys. A value node's own type_cleanup calls this.

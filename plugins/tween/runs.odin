@@ -50,8 +50,8 @@ _Run :: struct {
 	user:           rawptr,
 	on_event:       proc(name: string, user: rawptr),
 	event_user:     rawptr,
-	hold:           bool, // stays alive when its tree is done (set_hold)
-	done:           bool, // its tree is done and the run is held
+	keep_when_done: bool, // stays alive when its tree is done (set_keep_when_done)
+	done:           bool, // its tree is done and the run stays alive
 	waits_on:       Handle, // holds until that run has ended (wait_for)
 
 	// A sequence built from code (code.odin): the root is a Parallel whose
@@ -309,17 +309,38 @@ tick :: proc(h: Handle, dt: f32) {
 	if r = _run_ptr(h); r != nil do r.paused = was_paused
 }
 
-// A held run stays alive when its tree is done, with every value at its end,
-// until it is stopped or rewound. on_complete waits for that too and is then
-// not called. A preview holds its run so it can still put things back.
-set_hold :: proc(h: Handle, hold: bool) {
-	if r := _run_ptr(h); r != nil do r.hold = hold
+// A kept run is not destroyed when its tree is done. It stays alive with
+// every value at its end until it is stopped or rewound, and on_complete is
+// not called. A preview keeps its run so it can still put things back.
+set_keep_when_done :: proc(h: Handle, keep: bool) {
+	if r := _run_ptr(h); r != nil do r.keep_when_done = keep
 }
 
-// True when a held run's tree is done.
+// True when a kept run's tree is done.
 is_done :: proc(h: Handle) -> bool {
 	r := _run_ptr(h)
 	return r != nil && r.done
+}
+
+// Puts back what the run changed and keeps the run where it is. replay poses
+// it again. A preview brackets a render with the two, so a save, undo or the
+// inspector never sees the pose.
+unapply :: proc(h: Handle) {
+	r := _run_ptr(h)
+	if r == nil do return
+	ctx := r.ctx
+	ctx.run = h
+	node_rewind(r.root, ctx)
+}
+
+// Poses the run again where it is, after unapply. Starts are captured from
+// the world as it is now, so an edit made in between is kept.
+replay :: proc(h: Handle) {
+	r := _run_ptr(h)
+	if r == nil do return
+	ctx := r.ctx
+	ctx.run = h
+	node_replay(r.root, ctx)
 }
 
 // Ends the run and puts back what it changed: every value it animated is
@@ -344,7 +365,7 @@ Run_Info :: struct {
 	clock:         time.Clock,
 	paused:        bool,
 	waiting:       bool, // held by wait_for
-	done:          bool, // a held run whose tree is done
+	done:          bool, // a kept run whose tree is done
 	time_scale:    f32,
 	elapsed:       f32,
 	length:        f32,
@@ -505,7 +526,7 @@ _tick_run :: proc(index: u32, step: f32) {
 	if r.stop_requested {
 		_run_end(index, false)
 	} else if status == .Done {
-		if r.hold {
+		if r.keep_when_done {
 			r.done = true
 		} else {
 			_run_end(index, true)

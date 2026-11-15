@@ -72,20 +72,23 @@ tween.run("Dodge", ctx, .Bullet_Time)        // a clock a package adds
 
 - An authored tree names its own clock on its root node (`own_clock` and `clock`). It then runs on that clock whatever the code passes, the same way a node's own `subject` wins over the code's.
 
-## Rewind, hold and stepping by hand
+## Rewind, keeping and stepping by hand
 
 What a preview needs, and a tool that scrubs a tween:
 
 ```odin
 tween.set_paused(h, true)   // the game's ticks leave it alone
-tween.set_hold(h, true)     // it stays alive when its tree is done
+tween.set_keep_when_done(h, true) // it stays alive when its tree is done
 tween.tick(h, dt)           // one run, by hand, paused or not
-tween.is_done(h)            // a held run whose tree is done
+tween.is_done(h)            // its tree is done
 tween.rewind(h)             // end it and put back every value it changed
+tween.unapply(h)            // put back every value, keep the run
+tween.replay(h)             // pose it again
 ```
 
+- `tween.unapply(h)` puts back what the run changed and keeps the run where it is. `tween.replay(h)` poses it again, capturing each start from the world as it is then. A preview brackets the render with the two, so nothing outside the render sees the pose.
 - `tween.rewind` makes every value node that began write its start value again, the newest first, so each finds what it captured. The run ends and `on_complete` is not called.
-- A held run that is done keeps every value at its end until it is stopped or rewound.
+- A kept run that is done keeps every value at its end until it is stopped or rewound.
 - `tween.run_infos()` lists the live runs for tools: handle, root node type, object, clock, time and state. The [Tweens window](../windows/TweensWindow.md) shows it.
 
 ## Binding a run to an object
