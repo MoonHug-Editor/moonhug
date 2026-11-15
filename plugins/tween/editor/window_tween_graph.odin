@@ -26,7 +26,8 @@ import im "moonhug:external/odin-imgui"
 import "moonhug:libs/gfx"
 import engine "moonhug:packages/engine"
 import tween "moonhug:packages/tween"
-import ng "moonhug:packages/node_graph"
+import nc "moonhug:editor/node_canvas"
+import "moonhug:editor/icons"
 import "moonhug:editor/inspector"
 import "moonhug:editor/undo"
 import wnd "moonhug:editor/window"
@@ -35,7 +36,7 @@ import "moonhug:editor/preview"
 
 @(private = "file")
 _state: struct {
-	view: ng.View,
+	cv: nc.Node_Canvas,
 
 	target:     engine.Handle,
 	root_idx:   int,
@@ -45,7 +46,8 @@ _state: struct {
 	sel_depth:  int,
 	sel_active: bool,
 
-	framed: bool, // frame_all once, on first draw with content
+	framed: bool, // framed once its content has been drawn
+	drawn:  bool, // the canvas has drawn once, so it knows its size
 
 	// The tree playing in edit mode. A paused run, kept when done: the game's ticks
 	// leave it alone, and the preview hooks below drive it.
@@ -55,6 +57,22 @@ _state: struct {
 }
 
 // How long a finished preview shows its end pose before it ends.
+// The window's layout, saved per developer: the node panel shown or not and
+// its width, and the canvas's mini-map. The toolbar's Node and map toggles
+// flip them, the splitter sets the width.
+Tween_Graph_Prefs :: struct {
+	hide_panel: bool,
+	panel_w:    f32, // 0 = the default
+	minimap:    widgets.Minimap,
+}
+
+@(user_settings={name="Tween Graph"})
+tween_graph_prefs: Tween_Graph_Prefs
+
+@(private = "file") _PANEL_W :: f32(300)
+@(private = "file") _MIN_PANEL :: f32(160)
+@(private = "file") _MIN_CANVAS :: f32(200)
+
 @(private = "file")
 _PREVIEW_HOLD_SECONDS :: f32(0.75)
 
@@ -132,6 +150,9 @@ tween_graph_exiting_edit_mode :: proc() {
 _Walked :: struct {
 	value:     json.Value,
 	tid:       typeid,
+	title:     string, // the node type's label
+	summary:   string, // delay, await, skipped: the node's one row
+	skip:      bool,
 	parent:    int, // index into the walk, -1 for a root
 	child_ord: int, // ordinal in the parent's children array, -1 for a root
 }
@@ -173,54 +194,92 @@ tween_graph_window_draw :: proc(w: ^wnd.Window) {
 	im.Separator()
 
 	walked := make([dynamic]_Walked, context.temp_allocator)
-	nodes := make([dynamic]ng.Node, context.temp_allocator)
-	links := make([dynamic]ng.Link, context.temp_allocator)
-	_walk(roots[_state.root_idx].value, -1, -1, &walked, &nodes, &links, 0)
+	_walk(roots[_state.root_idx].value, -1, -1, &walked, 0)
 
 	parents := make([]int, len(walked), context.temp_allocator)
 	for wk, i in walked do parents[i] = wk.parent
 
 	sel_idx := -1
 	if _state.sel_active {
-		sel_idx = ng.tree_find_path(parents, 0, _state.sel_path[:_state.sel_depth])
+		sel_idx = nc.tree_find_path(parents, 0, _state.sel_path[:_state.sel_depth])
 	}
-	if sel_idx >= 0 {
-		nodes[sel_idx].selected = true
-	} else {
-		_state.sel_active = false
-	}
+	if sel_idx < 0 do _state.sel_active = false
 
-	ng.layout_tree(nodes[:], links[:])
+	// Every node has one row, its summary, so all are the same size and the
+	// links meet the row's ports.
+	sizes := make([]im.Vec2, len(walked), context.temp_allocator)
+	for &sz in sizes do sz = nc.canvas_node_size(1)
+	positions := make([]im.Vec2, len(walked), context.temp_allocator)
+	nc.canvas_layout_tree(parents, sizes, positions)
 
-	PANEL_W :: 280
+	// Canvas | node panel, split by the shared splitter. The panel keeps its
+	// width when the window resizes and gives way to the canvas when the
+	// window gets too narrow for both.
+	prefs := &tween_graph_prefs
+	show_panel := !prefs.hide_panel
 	avail := im.GetContentRegionAvail()
-	canvas_w := max(120, avail.x - PANEL_W - 8)
+	panel_w := show_panel ? (prefs.panel_w > 0 ? prefs.panel_w : _PANEL_W) : 0
+	splitter := show_panel ? widgets.SPLITTER_SIZE : 0
+	canvas_w := avail.x - splitter - panel_w
+	if canvas_w < _MIN_CANVAS && show_panel {
+		panel_w = max(panel_w - (_MIN_CANVAS - canvas_w), _MIN_PANEL)
+		canvas_w = avail.x - splitter - panel_w
+	}
 
-	if !_state.framed && len(nodes) > 0 {
-		ng.frame_all(&_state.view, nodes[:], {canvas_w, avail.y})
+	cv := &_state.cv
+	cv.minimap = &prefs.minimap
+	// The canvas knows its size after it drew once, so framing waits a frame.
+	if !_state.framed && _state.drawn && len(walked) > 0 {
+		lo, hi := positions[0], positions[0] + sizes[0]
+		for p, i in positions {
+			lo = {min(lo.x, p.x), min(lo.y, p.y)}
+			hi = {max(hi.x, p.x + sizes[i].x), max(hi.y, p.y + sizes[i].y)}
+		}
+		nc.canvas_frame(cv, lo, hi)
 		_state.framed = true
 	}
 
-	if im.BeginChild("##tween_canvas", im.Vec2{canvas_w, avail.y}, {.Borders}) {
-		result := ng.draw(&_state.view, nodes[:], links[:])
-		if result.clicked_valid {
-			// Node identity on the canvas is the walk index — stable within
-			// the frame, and the persisted selection is the path.
-			i := int(uintptr(result.clicked))
-			if i >= 0 && i < len(walked) {
-				_state.sel_depth = ng.tree_path_of(parents, i, _state.sel_path[:])
-				_state.sel_active = true
-				sel_idx = i
+	cv.sel = sel_idx
+	if im.BeginChild("##tween_canvas_host", im.Vec2{canvas_w, avail.y}) {
+		if nc.canvas_begin(cv, "##tween_canvas") {
+			for wk, i in walked {
+				if wk.parent < 0 do continue
+				from := nc.canvas_port_out(cv, positions[wk.parent], 0)
+				to := nc.canvas_port_in(cv, positions[i], 0)
+				nc.canvas_link(cv, from, to, im.GetColorU32(.Text, 0.45))
 			}
-		} else if result.clicked_empty {
-			_state.sel_active = false
-			sel_idx = -1
+			for &wk, i in walked {
+				color := _color_for(wk.tid)
+				if wk.skip do color.w = 0.45
+				has_children := false
+				for p in parents do if p == i do has_children = true
+				rows := [1]nc.Canvas_Row{{label = strings.clone_to_cstring(wk.summary, context.temp_allocator), port = wk.parent >= 0}}
+				nc.canvas_node(cv, i, &positions[i], strings.clone_to_cstring(wk.title, context.temp_allocator), color, rows[:], has_children, movable = false)
+			}
 		}
+		nc.canvas_end(cv)
+		_state.drawn = true
 	}
 	im.EndChild()
 
-	im.SameLine()
+	// The canvas selects on a press and clears on a click on empty canvas.
+	// Node identity on the canvas is the walk index, stable within the frame,
+	// and the kept selection is the path.
+	if cv.sel != sel_idx {
+		sel_idx = cv.sel
+		if sel_idx >= 0 && sel_idx < len(walked) {
+			_state.sel_depth = nc.tree_path_of(parents, sel_idx, _state.sel_path[:])
+			_state.sel_active = true
+		} else {
+			sel_idx = -1
+			_state.sel_active = false
+		}
+	}
 
+	if !show_panel do return
+	im.SameLine(0, 0)
+	if widgets.splitter("##tween_split", true, &canvas_w, &panel_w, _MIN_CANVAS, _MIN_PANEL) do prefs.panel_w = panel_w
+	im.SameLine(0, 0)
 	if im.BeginChild("##tween_props", im.Vec2{0, avail.y}, {.Borders}) {
 		if sel_idx >= 0 {
 			// Type button + structural ops head the panel, fields below —
@@ -378,8 +437,24 @@ _draw_toolbar :: proc(base: rawptr, roots: []^tween.Authored) {
 
 	im.SameLine()
 	if im.Button("Frame All") do _state.framed = false
+
+	// The pane toggles, right-aligned: the node panel and the mini-map.
+	style := im.GetStyle()
+	w_node := im.CalcTextSize("Node").x + style.FramePadding.x * 2
+	w_map := im.GetFrameHeight()
 	im.SameLine()
-	im.TextDisabled("middle-drag pans, wheel zooms")
+	x := im.GetCursorPosX()
+	im.SetCursorPosX(max(x + im.GetContentRegionAvail().x - w_node - w_map - style.ItemSpacing.x, x))
+	prefs := &tween_graph_prefs
+	lit := !prefs.hide_panel
+	if lit do im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
+	if im.Button("Node") do prefs.hide_panel = !prefs.hide_panel
+	if lit do im.PopStyleColor()
+	widgets.tooltip("Show the selected node's fields")
+	im.SameLine()
+	if widgets.icon_button(icons.ICON_MD_MAP, "##tween_map", "Show or hide the mini-map", active = !prefs.minimap.hidden) {
+		prefs.minimap.hidden = !prefs.minimap.hidden
+	}
 }
 
 @(private = "file")
@@ -398,8 +473,6 @@ _walk :: proc(
 	parent: int,
 	child_ord: int,
 	walked: ^[dynamic]_Walked,
-	nodes: ^[dynamic]ng.Node,
-	links: ^[dynamic]ng.Link,
 	depth: int,
 ) {
 	if depth > 64 do return
@@ -408,21 +481,13 @@ _walk :: proc(
 
 	title := "?"
 	if tok do title = _type_label(tid)
-	skip, subtitle := _base_summary(v)
+	skip, summary := _base_summary(v)
 
-	append(walked, _Walked{value = v, tid = tid, parent = parent, child_ord = child_ord})
-	append(nodes, ng.Node{
-		user_handle  = ng.User_Handle(uintptr(idx)),
-		title        = title,
-		subtitle     = subtitle,
-		header_color = _color_for(tid),
-		dimmed       = skip,
-	})
-	if parent >= 0 do append(links, ng.Link{from = parent, to = idx})
+	append(walked, _Walked{value = v, tid = tid, title = title, summary = summary, skip = skip, parent = parent, child_ord = child_ord})
 
 	if children, kok := tween.authored_children(v); kok {
 		for child, i in children {
-			_walk(child, idx, i, walked, nodes, links, depth + 1)
+			_walk(child, idx, i, walked, depth + 1)
 		}
 	}
 }

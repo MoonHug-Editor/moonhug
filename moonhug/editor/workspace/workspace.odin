@@ -30,6 +30,7 @@ import "core:crypto"
 import "core:os"
 import "core:strings"
 import core "moonhug:libs/core"
+import "moonhug:editor/widgets"
 import "moonhug:libs/log"
 
 Workspace :: struct {
@@ -817,22 +818,6 @@ Window_Settings :: struct {
 	minimap:   Minimap,
 }
 
-// The mini-map's place in the window: attached to a corner or a side of the
-// canvas, moved from there by `offset`, at `size` (0 is the default size).
-Minimap :: struct {
-	hidden: bool,
-	anchor: Anchor,
-	offset: [2]f32,
-	size:   [2]f32,
-}
-
-Anchor :: enum {
-	Top_Right,
-	Top,
-	Top_Left,
-	Left,
-	Bottom_Left,
-	Bottom,
-	Bottom_Right,
-	Right,
-}
+// The mini-map's place in the window (moonhug:editor/widgets, minimap.odin).
+Minimap :: widgets.Minimap
+Anchor :: widgets.Minimap_Anchor

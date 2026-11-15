@@ -14,6 +14,7 @@ Edits a [shader graph](../assets/ShaderGraph.md). Double-click a `.shadergraph` 
 - **Node**, left, under the blackboard. The selected node's unlinked inputs as drags by port type, a colour picker on the Color node. A linked input shows as linked.
 - **Canvas**, middle, the editor's shared node canvas. A node's title is its kind, its property's name for a Property node, `Sample <name>` for a Sample Texture node. Inputs show their port and, while unlinked, their literal. Outputs sit on the right edge. Ports and links are coloured by type, and a node the generator reports an error for draws red.
 - **GLSL**, right. The generated shader, or its errors, rebuilt after every edit.
+- **Mini-map**, over the canvas, top right. Every node and the visible area. Click or drag in it to go there, hold Ctrl or Cmd and drag to move it, drag a corner to resize it. The map button at the toolbar's right end hides and shows it.
 
 ## Editing
 
@@ -28,4 +29,4 @@ Edits a [shader graph](../assets/ShaderGraph.md). Double-click a `.shadergraph` 
 
 ## Preferences
 
-Whether the left and right panes show, and their widths, are saved per developer in `UserSettings/shader_graph.json`.
+Whether the left and right panes show, their widths, and the mini-map's place are saved per developer in `UserSettings/shader_graph.json`.

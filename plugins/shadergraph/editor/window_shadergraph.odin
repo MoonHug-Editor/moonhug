@@ -25,6 +25,7 @@ import "moonhug:editor/inspector"
 import nc "moonhug:editor/node_canvas"
 import "moonhug:editor/undo"
 import "moonhug:editor/widgets"
+import "moonhug:editor/icons"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/keymap"
 import "moonhug:libs/log"
@@ -75,6 +76,7 @@ Shader_Graph_Prefs :: struct {
 	hide_glsl:       bool, // the right pane: the generated shader
 	left_w:          f32,  // the left pane's width, 0 = the default
 	right_w:         f32,  // the right pane's width, 0 = the default
+	minimap:         widgets.Minimap,
 }
 
 @(user_settings={name="Shader Graph"})
@@ -270,10 +272,14 @@ _sg_toolbar :: proc() {
 	w_glsl := im.CalcTextSize("GLSL").x + style.FramePadding.x * 2
 	im.SameLine()
 	x := im.GetCursorPosX()
-	im.SetCursorPosX(max(x + im.GetContentRegionAvail().x - w_board - w_glsl - style.ItemSpacing.x, x))
+	w_map := im.GetFrameHeight()
+	im.SetCursorPosX(max(x + im.GetContentRegionAvail().x - w_board - w_glsl - w_map - style.ItemSpacing.x * 2, x))
 	_sg_pane_toggle("Blackboard", &shader_graph_prefs.hide_blackboard, "Show the blackboard and the selected node's inputs")
 	im.SameLine()
 	_sg_pane_toggle("GLSL", &shader_graph_prefs.hide_glsl, "Show the generated shader")
+	im.SameLine()
+	m := &shader_graph_prefs.minimap
+	if widgets.icon_button(icons.ICON_MD_MAP, "##sg_map", "Show or hide the mini-map", active = !m.hidden) do m.hidden = !m.hidden
 }
 
 // A toolbar button lit while its pane shows. The tint is pushed for the state
@@ -457,6 +463,7 @@ _sg_node_panel :: proc() {
 _sg_canvas :: proc() {
 	g := _sg.graph
 	cv := &_sg.cv
+	cv.minimap = &shader_graph_prefs.minimap
 	if nc.canvas_begin(cv, "##sg_canvas") {
 		for l, li in g.links {
 			from := sg.graph_find_node(g, l.from_node)

@@ -31,9 +31,10 @@ Shows the [playable graph](../concepts/PlayableGraph.md) that poses the selected
 
 ## Using it
 
+- The mini-map, top right, shows every node and the visible area: click or drag in it to go there. The map button on the source line hides and shows it, and its place is saved per developer.
 - Pan and zoom the canvas. Nodes can be dragged, and keep their place until the graph's structure changes, when the layout is computed again.
 - Ports are drawn but take no input: the window edits nothing.
-- The canvas is the editor's shared node canvas (`moonhug/editor/node_canvas`): a pan and zoom grid, node chrome with ports, edges, dragging and selection. It is presentation and interaction only. Each window that draws on it supplies its own node types, port rules and what an edit does, so a shader graph and a playable graph share the canvas and nothing else.
+- The canvas is the editor's shared node canvas (`moonhug/editor/node_canvas`): a pan and zoom grid, node chrome with ports, edges, dragging and selection, a mini-map, and a tree layout. It is presentation and interaction only. Each window that draws on it supplies its own node types, port rules and what an edit does, so a shader graph, a playable graph and a tween tree share the canvas and nothing else.
 
 ## See also
 

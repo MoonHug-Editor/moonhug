@@ -1,11 +1,26 @@
 ---
 title: "Tween Graph"
-description: "Shows a tween tree on a canvas and edits it node by node: select a node to edit its fields, change types, add and delete nodes, and preview the tree in edit mode"
+description: "Shows a tween tree on the shared node canvas and edits it node by node: select a node to edit its fields, change types, add and delete nodes, and preview the tree in edit mode"
 weight: 10
 tags: ["tween", "editor", "windows"]
 ---
 
 Shows a tween tree on a canvas and edits it node by node. Open it with an `Authored` field's Graph button, or from Window, Animation, Tween Graph.
+
+## Layout
+
+- **Toolbar.** The object and the tree, Preview, Frame All, and on the right the Node toggle and the mini-map toggle.
+- **Canvas**, the editor's shared node canvas, the one Shader Graph and Playable Graph draw on. The tree reads left to right: a node's children sit in the column to its right, joined from its right edge to their left edges. A node shows its type and, on its row, its delay, await and skip. A skipped node is faded.
+- **Node**, right. The selected node's fields. Drag the gap between it and the canvas to resize it. The Node toggle hides and shows it.
+- **Mini-map**, over the canvas, top right. The whole tree and the visible area. Click or drag in it to go there. Hold Ctrl or Cmd and drag to move it, drag a corner to resize it. The map toggle hides and shows it.
+
+## Moving around
+
+- Drag empty canvas or a node with the left button, or drag anywhere with the middle button, to pan. A middle drag goes on when the mouse leaves the canvas.
+- The wheel zooms around the mouse.
+- Nodes are laid out from the tree, so dragging one pans the canvas rather than moving it.
+
+Whether the node panel shows, its width, and the mini-map's place are saved per developer in `UserSettings/tween_graph.json`.
 
 ## Editing
 

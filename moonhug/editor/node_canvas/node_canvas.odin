@@ -3,7 +3,9 @@ package node_canvas
 // Shared node-graph canvas (plugins/animation/docs/windows/PlayableGraphWindow.md, "Using it") — an editor
 // subpackage like inspector/menu/undo, so package editors can draw with it:
 // pan/zoom grid,
-// node chrome with ports, bezier edge routing, node dragging and selection.
+// node chrome with ports, bezier edge routing, node dragging and selection,
+// a mini-map (widgets.minimap), and a tree layout for clients whose nodes
+// form a tree (tree.odin).
 // Strictly presentation and interaction — no document model. Each client
 // (the PlayableGraph visualizer, the Shader Graph editor) supplies node
 // content, port meaning and what happens on edit.
@@ -29,6 +31,7 @@ package node_canvas
 import "core:fmt"
 import "core:math"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/widgets"
 
 CANVAS_NODE_W :: f32(184) // node width, canvas units
 CANVAS_HEADER_H :: f32(24) // node title bar
@@ -98,6 +101,16 @@ Node_Canvas :: struct {
 	link_hit:   int,
 	link_hit_d: f32,
 	link_hover: int,
+
+	// A middle-button pan that started on the canvas. It goes on while the
+	// button is held, wherever the mouse goes.
+	middle_pan: bool,
+
+	// The mini-map: the client's saved settings (nil: no mini-map) and the
+	// drag in progress. The nodes drawn this frame are its content.
+	minimap:       ^widgets.Minimap,
+	minimap_state: widgets.Minimap_State,
+	map_items:     [dynamic]widgets.Minimap_Item, // this frame's nodes, temp allocator
 }
 
 canvas_init :: proc(cv: ^Node_Canvas) {
@@ -146,6 +159,7 @@ canvas_begin :: proc(cv: ^Node_Canvas, id: cstring) -> bool {
 	cv.drop_row = -1
 	cv.link_hit = -1
 	cv.link_hit_d = max(f32)
+	cv.map_items = make([dynamic]widgets.Minimap_Item, context.temp_allocator)
 	// No window padding: the canvas IS the child's whole rect. With the default
 	// padding the content region is inset, so the surface and the grid stop
 	// short of the border and the panel colour shows through as a frame.
@@ -189,7 +203,8 @@ canvas_begin :: proc(cv: ^Node_Canvas, id: cstring) -> bool {
 }
 
 // Background interaction (left/middle-drag pans, wheel zooms around the
-// cursor, click on empty space deselects), then the child closes.
+// cursor, click on empty space deselects), the mini-map when the client gave
+// one, then the child closes.
 canvas_end :: proc(cv: ^Node_Canvas) {
 	if cv.size.x >= 1 && cv.size.y >= 1 {
 		im.SetCursorScreenPos(cv.origin)
@@ -229,10 +244,27 @@ canvas_end :: proc(cv: ^Node_Canvas) {
 			}
 		}
 
-		if im.IsWindowHovered(im.HoveredFlags_ChildWindows) {
-			if im.IsMouseDragging(.Middle, 0) {
-				cv.pan += im.GetIO().MouseDelta / cv.zoom
+		// The mini-map, over everything else on the canvas. The mouse over it
+		// belongs to it: no pan starts there and the wheel does not zoom.
+		over_map := false
+		if cv.minimap != nil {
+			if mpos, msize, shown := widgets.minimap_rect(cv.minimap, cv.size); shown {
+				over_map = im.IsMouseHoveringRect(cv.origin + mpos, cv.origin + mpos + msize)
 			}
+			view_min := -cv.pan
+			view_max := view_min + cv.size / cv.zoom
+			centre, go, _ := widgets.minimap("##canvas_minimap", cv.minimap, &cv.minimap_state, cv.origin, cv.size, cv.map_items[:], view_min, view_max)
+			if go do cv.pan = -(centre - cv.size / cv.zoom * 0.5)
+		}
+
+		// A middle-button pan starts on the canvas and goes on while the
+		// button is held, also with the mouse outside the canvas.
+		hovered := im.IsWindowHovered(im.HoveredFlags_ChildWindows) && !over_map
+		if hovered && im.IsMouseClicked(.Middle) do cv.middle_pan = true
+		if !im.IsMouseDown(.Middle) do cv.middle_pan = false
+		if cv.middle_pan do cv.pan += im.GetIO().MouseDelta / cv.zoom
+
+		if hovered {
 			wheel := im.GetIO().MouseWheel
 			if wheel != 0 {
 				mp := im.GetMousePos()
@@ -258,6 +290,7 @@ canvas_node :: proc(
 	rows: []Canvas_Row,
 	has_out: bool,
 	out_row: int = 0,
+	movable := true, // false: a drag on the node pans the canvas, for clients that lay nodes out themselves
 ) {
 	dl := im.GetWindowDrawList()
 	sz := canvas_node_size(len(rows))
@@ -313,8 +346,10 @@ canvas_node :: proc(
 		cv.sel_link = -1
 	}
 	if im.IsItemActive() && im.IsMouseDragging(.Left, 0) {
-		pos^ += im.GetIO().MouseDelta / cv.zoom
+		if movable do pos^ += im.GetIO().MouseDelta / cv.zoom
+		else do cv.pan += im.GetIO().MouseDelta / cv.zoom
 	}
+	append(&cv.map_items, widgets.Minimap_Item{rect = {pos.x, pos.y, sz.x, sz.y}, highlight = selected, color = color})
 
 	// Body far darker than the header, so the header carries the type colour
 	// and the body stays a surface the text reads on.

@@ -23,6 +23,8 @@ import nc "moonhug:editor/node_canvas"
 import wnd "moonhug:editor/window"
 import engine "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
+import "moonhug:editor/icons"
+import "moonhug:editor/widgets"
 
 @(private = "file") _PG_BAR_PAD :: f32(4) // inset of the strip above the canvas
 @(private = "file") _PG_COL_W :: f32(250) // one depth rank
@@ -58,6 +60,14 @@ playable_graph_window_closed :: proc(w: ^wnd.Window) {
 	w.data = nil
 }
 
+// The window's canvas mini-map, saved per developer.
+Playable_Graph_Prefs :: struct {
+	minimap: widgets.Minimap,
+}
+
+@(user_settings={name="Playable Graph"})
+playable_graph_prefs: Playable_Graph_Prefs
+
 // A canvas window: no padding, so the canvas reaches every edge of the window.
 // A canvas framed by the panel colour reads as a widget sitting in a window
 // rather than as the surface the window is for. Everything drawn above it
@@ -85,6 +95,11 @@ playable_graph_window_draw :: proc(w: ^wnd.Window) {
 
 	_pg_pad()
 	im.TextDisabled("Source: %s", fmt.ctprint(src.label))
+	// The mini-map toggle, right-aligned on the source line.
+	im.SameLine(max(im.GetWindowWidth() - _PG_BAR_PAD - im.GetFrameHeight(), im.GetCursorPosX()))
+	if widgets.icon_button(icons.ICON_MD_MAP, "##pg_map", "Show or hide the mini-map", active = !playable_graph_prefs.minimap.hidden) {
+		playable_graph_prefs.minimap.hidden = !playable_graph_prefs.minimap.hidden
+	}
 	if g == nil || anim.graph_output(g) == nil || anim.playable_node(g, anim.graph_output(g).root) == nil {
 		_pg_pad()
 		im.TextDisabled("The graph is empty (nothing to play).")
@@ -94,6 +109,7 @@ playable_graph_window_draw :: proc(w: ^wnd.Window) {
 
 	_pg_layout(g, u64(uintptr(engine.Handle(owner).index)))
 
+	_pg.cv.minimap = &playable_graph_prefs.minimap
 	if nc.canvas_begin(&_pg.cv, "##pg_canvas") {
 		_pg_draw(g, live)
 	}
