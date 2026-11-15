@@ -26,6 +26,7 @@ import "core:reflect"
 import "core:strings"
 import core "moonhug:libs/core"
 import engine "moonhug:packages/engine"
+import log "moonhug:libs/log"
 
 // Live nodes of one type at a time. A full pool panics.
 _POOL_MAX :: #config(TWEEN_POOL_MAX, 1024)
@@ -221,7 +222,8 @@ tick_node :: proc(h: Node_Handle, dt: f32, ctx: TweenContext) -> Status {
 }
 
 // One step of a value node: delay, then begin once, then the factor for the
-// node's time. Time left over when the node ends is dropped.
+// node's time. A node whose object is destroyed ends. Time left over when the
+// node ends is dropped.
 @(private)
 _tick_value_node :: proc(ptr: rawptr, desc: ^Node_Desc, dt: f32, ctx: TweenContext) -> Status {
 	base := cast(^Tween)ptr
@@ -230,6 +232,10 @@ _tick_value_node :: proc(ptr: rawptr, desc: ^Node_Desc, dt: f32, ctx: TweenConte
 	if !anim.started {
 		if !desc.begin_thunk(desc.begin_raw, ptr, ctx) do return .Done
 		anim.started = true
+	}
+	// The object went away under the node: nothing is left to animate.
+	if target := subject_of(base, ctx); target != {} && !engine.pool_valid(&engine.ctx_world().transforms, engine.Handle(target)) {
+		return .Done
 	}
 	duration := (cast(^f32)(uintptr(ptr) + uintptr(desc.duration_offset)))^
 	cycles := int(anim.cycles)
@@ -370,6 +376,29 @@ node_new :: proc($T: typeid) -> (h: Node_Handle, node: ^T) {
 	desc := &_descs[idx]
 	ch, ptr := desc.entry.create_fn(desc.pool)
 	return Node_Handle{index = ch.index, generation = ch.generation, kind = u16(idx)}, cast(^T)ptr
+}
+
+// Turns every node's authored `subject` into its target: the object the
+// node animates in place of the run's subject. `scene` is where the
+// references are looked up. False when a set subject names no object there:
+// the tree would animate the wrong thing, so it does not run.
+node_resolve_subjects :: proc(h: Node_Handle, scene: ^engine.Scene) -> bool {
+	ptr, desc := _node_ptr(h)
+	if ptr == nil do return true
+	base := cast(^Tween)ptr
+	if base.subject.pptr != {} {
+		target, found := engine.scene_ref_resolve_transform(scene, base.subject)
+		if !found {
+			log.errorf("tween: a %v node's subject (local id %d) names no object in the scene of the run's subject, the tree does not run", desc.tid, base.subject.pptr.local_id)
+			return false
+		}
+		base.target = target
+	}
+	if desc.children_offset >= 0 {
+		children := cast(^[dynamic]Node_Handle)(uintptr(ptr) + uintptr(desc.children_offset))
+		for k in children^ do node_resolve_subjects(k, scene) or_return
+	}
+	return true
 }
 
 // Gives every node of a live tree that has no target of its own this one

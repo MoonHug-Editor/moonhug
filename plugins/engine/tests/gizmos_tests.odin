@@ -641,10 +641,10 @@ test_gizmo_duration_on_the_game_clock :: proc(t: ^testing.T) {
 		gizmos.with_duration(0.1)
 		gizmos.line({0, 0, 0}, {1, 0, 0})
 	}
-	for _ in 0 ..< 3 do engine.fixed_tick_advance() // 0.05 s at 60 Hz
+	for _ in 0 ..< 3 { engine.fixed_tick_begin(); engine.fixed_tick_advance() } // 0.05 s at 60 Hz
 	gizmos.frame_end()
 	testing.expect_value(t, _group_prims(tc), 1)
-	for _ in 0 ..< 4 do engine.fixed_tick_advance() // 0.117 s
+	for _ in 0 ..< 4 { engine.fixed_tick_begin(); engine.fixed_tick_advance() } // 0.117 s
 	gizmos.frame_end()
 	testing.expect_value(t, len(tc.uc.gizmos.groups), 0)
 

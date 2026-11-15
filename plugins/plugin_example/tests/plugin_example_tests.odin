@@ -4,6 +4,7 @@ package plugin_example_tests
 // package, outside packages/tween) joins the generated union and dispatches
 // through the emitted adapter to ease a Spinner's speed.
 
+import "moonhug:libs/time"
 import "moonhug:packages/engine"
 import plugin_example "moonhug:packages/plugin_example"
 import tween "moonhug:packages/tween"
@@ -45,10 +46,10 @@ test_foreign_tween_variant_eases_spinner_speed :: proc(t: ^testing.T) {
 	testing.expect_value(t, spinner.speed, [3]f32{0, 0, 180})
 }
 
-// The timeline this package adds: it follows Update, has a scale of its own,
+// The clock this package adds: it follows Update, has a scale of its own,
 // and a tween started on it runs at that scale.
 @(test)
-test_added_timeline_scales_its_tweens :: proc(t: ^testing.T) {
+test_added_clock_scales_its_tweens :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
@@ -56,11 +57,11 @@ test_added_timeline_scales_its_tweens :: proc(t: ^testing.T) {
 	defer common.teardown(tc)
 	tween.tween_init()
 	defer tween.stop_all()
-	engine.time_reset()
-	defer engine.time_reset()
+	time.reset()
+	defer time.reset()
 
-	testing.expect_value(t, engine.time_base(.Example_Slow), engine.Time.Update)
-	engine.set_time_scale(0.25, .Example_Slow)
+	testing.expect_value(t, time.base(.Example_Slow), time.Clock.Update)
+	time.set_time_scale(0.25, .Example_Slow)
 
 	owner := engine.transform_new("Subject")
 	move := tween.authored(tween.TweenMoveToLocal{position = {8, 0, 0}, duration = 1})
@@ -69,12 +70,12 @@ test_added_timeline_scales_its_tweens :: proc(t: ^testing.T) {
 
 	dt := f32(1.0 / 64.0)
 	for _ in 0 ..< 64 { // one second of frames
-		engine.time_advance_frame(dt, dt)
+		time.advance_frame(dt, dt)
 		tween.tween_update(dt)
 	}
 	tr := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(owner))
 	testing.expect(t, abs(tr.position.x - 2) < 1e-4, "a quarter of the way after one second at scale 0.25")
-	testing.expect(t, abs(engine.time_now(.Example_Slow) - 0.25) < 1e-6)
+	testing.expect(t, abs(time.now(.Example_Slow) - 0.25) < 1e-6)
 	testing.expect(t, tween.is_alive(h))
 }
 

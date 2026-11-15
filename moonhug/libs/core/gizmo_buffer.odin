@@ -284,8 +284,8 @@ gizmo_buffer :: proc() -> ^Gizmo_Buffer {
 	return &_default_gizmo_buffer
 }
 
-// Seconds of game time for the .Game clock: fixed ticks times the fixed step.
-// The engine installs it at init, the fixed tick owns both numbers.
+// Seconds of game time for the .Game clock. The engine installs it at init:
+// the Fixed clock of moonhug/libs/time, which the fixed tick advances.
 @(private) _game_clock: proc() -> f64
 
 set_game_clock :: proc(clock: proc() -> f64) {

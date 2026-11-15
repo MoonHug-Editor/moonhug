@@ -82,6 +82,8 @@ TweenMoveToLocal :: struct {
     using anim : Tween_Anim `inline:""`,
     position : [3]f32,
     duration : f32,
+    // Above 0: units per second, and the duration follows from the distance.
+    speed    : f32 `decor:min(0)`,
 
     from     : [3]f32 `json:"-"`,
 }
@@ -95,6 +97,7 @@ begin_TweenMoveToLocal :: proc(self: ^TweenMoveToLocal, ctx: TweenContext) -> bo
     transform := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(subject_of(&self.base, ctx)))
     if transform == nil do return false
     self.from = transform.position
+    if self.speed > 0 do self.duration = linalg.length(self.position - self.from) / self.speed
     return true
 }
 

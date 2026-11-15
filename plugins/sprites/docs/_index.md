@@ -16,6 +16,7 @@ The sprites plugin draws textures and their slices as quads in the world. A Spri
 **Scripts**
 
 - [TweenFadeTo](scripts/TweenFadeTo.md) fades a SpriteRenderer on a timeline. Needs the sequencer plugin.
+- `sprites_tween.color` and `sprites_tween.alpha` tween a SpriteRenderer's color from code ([Tweens from code](/plugins/tween/docs/concepts/TweensFromCode.md)). Need the tween plugin.
 
 **Windows**
 
@@ -32,6 +33,7 @@ The sprites plugin draws textures and their slices as quads in the world. A Spri
 
 - The engine plugin, whose texture import settings hold the slices and the pixels per unit ([Asset pipeline](/docs/core/AssetPipeline.md)).
 - Optional, the sequencer plugin. It adds TweenFadeTo. It lives in the plugin's `sequencer` subpackage, which builds only when the sequencer plugin is enabled ([Plugins](/docs/core/Plugins.md)).
+- Optional, the tween plugin. It adds the one-line color and alpha tweens. They live in the plugin's `tween` subpackage (`moonhug:packages/sprites/tween`), which builds only when the tween plugin is enabled.
 
 ## Quick start
 

@@ -1,6 +1,6 @@
 ---
 title: "Tweens from code"
-description: "Starting a tween with one call, animating any value through a proc, delays, and building a sequence step by step with chain, group and insert"
+description: "Starting a tween with one call: transforms, UI, camera and light fields, any component field, any value through a proc, shake and punch, delays, and sequences built step by step"
 weight: 15
 tags: ["tween", "concepts"]
 ---
@@ -21,6 +21,18 @@ tween.rotation(lid, quat, 0.5)                       // a quaternion
 - The arguments are the object, the end value, the duration in seconds and the ease. The start is where the object is when the tween begins.
 - Each call returns a handle: `h := tween.position(...)`, then `tween.stop(h)`, `tween.complete(h)`, `tween.on_complete(h, ...)`.
 - A tween starts at once and ticks from the next frame.
+- A tween ends by itself when its object is destroyed.
+
+| Call | Animates |
+|---|---|
+| `position`, `scale`, `rotation`, `euler_angles` | the local transform |
+| `world_position`, `world_rotation` | the transform in world space, whatever the parent is |
+| `anchored_position`, `size_delta` | a UI object's RectTransform |
+| `ui_tint`, `ui_alpha` | a UI graphic's runtime tint, which is not saved. An untinted graphic starts white |
+| `camera_fov` | a camera's field of view |
+| `light_intensity`, `light_color` | a light |
+| `sprites_tween.color`, `sprites_tween.alpha` | a SpriteRenderer (`moonhug:packages/sprites/tween`) |
+| `audio_tween.volume`, `audio_tween.pitch` | an AudioSource (`moonhug:packages/audio/tween`) |
 
 ## Options
 
@@ -28,8 +40,9 @@ The last argument sets the rest. Its zero value is: play once, no delay, on `Upd
 
 ```odin
 tween.position(coin, {0, 1, 0}, 0.5, .Sine_In_Out, {cycles = -1, cycle_mode = .Yoyo})
-tween.scale(popup, {1, 1, 1}, 0.2, opt = {delay = 0.5, time = .Unscaled})
+tween.scale(popup, {1, 1, 1}, 0.2, opt = {delay = 0.5, clock = .Unscaled})
 tween.position(ball, target, 1, opt = {curve = &my_curve})
+tween.position(enemy, waypoint, 0, opt = {speed = 3})   // 3 units per second
 ```
 
 | Field | What it does |
@@ -37,8 +50,9 @@ tween.position(ball, target, 1, opt = {curve = &my_curve})
 | `cycles` | How many times it plays. 0 and 1 play once, -1 repeats until stopped or completed. |
 | `cycle_mode` | `Restart`, `Yoyo`, `Incremental` or `Rewind` ([Tween nodes](../scripts/TweenNodes.md)). |
 | `delay` | Seconds before it starts. |
-| `time` | The timeline it ticks on ([Time](/plugins/engine/docs/Time.md)). |
+| `clock` | The clock it ticks on ([Time](/docs/core/Time.md)). |
 | `curve` | The ease as a curve from 0 to 1 on both axes. The curve is copied. |
+| `speed` | Above 0: units per second. The duration argument is ignored and follows from the distance. For `position`, `world_position`, `anchored_position`, `custom` and `field`. |
 
 ## Any value
 
@@ -56,6 +70,40 @@ tween.custom(panel.color, RED, 0.2, set_color, panel)   // set_color takes [4]f3
 - The value is a number, or a vector of 2, 3 or 4 numbers. A color is 4. The proc's argument type picks the form.
 - Odin has no closures: what the proc needs travels in `user`.
 - `user` has to stay valid for as long as the tween runs. Stop the tween when what it points at goes away.
+
+## Any component field
+
+`tween.field` animates a field of a component. It reaches the field through a proc that finds the component every tick, so a component that goes away ends the tween and nothing points at freed memory.
+
+```odin
+range_of :: proc(target: engine.Transform_Handle) -> rawptr {
+	_, light := engine.transform_get_comp(target, engine.Light)
+	return &light.range if light != nil else nil
+}
+
+tween.field(lamp, range_of, 12, 0.5)
+```
+
+- The field is a number, or 2, 3 or 4 numbers. The type of `to` picks the form.
+- `tween.field_masked` writes part of a field: a color's alpha alone is width 4, mask `{3}`.
+- Use `field` for components and `custom` for everything else. `custom` takes a pointer you keep valid yourself.
+- A plugin gives its components one-line tweens this way, in a `tween` subpackage of its own. `plugins/sprites/tween` is the reference.
+
+## Shake and punch
+
+A motion around where the object is that fades out and leaves it where it was.
+
+```odin
+tween.shake_position(camera, {0.3, 0.3, 0}, 0.4)
+tween.punch_scale(button, {0.2, 0.2, 0}, 0.25)
+tween.shake_rotation(sign, {0, 0, 15}, 0.5, frequency = 6)
+```
+
+- A shake wobbles on every axis that has strength. A punch swings along the strength: out, back through the start, and again smaller.
+- `strength` is the largest offset: units for position, degrees for rotation, scale for scale.
+- `frequency` is swings per second: 10 for a shake and 4 for a punch unless given.
+- The six calls are `shake_position`, `shake_rotation`, `shake_scale`, `punch_position`, `punch_rotation` and `punch_scale`.
+- The motion is the same every time for the same arguments.
 
 ## Delay
 
@@ -91,7 +139,7 @@ tween.insert(s, 0.5, tween.custom(0, 1, 0.2, set_glow, door))   // at 0.5 s
 - A step is any tween: a one-line tween, a `custom`, a `delay`, an authored tree started with `tween.run`, or another sequence.
 - A step handed to a sequence stops being a run of its own. Its handle is dead from then on, and the sequence's handle controls it.
 - A step joins a sequence before it has ticked, so a sequence is built in the frame it starts in.
-- Each step keeps its own object. The sequence's timeline is the one every step ticks on.
+- Each step keeps its own object. The sequence's clock is the one every step ticks on.
 - `tween.complete(s)` runs every step to its end and still makes the calls. It does not wait at a `chain_wait_until`.
 - A sequence with a `chain_wait_until` has no progress, since its length cannot be told.
 

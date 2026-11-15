@@ -13,6 +13,7 @@ The audio plugin plays sound. An audio file is imported into a clip with its gai
 - [AudioSource](components/AudioSource.md) plays a clip on its object, 2D or spatial.
 - [AudioListener](components/AudioListener.md) is the ear, usually on the camera.
 - [TrackAudio](components/TrackAudio.md) and [ClipAudio](components/ClipAudio.md) play clips on a timeline. Need the sequencer plugin.
+- `audio_tween.volume` and `audio_tween.pitch` tween an AudioSource from code ([Tweens from code](/plugins/tween/docs/concepts/TweensFromCode.md)). Need the tween plugin.
 
 **Assets**
 
@@ -29,6 +30,7 @@ The audio plugin plays sound. An audio file is imported into a clip with its gai
 - The engine plugin.
 - SDL3_mixer, the `vendor:sdl3/mixer` library: `brew install sdl3_mixer` on macOS.
 - Optional, the sequencer plugin. It adds TrackAudio and ClipAudio, which play clips on a timeline. They live in the plugin's `sequencer` subpackage, which builds only when the sequencer plugin is enabled ([Plugins](/docs/core/Plugins.md)).
+- Optional, the tween plugin. It adds the one-line volume and pitch tweens. They live in the plugin's `tween` subpackage (`moonhug:packages/audio/tween`), which builds only when the tween plugin is enabled.
 
 ## Quick start
 

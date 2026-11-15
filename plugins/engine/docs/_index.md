@@ -37,7 +37,7 @@ The engine plugin is everything a game runs on: the world of pools and handles, 
 
 - [Data](concepts/data/_index.md): the world, pools and handles, the component data layer and references.
 - [Scenes](concepts/scenes/_index.md): scene files, prefabs and nested prefabs.
-- [Frame](concepts/frame/_index.md): the fixed tick, time and its scale, and the order updates and lifecycle procs run in.
+- [Frame](concepts/frame/_index.md): the fixed tick and the order updates and lifecycle procs run in.
 - [Rendering](concepts/rendering/_index.md): the renderer, the render pipeline, materials, meshes, render layers and the UI canvas.
 
 ## Project settings

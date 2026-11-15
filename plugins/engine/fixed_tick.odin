@@ -2,6 +2,7 @@ package engine
 
 import core "moonhug:libs/core"
 import "moonhug:libs/input"
+import "moonhug:libs/time"
 
 // Fixed-rate simulation tick (plugins/engine/docs/FixedTick.md). ONE project tick rate — no
 // independent per-system rates; coarse systems schedule with the divisor on
@@ -25,9 +26,9 @@ Tick_Hooks :: struct {
 // loads in progress (scene_load_async.odin), then the fixed
 // ticks the accumulator owes (each latching input first), then the frame
 // tick, then the late tick, then the objects transform_destroy_later queued.
-// `dt` is the frame's real delta time. The game's time scale (time.odin)
-// applies here: the accumulator and the frame's procs get the scaled step,
-// and the timelines advance before the procs of each stage run.
+// `dt` is the frame's real delta time. The game's time scale
+// (moonhug/libs/time) applies here: the accumulator and the frame's procs get
+// the scaled step, and the clocks advance before the procs of each stage run.
 // `step` runs exactly one fixed tick and one frame tick at the fixed delta,
 // ignoring the accumulator and the time scale, for the editor's Step button.
 frame_tick :: proc(hooks: Tick_Hooks, dt: f32, step := false) {
@@ -35,17 +36,16 @@ frame_tick :: proc(hooks: Tick_Hooks, dt: f32, step := false) {
 	when ODIN_DEBUG do enabled_verify()
 	scene_loads_step()
 	fdt := fixed_dt()
-	scaled_dt := time_scale_frame(dt)
+	scaled_dt := time.scale_frame(dt)
 	steps := 1 if step else fixed_frame_ticks(scaled_dt)
 	for _ in 0 ..< steps {
 		fixed_tick_begin()
 		input.fixed_latch()
-		time_advance_fixed(fdt)
 		if hooks.fixed_update != nil do hooks.fixed_update(fdt)
 		fixed_tick_advance()
 	}
 	frame_dt := fdt if step else scaled_dt
-	time_advance_frame(frame_dt, fdt if step else dt)
+	time.advance_frame(frame_dt, fdt if step else dt)
 	if hooks.update != nil do hooks.update(frame_dt)
 	if hooks.late_update != nil do hooks.late_update(frame_dt)
 	transform_destroy_pending()
@@ -90,10 +90,13 @@ fixed_tick_index :: proc() -> u64 {
 	return _fixed.tick
 }
 
-// A tick starts. Gizmos the previous tick recorded go now: they stayed up to
-// here so frames that run no tick still show them.
+// A tick starts: the Fixed clock (moonhug/libs/time) steps, and gizmos the
+// previous tick recorded go. They stayed up to here so frames that run no
+// tick still show them.
 fixed_tick_begin :: proc() {
 	core.in_fixed_tick = true
+	// The Fixed clock steps with the tick, before the tick's procs read it.
+	time.advance_fixed(fixed_dt())
 	if uc := ctx_get(); uc != nil do gizmo_buffer_clear_lifetime(&uc.gizmos, .Fixed_Tick)
 }
 
@@ -123,7 +126,7 @@ fixed_frame_ticks :: proc(frame_dt: f32) -> int {
 // Tests / playmode restarts.
 fixed_reset :: proc() {
 	_fixed = {}
-	time_reset()
+	time.reset()
 	// The last tick's gizmos describe a run that ended, and the game clock
 	// restarts, so its timed gizmos go too.
 	if uc := ctx_get(); uc != nil {
@@ -181,3 +184,12 @@ Fixed_Update_Proc :: proc(fixed_dt: f32)
 // @(fixed_update).
 @(extension_point={attribute="comp_fixed_update", target="proc", fields="order divisor component"})
 Comp_Fixed_Update_Proc :: proc(fixed_dt: f32, c: rawptr)
+
+// Play ended: the next run starts every clock from 0 at scale 1. Timed gizmos
+// on the game clock go with it, since their expiry times belong to the run
+// that ended.
+@(phase={key=ExitingPlayMode})
+time_exiting_play_mode :: proc() {
+	time.reset()
+	if uc := ctx_get(); uc != nil do gizmo_buffer_clear_clock(&uc.gizmos, .Game)
+}

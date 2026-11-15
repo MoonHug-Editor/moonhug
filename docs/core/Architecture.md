@@ -14,7 +14,7 @@ The libs are the packages that run nothing on their own. Two executables are bui
 
 | Word | Means | Lives in |
 |---|---|---|
-| **Libs** | Small packages the Editor and an App build on, each imported on its own and only where it is used: `core` (handles, references, phases, the type registry, settings), `log`, `serialization`, `assets` and `catalog` (the asset database and what an App ships), `gfx` and `input` (the window and the platform), `gizmos`, `crash_journal`. | `moonhug/libs/<name>` |
+| **Libs** | Small packages the Editor and an App build on, each imported on its own and only where it is used: `core` (handles, references, phases, the type registry, settings), `log`, `serialization`, `assets` and `catalog` (the asset database and what an App ships), `gfx` and `input` (the window and the platform), `time` (delta time, the time scale and clocks, see [Time](Time.md)), `gizmos`, `crash_journal`. | `moonhug/libs/<name>` |
 | **Editor** | The generic editing application: windows, docking, menus, inspector, undo, Project window, viewport, Simulate, console. It declares the extension points plugins fill and builds with no plugin installed. | `moonhug/editor` |
 | **Plugins** | A package with special folders, can extend editor using attributes. See [Plugins](Plugins.md) | `plugins/<name>` |
 
@@ -46,7 +46,7 @@ Editor   libs ─┬ engine plugin ── other plugins ── the app package
 
 Imports go one way, from right to left along a line and up a branch. The Editor runs the same plugin code the App does, and adds each plugin's `editor/` part, which imports its own plugin and the shell. The shell branches off the libs beside the plugins: it imports no plugin, and no runtime part imports the shell or any `editor/` part.
 
-- a libs package imports nothing above it, and little beside it: `core` imports nothing, `gfx` only `input`, `assets` only `core`, `log` and `catalog`
+- a libs package imports nothing above it, and little beside it: `core` and `time` import nothing, `gfx` only `input`, `assets` only `core`, `log` and `catalog`
 - the editor imports the libs, never a plugin
 - a plugin imports the libs, the editor's extension points from its `editor/` part, and the plugins it declares as dependencies
 - the app package imports what it uses, like any plugin. The smallest App imports `moonhug:libs/core` and nothing else: no window, no asset database, no engine. The Editor still inspects its structs, opens its windows and runs its config. Odin compiles only what the App references, so an imported package costs what is used of it

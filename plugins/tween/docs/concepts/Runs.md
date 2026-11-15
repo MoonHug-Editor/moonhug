@@ -1,6 +1,6 @@
 ---
 title: "Runs"
-description: "The handle of a running tween tree: stop, complete, pause, time scale, progress, the completion callback, the timeline a run ticks on and binding a run to an object"
+description: "The handle of a running tween tree: stop, complete, pause, time scale, progress, the completion callback, the clock a run ticks on and binding a run to an object"
 weight: 20
 tags: ["tween", "concepts"]
 ---
@@ -19,7 +19,8 @@ tween.set_paused(h, true)   // hold it
 tween.set_time_scale(h, 2)  // twice as fast
 ```
 
-- The zero handle is no run. `tween.run` returns it when nothing started: an unknown name, a node type that is not registered, a skipped root.
+- The zero handle is no run. `tween.run` returns it when nothing started: an unknown name, a node type that is not registered, a skipped root, a node `subject` that names no object.
+- The `subject` in the `TweenContext` is the default object. A node whose own `subject` is set in the inspector animates that one ([Tween nodes](../scripts/TweenNodes.md)).
 - Every proc accepts the zero handle and the handle of a run that ended, and does nothing then.
 - A handle never reaches a later run, so keeping an old one is safe.
 
@@ -50,24 +51,24 @@ tween.on_complete(h, proc(user: rawptr) {
 ## Pause, speed and progress
 
 - A paused run keeps its place. `tween.is_paused` reads the flag.
-- The time scale is the run's own speed on top of its timeline: 1 by default, 0 holds it.
+- The time scale is the run's own speed on top of its clock: 1 by default, 0 holds it.
 - `tween.elapsed` is the seconds the run has advanced.
 - `tween.progress` is 0 at the start and 1 at the end. Its second result is false when the run's length cannot be told: a tree with an endless node, or with a node that ticks itself and has no children.
 
-## Timelines
+## Clocks
 
-A run ticks on one of the engine's timelines ([Time](/plugins/engine/docs/Time.md)), `Update` unless `tween.run` names another.
+A run ticks on one of the game's clocks ([Time](/docs/core/Time.md)), `Update` unless `tween.run` names another.
 
 ```odin
 tween.run("Bounce", ctx)                     // Update: follows the game's time scale
 tween.run("Recoil", ctx, .Fixed)             // steps with the simulation
 tween.run("MenuSlide", ctx, .Unscaled)       // keeps moving while the game is held
-tween.run("Dodge", ctx, .Bullet_Time)        // a timeline a package adds
+tween.run("Dodge", ctx, .Bullet_Time)        // a clock a package adds
 ```
 
-- A timeline's scale and pause apply to every run on it, which gives a group of runs one switch.
-- Runs on `Fixed`, and on timelines based on it, advance on the fixed tick. The others advance every frame.
-- `tween.tick_all(dt)` ticks every run by `dt` whatever its timeline, for tests and for stepping by hand.
+- A clock's scale and pause apply to every run on it, which gives a group of runs one switch.
+- Runs on `Fixed`, and on clocks based on it, advance on the fixed tick. The others advance every frame.
+- `tween.tick_all(dt)` ticks every run by `dt` whatever its clock, for tests and for stepping by hand.
 
 ## Binding a run to an object
 

@@ -21,6 +21,8 @@ package tween
 //   the frame it starts in.
 
 import "base:runtime"
+import "core:math/linalg"
+import "moonhug:libs/time"
 import engine "moonhug:packages/engine"
 
 // What a tween started from code may set besides its end value, duration and
@@ -29,8 +31,11 @@ Options :: struct {
 	cycles:     i32,          // 0 and 1 play once, -1 repeats until stopped or completed
 	cycle_mode: Cycle_Mode,
 	delay:      f32,          // seconds before it starts
-	time:       engine.Time,  // the timeline it ticks on
+	clock:      time.Clock,   // the clock it ticks on
 	curve:      ^engine.Curve, // set: the ease is this curve, copied
+	// Above 0: the tween moves at this many units per second and its duration
+	// argument is ignored. For position tweens, custom and field.
+	speed:      f32,
 }
 
 // --- One-line tweens ---------------------------------------------------------------
@@ -40,24 +45,27 @@ position :: proc(target: engine.Transform_Handle, to: [3]f32, duration: f32, eas
 	h, node := node_new(TweenMoveToLocal)
 	node.position = to
 	node.duration = duration
-	return _start_value(h, &node.base, &node.anim, target, ease, opt)
+	node.speed = opt.speed
+	return start_value_node(h, &node.base, &node.anim, target, ease, opt)
 }
 
 // Scales the object from its local scale to `to`.
 scale :: proc(target: engine.Transform_Handle, to: [3]f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
+	assert(opt.speed == 0, "tween.scale: no speed option, give a duration")
 	h, node := node_new(TweenScaleToLocal)
 	node.scale = to
 	node.duration = duration
-	return _start_value(h, &node.base, &node.anim, target, ease, opt)
+	return start_value_node(h, &node.base, &node.anim, target, ease, opt)
 }
 
 // Rotates the object from its local rotation to the quaternion `to`, along
 // the shortest arc.
 rotation :: proc(target: engine.Transform_Handle, to: [4]f32, duration: f32, ease := Ease.Linear, opt := Options{}) -> Handle {
+	assert(opt.speed == 0, "tween.rotation: no speed option, give a duration")
 	h, node := node_new(TweenRotateToLocal)
 	node.rotation = to
 	node.duration = duration
-	return _start_value(h, &node.base, &node.anim, target, ease, opt)
+	return start_value_node(h, &node.base, &node.anim, target, ease, opt)
 }
 
 // Rotates the object from its local rotation to Euler angles in degrees.
@@ -93,19 +101,19 @@ custom_vec4 :: proc(from, to: [4]f32, duration: f32, set: proc(value: [4]f32, us
 
 // Waits `seconds`, then calls `call` with `user`. With no call it is a
 // run that only takes time: something to chain after or wait for.
-delay :: proc(seconds: f32, call: proc(user: rawptr) = nil, user: rawptr = nil, time := engine.Time.Update) -> Handle {
-	return run_node(_callback_node(seconds, call, user), {}, time)
+delay :: proc(seconds: f32, call: proc(user: rawptr) = nil, user: rawptr = nil, clock := time.Clock.Update) -> Handle {
+	return run_node(_callback_node(seconds, call, user), {}, clock)
 }
 
 // --- Sequences -----------------------------------------------------------------------
 
 // Starts an empty sequence. chain, group and insert put steps into it.
-sequence :: proc(time := engine.Time.Update) -> Handle {
+sequence :: proc(clock := time.Clock.Update) -> Handle {
 	context.allocator = runtime.default_allocator()
 	root_h, root := node_new(Parallel)
 	chain_h, _ := node_new(Sequence)
 	append(&root.children, chain_h)
-	h := run_node(root_h, {}, time)
+	h := run_node(root_h, {}, clock)
 	r := _run_ptr(h)
 	r.built = true
 	r.chain = chain_h
@@ -255,21 +263,6 @@ register_code_nodes :: proc() {
 // --- Internals -----------------------------------------------------------------------------
 
 @(private = "file")
-_start_value :: proc(h: Node_Handle, base: ^Tween, anim: ^Tween_Anim, target: engine.Transform_Handle, ease: Ease, opt: Options) -> Handle {
-	base.target = target
-	base.delay = opt.delay
-	anim.ease = ease
-	anim.cycles = opt.cycles
-	anim.cycle_mode = opt.cycle_mode
-	if opt.curve != nil {
-		anim.ease = .Curve
-		anim.curve.keys = make([dynamic]engine.Curve_Key, len(opt.curve.keys), runtime.default_allocator())
-		copy(anim.curve.keys[:], opt.curve.keys[:])
-	}
-	return run_node(h, TweenContext{subject = target}, opt.time)
-}
-
-@(private = "file")
 _start_custom :: proc(from, to: [4]f32, width: u8, set_raw: rawptr, duration: f32, user: rawptr, ease: Ease, opt: Options) -> Handle {
 	assert(set_raw != nil, "tween.custom: needs a proc that takes the value")
 	h, node := node_new(TweenCustom)
@@ -279,7 +272,8 @@ _start_custom :: proc(from, to: [4]f32, width: u8, set_raw: rawptr, duration: f3
 	node.set_raw = set_raw
 	node.user = user
 	node.duration = duration
-	return _start_value(h, &node.base, &node.anim, {}, ease, opt)
+	if opt.speed > 0 do node.duration = linalg.length(to - from) / opt.speed
+	return start_value_node(h, &node.base, &node.anim, {}, ease, opt)
 }
 
 @(private = "file")

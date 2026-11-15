@@ -2,17 +2,17 @@ package plugin_example
 
 // Example plugin package (docs/core/Plugins.md). Demonstrates the whole surface:
 // a component (inspector + serialization come from the attribute), an
-// @(fixed_update) tick, a timeline of its own (Time_Extra), an asset type with
+// @(fixed_update) tick, a clock of its own (Clock_Extra), an asset type with
 // the two serialization hooks (spawn_table.odin), an editor-only subpackage with a menu item (editor/), and
 // mounted content (assets/). Everything registers through prebuild — no
 // source edits outside this folder.
 
 import "moonhug:packages/engine"
 
-// A timeline this package adds to the engine's (plugins/engine/time.odin). It
-// follows `Update` unless engine.set_time_base says otherwise, and has its
-// own scale and pause: engine.set_time_scale(0.25, .Example_Slow).
-Time_Extra :: enum {
+// A clock this package adds to the game's (moonhug/libs/time). It follows
+// `Update` unless time.set_base says otherwise, and has its own scale and
+// pause: time.set_time_scale(0.25, .Example_Slow).
+Clock_Extra :: enum {
 	Example_Slow,
 }
 

@@ -10,6 +10,7 @@ package mhgui
 // raycast_target on (Image or Text) to be hit at all.
 
 import "moonhug:packages/engine"
+import "moonhug:libs/time"
 
 Selectable_Transition :: enum u8 {
 	None,
@@ -90,7 +91,8 @@ ui_tick :: proc(dt: f32) {
 		case pointer.selected == node: b.state = .Selected
 		case:                          b.state = .Normal
 		}
-		if b.transition == .Color_Tint do _button_tint(b, dt)
+		// Real time: a menu responds while the game's time is slowed or held.
+		if b.transition == .Color_Tint do _button_tint(b, time.delta_time(.Unscaled))
 	}
 }
 

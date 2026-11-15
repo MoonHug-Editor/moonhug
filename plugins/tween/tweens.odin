@@ -29,13 +29,16 @@ Tween :: struct {
 	skip:     bool,
 	is_await: bool,
 	delay:    f32,
+	// The object this node animates. Empty: the subject the run was started
+	// with. Set: this object, whatever the code passed.
 	subject:  engine.Ref `ref:"Transform"`,
 
 	// runtime only fields:
 	delay_elapsed: f32 `json:"-"`,
 	status:        Status `json:"-"`,
-	// The object this node animates when it is not the run's subject: set by
-	// the code API, where each step of a sequence names its own object.
+	// The object this node animates when it is not the run's subject: the
+	// authored `subject` resolved when the run starts, or the object the code
+	// API was called with.
 	target:        engine.Transform_Handle `json:"-" inspect:"-"`,
 }
 
@@ -215,6 +218,7 @@ has_delay :: proc(base: ^Tween, delta_time: f32) -> bool {
 register_builtin_nodes :: proc() {
 	register_node(Parallel, tick_Parallel, .Longest)
 	register_node(Sequence, tick_Sequence, .Sum)
+	register_target_nodes()
 	register_code_nodes()
 	register_tween(TweenMoveToLocal, begin_TweenMoveToLocal, apply_TweenMoveToLocal)
 	register_tween(TweenRotateToLocal, begin_TweenRotateToLocal, apply_TweenRotateToLocal)

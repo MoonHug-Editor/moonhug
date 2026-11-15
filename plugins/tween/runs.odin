@@ -4,9 +4,9 @@ package tween
 //
 // - run instantiates an authored tree and returns a Handle. The
 //   zero handle is "no run": every proc here accepts it and a dead handle.
-// - A run ticks on a timeline (plugins/engine/time.odin), `Update` unless
-//   run names another. tween_update ticks the runs on per-frame
-//   timelines, tween_fixed_update the runs on fixed-tick timelines.
+// - A run ticks on a clock (moonhug/libs/time), `Update` unless run names
+//   another. tween_update ticks the runs on per-frame clocks,
+//   tween_fixed_update the runs on fixed-tick clocks.
 // - A run ends in one of three ways:
 //   - it finishes: its tree is done. on_complete is called.
 //   - complete: every value jumps to its end. on_complete is called.
@@ -21,6 +21,7 @@ package tween
 import "base:runtime"
 import "core:encoding/json"
 import "core:strings"
+import "moonhug:libs/time"
 import engine "moonhug:packages/engine"
 
 // One live run. The zero value is no run.
@@ -33,7 +34,7 @@ Handle :: struct {
 _Run :: struct {
 	root:           Node_Handle,
 	ctx:            TweenContext,
-	time:           engine.Time,
+	clock:          time.Clock,
 	generation:     u32,
 	alive:          bool,
 	paused:         bool,
@@ -111,14 +112,18 @@ library_count :: proc() -> int {
 
 // --- Starting a run ---------------------------------------------------------------
 
-// Starts a tween and returns its handle: the zero handle when nothing started
-// (an unknown name, an unknown node type, a skipped root).
+// Starts an authored tween and returns its handle: the zero handle when
+// nothing started (an unknown name, an unknown node type, a skipped root, a
+// node subject that names no object).
+//
+// `ctx.subject` is the default object: every node animates it, except a node
+// whose own `subject` is set in the inspector, which animates that one.
 run :: proc {
 	run_key,
 	run_authored,
 }
 
-run_key :: proc(key: string, ctx: TweenContext, time := engine.Time.Update) -> Handle {
+run_key :: proc(key: string, ctx: TweenContext, clock := time.Clock.Update) -> Handle {
 	raw, ok := _lib[key]
 	if !ok do return {}
 	prev := context.allocator
@@ -126,15 +131,15 @@ run_key :: proc(key: string, ctx: TweenContext, time := engine.Time.Update) -> H
 	val, perr := json.parse(raw, .JSON, true)
 	context.allocator = prev
 	if perr != nil do return {}
-	return run_value(val, ctx, time)
+	return run_value(val, ctx, clock)
 }
 
-run_authored :: proc(a: ^Authored, ctx: TweenContext, time := engine.Time.Update) -> Handle {
-	return run_value(a.value, ctx, time)
+run_authored :: proc(a: ^Authored, ctx: TweenContext, clock := time.Clock.Update) -> Handle {
+	return run_value(a.value, ctx, clock)
 }
 
 // Instantiates and starts a tree from its authored value (not consumed).
-run_value :: proc(v: json.Value, ctx: TweenContext, time := engine.Time.Update) -> Handle {
+run_value :: proc(v: json.Value, ctx: TweenContext, clock := time.Clock.Update) -> Handle {
 	root, ok := _instantiate(v)
 	if !ok do return {}
 	base := node_base(root)
@@ -142,12 +147,19 @@ run_value :: proc(v: json.Value, ctx: TweenContext, time := engine.Time.Update) 
 		node_destroy(root)
 		return {}
 	}
-	return run_node(root, ctx, time)
+	// A node's own subject, set in the inspector, wins over the run's.
+	scene: ^engine.Scene
+	if t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(ctx.subject)); t != nil do scene = t.scene
+	if !node_resolve_subjects(root, scene) {
+		node_destroy(root)
+		return {}
+	}
+	return run_node(root, ctx, clock)
 }
 
 // Starts a run over a live tree the caller built (node_new). The run owns
 // the tree from here.
-run_node :: proc(root: Node_Handle, ctx: TweenContext, time := engine.Time.Update) -> Handle {
+run_node :: proc(root: Node_Handle, ctx: TweenContext, clock := time.Clock.Update) -> Handle {
 	context.allocator = runtime.default_allocator()
 	index: u32
 	if len(_free_runs) > 0 {
@@ -160,7 +172,7 @@ run_node :: proc(root: Node_Handle, ctx: TweenContext, time := engine.Time.Updat
 	r^ = _Run {
 		root       = root,
 		ctx        = ctx,
-		time       = time,
+		clock      = clock,
 		generation = r.generation,
 		alive      = true,
 		time_scale = 1,
@@ -221,7 +233,7 @@ is_paused :: proc(h: Handle) -> bool {
 	return r != nil && r.paused
 }
 
-// The run's own speed on top of its timeline: 1 by default, 0 holds it.
+// The run's own speed on top of its clock: 1 by default, 0 holds it.
 set_time_scale :: proc(h: Handle, scale: f32) {
 	assert(scale >= 0, "tween.set_time_scale: a run does not go backwards")
 	if r := _run_ptr(h); r != nil do r.time_scale = scale
@@ -232,10 +244,10 @@ time_scale :: proc(h: Handle) -> f32 {
 	return r.time_scale if r != nil else 0
 }
 
-// The timeline the run ticks on.
-timeline :: proc(h: Handle) -> engine.Time {
+// The clock the run ticks on.
+clock_of :: proc(h: Handle) -> time.Clock {
 	r := _run_ptr(h)
-	return r.time if r != nil else .Update
+	return r.clock if r != nil else .Update
 }
 
 // Seconds the run has advanced.
@@ -331,19 +343,19 @@ _run_end :: proc(index: u32, completed: bool) {
 
 // --- Ticking --------------------------------------------------------------------------
 
-// The runs on per-frame timelines, each by its timeline's step.
+// The runs on per-frame clocks, each by its clock's step.
 @(update={order=1})
 tween_update :: proc(dt: f32) {
 	_tick_runs(false)
 }
 
-// The runs on fixed-tick timelines, each by its timeline's step.
+// The runs on fixed-tick clocks, each by its clock's step.
 @(fixed_update={order=1})
 tween_fixed_update :: proc(fixed_dt: f32) {
 	_tick_runs(true)
 }
 
-// Ticks every run by `dt` seconds, whatever its timeline: for tests and for
+// Ticks every run by `dt` seconds, whatever its clock: for tests and for
 // stepping tweens by hand.
 tick_all :: proc(dt: f32) {
 	// Runs started during this pass wait for the next one.
@@ -358,8 +370,8 @@ _tick_runs :: proc(fixed: bool) {
 	n := len(_runs)
 	for i in 0 ..< n {
 		r := &_runs[i]
-		if !r.alive || r.paused || engine.time_is_fixed(r.time) != fixed do continue
-		_tick_run(u32(i), engine.delta_time(r.time))
+		if !r.alive || r.paused || time.is_fixed(r.clock) != fixed do continue
+		_tick_run(u32(i), time.delta_time(r.clock))
 	}
 }
 

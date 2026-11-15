@@ -1,9 +1,10 @@
 package tween_tests
 
 // Runs and their handle: stop, complete, pause, time scale, on_complete, bind,
-// timelines, easing and cycles.
+// clocks, easing and cycles.
 
 import "core:testing"
+import "moonhug:libs/time"
 import "moonhug:packages/engine"
 import tween "moonhug:packages/tween"
 import common "moonhug:tests/common"
@@ -203,7 +204,7 @@ test_ease_and_cycles :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_runs_follow_their_timeline :: proc(t: ^testing.T) {
+test_runs_follow_their_clock :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
@@ -211,8 +212,8 @@ test_runs_follow_their_timeline :: proc(t: ^testing.T) {
 	defer common.teardown(tc)
 	tween.tween_init()
 	defer tween.stop_all()
-	engine.time_reset()
-	defer engine.time_reset()
+	time.reset()
+	defer time.reset()
 
 	scaled := engine.transform_new("Scaled")
 	unscaled := engine.transform_new("Unscaled")
@@ -224,9 +225,9 @@ test_runs_follow_their_timeline :: proc(t: ^testing.T) {
 	tween.run(&a, tween.TweenContext{subject = unscaled}, .Unscaled)
 	tween.run(&a, tween.TweenContext{subject = fixed}, .Fixed)
 
-	engine.set_time_scale(0.5)
+	time.set_time_scale(0.5)
 	for _ in 0 ..< 32 { // 0.5 s of real frames, no fixed tick
-		engine.time_advance_frame(engine.time_scale_frame(_DT), _DT)
+		time.advance_frame(time.scale_frame(_DT), _DT)
 		tween.tween_update(_DT)
 	}
 	testing.expect(t, _near(_pos(scaled).x, 2), "Update runs at half speed")
@@ -234,15 +235,15 @@ test_runs_follow_their_timeline :: proc(t: ^testing.T) {
 	testing.expect(t, _near(_pos(fixed).x, 0), "a Fixed run waits for fixed ticks")
 
 	for _ in 0 ..< 16 {
-		engine.time_advance_fixed(_DT)
+		time.advance_fixed(_DT)
 		tween.tween_fixed_update(_DT)
 	}
 	testing.expect(t, _near(_pos(fixed).x, 2))
 	testing.expect(t, _near(_pos(scaled).x, 2), "a frame run does not move on fixed ticks")
 
-	engine.set_time_paused(true)
+	time.set_paused(true)
 	for _ in 0 ..< 16 {
-		engine.time_advance_frame(engine.time_scale_frame(_DT), _DT)
+		time.advance_frame(time.scale_frame(_DT), _DT)
 		tween.tween_update(_DT)
 	}
 	testing.expect(t, _near(_pos(scaled).x, 2), "held time holds its runs")
@@ -321,4 +322,43 @@ test_on_complete_may_start_the_next_run :: proc(t: ^testing.T) {
 	_tick(17)
 	testing.expect_value(t, _pos(owner), [3]f32{4, 4, 0})
 	testing.expect_value(t, tween.run_count(), 0)
+}
+
+// The object passed in code is the default. A node whose own subject is set
+// in the inspector animates that object.
+@(test)
+test_node_subject_overrides_the_run_subject :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	tween.tween_init()
+	defer tween.stop_all()
+
+	root := engine.transform_new("Root")
+	actor := engine.transform_new("Actor", root)
+	other := engine.transform_new("Other", root)
+	other_lid := engine.pool_get(&tc.world.transforms, engine.Handle(other)).local_id
+
+	plain := tween.TweenMoveToLocal{position = {4, 0, 0}, duration = 0.25}
+	pinned := tween.TweenMoveToLocal{position = {0, 6, 0}, duration = 0.25}
+	pinned.subject = engine.Ref{pptr = engine.PPtr{local_id = other_lid}}
+	a := tween.authored(tween.Parallel{}, {tween.authored(plain), tween.authored(pinned)})
+	defer tween.authored_destroy(&a)
+
+	h := tween.run(&a, tween.TweenContext{subject = actor})
+	testing.expect(t, tween.is_alive(h))
+	_tick(17)
+	testing.expect_value(t, _pos(actor), [3]f32{4, 0, 0})
+	testing.expect_value(t, _pos(other), [3]f32{0, 6, 0})
+
+	// A subject that names no object: the tree does not run.
+	lost := tween.TweenMoveToLocal{position = {9, 9, 9}, duration = 0.25}
+	lost.subject = engine.Ref{pptr = engine.PPtr{local_id = 987654321}}
+	b := tween.authored(lost)
+	defer tween.authored_destroy(&b)
+	testing.expect(t, !tween.is_alive(tween.run(&b, tween.TweenContext{subject = actor})))
+	_tick(17)
+	testing.expect_value(t, _pos(actor), [3]f32{4, 0, 0})
 }

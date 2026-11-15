@@ -1,6 +1,7 @@
 package engine
 
 import "base:runtime"
+import "moonhug:libs/time"
 import core "moonhug:libs/core"
 
 UserContext :: struct {
@@ -59,7 +60,7 @@ ctx_scene_manager :: proc() -> ^SceneManager {
 @(init)
 _install_gizmo_buffer_slot :: proc "contextless" () {
 	context = runtime.default_context()
-	core.set_game_clock(proc() -> f64 { return f64(fixed_tick_index()) * f64(fixed_dt()) })
+	core.set_game_clock(proc() -> f64 { return time.now(.Fixed) })
 	core.set_gizmo_buffer_slot(proc() -> ^core.Gizmo_Buffer {
 		uc := ctx_get()
 		if uc == nil do return nil
