@@ -1,0 +1,244 @@
+{{- /* OVERRIDE (tools/docs): the sidebar's page tree with no current page:
+     nothing active, a folder open only by its `sidebar.open` front matter.
+     It is the same on every page, so it is rendered once per root and mode
+     into a script every page loads (custom/sidebar-tree-script.html), and a
+     script in sidebar.html marks the current page. The theme renders it per
+     page, which costs pages x tree entries. The markup is the theme's. */ -}}
+{{- template "sidebar-main" . -}}
+{{- template "sidebar-footer" -}}
+
+{{- define "sidebar-main" -}}
+  {{ template "sidebar-tree" (dict "context" .context "level" 0 "toc" (.toc | default false)) }}
+{{- end -}}
+
+{{- define "sidebar-tree" -}}
+  {{- /* OVERRIDE (tools/docs): the theme stops at 4 levels, and a plugin's
+       component with child pages (Plugins > plugin > Components > component >
+       child) is 5 deep, so the tree goes 2 levels further. Everything else in
+       this file is the theme's partial, unchanged. */ -}}
+  {{- if ge .level 6 -}}
+    {{- return -}}
+  {{- end -}}
+
+  {{- $context := .context -}}
+  {{- $level := .level -}}
+  {{- $toc := .toc | default false -}}
+  {{- $useMainMenu := and (eq $level 0) $toc -}}
+  {{- $mainMenuEntries := slice -}}
+
+  {{- $items := where (union .context.RegularPages .context.Sections) "Params.sidebar.exclude" "!=" true -}}
+  {{- if $useMainMenu -}}
+    {{- range $menuItem := site.Menus.main -}}
+      {{- $menuType := $menuItem.Params.type | default "" -}}
+      {{- $isIconOnly := and $menuItem.Params.icon (ne $menuType "link") -}}
+      {{- /* Keep only navigation links in the mobile sidebar. */ -}}
+      {{- if or (eq $menuType "search") (eq $menuType "theme-toggle") (eq $menuType "language-switch") $isIconOnly -}}
+        {{- continue -}}
+      {{- end -}}
+
+      {{- $menuTitle := or (T $menuItem.Identifier) $menuItem.Name -}}
+      {{- /* Dropdown parents mirror navbar behavior: render a labeled group of child links. */ -}}
+      {{- if $menuItem.HasChildren -}}
+        {{- $childEntries := slice -}}
+        {{- range $childItem := $menuItem.Children -}}
+          {{- $childType := $childItem.Params.type | default "" -}}
+          {{- $childIsIconOnly := and $childItem.Params.icon (ne $childType "link") -}}
+          {{- if or (eq $childType "search") (eq $childType "theme-toggle") (eq $childType "language-switch") $childIsIconOnly -}}
+            {{- continue -}}
+          {{- end -}}
+
+          {{- $childTitle := or (T $childItem.Identifier) $childItem.Name -}}
+          {{- $childPage := $childItem.Page -}}
+          {{- with $childItem.PageRef -}}
+            {{- with site.GetPage . -}}
+              {{- $childPage = . -}}
+            {{- end -}}
+          {{- end -}}
+          {{- with $childPage -}}
+            {{- if ne .Params.sidebar.exclude true -}}
+              {{- $childEntries = $childEntries | append (dict "title" $childTitle "link" .RelPermalink) -}}
+            {{- end -}}
+            {{- continue -}}
+          {{- end -}}
+
+          {{- $childLink := $childItem.URL -}}
+          {{- with $childItem.PageRef -}}
+            {{- if hasPrefix . "/" -}}
+              {{- $childLink = relLangURL (strings.TrimPrefix "/" .) -}}
+            {{- end -}}
+          {{- end -}}
+          {{- if $childLink -}}
+            {{- $childEntries = $childEntries | append (dict "title" $childTitle "link" $childLink) -}}
+          {{- end -}}
+        {{- end -}}
+
+        {{- if gt (len $childEntries) 0 -}}
+          {{- $mainMenuEntries = $mainMenuEntries | append (dict "type" "group" "title" $menuTitle "children" $childEntries) -}}
+        {{- end -}}
+        {{- continue -}}
+      {{- end -}}
+
+      {{- /* Normalize page-backed entries so we keep nested tree behavior. */ -}}
+      {{- $menuPage := $menuItem.Page -}}
+      {{- with $menuItem.PageRef -}}
+        {{- with site.GetPage . -}}
+          {{- $menuPage = . -}}
+        {{- end -}}
+      {{- end -}}
+      {{- with $menuPage -}}
+        {{- if ne .Params.sidebar.exclude true -}}
+          {{- $mainMenuEntries = $mainMenuEntries | append (dict "type" "page" "item" . "title" $menuTitle) -}}
+        {{- end -}}
+        {{- continue -}}
+      {{- end -}}
+
+      {{- $link := $menuItem.URL -}}
+      {{- with $menuItem.PageRef -}}
+        {{- if hasPrefix . "/" -}}
+          {{- $link = relLangURL (strings.TrimPrefix "/" .) -}}
+        {{- end -}}
+      {{- end -}}
+      {{- if $link -}}
+        {{- $mainMenuEntries = $mainMenuEntries | append (dict "type" "url" "link" $link "title" $menuTitle) -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- $useMainMenuEntries := and $useMainMenu (gt (len $mainMenuEntries) 0) -}}
+  {{- $hasPageEntry := false -}}
+  {{- range $mainMenuEntries -}}
+    {{- if eq (index . "type") "page" -}}{{- $hasPageEntry = true -}}{{- end -}}
+  {{- end -}}
+  {{- $hasItems := or (gt (len $items) 0) $useMainMenuEntries -}}
+
+  {{- if $hasItems -}}
+    {{- if eq $level 0 -}}
+      {{- if $useMainMenuEntries -}}
+        {{- /* Mixed list: page entries render trees; url entries render leaf links. */ -}}
+        {{- range $entry := $mainMenuEntries -}}
+          {{- if eq (index $entry "type") "page" -}}
+            {{- $item := index $entry "item" -}}
+            {{- if $item.Params.sidebar.separator -}}
+              <li class="[word-break:break-word] hx:mt-5 hx:mb-2 hx:px-2 hx:py-1.5 hx:text-sm hx:font-semibold hx:text-gray-900 hx:first:mt-0 hx:dark:text-gray-100">
+                <span class="hx:cursor-default">{{ index $entry "title" }}</span>
+              </li>
+            {{- else -}}
+              {{- $active := false -}}
+              {{- $shouldOpen := $item.Params.sidebar.open | default false }}
+              <li class="{{ if $shouldOpen }}open{{ end }}">
+                {{- template "sidebar-item-link" dict "context" $item "active" $active "open" $shouldOpen "title" (index $entry "title") "link" $item.RelPermalink -}}
+                {{- template "sidebar-tree" dict "context" $item "level" (add $level 1) "toc" $toc -}}
+              </li>
+            {{- end -}}
+          {{- else if eq (index $entry "type") "group" -}}
+            <li class="open">
+              <div class="hextra-sidebar-item hx:group hx:relative hx:flex hx:items-center">
+                <span class="hx:flex hx:grow hx:cursor-default hx:px-2 hx:py-1.5 hx:text-sm hx:font-semibold hx:text-gray-900 hx:dark:text-gray-100">
+                  {{- index $entry "title" -}}
+                </span>
+              </div>
+              <div class="hextra-sidebar-children hx:ltr:pr-0 hx:rtl:pl-0 hx:overflow-hidden">
+                <ul class='hx:relative hx:flex hx:flex-col hx:gap-1 hx:before:absolute hx:before:inset-y-1 hx:before:w-px hx:before:bg-gray-200 hx:before:content-[""] hx:ltr:ml-3 hx:ltr:pl-3 hx:ltr:before:left-0 hx:rtl:mr-3 hx:rtl:pr-3 hx:rtl:before:right-0 hx:dark:before:bg-neutral-800'>
+                  {{- range $child := index $entry "children" -}}
+                    {{- $link := index $child "link" -}}
+                    {{- $active := false -}}
+                    <li class="hx:flex hx:flex-col">
+                      {{- template "sidebar-item-link" dict "active" $active "open" false "title" (index $child "title") "link" $link -}}
+                    </li>
+                  {{- end -}}
+                </ul>
+              </div>
+            </li>
+          {{- else -}}
+            {{- $link := index $entry "link" -}}
+            {{- $active := false -}}
+            <li>{{ template "sidebar-item-link" dict "active" $active "open" false "title" (index $entry "title") "link" $link }}</li>
+          {{- end -}}
+        {{- end -}}
+      {{- end -}}
+      {{- /* Fall back to the page tree when no menu entry is page-backed,
+        so mobile navigation isn't limited to external menu links (#1024). */ -}}
+      {{- if not $hasPageEntry -}}
+        {{- range $items.ByWeight }}
+          {{- if .Params.sidebar.separator -}}
+            <li class="[word-break:break-word] hx:mt-5 hx:mb-2 hx:px-2 hx:py-1.5 hx:text-sm hx:font-semibold hx:text-gray-900 hx:first:mt-0 hx:dark:text-gray-100">
+              <span class="hx:cursor-default">{{ partial "utils/title" . }}</span>
+            </li>
+          {{- else -}}
+            {{- $active := false -}}
+            {{- $shouldOpen := .Params.sidebar.open | default false }}
+            <li class="{{ if $shouldOpen }}open{{ end }}">
+              {{- $linkTitle := partial "utils/title" . -}}
+              {{- template "sidebar-item-link" dict "context" . "active" $active "open" $shouldOpen "title" $linkTitle "link" .RelPermalink -}}
+              {{- template "sidebar-tree" dict "context" . "level" (add $level 1) "toc" $toc -}}
+            </li>
+          {{- end -}}
+        {{- end -}}
+      {{- end -}}
+    {{- else -}}
+      <div class="hextra-sidebar-children hx:ltr:pr-0 hx:rtl:pl-0 hx:overflow-hidden">
+        <ul class='hx:relative hx:flex hx:flex-col hx:gap-1 hx:before:absolute hx:before:inset-y-1 hx:before:w-px hx:before:bg-gray-200 hx:before:content-[""] hx:ltr:ml-3 hx:ltr:pl-3 hx:ltr:before:left-0 hx:rtl:mr-3 hx:rtl:pr-3 hx:rtl:before:right-0 hx:dark:before:bg-neutral-800'>
+          {{- range $items.ByWeight }}
+            {{- $active := false -}}
+            {{- $shouldOpen := .Params.sidebar.open | default false }}
+            {{- $linkTitle := partial "utils/title" . -}}
+            <li class="hx:flex hx:flex-col {{ if $shouldOpen }}open{{ end }}">
+              {{- template "sidebar-item-link" dict "context" . "active" $active "open" $shouldOpen "title" $linkTitle "link" .RelPermalink -}}
+              {{ template "sidebar-tree" dict "context" . "level" (add $level 1) "toc" $toc }}
+            </li>
+          {{- end -}}
+        </ul>
+      </div>
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- define "sidebar-footer" -}}
+  {{- range site.Menus.sidebar -}}
+    {{- $name := or (T .Identifier) .Name -}}
+    {{ if eq .Params.type "separator" }}
+      <li class="[word-break:break-word] hx:mt-5 hx:mb-2 hx:px-2 hx:py-1.5 hx:text-sm hx:font-semibold hx:text-gray-900 hx:first:mt-0 hx:dark:text-gray-100">
+        <span class="hx:cursor-default">{{ $name }}</span>
+      </li>
+    {{ else }}
+      {{- $link := .URL -}}
+      {{- with .PageRef -}}
+        {{- if hasPrefix . "/" -}}
+          {{- $link = relLangURL (strings.TrimPrefix "/" .) -}}
+        {{- end -}}
+      {{- end -}}
+      <li>{{ template "sidebar-item-link" dict "active" false "open" false "title" $name "link" $link }}</li>
+    {{ end }}
+  {{- end -}}
+{{- end -}}
+
+{{- define "sidebar-item-link" -}}
+  {{- $external := strings.HasPrefix .link "http" -}}
+  {{- $open := .open | default true -}}
+  {{- $hasChildren := false -}}
+  {{- $linkClass := "hx:flex hx:items-center hx:justify-between hx:gap-2 hx:grow hx:cursor-pointer hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:hextra-focus-visible-inset" -}}
+  {{- with .context }}{{ if or .RegularPages .Sections }}{{ $hasChildren = true }}{{ end }}{{ end -}}
+  {{- if $hasChildren -}}
+    {{- $linkClass = printf "%s hx:ltr:pr-8 hx:rtl:pl-8" $linkClass -}}
+  {{- end -}}
+  {{- $classes := partial "custom/sidebar-classes.html" -}}
+  {{- $linkClass = printf "%s %s" $linkClass (cond .active $classes.active $classes.idle) -}}
+  <div class="hextra-sidebar-item hx:group hx:relative hx:flex hx:items-center" data-active="{{ if .active }}true{{ else }}false{{ end }}">
+    <a
+      class="{{ $linkClass }}"
+      href="{{ .link }}"
+      {{ if $external }}target="_blank" rel="noreferrer"{{ end }}
+    >
+      <span class="hx:min-w-0 [word-break:break-word]">{{- .title -}}</span>
+    </a>
+    {{- if $hasChildren }}
+      <button type="button" class="hextra-sidebar-collapsible-button hx:absolute hx:top-1/2 hx:-translate-y-1/2 hx:ltr:right-2 hx:rtl:left-2 hx:shrink-0 hx:cursor-pointer hx:p-0 hx:text-gray-500 hx:dark:text-neutral-400 hx:group-hover:text-gray-900 hx:dark:group-hover:text-gray-50 hx:group-data-[active=true]:text-primary-800 hx:group-data-[active=true]:dark:text-primary-600 hx:hextra-focus-visible-inset" aria-label="{{ (T "toggleSection") | default "Toggle section" }}" aria-expanded="{{ if $open }}true{{ else }}false{{ end }}">
+        {{- template "sidebar-collapsible-button" -}}
+      </button>
+    {{- end }}
+  </div>
+{{- end -}}
+
+{{- define "sidebar-collapsible-button" -}}
+  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true" focusable="false" class="hx:h-[18px] hx:min-w-[18px] hx:rounded-xs hx:p-0.5 hx:hover:bg-gray-800/5 hx:dark:hover:bg-gray-100/5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" class="hx:origin-center hx:transition-transform hx:rtl:-rotate-180"></path></svg>
+{{- end -}}

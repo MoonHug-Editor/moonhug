@@ -23,3 +23,7 @@ The theme fades out over its last two seconds while the sting fades in over it.
 | Field | Default | What it does |
 |---|---|---|
 | `clip` | none | The audio file: `.mp3`, `.wav` or `.ogg`. |
+
+## See also
+
+- [ClipAudio in the API reference](/docs/reference/packages/audio/sequencer.md#clipaudio), its declaration with a link to the code.

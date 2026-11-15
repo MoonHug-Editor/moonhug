@@ -27,9 +27,10 @@ Body                    TimelineTrack + TrackAnimation
 
 - Inside its span the clip plays from its own start, scaled by the timeline clip's `speed`.
 - Its weight follows the timeline clip's `ease_in` and `ease_out`, so it fades against the clips it overlaps on the same track.
-- A clip shorter than the span wraps by the clip's own wrap setting ([Animation clip](../assets/AnimationClip.md)).
+- A clip shorter than the span wraps by the clip's own wrap setting ([Animation clip](../../../assets/AnimationClip.md)).
 
 ## See also
 
 - [TrackAnimation](TrackAnimation.md), the track it belongs to.
-- [Animation clip](../assets/AnimationClip.md), what `clip` refers to.
+- [Animation clip](../../../assets/AnimationClip.md), what `clip` refers to.
+- [ClipAnimation in the API reference](/docs/reference/packages/animation/sequencer.md#clipanimation), its declaration with a link to the code.

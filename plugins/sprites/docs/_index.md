@@ -13,11 +13,6 @@ The sprites plugin draws textures and their slices as quads in the world. A Spri
 - [SpriteRenderer](components/SpriteRenderer.md) draws a sprite on its object.
 - [SpriteSortingGroup](components/SpriteSortingGroup.md) sorts the sprites under it as one unit.
 
-**Scripts**
-
-- [TweenFadeTo](scripts/TweenFadeTo.md) fades a SpriteRenderer on a timeline. Needs the sequencer plugin.
-- `sprites_tween.color` and `sprites_tween.alpha` tween a SpriteRenderer's color from code ([Tweens from code](/plugins/tween/docs/concepts/TweensFromCode.md)). Need the tween plugin.
-
 **Windows**
 
 - [Sprite Editor](windows/SpriteEditorWindow.md): cuts a texture into slices, with their pivots and borders.
@@ -26,6 +21,11 @@ The sprites plugin draws textures and their slices as quads in the world. A Spri
 
 - [Sprites and slices](concepts/SpritesAndSlices.md): what a sprite is, how big it draws and how it is referenced.
 - [Sorting](concepts/Sorting.md): the order sprites draw in.
+
+**Extends**
+
+- sequencer: [TweenFadeTo](extends/sequencer/scripts/TweenFadeTo.md) fades a SpriteRenderer on a timeline.
+- tween: [Sprite tweens](extends/tween/scripts/SpriteTweens.md), one-line color and alpha tweens.
 
 [Roadmap](Roadmap.md): what is not built yet.
 

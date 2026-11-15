@@ -115,7 +115,7 @@ layer mixer
 
 ### Driven by a timeline
 
-A timeline's [TrackAnimation](TrackAnimation.md) that targets this component drives it, and the component's own playback stands down while it does, so the two never write the same transforms in one frame.
+A timeline's [TrackAnimation](../extends/sequencer/components/TrackAnimation.md) that targets this component drives it, and the component's own playback stands down while it does, so the two never write the same transforms in one frame.
 
 ## In the editor
 
@@ -157,4 +157,4 @@ Find a state by name once and keep its id: ids do not change when other states a
 
 - [Playable graph](../concepts/PlayableGraph.md), how the pose is sampled and blended.
 - [Animation states](../concepts/States.md), how the states are stored and why: ids, the flat tree, where the wrap setting lives.
-- [TimelineAnimator](TimelineAnimator.md), for states that play whole timelines.
+- [TimelineAnimator](../extends/sequencer/components/TimelineAnimator.md), for states that play whole timelines.

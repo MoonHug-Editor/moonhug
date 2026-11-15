@@ -25,6 +25,10 @@ The physics2d plugin simulates 2D physics with box2d. Add a Rigidbody2D and coll
 - [Bodies](concepts/Bodies.md): how components become box2d bodies, the fixed step, and contact events.
 - [Collision layers](concepts/CollisionLayers.md): which colliders collide, with the matrix and per-object overrides.
 
+**Extends**
+
+- sprites: [Sprite outline](extends/sprites/concepts/SpriteOutline.md), a PolygonCollider2D on a sprite starts as its outline.
+
 [Roadmap](Roadmap.md): joints, effectors and what does not re-sync yet.
 
 ## What it needs

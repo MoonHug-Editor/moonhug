@@ -1,11 +1,12 @@
 {{- /* OVERRIDE (tools/docs): previous and next follow the sidebar, the order a
      reader sees on the left (custom/sidebar-order.html), across sections. The
      theme takes them from the page's own section only, so they stop at a
-     section's end. `prev` and `next` front matter still override them, as in
-     the theme. The markup below is the theme's. */ -}}
+     section's end. The order is the same on every page, so it is computed
+     once per root and cached. `prev` and `next` front matter still override
+     them, as in the theme. The markup below is the theme's. */ -}}
 
 {{- $navRoot := cond (eq site.Home.Type "docs") site.Home .FirstSection -}}
-{{- $pages := slice $navRoot | append (partial "custom/sidebar-order.html" $navRoot) -}}
+{{- $pages := slice $navRoot | append (partialCached "custom/sidebar-order.html" $navRoot $navRoot.RelPermalink) -}}
 {{- $prev := false -}}
 {{- $next := false -}}
 {{- range $i, $p := $pages -}}

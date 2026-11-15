@@ -11,11 +11,14 @@ The particles plugin simulates particles on the CPU and draws them as camera-fac
 **Components**
 
 - [ParticleSystem](components/ParticleSystem.md) emits, moves and draws particles.
-- [TrackParticles](components/TrackParticles.md) and [ClipParticles](components/ClipParticles.md) play a system on a timeline. Need the sequencer plugin.
 
 **Concepts**
 
 - [Simulation](concepts/Simulation.md): what one frame of a system does, sub-emitters, trails, rendering and replay.
+
+**Extends**
+
+- sequencer: [TrackParticles](extends/sequencer/components/TrackParticles.md) and [ClipParticles](extends/sequencer/components/ClipParticles.md) play a system on a timeline.
 
 [Roadmap](Roadmap.md): which particle modules exist, and how the simulation scales.
 

@@ -12,8 +12,6 @@ The audio plugin plays sound. An audio file is imported into a clip with its gai
 
 - [AudioSource](components/AudioSource.md) plays a clip on its object, 2D or spatial.
 - [AudioListener](components/AudioListener.md) is the ear, usually on the camera.
-- [TrackAudio](components/TrackAudio.md) and [ClipAudio](components/ClipAudio.md) play clips on a timeline. Need the sequencer plugin.
-- `audio_tween.volume` and `audio_tween.pitch` tween an AudioSource from code ([Tweens from code](/plugins/tween/docs/concepts/TweensFromCode.md)). Need the tween plugin.
 
 **Assets**
 
@@ -22,6 +20,11 @@ The audio plugin plays sound. An audio file is imported into a clip with its gai
 **Concepts**
 
 - [Playback](concepts/Playback.md): the mixer, the tracks, one-shots, play mode and spatial sound.
+
+**Extends**
+
+- sequencer: [TrackAudio](extends/sequencer/components/TrackAudio.md) and [ClipAudio](extends/sequencer/components/ClipAudio.md) play clips on a timeline.
+- tween: [Audio tweens](extends/tween/scripts/AudioTweens.md), one-line volume and pitch tweens.
 
 [Roadmap](Roadmap.md): what is not built yet.
 

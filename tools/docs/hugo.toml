@@ -73,3 +73,11 @@ type = 'search'
 
 # Content mounts are written by `mh docs` into builds/docs-mounts.toml, which
 # is passed beside this file. See docs_write_plugin_mounts for why none sit here.
+
+# `hugo server` only: the browser revalidates every file on each load (a 304
+# when unchanged), so it never keeps a stale or cut-off copy, such as a search
+# index fetched while the server was busy.
+[[server.headers]]
+for = '/**'
+[server.headers.values]
+Cache-Control = 'no-cache'

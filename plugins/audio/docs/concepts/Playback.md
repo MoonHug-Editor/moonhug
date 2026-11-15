@@ -39,4 +39,4 @@ The [AudioListener](../components/AudioListener.md) is the ear. A source with `s
 
 ## Timeline voices
 
-The sequencer's [TrackAudio](../components/TrackAudio.md) plays each clip on a voice of its own with `voice_start`, and writes the source's settings onto it with `source_apply_gains` and the clip's weight. That is the same proc a source's own track goes through, so a timeline voice sounds like the source it names.
+The sequencer's [TrackAudio](../extends/sequencer/components/TrackAudio.md) plays each clip on a voice of its own with `voice_start`, and writes the source's settings onto it with `source_apply_gains` and the clip's weight. That is the same proc a source's own track goes through, so a timeline voice sounds like the source it names.

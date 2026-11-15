@@ -7,7 +7,7 @@ tags: ["animation", "sequencer", "components"]
 
 Plays timelines as states. A state names a timeline, and playing it plays every track of that timeline: several animated objects, audio, activation and markers, as one performance that cross-fades against another state. Needs the sequencer plugin.
 
-Use the [Animation](Animation.md) component when a state is one motion on one object. Use a TimelineAnimator when a state is a small performance across several objects.
+Use the [Animation](../../../components/Animation.md) component when a state is one motion on one object. Use a TimelineAnimator when a state is a small performance across several objects.
 
 ## Example
 
@@ -54,7 +54,7 @@ Each layer has a `name`, a `weight` and its `states`. Each state has:
 ## Behavior
 
 - **Bindings stay on the tracks.** What a timeline drives is each track's own target, as when the timeline plays on its own. The animator adds no bindings. It only builds the tracks into its own graph, so several states can blend.
-- **One graph, one write.** The animator owns one [playable graph](../concepts/PlayableGraph.md). Every state's tracks build into it, and only the animator writes the pose. Two timelines that each wrote their own pose at half weight would not blend: the second write would replace the first.
+- **One graph, one write.** The animator owns one [playable graph](../../../concepts/PlayableGraph.md). Every state's tracks build into it, and only the animator writes the pose. Two timelines that each wrote their own pose at half weight would not blend: the second write would replace the first.
 - **One output per object.** When the graph is built, the animator reads every state's animation tracks and makes one pose output per distinct object they target. Every output takes its default pose at that one moment.
 - **One weight per state.** A cross-fade moves a state's weight, and that weight scales every track and clip of the state in every output.
 - **Fades start from the current weights**, the same rule as the Animation component, so interrupting a fade never jumps.
@@ -106,6 +106,7 @@ Find states by name once and keep the ids. A state's layer is known from its id,
 
 ## See also
 
-- [Playback levels](../concepts/PlaybackLevels.md), how an Animation, a track and the animator stack, and why bindings stay on the tracks.
-- [Timelines as states](../guides/TimelineStates.md), the sample step by step.
-- [Roadmap](../Roadmap.md), for the open questions and known concerns.
+- [Playback levels](../../../concepts/PlaybackLevels.md), how an Animation, a track and the animator stack, and why bindings stay on the tracks.
+- [Timelines as states](../../../guides/TimelineStates.md), the sample step by step.
+- [Roadmap](../../../Roadmap.md), for the open questions and known concerns.
+- [TimelineAnimator in the API reference](/docs/reference/packages/animation/sequencer.md#timelineanimator), its declaration with a link to the code.

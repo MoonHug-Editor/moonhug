@@ -5,7 +5,7 @@ weight: 30
 tags: ["animation", "sequencer", "components"]
 ---
 
-Makes a timeline track an animation track: its clips play on an [Animation](Animation.md) component, and overlapping clips cross-fade. Needs the sequencer plugin.
+Makes a timeline track an animation track: its clips play on an [Animation](../../../components/Animation.md) component, and overlapping clips cross-fade. Needs the sequencer plugin.
 
 A track is an object under a timeline's PlayableDirector that carries `TimelineTrack` and one kind component, this one ([Timelines as prefabs](/plugins/sequencer/docs/concepts/TimelinesAsPrefabs.md), "The parts"). Its clips are the objects under it that carry [ClipAnimation](ClipAnimation.md).
 
@@ -30,7 +30,7 @@ swing                   PlayableDirector
 - The track drives its target, and the target's own playback stands down while it does (`Animation.timeline_driven`), so the two never write the same transforms in one frame. The track hands it back when it stops driving, at the end of a preview or on a retarget.
 - Each clip of the track is a clip node on the track's mixer. Its weight comes from the clip's ease ramps, so two overlapping clips cross-fade.
 - A source clip shorter than its timeline clip wraps by its own wrap setting.
-- Clips may animate component fields as well as transforms ([Clip format](../concepts/ClipFormat.md)).
+- Clips may animate component fields as well as transforms ([Clip format](../../../concepts/ClipFormat.md)).
 - Every animation track of one director builds into one playable graph, with one output per object the tracks target. Two tracks aimed at one object stack instead of one replacing the other.
 - Under a [TimelineAnimator](TimelineAnimator.md) the track builds into the animator's graph instead, and the animator writes the pose. The track's `target` stays the only binding.
 
@@ -46,4 +46,5 @@ swing                   PlayableDirector
 ## See also
 
 - [ClipAnimation](ClipAnimation.md), the clips this track plays.
-- [Playback levels](../concepts/PlaybackLevels.md), how the track stacks over the Animation it drives and under a TimelineAnimator.
+- [Playback levels](../../../concepts/PlaybackLevels.md), how the track stacks over the Animation it drives and under a TimelineAnimator.
+- [TrackAnimation in the API reference](/docs/reference/packages/animation/sequencer.md#trackanimation), its declaration with a link to the code.

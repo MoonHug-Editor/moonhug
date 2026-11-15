@@ -5,7 +5,7 @@ weight: 40
 tags: ["animation", "sequencer", "concepts"]
 ---
 
-Three things can pose the same object: an [Animation](../components/Animation.md) component, a timeline's [animation track](../components/TrackAnimation.md) driving it, and a [TimelineAnimator](../components/TimelineAnimator.md) playing that timeline as a state. This page is how they stack and why. The track and the animator live in the plugin's `sequencer` subpackage and need the sequencer plugin.
+Three things can pose the same object: an [Animation](../components/Animation.md) component, a timeline's [animation track](../extends/sequencer/components/TrackAnimation.md) driving it, and a [TimelineAnimator](../extends/sequencer/components/TimelineAnimator.md) playing that timeline as a state. This page is how they stack and why. The track and the animator live in the plugin's `sequencer` subpackage and need the sequencer plugin.
 
 ## Each level is a default for the one above
 

@@ -20,3 +20,7 @@ The Sparks system plays from 2.5 to 4 seconds.
 ## Behavior
 
 - It has no fields: the clip's span is when the track's system plays.
+
+## See also
+
+- [ClipParticles in the API reference](/docs/reference/packages/particles/sequencer.md#clipparticles), its declaration with a link to the code.

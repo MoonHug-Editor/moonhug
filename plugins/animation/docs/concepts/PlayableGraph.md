@@ -7,7 +7,7 @@ tags: ["animation", "concepts"]
 
 A playable graph samples clips, blends them by weight and writes the result to the objects it is bound to. Clip nodes sample at their own time, mixers blend their inputs, and each output writes one pose. Evaluation reads the graph at an explicit time and changes nothing until an output writes.
 
-Everything that animates in this plugin plays through one: the [Animation](../components/Animation.md) component, the [TimelineAnimator](../components/TimelineAnimator.md), a timeline's animation tracks and the editor's preview. The code is `playable_graph.odin`.
+Everything that animates in this plugin plays through one: the [Animation](../components/Animation.md) component, the [TimelineAnimator](../extends/sequencer/components/TimelineAnimator.md), a timeline's animation tracks and the editor's preview. The code is `playable_graph.odin`.
 
 ## The graph evaluates, drivers decide
 

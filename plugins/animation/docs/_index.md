@@ -11,8 +11,6 @@ The animation plugin plays keyframed clips on a transform hierarchy. A clip anim
 **Components**
 
 - [Animation](components/Animation.md) plays clips and blends on the object it sits on and the objects under it.
-- [TimelineAnimator](components/TimelineAnimator.md) plays whole timelines as states and cross-fades between them. Needs the sequencer plugin.
-- [TrackAnimation](components/TrackAnimation.md) and [ClipAnimation](components/ClipAnimation.md) put clips on a timeline. Need the sequencer plugin.
 
 **Assets**
 
@@ -34,6 +32,10 @@ The animation plugin plays keyframed clips on a transform hierarchy. A clip anim
 - [Clip format](concepts/ClipFormat.md): what a clip stores and how its keys interpolate.
 - [Animation states](concepts/States.md): how the Animation component stores and plays its states.
 - [Playback levels](concepts/PlaybackLevels.md): how an Animation, a timeline track and a TimelineAnimator stack.
+
+**Extends**
+
+- sequencer: [TimelineAnimator](extends/sequencer/components/TimelineAnimator.md) plays whole timelines as states and cross-fades between them. [TrackAnimation](extends/sequencer/components/TrackAnimation.md) and [ClipAnimation](extends/sequencer/components/ClipAnimation.md) put clips on a timeline.
 
 [Roadmap](Roadmap.md): what comes next, open questions, known concerns and what is not planned.
 

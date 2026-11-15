@@ -5,7 +5,7 @@ weight: 30
 tags: ["audio", "sequencer", "components"]
 ---
 
-Makes a timeline track an audio track: its clips play sounds through an [AudioSource](AudioSource.md)'s settings. Its clips carry [ClipAudio](ClipAudio.md). Needs the sequencer plugin.
+Makes a timeline track an audio track: its clips play sounds through an [AudioSource](../../../components/AudioSource.md)'s settings. Its clips carry [ClipAudio](ClipAudio.md). Needs the sequencer plugin.
 
 ## Example
 
@@ -34,3 +34,4 @@ The line plays through the Narrator's AudioSource settings: its volume, pitch an
 ## See also
 
 - [Sequencer](/plugins/sequencer/docs/_index.md), timelines and their other track kinds.
+- [TrackAudio in the API reference](/docs/reference/packages/audio/sequencer.md#trackaudio), its declaration with a link to the code.

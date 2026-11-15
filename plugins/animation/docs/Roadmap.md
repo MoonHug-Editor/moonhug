@@ -70,7 +70,7 @@ It is the timeline-level twin of the graph asset's exposed parameters, and the t
 
 ## Known concerns
 
-Known risks of the [TimelineAnimator](components/TimelineAnimator.md), recorded so they are not argued twice.
+Known risks of the [TimelineAnimator](extends/sequencer/components/TimelineAnimator.md), recorded so they are not argued twice.
 
 ### A finished Once state stops posing
 

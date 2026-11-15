@@ -5,7 +5,7 @@ weight: 20
 tags: ["particles", "sequencer", "components"]
 ---
 
-Makes a timeline track a particles track: each clip's span plays a [ParticleSystem](ParticleSystem.md). Its clips carry [ClipParticles](ClipParticles.md). Needs the sequencer plugin.
+Makes a timeline track a particles track: each clip's span plays a [ParticleSystem](../../../components/ParticleSystem.md). Its clips carry [ClipParticles](ClipParticles.md). Needs the sequencer plugin.
 
 ## Example
 
@@ -33,3 +33,4 @@ The Sparks system plays from 2.5 to 4 seconds, and scrubbing the timeline shows 
 ## See also
 
 - [Sequencer](/plugins/sequencer/docs/_index.md), timelines and their other track kinds.
+- [TrackParticles in the API reference](/docs/reference/packages/particles/sequencer.md#trackparticles), its declaration with a link to the code.

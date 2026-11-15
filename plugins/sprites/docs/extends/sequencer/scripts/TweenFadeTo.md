@@ -5,7 +5,7 @@ weight: 10
 tags: ["sprites", "sequencer", "scripts"]
 ---
 
-A tween for a timeline's [ClipTween](/plugins/sequencer/docs/components/ClipTween/_index.md): fades a [SpriteRenderer](../components/SpriteRenderer.md)'s alpha from where it is at the clip's start to `to`. Needs the sequencer plugin.
+A tween for a timeline's [ClipTween](/plugins/sequencer/docs/components/ClipTween/_index.md): fades a [SpriteRenderer](../../../components/SpriteRenderer.md)'s alpha from where it is at the clip's start to `to`. Needs the sequencer plugin.
 
 ## Properties
 
@@ -18,3 +18,7 @@ A tween for a timeline's [ClipTween](/plugins/sequencer/docs/components/ClipTwee
 ## Behavior
 
 - It imports only `sequencer/core`, and the prebuild adds it to the sequencer's TweenUnion, so the sequencer names no sprites type ([Scripts and tweens](/plugins/sequencer/docs/concepts/ScriptsAndTweens.md)).
+
+## See also
+
+- [TweenFadeTo in the API reference](/docs/reference/packages/sprites/sequencer.md#tweenfadeto), its declaration with a link to the code.

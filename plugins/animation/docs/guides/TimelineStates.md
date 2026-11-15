@@ -5,7 +5,7 @@ weight: 20
 tags: ["animation", "sequencer", "guides"]
 ---
 
-This guide walks through the `timeline_sample`: a hero whose idle poses the body only and whose swing poses the body and a sword together, played as two states of a [TimelineAnimator](../components/TimelineAnimator.md). It needs the sequencer plugin. Open `timeline_animator_demo.scene` in the sample (`plugins/animation/samples/timeline_sample`) to see the result.
+This guide walks through the `timeline_sample`: a hero whose idle poses the body only and whose swing poses the body and a sword together, played as two states of a [TimelineAnimator](../extends/sequencer/components/TimelineAnimator.md). It needs the sequencer plugin. Open `timeline_animator_demo.scene` in the sample (`plugins/animation/samples/timeline_sample`) to see the result.
 
 ## 1. The objects the timelines drive
 
@@ -80,5 +80,5 @@ Two things to notice:
 
 ## See also
 
-- [TimelineAnimator](../components/TimelineAnimator.md), every property and rule of the component.
+- [TimelineAnimator](../extends/sequencer/components/TimelineAnimator.md), every property and rule of the component.
 - [Playback levels](../concepts/PlaybackLevels.md), how the animator, its timelines' tracks and the Animation components stack.

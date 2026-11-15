@@ -36,6 +36,7 @@ cmd_docs :: proc(args: []string) -> int {
 	// known before the pages are generated.
 	docs_serving = slice.contains(args, "--open")
 	if !docs_regenerate() do return 1
+	if docs_serving do return docs_serve()
 	// Hugo never removes files from publishDir on its own, and its clean flag
 	// left a whole folder behind after the site's layout changed, so the
 	// output is removed outright. It is a build artifact, nothing lives there.
@@ -46,26 +47,29 @@ cmd_docs :: proc(args: []string) -> int {
 	}
 	if !docs_strip_integrity() do return 1
 	fmt.printfln("mh: docs at %s", DOCS_INDEX)
-	for a in args {
-		if a != "--open" do continue
-		// Served rather than opened as a file: search in every theme loads its
-		// index with fetch(), which browsers refuse on a file:// page, and over
-		// http nothing needs patching. Reading without search is the file:
-		// double-click builds/docs/index.html.
-		// Rendered to memory: by default the server writes into publishDir,
-		// the same folder the build above produced, and a running server and
-		// a later `mh docs` then overwrite each other's pages.
-		// The config's baseURL is '/' for file:// reading, which makes the
-		// server announce itself as "//localhost:1313" and the browser opener
-		// treat that as a path. The server gets a URL with a scheme and no
-		// port: Hugo appends whichever port it actually binds, so a busy 1313
-		// does not leave the links pointing at the wrong one.
-		// The Rebuild button's endpoint runs beside the server, for as long
-		// as the server does.
-		docs_rebuild_listen()
-		return run("hugo", "server", "--source", ".", "--config", DOCS_CONFIG + "," + DOCS_MOUNTS, "--baseURL", "http://localhost/", "--port", DOCS_PORT, "--renderToMemory", "--openBrowser")
-	}
 	return 0
+}
+
+// `mh docs --open`: the site served from memory, with no build into
+// builds/docs first, since the server renders every page itself and a
+// served build's source links point at the server's viewer.
+docs_serve :: proc() -> int {
+	// Served rather than opened as a file: search in every theme loads its
+	// index with fetch(), which browsers refuse on a file:// page, and over
+	// http nothing needs patching. Reading without search is the file:
+	// double-click builds/docs/index.html.
+	// Rendered to memory: by default the server writes into publishDir,
+	// and a running server and a later `mh docs` then overwrite each
+	// other's pages.
+	// The config's baseURL is '/' for file:// reading, which makes the
+	// server announce itself as "//localhost:1313" and the browser opener
+	// treat that as a path. The server gets a URL with a scheme and no
+	// port: Hugo appends whichever port it actually binds, so a busy 1313
+	// does not leave the links pointing at the wrong one.
+	// The Rebuild button's endpoint runs beside the server, for as long
+	// as the server does.
+	docs_rebuild_listen()
+	return run("hugo", "server", "--source", ".", "--config", DOCS_CONFIG + "," + DOCS_MOUNTS, "--baseURL", "http://localhost/", "--port", DOCS_PORT, "--renderToMemory", "--openBrowser")
 }
 
 // Everything the site is built from that is not committed: the reference
@@ -419,17 +423,51 @@ _strip_in_dir :: proc(dir: string) -> bool {
 			continue
 		}
 		if !strings.has_suffix(e.name, ".html") do continue
+		// Every page is read, copied and written: freed per page, or the
+		// site's whole size stays in the temp allocator until the run ends.
+		runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 		data, derr := os.read_entire_file(path, context.temp_allocator)
 		if derr != nil do continue
-		out := _strip_attr(string(data), ` integrity="`)
-		out = _strip_attr(out, ` crossorigin="`)
-		if len(out) == len(data) do continue
+		out, changed := _strip_tags(string(data))
+		if !changed do continue
 		if err := os.write_entire_file(path, transmute([]byte)out); err != nil {
 			fmt.eprintfln("mh: cannot rewrite %s: %v", path, err)
 			return false
 		}
 	}
 	return true
+}
+
+// `html` with both attributes dropped from its `<script>` and `<link>`
+// tags, the only tags that take them. It jumps from `<` to `<`, so the
+// attribute search runs on those tags alone and not on the whole page,
+// which is mostly the sidebar's tree.
+@(private = "file")
+_strip_tags :: proc(html: string) -> (out: string, changed: bool) {
+	b := strings.builder_make(context.temp_allocator)
+	copied := 0
+	at := 0
+	for {
+		i := strings.index_byte(html[at:], '<')
+		if i < 0 do break
+		start := at + i
+		tag := html[start:]
+		at = start + 1
+		if !strings.has_prefix(tag, "<script") && !strings.has_prefix(tag, "<link") do continue
+		end := strings.index_byte(tag, '>')
+		if end < 0 do break
+		t := tag[:end + 1]
+		stripped := _strip_attr(_strip_attr(t, ` integrity="`), ` crossorigin="`)
+		at = start + end + 1
+		if len(stripped) == len(t) do continue
+		strings.write_string(&b, html[copied:start])
+		strings.write_string(&b, stripped)
+		copied = at
+		changed = true
+	}
+	if !changed do return html, false
+	strings.write_string(&b, html[copied:])
+	return strings.to_string(b), true
 }
 
 // Drops every ` name="value"` occurrence of one attribute.
@@ -511,6 +549,7 @@ docs_write_plugin_mounts :: proc() -> bool {
 	if !docs_write_home(names[:]) do return false
 	if !docs_write_viewer() do return false
 	if !docs_write_group_indexes(groups) do return false
+	if !docs_write_extended_by(names[:]) do return false
 	_home_prune(DOCS_HOME_DIR)
 	os.make_directory("builds")
 	// Unchanged content is not rewritten: the served site watches this file
@@ -577,7 +616,7 @@ docs_write_home :: proc(plugins: []string) -> bool {
 		}
 		dir := fmt.tprintf("%s/plugins/%s", DOCS_HOME_DIR, n)
 		os.make_directory(dir)
-		ip := fmt.tprintf("---\ntitle: \"%s\"\ndescription: \"%s\"\n---\n%s", n, desc, _used_by_section(n))
+		ip := fmt.tprintf("---\ntitle: \"%s\"\ndescription: \"%s\"\n---\n", n, desc)
 		if err := docs_home_write(fmt.tprintf("%s/_index.md", dir), transmute([]byte)ip); err != nil {
 			fmt.eprintfln("mh: cannot write %s/_index.md: %v", dir, err)
 			return false
@@ -586,36 +625,6 @@ docs_write_home :: proc(plugins: []string) -> bool {
 	return true
 }
 
-// A "Used by" section for the landing page of plugin `name`: the plugins that
-// extend it from an integration subpackage, a folder of theirs named after it
-// (plugins/animation/sequencer extends the sequencer, docs/core/Plugins.md).
-// The plugin that imports documents the integration on its own pages, so the
-// plugin it extends only links to them, and the list never needs editing by
-// hand. "" when no plugin extends it.
-@(private = "file")
-_used_by_section :: proc(name: string) -> string {
-	handle, oerr := os.open("plugins")
-	if oerr != nil do return ""
-	defer os.close(handle)
-	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
-	if rerr != nil do return ""
-	slice.sort_by(entries, proc(a, c: os.File_Info) -> bool { return a.name < c.name })
-	b := strings.builder_make(context.temp_allocator)
-	for e in entries {
-		if e.type != .Directory || e.name == name do continue
-		folder := fmt.tprintf("plugins/%s/%s", e.name, name)
-		if !os.is_dir(folder) do continue
-		if strings.builder_len(b) == 0 {
-			strings.write_string(&b, "\n## Used by\n\nThese plugins extend this one from an integration subpackage. Each documents what it adds on its own pages.\n\n")
-		}
-		if os.is_dir(fmt.tprintf("plugins/%s/docs", e.name)) {
-			fmt.sbprintf(&b, "- [%s](/plugins/%s/docs/_index.md), from `%s`\n", e.name, e.name, folder)
-		} else {
-			fmt.sbprintf(&b, "- %s, from `%s`\n", e.name, folder)
-		}
-	}
-	return strings.to_string(b)
-}
 
 // The string value of one top-level field in a small flat JSON object, "" when
 // absent or empty. Enough for the manifest and the External Tools user setting,
@@ -811,11 +820,6 @@ docs_page_mounts :: proc(b: ^strings.Builder, plugins: []string) -> (groups: []s
 			return false
 		}
 		page := string(data)
-		// A plugin's landing page lists the plugins that extend it.
-		if strings.has_prefix(repo_path, "plugins/") && strings.has_suffix(repo_path, "/docs/_index.md") {
-			plugin := repo_path[len("plugins/"):len(repo_path) - len("/docs/_index.md")]
-			page = strings.concatenate({page, _used_by_section(plugin)}, context.temp_allocator)
-		}
 		name := filepath.base(repo_path)
 		target := fmt.tprintf("%s/%s", default_dir, name)
 		if p := _front_matter_value(page, "path"); p != "" {
@@ -830,6 +834,11 @@ docs_page_mounts :: proc(b: ^strings.Builder, plugins: []string) -> (groups: []s
 			dir := filepath.dir(target)
 			has_index := dirs[dir] || filepath.base(target) == "_index.md"
 			dirs[dir] = has_index
+			// A folder holding only folders, such as extends/ and
+			// extends/sequencer/ of a plugin, is a group of the sidebar too.
+			for up := filepath.dir(dir); strings.count(up, "/") >= 2 && strings.has_prefix(up, "plugins/"); up = filepath.dir(up) {
+				if up not_in dirs do dirs[up] = false
+			}
 		}
 		if !first^ do strings.write_string(pages, ",\n")
 		first^ = false
@@ -901,6 +910,7 @@ PLUGIN_DOC_SECTIONS :: [?]struct {
 	{"render-steps", "Render Steps"},
 	{"guides", "Guides"},
 	{"concepts", "Concepts"},
+	{"extends", "Extends"},
 }
 
 PLUGIN_DOC_UNKNOWN_WEIGHT :: 1000
@@ -923,6 +933,16 @@ docs_write_group_indexes :: proc(groups: []string) -> bool {
 		// its section folders are engine/<section>.
 		plugin_section := strings.has_prefix(dir, "plugins/") && strings.count(dir, "/") == 2
 		plugin_section ||= strings.has_prefix(dir, "engine/") && strings.count(dir, "/") == 1
+		// Under a plugin's Extends group: one group per extended plugin, named
+		// as the plugin, holding the standard sections in the standard order.
+		// plugins/<p>/extends/<other> and plugins/<p>/extends/<other>/<section>.
+		rel := _plugin_rel_dir(dir)
+		parts := strings.split(rel, "/", context.temp_allocator)
+		if len(parts) == 2 && parts[0] == "extends" {
+			title = parts[1]
+		} else if len(parts) == 3 && parts[0] == "extends" {
+			plugin_section = true
+		}
 		if plugin_section {
 			weight = PLUGIN_DOC_UNKNOWN_WEIGHT
 			for sec, i in PLUGIN_DOC_SECTIONS {
@@ -945,6 +965,78 @@ docs_write_group_indexes :: proc(groups: []string) -> bool {
 		}
 	}
 	return true
+}
+
+// A site folder's path below its plugin's own folder: "extends/sequencer"
+// for plugins/audio/extends/sequencer, "" for a folder outside a plugin.
+@(private = "file")
+_plugin_rel_dir :: proc(dir: string) -> string {
+	if strings.has_prefix(dir, "plugins/") {
+		rest := dir[len("plugins/"):]
+		i := strings.index_byte(rest, '/')
+		return rest[i + 1:] if i >= 0 else ""
+	}
+	if strings.has_prefix(dir, "engine/") do return dir[len("engine/"):]
+	return ""
+}
+
+// The "Extended by" page of every plugin another plugin extends: the plugins
+// with a docs/extends/<name> folder, each with links to the pages in it. So
+// the page always lists what is installed and needs no editing by hand. It
+// sits beside the plugin's own pages, after its groups and before the
+// roadmap.
+docs_write_extended_by :: proc(plugins: []string) -> bool {
+	for n in plugins {
+		b := strings.builder_make(context.temp_allocator)
+		for m in plugins {
+			if m == n do continue
+			dir := fmt.tprintf("plugins/%s/docs/extends/%s", m, n)
+			if !os.is_dir(dir) do continue
+			pages := make([dynamic]string, context.temp_allocator)
+			_collect_md(dir, &pages)
+			slice.sort(pages[:])
+			fmt.sbprintf(&b, "\n## %s\n\n", m)
+			for page in pages {
+				title := filepath.stem(page)
+				if data, rerr := os.read_entire_file(page, context.temp_allocator); rerr == nil {
+					if t := _front_matter_value(string(data), "title"); t != "" do title = t
+				}
+				fmt.sbprintf(&b, "- [%s](/%s)\n", title, page)
+			}
+		}
+		if strings.builder_len(b) == 0 do continue
+		// Beside the plugin's landing page: its own path for a plugin that
+		// places its pages itself (the engine), plugins/<name> otherwise.
+		site_dir := fmt.tprintf("plugins/%s", n)
+		if data, rerr := os.read_entire_file(fmt.tprintf("plugins/%s/docs/_index.md", n), context.temp_allocator); rerr == nil {
+			if p := _front_matter_value(string(data), "path"); p != "" {
+				site_dir = filepath.dir(p) if strings.has_suffix(p, ".md") else strings.trim_suffix(p, "/")
+			}
+		}
+		page := fmt.tprintf("---\ntitle: \"Extended by\"\ndescription: \"The plugins that extend %s, and what each adds\"\nweight: 850\n---\n\nThese plugins extend %s from an integration subpackage. Each documents what it adds in its own Extends group.\n%s", n, n, strings.to_string(b))
+		if err := docs_home_write(fmt.tprintf("%s/%s/ExtendedBy.md", DOCS_HOME_DIR, site_dir), transmute([]byte)page); err != nil {
+			fmt.eprintfln("mh: cannot write the Extended by page of %s: %v", n, err)
+			return false
+		}
+	}
+	return true
+}
+
+// Every .md file under `dir`, recursively.
+@(private = "file")
+_collect_md :: proc(dir: string, out: ^[dynamic]string) {
+	handle, oerr := os.open(dir)
+	if oerr != nil do return
+	defer os.close(handle)
+	entries, _ := os.read_dir(handle, -1, context.temp_allocator)
+	for e in entries {
+		path := fmt.tprintf("%s/%s", dir, e.name)
+		if e.type == .Directory {
+			_collect_md(path, out)
+		} else if strings.has_suffix(e.name, ".md") {
+			append(out, path)
+		}
+	}
 }
 
 // The value of a `key:` line in a page's front matter, quotes stripped, ""

@@ -6,7 +6,7 @@ tags: ["build", "contributing", "prebuild"]
 path: general
 ---
 
-`mh docs` (or `make docs`) builds the site into `builds/docs`, clearing that folder first. Double-click `builds/docs/index.html` to read it from the file system. `mh docs --open` (or `make docs OPEN=1`, since make cannot pass `--open` through) serves it with `hugo server` on port 7272, rendering to memory so the server never writes into `builds/docs` (`DOCS_PORT` in `tools/mh/docs.odin`) and opens the browser, which is the mode where search works. While it serves, a saved or reverted `.md` shows by itself about a second later. Every page is a copy mh writes into `builds/docs-home` at its site path, carrying its repo file in `mh_source` for the link hook and the source link, because the server watches that folder and not a page mounted as a single file. mh checks the docs' `.md` files once a second and rewrites the copies that changed, so the server re-renders only that page and its livereload reloads it. No prebuild runs. The reference pages come from the code: the page's Rebuild button regenerates them, and reloads the page when the new build is served.
+`mh docs` (or `make docs`) builds the site into `builds/docs`, clearing that folder first. Double-click `builds/docs/index.html` to read it from the file system. `mh docs --open` (or `make docs OPEN=1`, since make cannot pass `--open` through) serves the site with `hugo server` on port 7272 instead, rendering to memory, so it neither builds nor writes `builds/docs` (`DOCS_PORT` in `tools/mh/docs.odin`), and opens the browser, which is the mode where search works. While it serves, a saved or reverted `.md` shows by itself about a second later. Every page is a copy mh writes into `builds/docs-home` at its site path, carrying its repo file in `mh_source` for the link hook and the source link, because the server watches that folder and not a page mounted as a single file. mh checks the docs' `.md` files once a second and rewrites the copies that changed, so the server re-renders only that page and its livereload reloads it. No prebuild runs. The reference pages come from the code: the page's Rebuild button regenerates them, and reloads the page when the new build is served.
 
 ## What is here
 
@@ -14,7 +14,8 @@ path: general
 - `themes/hextra` is the theme, a git submodule. A fresh clone needs `git submodule update --init`.
 - `layouts/_markup/render-link.html` is the theme's link hook with one addition: it translates repo paths into site paths, see Links below.
 - `layouts/_partials/custom/head-end.html` fills one of the theme's empty hook partials: it lifts the article column's fixed 72rem cap, so with `params.page.width = 'full'` in the config every page uses the whole window. No theme file is copied.
-- `layouts/_partials/components/pager.html` is the theme's previous and next links, following the sidebar's order across sections, where the theme stops at a section's end: `layouts/_partials/custom/sidebar-order.html` lists the pages the way the sidebar shows them. A page's place in both is its `weight` front matter, lower first, as everywhere in Hugo.
+- `layouts/_partials/components/pager.html` is the theme's previous and next links, following the sidebar's order across sections, where the theme stops at a section's end: `layouts/_partials/custom/sidebar-order.html` lists the pages the way the sidebar shows them. A page's place in both is its `weight` front matter, lower first, as everywhere in Hugo. The order is cached once per root.
+- `layouts/_partials/sidebar.html` is the theme's sidebar with its page tree, 6 levels deep where the theme stops at 4, written once for the whole site: `layouts/_partials/custom/sidebar-tree.html` is the tree with no current page, and `custom/sidebar-tree-script.html` writes it into `js/mh-sidebar-<content hash>.js`, which every page loads where the tree goes. The script inserts the tree while the page parses and puts the site root, found from its own `src`, before every `/` link, since the site makes links relative only inside pages. A `<script src>` loads on a `file://` page too. A second script in `sidebar.html` then marks the current page: its link gets the active classes (`custom/sidebar-classes.html`), it and its ancestors open, and the mobile tree gets the page's table of contents under it. A tree in every page, as the theme renders it, costs pages x tree entries in build time and makes each page over 1 MB.
 
 ## How the content is assembled
 
@@ -37,6 +38,7 @@ plugins/<name>/docs/
   render-steps/    one page per render step
   guides/          one page per task, steps to follow
   concepts/        how its systems work, and why they are built this way
+  extends/<other>/ what it adds to another plugin, in the same sections: extends/sequencer/components/
   Roadmap.md       what comes next, open questions, known concerns, what is not planned
 ```
 
@@ -47,6 +49,7 @@ Each section answers one question:
 | Components, Scripts, Assets, Windows, Attributes, Render steps | What does this thing do |
 | Guides | How do I do X |
 | Concepts | How does it work, and why is it built this way |
+| Extends | What does it add to another plugin, when both are installed |
 | Roadmap | What is missing, undecided or out of scope |
 
 - A plugin has only the folders it needs. `mh docs` gives each folder a group in the left pane with a standard title, in this order (`PLUGIN_DOC_SECTIONS` in `tools/mh/docs.odin`). A folder of another name builds after them, with a warning.
@@ -68,9 +71,14 @@ Settings have no section of their own, since a settings tab is usually a short t
 
 ### Integrations
 
-A plugin that extends another from an integration subpackage ([Plugins](../core/Plugins.md)) documents that integration, since it imports the other plugin and knows both sides. Its components, assets and windows from the subpackage get ordinary pages whose lead says which plugin they need, and its landing page names the plugin under "What it needs".
+A plugin that extends another from an integration subpackage ([Plugins](../core/Plugins.md)) documents that integration, since it imports the other plugin and knows both sides.
 
-The plugin it extends documents only its own extension points, such as how to add a track kind, and names no plugin that uses them. `mh docs` appends a "Used by" section to its landing page, listing every plugin with an integration subpackage named after it, so the list never needs editing by hand.
+- Its pages go under `docs/extends/<other>/`, in the usual section folders: `extends/sequencer/components/TrackAudio.md`, `extends/tween/scripts/SpriteTweens.md`.
+- The left pane shows them in an Extends group after Concepts, one sub-group per extended plugin, named as that plugin, and inside it the standard sections in the standard order.
+- A page's lead says which plugin it needs.
+- Its landing page lists them under an **Extends** heading in "What it adds", one line per extended plugin, and names the plugin under "What it needs".
+
+The plugin it extends documents only its own extension points, such as how to add a track kind, and names no plugin that uses them. `mh docs` writes it an "Extended by" page, after its groups and before the roadmap: every plugin with a `docs/extends/<its name>/` folder, with links to the pages in it. The list follows what is installed and never needs editing by hand.
 
 ### Page templates
 

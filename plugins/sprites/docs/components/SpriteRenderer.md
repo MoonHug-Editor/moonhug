@@ -48,4 +48,4 @@ sr.color.a = 0.5
 ## See also
 
 - [SpriteSortingGroup](SpriteSortingGroup.md)
-- [TweenFadeTo](../scripts/TweenFadeTo.md), fading a sprite on a timeline.
+- [TweenFadeTo](../extends/sequencer/scripts/TweenFadeTo.md), fading a sprite on a timeline.

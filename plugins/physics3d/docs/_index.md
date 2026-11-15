@@ -25,6 +25,10 @@ The physics3d plugin simulates 3D physics with box3d. Add a Rigidbody and collid
 - [Bodies](concepts/Bodies.md): how components become box3d bodies, the fixed step, and contact events.
 - [Collision layers](concepts/CollisionLayers.md): which colliders collide, with the matrix and per-object overrides.
 
+**Extends**
+
+- essentials: [Physics primitives](extends/essentials/concepts/PhysicsPrimitives.md), a cube, sphere or capsule with a Rigidbody and a matching collider.
+
 [Roadmap](Roadmap.md): joints, effectors, faster decompositions and what does not re-sync yet.
 
 ## What it needs

@@ -1,0 +1,18 @@
+{{- /* The sidebar's page tree (custom/sidebar-tree.html) written once into a
+     script, js/mh-sidebar-<content hash>.js, and returns its path. Every page
+     loads the script where the tree goes, and the script inserts the tree
+     there while the page parses, so the tree is not repeated in every page.
+     Trees that come out the same, such as the mobile and desktop ones under
+     one root, share one script. A `<script src>` loads on a file:// page
+     too, where fetch() is refused. The site makes links relative in pages
+     only, not inside a script, so the script puts the site root, found from
+     its own src, before every `/` link. */ -}}
+{{- $html := partial "custom/sidebar-tree.html" . -}}
+{{- $js := printf `(function () {
+  var script = document.currentScript;
+  var root = script.src.replace(/js\/[^\/]*$/, "");
+  script.insertAdjacentHTML("beforebegin", %s.replace(/href="\//g, 'href="' + root));
+})();
+` ($html | jsonify) -}}
+{{- $script := resources.FromString (printf "js/mh-sidebar-%s.js" (md5 $html)) $js -}}
+{{- return $script.RelPermalink -}}
