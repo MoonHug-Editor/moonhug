@@ -27,7 +27,7 @@ setup_player_animations :: proc()
     for p, _ in engine.pool_next(&it) {
         for &ht, i in p.animations{
         	anim_key := fmt.tprintf("Anim%d", i)
-         	tween.tween_register(anim_key, &ht)
+         	tween.register(anim_key, &ht)
         }
         break
     }
@@ -38,8 +38,4 @@ app_shutdown :: proc() {
     log.info("App Shutdown")
 }
 
-@(update={order=1})
-tween_tick :: proc(dt: f32) {
-    tween.tween_tick_running(dt, {})
-}
 

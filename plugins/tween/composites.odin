@@ -19,7 +19,7 @@ type_cleanup_Parallel :: proc(p: ^Parallel) {
 }
 
 tick_Parallel :: proc(self: ^Parallel, delta_time: f32, ctx: TweenContext) -> TweenStatus {
-    if tween_has_delay(&self.base, delta_time) do return .Running
+    if has_delay(&self.base, delta_time) do return .Running
 
     all_done := true
     for h in self.children {
@@ -45,7 +45,7 @@ type_cleanup_Sequence :: proc(s: ^Sequence) {
 }
 
 tick_Sequence :: proc(self: ^Sequence, delta_time: f32, ctx: TweenContext) -> TweenStatus {
-    if tween_has_delay(&self.base, delta_time) do return .Running
+    if has_delay(&self.base, delta_time) do return .Running
 
     for h in self.children {
         child := node_base(h)

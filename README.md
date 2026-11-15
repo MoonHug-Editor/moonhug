@@ -98,7 +98,7 @@ For more details see [Architecture](docs/core/Architecture.md)
 - [Groups](plugins/engine/docs/components/Groups.md) - named groups of objects: a Groups component holds membership bits, alive and active lists per group kept by the lifecycle hooks, names in a Group Names asset
 - [input_actions](plugins/input_actions/docs/_index.md) - named actions over keys, mouse and gamepad: an Input Actions asset of mapping contexts, a priority stack of contexts that consume the keys below them, per-frame and per-tick values
 - [Scenes](plugins/engine/docs/Scenes.md)
-- [tween](plugins/tween/docs/_index.md) - tween trees authored as values in component fields and run as live node trees, Sequence and Parallel composites, node types any plugin adds, the Tween Graph window
+- [tween](plugins/tween/docs/_index.md) - tweens started from code with one call or authored as trees in component fields, a handle to stop, complete and pause a run, easing, cycles and timelines, sequences built step by step, any value through a proc, node types any plugin adds, the Tween Graph window
 - [Reference Handles](plugins/engine/docs/ReferenceHandles.md)
 - [Object Picker](docs/core/ObjectPicker.md) - Unity-style reference picker: Scene/Project tabs, search, ping, project picks filtered by root component or file extension
 - [SDL3 Renderer](plugins/engine/docs/SDL3Renderer.md) - SDL3 + SDL_GPU rendering (Metal-native), per-camera render commands, Scene window picking + selection outline + move/rotate/scale gizmos

@@ -36,13 +36,46 @@ test_foreign_tween_variant_eases_spinner_speed :: proc(t: ^testing.T) {
 		duration = 0.5,
 	})
 	defer tween.authored_destroy(&u)
-	ok := tween.tween_run(&u, tween.TweenContext{subject = owner})
+	ok := tween.is_alive(tween.run(&u, tween.TweenContext{subject = owner}))
 	testing.expect(t, ok, "foreign node should start")
 
 	for _ in 0 ..< 60 {
-		tween.tween_tick_running(1.0 / 60.0, {})
+		tween.tick_all(1.0 / 60.0)
 	}
 	testing.expect_value(t, spinner.speed, [3]f32{0, 0, 180})
+}
+
+// The timeline this package adds: it follows Update, has a scale of its own,
+// and a tween started on it runs at that scale.
+@(test)
+test_added_timeline_scales_its_tweens :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	tween.tween_init()
+	defer tween.stop_all()
+	engine.time_reset()
+	defer engine.time_reset()
+
+	testing.expect_value(t, engine.time_base(.Example_Slow), engine.Time.Update)
+	engine.set_time_scale(0.25, .Example_Slow)
+
+	owner := engine.transform_new("Subject")
+	move := tween.authored(tween.TweenMoveToLocal{position = {8, 0, 0}, duration = 1})
+	defer tween.authored_destroy(&move)
+	h := tween.run(&move, tween.TweenContext{subject = owner}, .Example_Slow)
+
+	dt := f32(1.0 / 64.0)
+	for _ in 0 ..< 64 { // one second of frames
+		engine.time_advance_frame(dt, dt)
+		tween.tween_update(dt)
+	}
+	tr := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(owner))
+	testing.expect(t, abs(tr.position.x - 2) < 1e-4, "a quarter of the way after one second at scale 0.25")
+	testing.expect(t, abs(engine.time_now(.Example_Slow) - 0.25) < 1e-6)
+	testing.expect(t, tween.is_alive(h))
 }
 
 // The serialization hooks on Spawn_Table: writing the file clamps a negative

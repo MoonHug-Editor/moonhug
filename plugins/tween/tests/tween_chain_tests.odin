@@ -1,8 +1,8 @@
 package tween_tests
 
 // The tween chain end to end through the package's own carrier: a code-built
-// TweenPlayer with authored animations -> tween_register(tprintf key) ->
-// tween_run("Anim0") -> tick moves the subject. The temp free_all + scribble
+// TweenPlayer with authored animations -> register(tprintf key) ->
+// run("Anim0") -> tick moves the subject. The temp free_all + scribble
 // between register and run guards the regression where tween_lib stored
 // TEMP-allocated keys (tprintf) — a per-frame free_all dangled them and
 // number keys stopped running.
@@ -33,9 +33,9 @@ test_tween_player_chain :: proc(t: ^testing.T) {
 
 	// Register under a TEMP-allocated key, the way game code builds AnimN keys.
 	for &anim, i in p.animations {
-		tween.tween_register(fmt.tprintf("Anim%d", i), &anim)
+		tween.register(fmt.tprintf("Anim%d", i), &anim)
 	}
-	testing.expect(t, tween.tween_lib_count() > 0, "tween lib should have AnimN entries")
+	testing.expect(t, tween.library_count() > 0, "tween lib should have AnimN entries")
 
 	// A frame loop frees the temp allocator every frame and later frames
 	// reuse the bytes — simulate both so temp-allocated map keys would dangle.
@@ -46,10 +46,10 @@ test_tween_player_chain :: proc(t: ^testing.T) {
 
 	w := engine.ctx_world()
 	before := engine.pool_get(&w.transforms, engine.Handle(owner)).position
-	ok := tween.tween_run("Anim0", tween.TweenContext{subject = engine.Transform_Handle(p.owner)})
-	testing.expect(t, ok, "tween_run(Anim0) should start after a temp free_all")
+	ok := tween.is_alive(tween.run("Anim0", tween.TweenContext{subject = engine.Transform_Handle(p.owner)}))
+	testing.expect(t, ok, "run(Anim0) should start after a temp free_all")
 	for _ in 0 ..< 60 {
-		tween.tween_tick_running(1.0 / 60.0, {})
+		tween.tick_all(1.0 / 60.0)
 	}
 	after := engine.pool_get(&w.transforms, engine.Handle(owner)).position
 	testing.expect(t, before != after, "Anim0 should move the subject")

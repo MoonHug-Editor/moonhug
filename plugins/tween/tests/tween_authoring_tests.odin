@@ -64,9 +64,9 @@ test_authored_make_and_child_ops :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(kids2), 1)
 
 	owner := engine.transform_new("Subject")
-	testing.expect(t, tween.tween_run(&seq, tween.TweenContext{subject = owner}),
+	testing.expect(t, tween.is_alive(tween.run(&seq, tween.TweenContext{subject = owner})),
 		"an editor-built tree runs")
-	for _ in 0 ..< 30 do tween.tween_tick_running(1.0 / 60.0, {})
+	for _ in 0 ..< 30 do tween.tick_all(1.0 / 60.0)
 }
 
 @(test)
@@ -99,9 +99,9 @@ test_authored_retype :: proc(t: ^testing.T) {
 
 	// The retyped node still instantiates and runs.
 	owner := engine.transform_new("Subject")
-	testing.expect(t, tween.tween_run(&seq, tween.TweenContext{subject = owner}),
+	testing.expect(t, tween.is_alive(tween.run(&seq, tween.TweenContext{subject = owner})),
 		"a retyped node runs")
-	for _ in 0 ..< 10 do tween.tween_tick_running(1.0 / 60.0, {})
+	for _ in 0 ..< 10 do tween.tick_all(1.0 / 60.0)
 
 	// Unregistered targets are refused, leaving the node intact.
 	testing.expect(t, !tween.authored_retype(&seq.value, typeid_of(engine.Transform)))

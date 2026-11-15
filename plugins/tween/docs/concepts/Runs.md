@@ -1,0 +1,84 @@
+---
+title: "Runs"
+description: "The handle of a running tween tree: stop, complete, pause, time scale, progress, the completion callback, the timeline a run ticks on and binding a run to an object"
+weight: 20
+tags: ["tween", "concepts"]
+---
+
+A run is one live tween tree. `tween.run` starts it and returns its handle. The code is `runs.odin`.
+
+## The handle
+
+```odin
+h := tween.run("Open", tween.TweenContext{subject = door})
+
+tween.is_alive(h)           // true until the run ends
+tween.stop(h)               // end it where it is
+tween.complete(h)           // end it at its end
+tween.set_paused(h, true)   // hold it
+tween.set_time_scale(h, 2)  // twice as fast
+```
+
+- The zero handle is no run. `tween.run` returns it when nothing started: an unknown name, a node type that is not registered, a skipped root.
+- Every proc accepts the zero handle and the handle of a run that ended, and does nothing then.
+- A handle never reaches a later run, so keeping an old one is safe.
+
+## How a run ends
+
+| Way | Values | `tween.on_complete` |
+|---|---|---|
+| It finishes: its tree is done | at their end | called |
+| `tween.complete` | jump to their end | called |
+| `tween.stop` | stay where they are | not called |
+
+- `tween.complete` ends an endless node (`cycles = -1`) at the end of the cycle it is in.
+- `tween.stop_on(object)` and `tween.complete_on(object)` end every run whose subject or bound object is that object. `tween.stop_all` stops every run.
+- Play ending stops every run.
+
+## Completion callback
+
+```odin
+tween.on_complete(h, proc(user: rawptr) {
+	door := cast(^Door)user
+	door.is_open = true
+}, door)
+```
+
+- The proc is called once, after the run is gone, so it may start the next run.
+- Odin has no closures: what the proc needs travels in `user`.
+
+## Pause, speed and progress
+
+- A paused run keeps its place. `tween.is_paused` reads the flag.
+- The time scale is the run's own speed on top of its timeline: 1 by default, 0 holds it.
+- `tween.elapsed` is the seconds the run has advanced.
+- `tween.progress` is 0 at the start and 1 at the end. Its second result is false when the run's length cannot be told: a tree with an endless node, or with a node that ticks itself and has no children.
+
+## Timelines
+
+A run ticks on one of the engine's timelines ([Time](/plugins/engine/docs/Time.md)), `Update` unless `tween.run` names another.
+
+```odin
+tween.run("Bounce", ctx)                     // Update: follows the game's time scale
+tween.run("Recoil", ctx, .Fixed)             // steps with the simulation
+tween.run("MenuSlide", ctx, .Unscaled)       // keeps moving while the game is held
+tween.run("Dodge", ctx, .Bullet_Time)        // a timeline a package adds
+```
+
+- A timeline's scale and pause apply to every run on it, which gives a group of runs one switch.
+- Runs on `Fixed`, and on timelines based on it, advance on the fixed tick. The others advance every frame.
+- `tween.tick_all(dt)` ticks every run by `dt` whatever its timeline, for tests and for stepping by hand.
+
+## Binding a run to an object
+
+Nothing ties a run to an object by default: a run started from a component keeps going when that component is disabled or destroyed. `tween.bind` hands a run over to an object.
+
+```odin
+h := tween.run("Pulse", tween.TweenContext{subject = icon})
+tween.bind(h, panel)
+```
+
+- A bound run stops when its object is destroyed.
+- A bound run does not advance while its object is inactive, and goes on when it is active again.
+- The bound object and the subject are separate: a panel can own a run that animates one of its icons.
+- A value node ends by itself when its subject is destroyed, bound or not.

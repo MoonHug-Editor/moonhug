@@ -5,7 +5,7 @@ weight: 10
 tags: ["tween", "components"]
 ---
 
-Holds a list of authored tween trees on an object. It does not play them on its own: game code runs one with `tween_run`.
+Holds a list of authored tween trees on an object. It does not play them on its own: game code runs one with `tween.run`.
 
 ## Example
 
@@ -16,7 +16,7 @@ Door       TweenPlayer animations
                    TweenMoveToLocal position 0, 0, 0, duration 1, delay 2
 ```
 
-The door holds one tree: rise, wait two seconds, come back down. Game code runs it with `tween_run` when the player opens the door.
+The door holds one tree: rise, wait two seconds, come back down. Game code runs it with `tween.run` when the player opens the door.
 
 ## Properties
 
@@ -32,7 +32,7 @@ Each element of `animations` expands into its node's fields and its children, ed
 
 ```odin
 _, p := engine.transform_get_comp(door, tween.TweenPlayer)
-tween.tween_run(&p.animations[0], tween.TweenContext{subject = door})
+tween.run(&p.animations[0], tween.TweenContext{subject = door})
 ```
 
 ## Limits

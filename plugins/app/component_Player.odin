@@ -57,16 +57,16 @@ comp_fixed_update_Player :: proc(dt: f32, p: ^Player) {
     if input.key_down_fixed(.D) do t.position[0] += speed * dt
 
     // animations
-    if input.key_pressed_fixed(._1) do tween.tween_run("Anim0", tween.TweenContext{ subject = p.owner })
-    if input.key_pressed_fixed(._2) do tween.tween_run("Anim1", tween.TweenContext{ subject = p.owner })
-    if input.key_pressed_fixed(._3) do tween.tween_run("Anim2", tween.TweenContext{ subject = p.owner })
-    if input.key_pressed_fixed(._4) do tween.tween_run("Anim3", tween.TweenContext{ subject = p.owner })
-    if input.key_pressed_fixed(._5) do tween.tween_run("Anim4", tween.TweenContext{ subject = p.owner })
-    if input.key_pressed_fixed(._6) do tween.tween_run("Anim5", tween.TweenContext{ subject = p.owner })
-    if input.key_pressed_fixed(._7) do tween.tween_run("Anim6", tween.TweenContext{ subject = p.owner })
-    if input.key_pressed_fixed(._8) do tween.tween_run("Anim7", tween.TweenContext{ subject = p.owner })
-    if input.key_pressed_fixed(._9) do tween.tween_run("Anim8", tween.TweenContext{ subject = p.owner })
-    if input.key_pressed_fixed(._0) do tween.tween_run("Anim9", tween.TweenContext{ subject = p.owner })
+    if input.key_pressed_fixed(._1) do tween.run("Anim0", tween.TweenContext{ subject = p.owner })
+    if input.key_pressed_fixed(._2) do tween.run("Anim1", tween.TweenContext{ subject = p.owner })
+    if input.key_pressed_fixed(._3) do tween.run("Anim2", tween.TweenContext{ subject = p.owner })
+    if input.key_pressed_fixed(._4) do tween.run("Anim3", tween.TweenContext{ subject = p.owner })
+    if input.key_pressed_fixed(._5) do tween.run("Anim4", tween.TweenContext{ subject = p.owner })
+    if input.key_pressed_fixed(._6) do tween.run("Anim5", tween.TweenContext{ subject = p.owner })
+    if input.key_pressed_fixed(._7) do tween.run("Anim6", tween.TweenContext{ subject = p.owner })
+    if input.key_pressed_fixed(._8) do tween.run("Anim7", tween.TweenContext{ subject = p.owner })
+    if input.key_pressed_fixed(._9) do tween.run("Anim8", tween.TweenContext{ subject = p.owner })
+    if input.key_pressed_fixed(._0) do tween.run("Anim9", tween.TweenContext{ subject = p.owner })
 
     if input.key_pressed_fixed(.SPACE) && len(p.colors) > 0 {
         _, sr := engine.transform_get_comp(p.owner, sprites.SpriteRenderer)

@@ -25,21 +25,27 @@ Tick_Hooks :: struct {
 // loads in progress (scene_load_async.odin), then the fixed
 // ticks the accumulator owes (each latching input first), then the frame
 // tick, then the late tick, then the objects transform_destroy_later queued.
+// `dt` is the frame's real delta time. The game's time scale (time.odin)
+// applies here: the accumulator and the frame's procs get the scaled step,
+// and the timelines advance before the procs of each stage run.
 // `step` runs exactly one fixed tick and one frame tick at the fixed delta,
-// ignoring the accumulator, for the editor's Step button.
+// ignoring the accumulator and the time scale, for the editor's Step button.
 frame_tick :: proc(hooks: Tick_Hooks, dt: f32, step := false) {
 	// A debug build checks that no writer bypassed the enable hooks.
 	when ODIN_DEBUG do enabled_verify()
 	scene_loads_step()
 	fdt := fixed_dt()
-	steps := 1 if step else fixed_frame_ticks(dt)
+	scaled_dt := time_scale_frame(dt)
+	steps := 1 if step else fixed_frame_ticks(scaled_dt)
 	for _ in 0 ..< steps {
 		fixed_tick_begin()
 		input.fixed_latch()
+		time_advance_fixed(fdt)
 		if hooks.fixed_update != nil do hooks.fixed_update(fdt)
 		fixed_tick_advance()
 	}
-	frame_dt := fdt if step else dt
+	frame_dt := fdt if step else scaled_dt
+	time_advance_frame(frame_dt, fdt if step else dt)
 	if hooks.update != nil do hooks.update(frame_dt)
 	if hooks.late_update != nil do hooks.late_update(frame_dt)
 	transform_destroy_pending()
@@ -117,6 +123,7 @@ fixed_frame_ticks :: proc(frame_dt: f32) -> int {
 // Tests / playmode restarts.
 fixed_reset :: proc() {
 	_fixed = {}
+	time_reset()
 	// The last tick's gizmos describe a run that ended, and the game clock
 	// restarts, so its timed gizmos go too.
 	if uc := ctx_get(); uc != nil {

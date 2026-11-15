@@ -9,9 +9,9 @@ package tween
 //   in component fields, so component marshal, undo, prefab overrides and
 //   copy/paste treat it as a plain value. Children nest inside the parent's
 //   "children" array — the tree is self-contained data.
-// - LIVE: tween_run instantiates the blob into per-type pools. Nodes hold
-//   children as Node_Handle arrays, dispatch is an index into the desc table,
-//   and a finished run destroys its tree recursively.
+// - LIVE: run (runs.odin) instantiates the blob into per-type pools.
+//   Nodes hold children as Node_Handle arrays, dispatch is an index into the
+//   desc table, and a finished run destroys its tree recursively.
 //
 // A node type is a struct embedding Tween at offset 0. Composites
 // declare `children: [dynamic]tween.Node_Handle` with json:"-" — the field is
@@ -25,8 +25,10 @@ import "core:mem"
 import "core:reflect"
 import "core:strings"
 import core "moonhug:libs/core"
+import engine "moonhug:packages/engine"
 
-_POOL_MAX :: 256
+// Live nodes of one type at a time. A full pool panics.
+_POOL_MAX :: #config(TWEEN_POOL_MAX, 1024)
 
 // index+generation into the kind's pool. kind = index into the desc table.
 Node_Handle :: struct {
@@ -43,6 +45,14 @@ Authored :: struct {
 	value: json.Value,
 }
 
+// How long a node that ticks itself is (node_length, progress).
+Length_Rule :: enum u8 {
+	Unknown, // cannot be told: it waits for something
+	Instant, // its delay and nothing more
+	Sum,     // its children run one after another
+	Longest, // its children run together
+}
+
 Node_Desc :: struct {
 	tid:             typeid,
 	key:             core.TypeKey,
@@ -51,6 +61,18 @@ Node_Desc :: struct {
 	tick_raw:        rawptr, // the typed tick proc, cast back by tick_thunk
 	tick_thunk:      proc(tick_raw: rawptr, node: rawptr, dt: f32, ctx: TweenContext) -> Status,
 	children_offset: int, // byte offset of `children: [dynamic]Node_Handle`, -1 = leaf
+	length_rule:     Length_Rule,
+	// Made from code only: it holds procs, so it is not authored and no type
+	// picker lists it (registered_node_types).
+	code_only:       bool,
+
+	// A value node (register_tween). -1 offsets = a plain node.
+	anim_offset:     int, // byte offset of the embedded Tween_Anim
+	duration_offset: int, // byte offset of `duration: f32`
+	begin_raw:       rawptr,
+	begin_thunk:     proc(begin_raw: rawptr, node: rawptr, ctx: TweenContext) -> bool,
+	apply_raw:       rawptr,
+	apply_thunk:     proc(apply_raw: rawptr, node: rawptr, t: f32, ctx: TweenContext),
 }
 
 _descs:       [dynamic]Node_Desc
@@ -64,17 +86,72 @@ _registry_init :: proc "contextless" () {
 	_desc_by_tid = make(map[typeid]int, alloc)
 }
 
-// Registers a tween node type. $T must embed Tween at offset 0 and carry
-// @(typ_guid). A node that owns heap beyond the children array (which the
-// runtime frees itself) declares type_cleanup_T next to itself
-// (plugins/engine/docs/Components.md, "Lifecycle procs"). Idempotent per type.
+// Registers a node type that ticks itself: a composite, or a step with its
+// own idea of time. $T must embed Tween at offset 0 and carry @(typ_guid). A
+// node that owns heap beyond the children array (which the runtime frees
+// itself) declares type_cleanup_T next to itself
+// (plugins/engine/docs/Components.md, "Lifecycle procs"). `length_rule` says
+// how long the node is, which gives its runs a progress. `code_only` marks a
+// node that holds procs and is made from code. Idempotent per type.
 register_node :: proc(
 	$T: typeid,
 	tick: proc(self: ^T, dt: f32, ctx: TweenContext) -> Status,
+	length_rule := Length_Rule.Unknown,
+	code_only := false,
 ) {
 	if T in _desc_by_tid do return
+	desc := _desc_make(T)
+	desc.length_rule = length_rule
+	desc.code_only = code_only
+	desc.tick_raw = rawptr(tick)
+	desc.tick_thunk = proc(tick_raw: rawptr, node: rawptr, dt: f32, ctx: TweenContext) -> Status {
+		t := cast(proc(self: ^T, dt: f32, ctx: TweenContext) -> Status)tick_raw
+		return t(cast(^T)node, dt, ctx)
+	}
+	_desc_add(T, desc)
+}
+
+// Registers a value node: one that moves a value from where it is to an
+// authored end over `duration` seconds. $T embeds Tween at offset 0 and
+// Tween_Anim, has a `duration: f32` field and carries @(typ_guid).
+//
+// - `begin` runs once when the node starts. It captures the start value and
+//   returns false when the target is gone, which ends the node.
+// - `apply` writes the value at factor `t`: 0 is the start, 1 is the end.
+//   `t` leaves 0..1 with some eases and cycle modes, so apply does not clamp.
+// - The runtime owns the rest: delay, time, easing and cycles.
+register_tween :: proc(
+	$T: typeid,
+	begin: proc(self: ^T, ctx: TweenContext) -> bool,
+	apply: proc(self: ^T, t: f32, ctx: TweenContext),
+	code_only := false,
+) {
+	if T in _desc_by_tid do return
+	desc := _desc_make(T)
+	desc.code_only = code_only
+	for f in reflect.struct_fields_zipped(T) {
+		if f.type.id == typeid_of(Tween_Anim) do desc.anim_offset = int(f.offset)
+		if f.name == "duration" && f.type.id == typeid_of(f32) do desc.duration_offset = int(f.offset)
+	}
+	fmt.assertf(desc.anim_offset >= 0, "tween.register_tween: %v must embed tween.Tween_Anim", typeid_of(T))
+	fmt.assertf(desc.duration_offset >= 0, "tween.register_tween: %v needs a `duration: f32` field", typeid_of(T))
+	desc.begin_raw = rawptr(begin)
+	desc.begin_thunk = proc(begin_raw: rawptr, node: rawptr, ctx: TweenContext) -> bool {
+		b := cast(proc(self: ^T, ctx: TweenContext) -> bool)begin_raw
+		return b(cast(^T)node, ctx)
+	}
+	desc.apply_raw = rawptr(apply)
+	desc.apply_thunk = proc(apply_raw: rawptr, node: rawptr, t: f32, ctx: TweenContext) {
+		a := cast(proc(self: ^T, t: f32, ctx: TweenContext))apply_raw
+		a(cast(^T)node, t, ctx)
+	}
+	_desc_add(T, desc)
+}
+
+@(private)
+_desc_make :: proc($T: typeid) -> Node_Desc {
 	key, kok := core.get_type_key_by_typeid(T)
-	fmt.assertf(kok, "tween.register_node: %v needs @(typ_guid) (registered before this call)", typeid_of(T))
+	fmt.assertf(kok, "tween: %v needs @(typ_guid) (registered before this call)", typeid_of(T))
 	// Process-global registry and pools: never on a caller's scoped allocator.
 	context.allocator = runtime.default_allocator()
 
@@ -88,20 +165,21 @@ register_node :: proc(
 			break
 		}
 	}
-
-	desc := Node_Desc{
+	return Node_Desc{
 		tid             = T,
 		key             = key,
 		pool            = pool,
 		entry           = core.pool_make_entry(pool),
-		tick_raw        = rawptr(tick),
-		tick_thunk      = proc(tick_raw: rawptr, node: rawptr, dt: f32, ctx: TweenContext) -> Status {
-			t := cast(proc(self: ^T, dt: f32, ctx: TweenContext) -> Status)tick_raw
-			return t(cast(^T)node, dt, ctx)
-		},
 		children_offset = children_offset,
+		anim_offset     = -1,
+		duration_offset = -1,
 	}
-	_desc_by_tid[T] = len(_descs)
+}
+
+@(private)
+_desc_add :: proc(tid: typeid, desc: Node_Desc) {
+	context.allocator = runtime.default_allocator()
+	_desc_by_tid[tid] = len(_descs)
 	append(&_descs, desc)
 }
 
@@ -138,7 +216,70 @@ tick_node :: proc(h: Node_Handle, dt: f32, ctx: TweenContext) -> Status {
 	if ptr == nil do return .Done
 	base := cast(^Tween)ptr
 	if base.skip do return .Done
+	if desc.anim_offset >= 0 do return _tick_value_node(ptr, desc, dt, ctx)
 	return desc.tick_thunk(desc.tick_raw, ptr, dt, ctx)
+}
+
+// One step of a value node: delay, then begin once, then the factor for the
+// node's time. Time left over when the node ends is dropped.
+@(private)
+_tick_value_node :: proc(ptr: rawptr, desc: ^Node_Desc, dt: f32, ctx: TweenContext) -> Status {
+	base := cast(^Tween)ptr
+	anim := cast(^Tween_Anim)(uintptr(ptr) + uintptr(desc.anim_offset))
+	if has_delay(base, dt) do return .Running
+	if !anim.started {
+		if !desc.begin_thunk(desc.begin_raw, ptr, ctx) do return .Done
+		anim.started = true
+	}
+	duration := (cast(^f32)(uintptr(ptr) + uintptr(desc.duration_offset)))^
+	cycles := int(anim.cycles)
+	if cycles == 0 do cycles = 1
+	if duration <= 0 {
+		desc.apply_thunk(desc.apply_raw, ptr, anim_end_factor(anim, max(cycles, 1)), ctx)
+		return .Done
+	}
+	// complete ends an endless node at the end of the cycle it is in.
+	if cycles < 0 && _completing do cycles = int(anim.elapsed / duration) + 1
+	anim.elapsed += dt
+	cycle := int(anim.elapsed / duration)
+	if cycles > 0 && cycle >= cycles {
+		desc.apply_thunk(desc.apply_raw, ptr, anim_end_factor(anim, cycles), ctx)
+		return .Done
+	}
+	local := anim.elapsed / duration - f32(cycle)
+	desc.apply_thunk(desc.apply_raw, ptr, anim_factor(anim, cycle, local), ctx)
+	return .Running
+}
+
+// Seconds a live tree takes from start to end, `ok` false when it cannot be
+// told: an endless node, or a node that ticks itself and has no children.
+node_length :: proc(h: Node_Handle) -> (seconds: f32, ok: bool) {
+	ptr, desc := _node_ptr(h)
+	if ptr == nil do return 0, true
+	base := cast(^Tween)ptr
+	if base.skip do return 0, true
+	if desc.anim_offset >= 0 {
+		anim := cast(^Tween_Anim)(uintptr(ptr) + uintptr(desc.anim_offset))
+		if anim.cycles < 0 do return 0, false
+		duration := (cast(^f32)(uintptr(ptr) + uintptr(desc.duration_offset)))^
+		return base.delay + max(duration, 0) * f32(max(anim.cycles, 1)), true
+	}
+	switch desc.length_rule {
+	case .Unknown:
+		return 0, false
+	case .Instant:
+		return base.delay, true
+	case .Sum, .Longest:
+		if desc.children_offset < 0 do return base.delay, true
+		children := cast(^[dynamic]Node_Handle)(uintptr(ptr) + uintptr(desc.children_offset))
+		total: f32
+		for k in children^ {
+			child := node_length(k) or_return
+			total = total + child if desc.length_rule == .Sum else max(total, child)
+		}
+		return base.delay + total, true
+	}
+	return 0, false
 }
 
 // Frees a live tree: children first, then the node's own heap, then the slot.
@@ -215,9 +356,34 @@ authored_children :: proc(v: json.Value) -> (children: json.Array, ok: bool) {
 // Registered node types, in registration order. Temp-allocated by default —
 // the editor's type picker enumerates these.
 registered_node_types :: proc(allocator := context.temp_allocator) -> []typeid {
-	out := make([]typeid, len(_descs), allocator)
-	for d, i in _descs do out[i] = d.tid
-	return out
+	out := make([dynamic]typeid, 0, len(_descs), allocator)
+	for d in _descs do if !d.code_only do append(&out, d.tid)
+	return out[:]
+}
+
+// A fresh live node of a registered type, all fields zero: how code builds a
+// tree without an authored value (code.odin). The caller fills it and hands
+// it to a run or to a parent's children.
+node_new :: proc($T: typeid) -> (h: Node_Handle, node: ^T) {
+	idx, has := _desc_by_tid[T]
+	fmt.assertf(has, "tween.node_new: %v is not registered (tween_init)", typeid_of(T))
+	desc := &_descs[idx]
+	ch, ptr := desc.entry.create_fn(desc.pool)
+	return Node_Handle{index = ch.index, generation = ch.generation, kind = u16(idx)}, cast(^T)ptr
+}
+
+// Gives every node of a live tree that has no target of its own this one
+// (subject_of). A tree that joins another run keeps the subject it was
+// started with this way.
+node_set_default_target :: proc(h: Node_Handle, target: engine.Transform_Handle) {
+	ptr, desc := _node_ptr(h)
+	if ptr == nil do return
+	base := cast(^Tween)ptr
+	if base.target == {} do base.target = target
+	if desc.children_offset >= 0 {
+		children := cast(^[dynamic]Node_Handle)(uintptr(ptr) + uintptr(desc.children_offset))
+		for k in children^ do node_set_default_target(k, target)
+	}
 }
 
 // Whether a registered node type carries children (a composite).
@@ -366,129 +532,6 @@ _instantiate :: proc(v: json.Value) -> (Node_Handle, bool) {
 		}
 	}
 	return h, true
-}
-
-// --- The running list + prototype library ---------------------------------------
-
-@(private)
-_Running :: struct {
-	root: Node_Handle,
-	ctx:  TweenContext,
-	next: ^_Running,
-	prev: ^_Running,
-}
-
-@(private) _running: ^_Running
-
-// Named prototypes as marshaled JSON — instantiated fresh per run, so two
-// runs of "Anim0" never share nodes. Map, keys and payloads live on the
-// default allocator: entries outlive any caller frame, and a temp-allocated
-// key dangles after a frame's free_all.
-@(private) _lib: map[string][]byte
-
-@(init)
-_lib_init :: proc "contextless" () {
-	context = runtime.default_context()
-	_lib = make(map[string][]byte, runtime.default_allocator())
-}
-
-// The player's startup. The editor and the tests call it where they need it.
-@(phase={key=Init, mode=App})
-tween_init :: proc() {
-	register_builtin_nodes()
-}
-
-// Registers a prototype under `key`, replacing one already there: a
-// re-registration after an edit (every Simulate) takes the new value.
-tween_register :: proc(key: string, a: ^Authored) {
-	context.allocator = runtime.default_allocator()
-	data, err := json.marshal(a.value, {spec = .JSON})
-	if err != nil do return
-	if old, has := _lib[key]; has {
-		delete(old)
-		_lib[key] = data
-		return
-	}
-	_lib[strings.clone(key)] = data
-}
-
-tween_lib_count :: proc() -> int {
-	return len(_lib)
-}
-
-tween_run :: proc {
-	tween_run_key,
-	tween_run_authored,
-}
-
-tween_run_key :: proc(key: string, ctx: TweenContext) -> bool {
-	raw, ok := _lib[key]
-	if !ok do return false
-	prev := context.allocator
-	context.allocator = context.temp_allocator
-	val, perr := json.parse(raw, .JSON, true)
-	context.allocator = prev
-	if perr != nil do return false
-	return tween_run_value(val, ctx)
-}
-
-tween_run_authored :: proc(a: ^Authored, ctx: TweenContext) -> bool {
-	return tween_run_value(a.value, ctx)
-}
-
-// Instantiates and starts a tree from its authored value (not consumed).
-tween_run_value :: proc(v: json.Value, ctx: TweenContext) -> bool {
-	h, ok := _instantiate(v)
-	if !ok do return false
-	base := node_base(h)
-	if base != nil && base.skip {
-		node_destroy(h)
-		return false
-	}
-	context.allocator = runtime.default_allocator()
-	node := new(_Running)
-	node.root = h
-	node.ctx = ctx
-	node.next = _running
-	if _running != nil do _running.prev = node
-	_running = node
-	return true
-}
-
-// Ticks every live run, destroying the finished ones.
-tween_tick_running :: proc(dt: f32, ctx: TweenContext) {
-	node := _running
-	for node != nil {
-		next := node.next
-		status := tick_node(node.root, dt, node.ctx)
-		if status == .Done {
-			if node.prev != nil do node.prev.next = node.next
-			if node.next != nil do node.next.prev = node.prev
-			if _running == node do _running = node.next
-			node_destroy(node.root)
-			free(node, runtime.default_allocator())
-		}
-		node = next
-	}
-}
-
-// Frees the prototype library and any live runs — for owners with real
-// lifetimes (tests). The process-lifetime instance never calls this.
-tween_destroy_all :: proc() {
-	context.allocator = runtime.default_allocator()
-	for key, data in _lib {
-		delete(key)
-		delete(data)
-	}
-	clear(&_lib)
-	node := _running
-	for node != nil {
-		next := node.next
-		node_destroy(node.root)
-		free(node)
-		node = next
-	}
-	_running = nil
 }
 
 // --- Ref remap inside authored blobs ---------------------------------------------
