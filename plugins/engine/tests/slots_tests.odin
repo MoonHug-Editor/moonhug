@@ -67,6 +67,45 @@ test_slot_wrong_type_reads_inline :: proc(t: ^testing.T) {
 	testing.expect(t, !ok, "an entry of another type is not handed out")
 }
 
+// A write lands where the entry is, so every reader of the chain gets it.
+@(test)
+test_slot_write_lands_where_the_entry_is :: proc(t: ^testing.T) {
+	game, run: slots.Dict
+	defer slots.destroy(&game)
+	defer slots.destroy(&run)
+	run.parent = &game
+	slots.set(&game, "test_slot_w_hp", f32(10))
+	hp := slots.entry("test_slot_w_hp")
+
+	testing.expect(t, slots.write(hp, f32(4), &run), "a write to an entry further up the chain")
+	testing.expect_value(t, slots.get(hp, f32(0), &game), 4)
+	testing.expect(t, !(hp in run.entries), "the write went to the dictionary that has the entry")
+
+	// A dictionary may send its writes to another one, looked in before it.
+	over: slots.Dict
+	defer slots.destroy(&over)
+	over.parent = &game
+	game.writes = &over
+	testing.expect(t, slots.write(hp, f32(2), &run), "a write to an entry whose dictionary sends writes on")
+	testing.expect_value(t, slots.get(hp, f32(0), &over), 2)
+	testing.expect_value(t, slots.get(hp, f32(0), &game), 4)
+	game.writes = nil
+
+	// An entry nothing has goes to the end of the chain.
+	fresh := slots.entry("test_slot_w_fresh")
+	testing.expect(t, slots.write(fresh, i32(5), &run), "a write to an entry nothing has")
+	testing.expect_value(t, slots.get(fresh, i32(0), &game), 5)
+
+	// Nothing is written for these.
+	testing.expect(t, !slots.write(slots.INLINE, f32(1), &run), "INLINE is the caller's own field")
+	testing.expect(t, !slots.write(hp, i32(1), &run), "an entry of another type")
+	testing.expect_value(t, slots.get(hp, f32(0), &game), 4)
+	slots.set_proc(&game, "test_slot_w_computed", f32, proc(out: ^f32, user: rawptr) { out^ = 9 })
+	computed := slots.entry("test_slot_w_computed")
+	testing.expect(t, !slots.write(computed, f32(1), &run), "a computed entry's value is code's")
+	testing.expect_value(t, slots.get(computed, f32(0), &run), 9)
+}
+
 @(test)
 test_slot_declared_entries :: proc(t: ^testing.T) {
 	slots.declare("test_slot_decl_a", [2]i32, "first")

@@ -41,6 +41,10 @@ package slots
 // - `global()` is one dictionary for the whole game, for values many readers
 //   share. A dictionary of the caller's own puts it last in its chain.
 //
+// A writer sets the entry a slot is connected to, for every reader of it:
+//
+//   slots.write(h.hp, f32(4), slots.scope_of(h.owner))
+//
 // What the inspector offers to connect a slot to are the declared entries of
 // the inline field's type:
 //
@@ -159,6 +163,10 @@ Entry :: struct {
 Dict :: struct {
 	entries: map[Slot]Entry,
 	parent:  ^Dict,
+	// Where `write` puts a value for an entry this dictionary has, nil for
+	// this dictionary itself. A dictionary rebuilt from authored data sends
+	// writes to one looked in before it, so a rebuild keeps them.
+	writes:  ^Dict,
 }
 
 // The game-wide dictionary.
@@ -248,6 +256,34 @@ has :: proc(slot: Slot, d: ^Dict) -> bool {
 		if slot in at.entries do return true
 	}
 	return false
+}
+
+// Writes `value` to the entry `slot` is connected to, for every reader of
+// it: in the first dictionary of `d`'s chain that has the entry, or where
+// that dictionary sends writes (`Dict.writes`). An entry no dictionary has
+// goes to the last one in the chain, the game-wide dictionary for a chain
+// from `scope_of`.
+// False, and nothing written, for INLINE, where the value is the caller's own
+// field, for an entry of another type than `T`, which is reported once, and
+// for a computed entry (`set_proc`), whose value is code's.
+write :: proc(slot: Slot, value: $T, d: ^Dict) -> bool {
+	#assert(size_of(T) <= MAX_VALUE_SIZE, "a slot value holds MAX_VALUE_SIZE bytes at most")
+	if slot == INLINE || d == nil do return false
+	last := d
+	for at := d; at != nil; at = at.parent {
+		last = at
+		e, has := &at.entries[slot]
+		if !has do continue
+		if e.type != T {
+			_report_type(slot, e.type, T)
+			return false
+		}
+		if e.read != nil do return false
+		put(at.writes != nil ? at.writes : at, slot, value)
+		return true
+	}
+	put(last, slot, value)
+	return true
 }
 
 @(private)

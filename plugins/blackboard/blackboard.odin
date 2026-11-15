@@ -174,6 +174,14 @@ key_of :: proc(object: engine.Transform_Handle, name: string) -> slots.Slot {
 	return slots.entry(name)
 }
 
+// The value of the entry named `name` a reader on `object` gets: the nearest
+// Blackboard's entry of that name, written or authored, then the ones further
+// up, then the game-wide dictionary. False when none has it, or when it holds
+// another type than `T`.
+get :: proc(object: engine.Transform_Handle, name: string, $T: typeid) -> (T, bool) {
+	return slots.lookup(key_of(object, name), T, slots.scope_of(object))
+}
+
 // Sets the entry named `name` to `value` on the nearest Blackboard on
 // `object` or above it, for as long as the component lives. It goes on top
 // of the authored entry and is not saved. False when no Blackboard is there.
@@ -319,6 +327,9 @@ _dict :: proc(b: ^Blackboard) -> ^slots.Dict {
 		}
 	}
 	st.written.parent = &st.authored
+	// A write through a slot to an authored entry stays over it, and a change
+	// of the entries, which rebuilds `authored`, keeps it.
+	st.authored.writes = &st.written
 	// The next Blackboard up, or the game-wide dictionary.
 	st.authored.parent = slots.global()
 	if w := engine.ctx_world(); w != nil {

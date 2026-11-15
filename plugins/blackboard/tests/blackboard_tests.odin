@@ -133,6 +133,49 @@ test_blackboard_set_and_unset :: proc(t: ^testing.T) {
 	testing.expect_value(t, slots.get(slots.entry("bb_code_only"), f32(0), slots.scope_of(legs)), 6)
 }
 
+// A slot's write goes to the Blackboard that holds the entry, so every
+// reader under it gets the value, and the authored entry stays as it was.
+// A nearer Blackboard's override of the entry is an entry of its own.
+@(test)
+test_blackboard_write_through_a_slot :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	squad := engine.transform_new("Squad")
+	medic := engine.transform_new("Medic", squad)
+	bar := engine.transform_new("Bar", squad)
+	leader := engine.transform_new("Leader", squad)
+	guard := engine.transform_new("Guard", leader)
+	on_squad := _board(t, squad)
+	hp := _number(on_squad, "hp", 10)
+
+	testing.expect(t, slots.write(hp, f32(4), slots.scope_of(medic)), "the medic writes through its slot")
+	testing.expect_value(t, slots.get(hp, f32(0), slots.scope_of(bar)), 4)
+	value, ok := blackboard.get(bar, "hp", f32)
+	testing.expect(t, ok, "get finds the entry by name")
+	testing.expect_value(t, value, 4)
+	testing.expect_value(t, on_squad.entries[0].number, 10) // the authored entry is not touched
+
+	// An edit of the entries rebuilds what is authored: the write stays over it.
+	on_squad.entries[0].number = 20
+	testing.expect_value(t, slots.get(hp, f32(0), slots.scope_of(bar)), 4)
+
+	// The leader's Blackboard overrides hp: a write under it stays there.
+	on_leader := _board(t, leader)
+	blackboard.entry_override(on_leader, &on_squad.entries[0]).number = 50
+	testing.expect(t, slots.write(hp, f32(45), slots.scope_of(guard)), "the guard writes the override")
+	testing.expect_value(t, slots.get(hp, f32(0), slots.scope_of(guard)), 45)
+	testing.expect_value(t, slots.get(hp, f32(0), slots.scope_of(bar)), 4)
+
+	_, wrong := blackboard.get(bar, "hp", i32)
+	testing.expect(t, !wrong, "get of another type")
+	_, none := blackboard.get(bar, "bb_no_such_entry", f32)
+	testing.expect(t, !none, "get of a name nothing has")
+}
+
 @(test)
 test_blackboard_offers_entries_by_type :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)

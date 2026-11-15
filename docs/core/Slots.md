@@ -40,6 +40,19 @@ An entry of another type than the inline field's is reported once and the inline
 
 `get` reads when it is called. Code that wants a value that follows the game reads every frame, and code that wants it fixed reads once.
 
+## Writing
+
+```odin
+slots.write(h.hp, f32(4), slots.scope_of(h.owner))
+```
+
+`slots.write` sets the entry a slot is connected to, for every reader of it:
+
+- It writes in the first dictionary of the chain that has the entry, so a reader anywhere in that dictionary's reach gets the value.
+- A dictionary can send writes to another one with its `writes` field. A Blackboard's authored entries send them to a layer read before them, so the authored values stay as they are and an edit of them keeps the write.
+- An entry no dictionary has is made in the last dictionary of the chain, the game-wide one for a chain from `scope_of`.
+- Nothing is written, and it returns false, for a slot that is not connected, since the value is then the caller's own field, for an entry of another type, reported once, and for a computed entry, whose value is code's.
+
 ## Dictionaries
 
 ```odin
