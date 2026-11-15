@@ -10,14 +10,24 @@ package tween_editor
 // instance (guid → typeid → unmarshal), and an edit marshals back into the
 // blob under a whole-component undo session.
 //
-// The window's target is (component handle, root ordinal): the handle
+// The window shows a tree of the object it follows: the selected object, or
+// the one its padlock holds (lock="instance", each copy its own lock, as in
+// the Inspector). Every tree of every component on the object is listed in
+// the toolbar by its field path. A copy keeps the tree it was last set to as
+// (component type, which component of that type, field path), saved with the
+// copy, and shows it whenever its object has one, else the object's first.
+// Within a frame a tree is (component handle, root ordinal): the handle
 // survives undo, and the Nth Authored field in the component's reflection
 // walk names the same tree across any edit that keeps the component's shape.
 // Selection is the node's PATH from the root (child ordinals) — undo
 // replaces the whole blob, so nothing stores pointers into it.
+//
+// Each copy has its own tree, node selection and canvas (_TG_Window). The
+// preview is one for the editor, as the Animation window's transport is.
 
 import "base:runtime"
 import "core:encoding/json"
+import "core:encoding/uuid"
 import "core:fmt"
 import "core:mem"
 import "core:reflect"
@@ -29,18 +39,42 @@ import tween "moonhug:packages/tween"
 import nc "moonhug:editor/node_canvas"
 import "moonhug:editor/icons"
 import "moonhug:editor/inspector"
+import "moonhug:editor/session"
 import "moonhug:editor/undo"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/widgets"
 import "moonhug:editor/preview"
 
+// A tree on an object, named so that a restart finds it again: the
+// component's type, which of the object's components of that type, and the
+// field path in it.
 @(private = "file")
-_state: struct {
+_Tree_Ref :: struct {
+	component: string, // the component type's guid
+	nth:       int,    // among the object's components of that type, 0 first
+	path:      string, // the field path in the component: `idle`, `animations[1]`
+}
+
+// One Tween Graph copy's state. `tree` is the tree last picked in the
+// toolbar or with a Graph button, saved with the copy (wnd.state). It shows
+// whenever the copy's object has it, and the object's first tree shows when
+// not. The strings are on the default allocator.
+@(private = "file")
+_TG_State :: struct {
+	tree: _Tree_Ref,
+	run:  ^_TG_Window `json:"-"`,
+}
+
+// A copy's state for the session.
+@(private = "file")
+_TG_Window :: struct {
 	cv: nc.Node_Canvas,
 
-	target:     engine.Handle,
-	root_idx:   int,
+	// The tree shown this frame, resolved from the object every frame.
+	target:     engine.Handle, // the component holding it
+	root_idx:   int,           // its ordinal among the component's trees (tween_roots_of)
 	has_target: bool,
+	shown:      u64,           // the tree shown last frame, component and path: a change resets the view
 
 	sel_path:   [64]i32,
 	sel_depth:  int,
@@ -49,11 +83,28 @@ _state: struct {
 	framed: bool, // framed once its content has been drawn
 	drawn:  bool, // the canvas has drawn once, so it knows its size
 
+	pick_seen: int, // the last inspector pick (_state.pick_gen) this copy has seen
+}
+
+// The copy being drawn.
+@(private = "file")
+_tg: ^_TG_Window
+
+@(private = "file")
+_state: struct {
 	// The tree playing in edit mode. A paused run, kept when done: the game's ticks
 	// leave it alone, and the preview hooks below drive it.
 	preview:         tween.Handle,
+	preview_target:  engine.Handle, // the tree it plays: component and root ordinal
+	preview_root:    int,
 	preview_pending: f32, // seconds to advance at the next apply
 	preview_done:    f32, // seconds the finished preview has shown its end pose
+
+	// The tree an inspector row's graph button picked. Every copy that shows
+	// the tree's object switches to it, once per pick.
+	pick_target: engine.Handle,
+	pick_root:   int,
+	pick_gen:    int,
 }
 
 // How long a finished preview shows its end pose before it ends.
@@ -87,9 +138,11 @@ tween_preview_install :: proc() {
 }
 
 @(private = "file")
-_preview_start :: proc(owner: engine.Transform_Handle, root: ^tween.Authored) {
+_preview_start :: proc(owner: engine.Transform_Handle, root: ^tween.Authored, target: engine.Handle, root_idx: int) {
 	_preview_stop()
 	_state.preview = tween.run(root, tween.TweenContext{subject = owner})
+	_state.preview_target = target
+	_state.preview_root = root_idx
 	tween.set_keep_when_done(_state.preview, true)
 	tween.set_paused(_state.preview, true)
 	// The tree begins at the next apply, inside the render bracket, so its
@@ -104,6 +157,12 @@ _preview_start :: proc(owner: engine.Transform_Handle, root: ^tween.Authored) {
 _preview_stop :: proc() {
 	tween.stop(_state.preview)
 	_state.preview = {}
+}
+
+// Whether the preview plays the tree copy `tg` shows.
+@(private = "file")
+_preview_is_of :: proc(tg: ^_TG_Window) -> bool {
+	return tween.is_alive(_state.preview) && tg.has_target && _state.preview_target == tg.target && _state.preview_root == tg.root_idx
 }
 
 // Once per frame, before the windows draw, whether or not the Tween Graph is
@@ -157,56 +216,187 @@ _Walked :: struct {
 	child_ord: int, // ordinal in the parent's children array, -1 for a root
 }
 
-// The window closed: a preview left playing would keep its pose in the scene.
-tween_graph_window_closed :: proc(w: ^wnd.Window) {
-	_preview_stop()
+// A copy closed. The preview of its tree would keep playing with no Stop
+// button on screen, so it ends. Its saved tree comes back with it.
+tween_graph_window_closed :: proc(win: ^wnd.Window) {
+	st := (^_TG_State)(win.data)
+	if st == nil do return
+	if st.run != nil {
+		if _preview_is_of(st.run) do _preview_stop()
+		free(st.run, runtime.default_allocator())
+	}
+	_tree_ref_free(&st.tree)
+	free(st, runtime.default_allocator())
+	win.data = nil
 }
 
-@(editor_window={id="tween_graph", title="Tween Graph", icon="SHOW_CHART", width=900, height=520, closed=tween_graph_window_closed})
-tween_graph_window_draw :: proc(w: ^wnd.Window) {
+@(private = "file")
+_tree_ref_free :: proc(r: ^_Tree_Ref) {
+	delete(r.component, runtime.default_allocator())
+	delete(r.path, runtime.default_allocator())
+	r^ = {}
+}
+
+// A tree on the followed object: the component holding it, its ordinal
+// among the component's trees, how a saved reference names it, and the
+// toolbar's label for it.
+@(private = "file")
+_Object_Tree :: struct {
+	target:    engine.Handle,
+	root_idx:  int,
+	component: string, // the component type's guid
+	nth:       int,    // among the object's components of that type
+	path:      string, // the field path in the component
+	label:     cstring,
+}
+
+// Every tree on object `obj`, component by component in the object's order,
+// each in its component's field order. A label is the component, numbered
+// when the object has two of its type, the field path and the root's type:
+// `TweenPlayer.animations[1]: Sequence`. Temp-allocated.
+@(private = "file")
+_object_trees :: proc(w: ^engine.World, obj: engine.Transform_Handle) -> []_Object_Tree {
+	out := make([dynamic]_Object_Tree, context.temp_allocator)
+	t := engine.pool_get(&w.transforms, engine.Handle(obj))
+	if t == nil do return out[:]
+	of_type := make(map[engine.TypeKey]int, context.temp_allocator)
+	for c in t.components do of_type[c.handle.type_key] += 1
+	seen := make(map[engine.TypeKey]int, context.temp_allocator)
+	for c in t.components {
+		nth := seen[c.handle.type_key]
+		seen[c.handle.type_key] = nth + 1
+		tid := engine.get_typeid_by_type_key(c.handle.type_key)
+		if tid == nil || !type_holds_tweens(type_info_of(tid)) do continue
+		base := engine.world_pool_get(w, c.handle)
+		if base == nil do continue
+		comp_name := fmt.tprintf("%v", tid)
+		if dot := strings.last_index_byte(comp_name, '.'); dot >= 0 do comp_name = comp_name[dot + 1:]
+		if of_type[c.handle.type_key] > 1 do comp_name = fmt.tprintf("%s #%d", comp_name, nth + 1)
+		guid := uuid.to_string(engine.get_guid_by_type_key(c.handle.type_key), context.temp_allocator)
+		roots, paths := tween_roots_with_paths(base, tid)
+		for root, i in roots {
+			root_type := "?"
+			if rtid, ok := tween.authored_typeid(root.value); ok do root_type = _type_label(rtid)
+			append(&out, _Object_Tree{
+				target = c.handle, root_idx = i, component = guid, nth = nth, path = paths[i],
+				label = fmt.ctprintf("%s.%s: %s", comp_name, paths[i], root_type),
+			})
+		}
+	}
+	return out[:]
+}
+
+// The tree of `trees` that saved reference `r` names, -1 for none.
+@(private = "file")
+_tree_find :: proc(trees: []_Object_Tree, r: _Tree_Ref) -> int {
+	for t, i in trees do if t.component == r.component && t.nth == r.nth && t.path == r.path do return i
+	return -1
+}
+
+// Tree `t` becomes the copy's saved pick.
+@(private = "file")
+_tree_pick :: proc(st: ^_TG_State, t: _Object_Tree) {
+	_tree_ref_free(&st.tree)
+	st.tree = {
+		component = strings.clone(t.component, runtime.default_allocator()),
+		nth       = t.nth,
+		path      = strings.clone(t.path, runtime.default_allocator()),
+	}
+}
+
+// Which tree a copy shows, as a number: its component and its path.
+@(private = "file")
+_tree_id :: proc(t: _Object_Tree) -> u64 {
+	mix :: proc(h, x: u64) -> u64 { return (h ~ x) * 0x100000001b3 }
+	h: u64 = 0xcbf29ce484222325
+	h = mix(h, u64(t.target.index))
+	h = mix(h, u64(t.target.generation))
+	h = mix(h, u64(t.target.type_key))
+	for i in 0 ..< len(t.path) do h = mix(h, u64(t.path[i]))
+	return h
+}
+
+// The copy being drawn shows `t`. Another tree than last frame starts with
+// its root selected and frames it.
+@(private = "file")
+_tree_show :: proc(t: _Object_Tree) {
+	id := _tree_id(t)
+	if !_tg.has_target || _tg.shown != id {
+		_tg.sel_depth = 0
+		_tg.sel_active = true
+		_tg.framed = false
+	}
+	_tg.target = t.target
+	_tg.root_idx = t.root_idx
+	_tg.has_target = true
+	_tg.shown = id
+}
+
+// The copy's toolbar picked tree `i`, or a Graph button did.
+@(private = "file")
+_choose_tree :: proc(st: ^_TG_State, trees: []_Object_Tree, i: int) {
+	_tree_pick(st, trees[i])
+	_tree_show(trees[i])
+}
+
+@(editor_window={id="tween_graph", title="Tween Graph", icon="SHOW_CHART", width=900, height=520, closed=tween_graph_window_closed, lock="instance"})
+tween_graph_window_draw :: proc(win: ^wnd.Window) {
+	st := wnd.state(win, _TG_State{}, saved = true)
+	if st.run == nil do st.run = new(_TG_Window, runtime.default_allocator())
+	_tg = st.run
+
 	w := engine.ctx_world()
 	if w == nil {
 		im.TextDisabled("No world.")
 		return
 	}
+	if session.window_lock_missing_note(win.key) do return
 
-	// Resolved fresh every frame: the handle survives undo, the blob values
-	// behind it do not.
-	roots: []^tween.Authored
-	base: rawptr
-	if _state.has_target {
-		base = engine.world_pool_get(w, _state.target)
-		if base != nil {
-			if tid := engine.get_typeid_by_type_key(_state.target.type_key); tid != nil {
-				roots = tween_roots_of(base, tid)
-			}
-		}
+	// The object this copy follows: the one its padlock holds, else the
+	// selection. Its trees are listed fresh every frame: the handles survive
+	// undo, the blob values behind them do not.
+	obj := engine.Transform_Handle(session.window_object(win.key))
+	trees := _object_trees(w, obj)
+	// An inspector row's graph button picked a tree: shown here when it is on
+	// this copy's object.
+	if _tg.pick_seen != _state.pick_gen {
+		_tg.pick_seen = _state.pick_gen
+		for t in trees do if t.target == _state.pick_target && t.root_idx == _state.pick_root do _tree_pick(st, t)
 	}
-	if base == nil || _state.root_idx >= len(roots) {
-		_preview_stop()
-		_state.has_target = false
-		im.TextDisabled("No tween tree open.")
-		im.TextDisabled("Click a tween row's graph button in the inspector.")
+	if len(trees) == 0 {
+		_tg.has_target = false
+		if t := engine.pool_get(&w.transforms, engine.Handle(obj)); t != nil {
+			im.TextDisabled(fmt.ctprintf("%s has no tween trees.", t.name))
+		} else {
+			im.TextDisabled("Select an object with a tween tree.")
+		}
 		return
 	}
+	// The saved pick when the object has it, else the object's first tree,
+	// which leaves the pick as it is for the next object that has it.
+	cur := max(_tree_find(trees, st.tree), 0)
+	_tree_show(trees[cur])
 
-	_draw_toolbar(base, roots)
+	base := engine.world_pool_get(w, _tg.target)
+	roots := tween_roots_of(base, engine.get_typeid_by_type_key(_tg.target.type_key))
+
+	_draw_toolbar(st, base, roots, trees, cur)
 	im.Separator()
 
 	walked := make([dynamic]_Walked, context.temp_allocator)
 	// The scene the nodes' own subjects are looked up in: the owner's.
 	scene: ^engine.Scene
 	if t := engine.pool_get(&w.transforms, engine.Handle((cast(^engine.CompData)base).owner)); t != nil do scene = t.scene
-	_walk(roots[_state.root_idx].value, -1, -1, &walked, scene, 0)
+	_walk(roots[_tg.root_idx].value, -1, -1, &walked, scene, 0)
 
 	parents := make([]int, len(walked), context.temp_allocator)
 	for wk, i in walked do parents[i] = wk.parent
 
 	sel_idx := -1
-	if _state.sel_active {
-		sel_idx = nc.tree_find_path(parents, 0, _state.sel_path[:_state.sel_depth])
+	if _tg.sel_active {
+		sel_idx = nc.tree_find_path(parents, 0, _tg.sel_path[:_tg.sel_depth])
 	}
-	if sel_idx < 0 do _state.sel_active = false
+	if sel_idx < 0 do _tg.sel_active = false
 
 	// A row per piece of information, at least one: the links meet the first
 	// row's ports.
@@ -229,17 +419,17 @@ tween_graph_window_draw :: proc(w: ^wnd.Window) {
 		canvas_w = avail.x - splitter - panel_w
 	}
 
-	cv := &_state.cv
+	cv := &_tg.cv
 	cv.minimap = &prefs.minimap
 	// The canvas knows its size after it drew once, so framing waits a frame.
-	if !_state.framed && _state.drawn && len(walked) > 0 {
+	if !_tg.framed && _tg.drawn && len(walked) > 0 {
 		lo, hi := positions[0], positions[0] + sizes[0]
 		for p, i in positions {
 			lo = {min(lo.x, p.x), min(lo.y, p.y)}
 			hi = {max(hi.x, p.x + sizes[i].x), max(hi.y, p.y + sizes[i].y)}
 		}
 		nc.canvas_frame(cv, lo, hi)
-		_state.framed = true
+		_tg.framed = true
 	}
 
 	cv.sel = sel_idx
@@ -261,7 +451,7 @@ tween_graph_window_draw :: proc(w: ^wnd.Window) {
 			}
 		}
 		nc.canvas_end(cv)
-		_state.drawn = true
+		_tg.drawn = true
 	}
 	im.EndChild()
 
@@ -271,11 +461,11 @@ tween_graph_window_draw :: proc(w: ^wnd.Window) {
 	if cv.sel != sel_idx {
 		sel_idx = cv.sel
 		if sel_idx >= 0 && sel_idx < len(walked) {
-			_state.sel_depth = nc.tree_path_of(parents, sel_idx, _state.sel_path[:])
-			_state.sel_active = true
+			_tg.sel_depth = nc.tree_path_of(parents, sel_idx, _tg.sel_path[:])
+			_tg.sel_active = true
 		} else {
 			sel_idx = -1
-			_state.sel_active = false
+			_tg.sel_active = false
 		}
 	}
 
@@ -289,19 +479,19 @@ tween_graph_window_draw :: proc(w: ^wnd.Window) {
 			// the type names the node, so it reads as the panel's title.
 			// Pointers into the OWNING storage — the mutators write map
 			// headers back through them.
-			root := roots[_state.root_idx]
+			root := roots[_tg.root_idx]
 			v_ptr := _walked_ptr(walked[:], sel_idx, root)
 			parent_ptr: ^json.Value
 			if p := walked[sel_idx].parent; p >= 0 do parent_ptr = _walked_ptr(walked[:], p, root)
 			_draw_structural_ops(
-				_state.target,
+				_tg.target,
 				v_ptr,
 				walked[sel_idx].tid,
 				parent_ptr,
 				walked[sel_idx].child_ord,
 			)
 			im.Separator()
-			_draw_selected_panel(_state.target, walked[sel_idx].value, walked[sel_idx].tid)
+			_draw_selected_panel(_tg.target, walked[sel_idx].value, walked[sel_idx].tid)
 		} else {
 			im.TextDisabled("Select a node.")
 		}
@@ -370,7 +560,7 @@ _draw_structural_ops :: proc(
 			e := undo.edit_begin(owner, comp_tid, "Delete Node")
 			tween.authored_remove_child(parent_v, child_ord)
 			undo.edit_end(&e)
-			_state.sel_active = false
+			_tg.sel_active = false
 		}
 	}
 }
@@ -397,7 +587,7 @@ _node_type_popup :: proc(id: cstring) -> (tid: typeid, picked: bool) {
 }
 
 @(private = "file")
-_draw_toolbar :: proc(base: rawptr, roots: []^tween.Authored) {
+_draw_toolbar :: proc(st: ^_TG_State, base: rawptr, roots: []^tween.Authored, trees: []_Object_Tree, cur: int) {
 	owner_name := "?"
 	w := engine.ctx_world()
 	comp := cast(^engine.CompData)base
@@ -406,40 +596,42 @@ _draw_toolbar :: proc(base: rawptr, roots: []^tween.Authored) {
 	}
 	im.TextUnformatted(strings.clone_to_cstring(owner_name, context.temp_allocator))
 
+	// Every tree on the object, across its components.
 	im.SameLine()
-	if len(roots) > 1 {
-		im.SetNextItemWidth(180)
-		if im.BeginCombo("##root", _root_label(roots, _state.root_idx)) {
-			for _, i in roots {
-				if im.Selectable(_root_label(roots, i), i == _state.root_idx) {
-					_preview_stop()
-					_state.root_idx = i
-					_state.sel_active = false
-					_state.framed = false
+	if len(trees) > 1 {
+		widest: f32
+		for t in trees do widest = max(widest, im.CalcTextSize(t.label).x)
+		im.SetNextItemWidth(min(widest + im.GetFrameHeight() + im.GetStyle().FramePadding.x * 2, 420))
+		if im.BeginCombo("##root", trees[cur].label) {
+			for t, i in trees {
+				if im.Selectable(fmt.ctprintf("%s##tree%d", t.label, i), i == cur) && i != cur {
+					if _preview_is_of(_tg) do _preview_stop()
+					_choose_tree(st, trees, i)
 				}
 			}
 			im.EndCombo()
 		}
 	} else {
-		im.TextUnformatted(_root_label(roots, 0))
+		im.TextUnformatted(trees[cur].label)
 	}
 
 	// Preview: the tree plays on its object in edit mode, shows its end pose
-	// for a moment and puts everything back.
+	// for a moment and puts everything back. One preview plays at a time, so
+	// starting one here ends another copy's.
 	im.SameLine()
 	if engine.game_running() {
 		im.BeginDisabled()
 		im.Button("Preview")
 		im.EndDisabled()
-	} else if tween.is_alive(_state.preview) {
+	} else if _preview_is_of(_tg) {
 		if im.Button("Stop") do _preview_stop()
 	} else if im.Button("Preview") {
-		_preview_start(comp.owner, roots[_state.root_idx])
+		_preview_start(comp.owner, roots[_tg.root_idx], _tg.target, _tg.root_idx)
 	}
 	widgets.tooltip("Plays the tree on its object in edit mode, then puts every value back. In Play, the game starts the tree.", im.HoveredFlags_ForTooltip | im.HoveredFlags_AllowWhenDisabled)
 
 	im.SameLine()
-	if im.Button("Frame All") do _state.framed = false
+	if im.Button("Frame All") do _tg.framed = false
 
 	// The pane toggles, right-aligned: the node panel and the mini-map.
 	style := im.GetStyle()
@@ -458,15 +650,6 @@ _draw_toolbar :: proc(base: rawptr, roots: []^tween.Authored) {
 	if widgets.icon_button(icons.ICON_MD_MAP, "##tween_map", "Show or hide the mini-map", active = !prefs.minimap.hidden) {
 		prefs.minimap.hidden = !prefs.minimap.hidden
 	}
-}
-
-@(private = "file")
-_root_label :: proc(roots: []^tween.Authored, i: int) -> cstring {
-	name := "?"
-	if tid, ok := tween.authored_typeid(roots[i].value); ok {
-		name = _type_label(tid)
-	}
-	return strings.clone_to_cstring(fmt.tprintf("%d: %s", i, name), context.temp_allocator)
 }
 
 // Flattens the authored JSON tree into nodes + links.
@@ -578,7 +761,7 @@ _draw_selected_panel :: proc(owner_handle: engine.Handle, v: json.Value, sel_tid
 		return
 	}
 
-	_node_editor(owner_handle, _state.root_idx, _state.sel_path[:_state.sel_depth], v, sel_tid)
+	_node_editor(owner_handle, _tg.root_idx, _tg.sel_path[:_tg.sel_depth], v, sel_tid)
 }
 
 // --- The node field editor ----------------------------------------------------
@@ -897,11 +1080,13 @@ _draw_node_inline :: proc(owner: engine.Handle, root_idx: int, path: []i32, dept
 	}
 }
 
-// Opens the window on the clicked tree. The owning component comes from the
-// inspector's ambient owner — the button lives inside a component's draw.
+// Shows the clicked tree. The owning component comes from the inspector's
+// ambient owner — the button lives inside a component's draw. Every copy
+// showing the component's object switches to the tree (_state.pick_*), and
+// the first of them comes to the front. With none, the window opens, and
+// shows the tree when it follows the object.
 @(private = "file")
 _open_graph_for :: proc(a: ^tween.Authored) {
-	_preview_stop()
 	o, o_ok := undo.current_owner()
 	if !o_ok || o.kind != .Pooled || o.base_ptr == nil do return
 	tid := engine.get_typeid_by_type_key(o.handle.type_key)
@@ -910,63 +1095,148 @@ _open_graph_for :: proc(a: ^tween.Authored) {
 	roots := tween_roots_of(o.base_ptr, tid)
 	for root, i in roots {
 		if root != a do continue
-		_state.target = o.handle
-		_state.root_idx = i
-		_state.has_target = true
-		_state.sel_depth = 0
-		_state.sel_active = true
-		_state.framed = false
+		_state.pick_target = o.handle
+		_state.pick_root = i
+		_state.pick_gen += 1
+		owner := engine.Handle((cast(^engine.CompData)o.base_ptr).owner)
+		for win in wnd.instances("tween_graph") {
+			if engine.Handle(session.window_object(win.key)) == owner {
+				wnd.focus(win)
+				return
+			}
+		}
 		wnd.open("tween_graph")
 		return
 	}
 }
 
 // Every Authored field in the value graph rooted at `base`, in walk order —
-// nested structs, fixed and dynamic arrays and slices included.
+// nested structs, fixed and dynamic arrays, slices and unions included.
 // Temp-allocated. A root's ordinal is stable for any edit that keeps the
 // component's shape (walk order is field order and array order).
 tween_roots_of :: proc(base: rawptr, tid: typeid) -> []^tween.Authored {
 	roots := make([dynamic]^tween.Authored, context.temp_allocator)
-	_collect_tween_roots(base, type_info_of(tid), &roots, 0)
+	_collect_tween_roots(base, type_info_of(tid), &roots, nil, "", 0)
 	return roots[:]
 }
 
+// tween_roots_of with each root's field path in the value: `idle`,
+// `animations[1]`, `settings.on_open`. An array element's path is its index
+// in the array, so an empty slot before it does not change it.
+// Temp-allocated.
+tween_roots_with_paths :: proc(base: rawptr, tid: typeid) -> (roots: []^tween.Authored, paths: []string) {
+	r := make([dynamic]^tween.Authored, context.temp_allocator)
+	p := make([dynamic]string, context.temp_allocator)
+	_collect_tween_roots(base, type_info_of(tid), &r, &p, "", 0)
+	return r[:], p[:]
+}
+
 @(private = "file")
-_collect_tween_roots :: proc(ptr: rawptr, ti: ^runtime.Type_Info, roots: ^[dynamic]^tween.Authored, depth: int) {
+_collect_tween_roots :: proc(ptr: rawptr, ti: ^runtime.Type_Info, roots: ^[dynamic]^tween.Authored, paths: ^[dynamic]string, path: string, depth: int) {
 	if ptr == nil || ti == nil || depth > 16 do return
 
 	if ti.id == typeid_of(tween.Authored) {
 		a := cast(^tween.Authored)ptr
-		if a.value != nil do append(roots, a)
+		if a.value != nil {
+			append(roots, a)
+			if paths != nil do append(paths, path)
+		}
 		return
 	}
+	if !type_holds_tweens(ti) do return
 
 	bti := runtime.type_info_base(ti)
 	#partial switch v in bti.variant {
 	case runtime.Type_Info_Struct:
 		for i in 0 ..< int(v.field_count) {
-			_collect_tween_roots(rawptr(uintptr(ptr) + v.offsets[i]), v.types[i], roots, depth + 1)
+			sub := ""
+			if paths != nil do sub = path == "" ? v.names[i] : fmt.tprintf("%s.%s", path, v.names[i])
+			_collect_tween_roots(rawptr(uintptr(ptr) + v.offsets[i]), v.types[i], roots, paths, sub, depth + 1)
 		}
 	case runtime.Type_Info_Array:
 		for i in 0 ..< v.count {
-			_collect_tween_roots(rawptr(uintptr(ptr) + uintptr(i * v.elem_size)), v.elem, roots, depth + 1)
+			sub := paths != nil ? fmt.tprintf("%s[%d]", path, i) : ""
+			_collect_tween_roots(rawptr(uintptr(ptr) + uintptr(i * v.elem_size)), v.elem, roots, paths, sub, depth + 1)
 		}
 	case runtime.Type_Info_Dynamic_Array:
 		da := (^runtime.Raw_Dynamic_Array)(ptr)
 		if da.data == nil do return
 		for i in 0 ..< da.len {
-			_collect_tween_roots(rawptr(uintptr(da.data) + uintptr(i * v.elem_size)), v.elem, roots, depth + 1)
+			sub := paths != nil ? fmt.tprintf("%s[%d]", path, i) : ""
+			_collect_tween_roots(rawptr(uintptr(da.data) + uintptr(i * v.elem_size)), v.elem, roots, paths, sub, depth + 1)
 		}
 	case runtime.Type_Info_Slice:
 		s := (^runtime.Raw_Slice)(ptr)
 		if s.data == nil do return
 		for i in 0 ..< s.len {
-			_collect_tween_roots(rawptr(uintptr(s.data) + uintptr(i * v.elem_size)), v.elem, roots, depth + 1)
+			sub := paths != nil ? fmt.tprintf("%s[%d]", path, i) : ""
+			_collect_tween_roots(rawptr(uintptr(s.data) + uintptr(i * v.elem_size)), v.elem, roots, paths, sub, depth + 1)
 		}
 	case runtime.Type_Info_Union:
 		if vtid := reflect.union_variant_typeid(any{ptr, ti.id}); vtid != nil {
-			_collect_tween_roots(ptr, type_info_of(vtid), roots, depth + 1)
+			_collect_tween_roots(ptr, type_info_of(vtid), roots, paths, path, depth + 1)
 		}
 	}
 	// Pointers and maps are not walked: nothing stores tweens that way.
+}
+
+// Whether a value of type `ti` can hold an Authored where the walk above
+// looks: itself, a field, an element of a fixed or dynamic array or a slice,
+// a union variant. Worked out once per type and kept, so the walk skips a
+// component without tweens and an array of plain data, such as a particle
+// system's particles, with one lookup.
+type_holds_tweens :: proc(ti: ^runtime.Type_Info) -> bool {
+	if ti == nil do return false
+	if h, ok := _holds[ti.id]; ok do return h
+	holds, _ := _holds_tweens(ti)
+	// Every type it reached that was still being worked out was on the way
+	// from this one, so this answer is whole.
+	_holds[ti.id] = holds
+	return holds
+}
+
+// By type. Types live as long as the process, and so does this.
+@(private = "file")
+_holds: map[typeid]bool
+
+// The types being worked out, for a type that holds itself through an array
+// or a slice.
+@(private = "file")
+_holds_pending: map[typeid]bool
+
+// `pending`: the answer is false only so far, because the type reached a
+// type still being worked out, and it is not kept.
+@(private = "file")
+_holds_tweens :: proc(ti: ^runtime.Type_Info) -> (holds, pending: bool) {
+	if ti == nil do return false, false
+	if ti.id == typeid_of(tween.Authored) do return true, false
+	if h, ok := _holds[ti.id]; ok do return h, false
+	if ti.id in _holds_pending do return false, true
+	if _holds.allocator.procedure == nil {
+		_holds.allocator = runtime.default_allocator()
+		_holds_pending.allocator = runtime.default_allocator()
+	}
+	_holds_pending[ti.id] = true
+	defer delete_key(&_holds_pending, ti.id)
+
+	elem := proc(ti: ^runtime.Type_Info, holds, pending: ^bool) {
+		h, p := _holds_tweens(ti)
+		holds^ ||= h
+		pending^ ||= p
+	}
+	#partial switch v in runtime.type_info_base(ti).variant {
+	case runtime.Type_Info_Struct:
+		for i in 0 ..< int(v.field_count) do elem(v.types[i], &holds, &pending)
+	case runtime.Type_Info_Array:
+		elem(v.elem, &holds, &pending)
+	case runtime.Type_Info_Dynamic_Array:
+		elem(v.elem, &holds, &pending)
+	case runtime.Type_Info_Slice:
+		elem(v.elem, &holds, &pending)
+	case runtime.Type_Info_Union:
+		for variant in v.variants do elem(variant, &holds, &pending)
+	}
+	if holds do pending = false
+	if !pending do _holds[ti.id] = holds
+	return
 }
