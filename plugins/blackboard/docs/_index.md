@@ -41,3 +41,4 @@ The plugin declares no attributes and has no registries.
 ## Reference
 
 - [API reference](/docs/reference/packages/blackboard/blackboard.md) of the `blackboard` package.
+- Sample: `demo_slots.scene` in the app plugin (`plugins/app/assets/demo_slots`): two squads of cubes under Blackboards with other values, and a nearer Blackboard that changes one entry.

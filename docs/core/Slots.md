@@ -88,3 +88,5 @@ A slot and its inline field are one row under the slot's name:
 ## Example
 
 `SlotExample` in the app plugin (`plugins/app/component_SlotExample.odin`, Component > Demo > SlotExample) has an `offset` and a `size` slot, read from its object's dictionary. It declares and fills the entries `demo_bob`, `demo_pulse` and `demo_double` in the game-wide dictionary.
+
+The scene `plugins/app/assets/demo_slots/demo_slots.scene` shows it four ways: a cube with typed values, one connected to the game's entries, and two squads whose cubes take `big` and `lift` from their squad's Blackboard, one with a nearer Blackboard that changes `big` for the cube under it.
