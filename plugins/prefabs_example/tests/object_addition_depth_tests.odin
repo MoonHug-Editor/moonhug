@@ -1,12 +1,13 @@
 package prefabs_example_tests
 
 // Object additions must survive save+reload at EVERY nesting depth, including
-// a parent that lives inside a prefab nested within the instance. Unity records
-// such a modification in the file that CONTAINS the instance (never the source
-// prefab), addressing the parent by a composed fileID — so depth is a property
-// of the address, not a reason to refuse the edit.
+// a parent that lives inside a prefab nested within the instance. Such a
+// modification is recorded in the file that CONTAINS the instance (never the
+// source prefab), addressing the parent by a composed local id, so depth is a
+// property of the address, not a reason to refuse the edit.
 //
-// Runs against the real prefabs_example chain rather than a synthetic fixture:
+// Runs against the prefab chain fixture (moonhug/tests/fixtures/prefab_chain),
+// a copy of the chain authored in the editor for prefabs_example:
 // host.scene -> blobs.scene -> {c.scene, c_Variant.scene} is the shape that
 // exposed every bug here, and look-alike names across levels (three different
 // "Transform" rows) are exactly what mis-targeted the capture.
@@ -30,14 +31,14 @@ test_object_addition_survives_at_every_depth :: proc(t: ^testing.T) {
 	}
 
 	for c in cases {
-		engine.asset_db_init("moonhug/packages/prefabs_example/assets")
+		engine.asset_db_init("moonhug/tests/fixtures/prefab_chain")
 
 		tc_mem := new(common.TestCtx)
 		common.setup(tc_mem, "moonhug/tests/fixtures/_test_depth_added.scene")
 		context.user_ptr = &tc_mem.uc
 
 		src := strings.concatenate(
-			{"moonhug/packages/prefabs_example/assets/", c.scene},
+			{"moonhug/tests/fixtures/prefab_chain/", c.scene},
 			context.temp_allocator,
 		)
 		loaded := engine.scene_load(src)

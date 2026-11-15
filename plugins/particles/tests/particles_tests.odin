@@ -426,8 +426,9 @@ test_particles_nested_scene_save :: proc(t: ^testing.T) {
 	testing.expect(t, found, "ParticleSystem should exist after reload")
 }
 
-// The editor flow that crashed: simulate the museum, then nest the REAL
-// particles_samples.scene into a host scene and save it.
+// The editor flow that crashed: simulate the museum, then nest it into a host
+// scene and save it. The museum is a copy of the particles sample's scene
+// (moonhug/tests/fixtures/particles_museum), with its own guid.
 @(test)
 test_particles_museum_nested_save :: proc(t: ^testing.T) {
 	tc_mem := new(common.TestCtx)
@@ -436,14 +437,14 @@ test_particles_museum_nested_save :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer common.teardown(tc_mem)
 
-	engine.asset_db_init("moonhug/packages/particles/samples/particles_sample/assets")
+	engine.asset_db_init("moonhug/tests/fixtures/particles_museum")
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
 
 	host_path := "moonhug/tests/_tmp_museum_host.scene"
 	defer os.remove(host_path)
 
-	museum_guid, gerr := uuid.read("5d2e9c81-7a46-4f03-b1c8-92e05a4d7f36")
+	museum_guid, gerr := uuid.read("3e249b15-cdbb-41cf-a965-6bbc06afd86e")
 	testing.expect(t, gerr == nil)
 
 	root := engine.Transform_Handle(tc_mem.scene.root.handle)

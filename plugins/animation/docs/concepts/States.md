@@ -53,7 +53,7 @@ The authored tree holds every state. The graph holds only what plays, and a blen
 
 ## Testing
 
-`animation_demo.scene` is generated JSON with hand-written union tags, the kind of asset that breaks silently. `test_animation_demo_scene_loads` loads it, checks that the tree survived, and plays the blend through to a posed joint.
+The blend tests build the entry tree in code, with constant clips. `test_entry_tree_round_trips` checks that the tree and its union tags survive a save and a load, and `test_authored_graph_matches_the_tree` that every reader builds the same shape. No test loads `animation_demo.scene`: tests use no scenes from `assets/`.
 
 ## See also
 

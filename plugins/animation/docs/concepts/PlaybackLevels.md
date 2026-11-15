@@ -61,7 +61,7 @@ A track kind in any plugin shows its binding field under the animator's states b
 
 ## Testing
 
-`test_timeline_animator_demo_scene_loads` plays a state through to a moved transform. A test that only checks that the scene parses and the names resolve passes while the animator poses nothing, since the sample's clips are not in the test asset database. An assertion that the object moves is the one that cannot pass for the wrong reason.
+`test_one_state_poses_two_targets` plays one state through to two moved transforms: a joint two levels down the body's name path, and a prop posed by its own Animation. A test that only checks that names resolve passes while the animator poses nothing. An assertion that the object moves is the one that cannot pass for the wrong reason.
 
 ## See also
 

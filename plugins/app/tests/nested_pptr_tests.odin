@@ -19,12 +19,12 @@ test_nested_instance_keeps_asset_pptr_part_ids :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 
-	// A copy of the folders demo_prefabs nests from (bullet, its variant, the
-	// BoxAnimated scene): a test never imports a project asset in place.
-	tmp :: "moonhug/tests/fixtures/_demo_prefabs_tmp"
-	copied := common.copy_tree("moonhug/packages/app/assets/demo_prefabs", tmp + "/demo_prefabs") &&
-		common.copy_tree("moonhug/packages/app/assets/meshes/BoxAnimated", tmp + "/meshes/BoxAnimated")
-	testing.expect(t, copied, "the demo folders copy")
+	// The fixture is a copy of the app's demo_prefabs and the BoxAnimated folder
+	// it nests from, with its own guids. Importing writes beside the files, so
+	// the test imports a temp copy of it.
+	tmp :: "moonhug/tests/fixtures/_nested_pptr_tmp"
+	copied := common.copy_tree("moonhug/tests/fixtures/nested_pptr", tmp)
+	testing.expect(t, copied, "the fixture copies")
 	if !copied do return
 	defer common.remove_tree(tmp)
 	engine.asset_db_init(tmp)

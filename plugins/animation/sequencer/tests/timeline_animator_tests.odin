@@ -8,9 +8,6 @@ package animation_sequencer_tests
 // animator reads those targets to size its outputs, and changes only where a
 // track's subtree hangs — never what it drives.
 
-import "core:encoding/json"
-import "core:encoding/uuid"
-import "core:os"
 import "core:strings"
 import "core:testing"
 import inspector "moonhug:editor/inspector"
@@ -511,11 +508,11 @@ test_animator_reports_authoring_problems :: proc(t: ^testing.T) {
 	testing.expect(t, overlap == 1, "two pose outputs that overlap are reported, against the inner one")
 }
 
-// The shipped sample scene is hand-generated JSON, which is exactly the kind of
-// asset that rots silently. Loading it here catches a renamed field or a bad
-// local_id at test time instead of when someone opens it.
+// One state poses two targets, the thing a clip player cannot do: its
+// timeline has a track for the Body's Animation, whose clip moves a joint two
+// levels down a name path, and a track for the Sword's own Animation.
 @(test)
-test_timeline_animator_demo_scene_loads :: proc(t: ^testing.T) {
+test_one_state_poses_two_targets :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
@@ -525,87 +522,50 @@ test_timeline_animator_demo_scene_loads :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 	anim_seq.animation_track_init()
 
-	// The test asset DB does not scan the samples folder, so the clips the
-	// sample's timelines reference would never load and every later assertion
-	// would pass on an animator that poses nothing. Seed the cache by hand.
-	_load_sample_clip("plugins/animation/samples/timeline_sample/assets/rig_idle.anim")
-	_load_sample_clip("plugins/animation/samples/timeline_sample/assets/rig_swing_body.anim")
-	_load_sample_clip("plugins/animation/samples/timeline_sample/assets/rig_swing_prop.anim")
+	body_clip, sword_clip := _clip_guid(61), _clip_guid(62)
+	deep := _const_clip(.Position, {3, 0, 0, 0})
+	deep.channels[0].target = strings.clone("Arm/Hand")
+	anim.animation_clip_cache[engine.PPtr{guid = body_clip}] = deep
+	anim.animation_clip_cache[engine.PPtr{guid = sword_clip}] = _const_clip(.Position, {0, 5, 0, 0})
 
-	PATH :: "plugins/animation/samples/timeline_sample/assets/timeline_animator_demo.scene"
-	s := engine.scene_load(PATH)
-	testing.expect(t, s != nil, "the sample scene parses and loads")
-	if s == nil do return
-	tc.scene = s
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+	body := engine.transform_new("Body", root)
+	hand := engine.transform_new("Hand", engine.transform_new("Arm", body))
+	sword := engine.transform_new("Sword", root)
+	body_owned, body_raw := engine.transform_add_comp(body, .Animation)
+	sword_owned, sword_raw := engine.transform_add_comp(sword, .Animation)
+	(cast(^anim.Animation)body_raw).enabled = true
+	(cast(^anim.Animation)sword_raw).enabled = true
 
-	root := engine.Transform_Handle(s.root.handle)
-	_, ta := engine.transform_get_comp(root, anim_seq.TimelineAnimator)
-	testing.expect(t, ta != nil, "the root carries a TimelineAnimator")
-	if ta == nil do return
+	tl := _mk_local_timeline(root, body_owned.handle, body_clip)
+	sword_track := _mk_track(tl, .TrackAnimation, seq.Clip_View{start = 0, duration = 1})
+	_, track := anim.get_comp(sword_track, anim_seq.TrackAnimation)
+	track.target = {handle = sword_owned.handle}
+	_set_anim_clip(sword_track, 0, sword_clip)
 
-	testing.expect_value(t, len(ta.layers), 1)
-	testing.expect_value(t, len(ta.layers[0].states), 2)
-
-	anim_seq.timeline_animator_tick(0)
-	// The tracks target the Animations on Body (8009) and Sword (8023), so
-	// those two objects are what the animator poses.
-	body_h, _ := engine.scene_find_selectable_transform_local_id(s, 8009)
-	sword_h, _ := engine.scene_find_selectable_transform_local_id(s, 8023)
-	testing.expect(t, anim_seq.timeline_animator_output_index(ta, body_h) >= 0, "Body is posed")
-	testing.expect(t, anim_seq.timeline_animator_output_index(ta, sword_h) >= 0, "Sword is posed")
-	_, i_ok := anim_seq.animator_find(ta, "Idle")
-	_, s_ok := anim_seq.animator_find(ta, "Swing")
-	testing.expect(t, i_ok && s_ok, "both states resolve by name")
+	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
+	ta := cast(^anim_seq.TimelineAnimator)raw
+	ta.enabled = true
+	ta.layers = make([dynamic]anim_seq.Animator_Layer)
+	layer := anim_seq.Animator_Layer{name = strings.clone("Base")}
+	layer.states = make([dynamic]anim_seq.Timeline_State)
+	append(&layer.states, _mk_state("Swing", tl))
+	append(&ta.layers, layer)
 	testing.expect_value(t, len(anim_seq.timeline_animator_problems(ta)), 0)
 
-	// End to end, and specifically the thing a clip player cannot do: ONE
-	// state posing two targets. Swing rotates ArmR (several levels down
-	// a name path) and the Sword (a different Animation component).
-	arm := _find_by_name(tc, root, "ArmR")
-	sword := _find_by_name(tc, root, "Sword")
-	testing.expect(t, arm != nil && sword != nil, "the rig has an ArmR and a Sword")
-	if arm == nil || sword == nil do return
-
-	id, _ := anim_seq.animator_find(ta, "Swing")
+	id, found := anim_seq.animator_find(ta, "Swing")
+	testing.expect(t, found, "the state resolves by name")
 	anim_seq.animator_play(ta, id, 0)
-	anim_seq.timeline_animator_tick(0.35) // the top of the arc
+	anim_seq.timeline_animator_tick(0.1)
+	testing.expect(t, anim_seq.timeline_animator_output_index(ta, body) >= 0, "Body is posed")
+	testing.expect(t, anim_seq.timeline_animator_output_index(ta, sword) >= 0, "Sword is posed")
 
-	testing.expectf(t, abs(arm.rotation.z) > 0.1,
-		"Swing rotates the body rig, got %v", arm.rotation.z)
-	testing.expectf(t, abs(sword.rotation.z) > 0.1,
-		"the same state also poses the prop through its own key, got %v", sword.rotation.z)
-}
-
-// Depth-first by name, since a scene has no by-name lookup.
-@(private = "file")
-_find_by_name :: proc(tc: ^common.TestCtx, h: engine.Transform_Handle, name: string) -> ^engine.Transform {
-	t := engine.pool_get(&tc.world.transforms, engine.Handle(h))
-	if t == nil do return nil
-	if t.name == name do return t
-	for ch in t.children {
-		if got := _find_by_name(tc, engine.Transform_Handle(ch.handle), name); got != nil do return got
-	}
-	return nil
-}
-
-
-// Read a .anim and its .meta straight into the clip cache, bypassing the asset
-// DB. Only for tests that load shipped sample assets by path.
-_load_sample_clip :: proc(path: string) {
-	meta_path := strings.concatenate({path, ".meta"}, context.temp_allocator)
-	meta_bytes, merr := os.read_entire_file(meta_path, context.temp_allocator)
-	if merr != nil do return
-	Meta :: struct { guid: string }
-	meta: Meta
-	if json.unmarshal(meta_bytes, &meta, .JSON, context.temp_allocator) != nil do return
-	id, err := uuid.read(meta.guid)
-	if err != nil do return
-
-	data, derr := os.read_entire_file(path, context.temp_allocator)
-	if derr != nil do return
-	clip: anim.AnimationClip
-	if json.unmarshal(data, &clip, .JSON, context.allocator) != nil do return
-	anim.animation_clip_cache[engine.PPtr{guid = engine.Asset_GUID(id)}] = clip
+	w := engine.ctx_world()
+	hand_x := engine.pool_get(&w.transforms, engine.Handle(hand)).position.x
+	sword_y := engine.pool_get(&w.transforms, engine.Handle(sword)).position.y
+	testing.expectf(t, abs(hand_x - 3) < 0.001, "the body's clip moves the joint down its name path, got %v", hand_x)
+	testing.expectf(t, abs(sword_y - 5) < 0.001, "the same state poses the sword through its own track, got %v", sword_y)
 }
 
 // A viewer asks which graph belongs to an object rather than naming owners.

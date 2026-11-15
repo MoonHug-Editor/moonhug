@@ -1,7 +1,7 @@
 package prefabs_example_tests
 
-// Save and revert invariants over this package's committed prefab chain
-// (../assets): an unchanged save writes no edits, a variant's root override
+// Save and revert invariants over the prefab chain fixture
+// (moonhug/tests/fixtures/prefab_chain): an unchanged save writes no edits, a variant's root override
 // reverts through undo, the asset db links a variant to its base.
 
 import "core:testing"
@@ -17,7 +17,7 @@ import common "moonhug:tests/common"
 // that shipped a phantom added_components entry into blobs.scene.
 @(test)
 test_unchanged_save_invents_no_component_edits :: proc(t: ^testing.T) {
-	ASSETS :: "moonhug/packages/prefabs_example/assets"
+	ASSETS :: "moonhug/tests/fixtures/prefab_chain"
 	engine.asset_db_init(ASSETS)
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
@@ -64,7 +64,7 @@ test_unchanged_save_invents_no_component_edits :: proc(t: ^testing.T) {
 // user removed something — inferring removals that way invented them.
 @(test)
 test_unchanged_save_invents_no_object_edits :: proc(t: ^testing.T) {
-	ASSETS :: "moonhug/packages/prefabs_example/assets"
+	ASSETS :: "moonhug/tests/fixtures/prefab_chain"
 	engine.asset_db_init(ASSETS)
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
@@ -105,7 +105,7 @@ test_unchanged_save_invents_no_object_edits :: proc(t: ^testing.T) {
 // Value_Command with record bookkeeping; both halves have to survive undo.
 @(test)
 test_variant_root_revert_undo_restores_override :: proc(t: ^testing.T) {
-	engine.asset_db_init("moonhug/packages/prefabs_example/assets")
+	engine.asset_db_init("moonhug/tests/fixtures/prefab_chain")
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
 
@@ -121,7 +121,7 @@ test_variant_root_revert_undo_restores_override :: proc(t: ^testing.T) {
 	defer { undo.destroy(u); free(u) }
 
 	loaded := engine.scene_load(
-		"moonhug/packages/prefabs_example/assets/c_Variant.scene")
+		"moonhug/tests/fixtures/prefab_chain/c_Variant.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded
@@ -180,16 +180,16 @@ test_asset_db_records_variant_base_prefab :: proc(t: ^testing.T) {
 	tc_mem := new(common.TestCtx)
 	defer free(tc_mem)
 	common.setup(tc_mem, "moonhug/tests/fixtures/_test_base_guid.scene")
-	engine.asset_db_init("moonhug/packages/prefabs_example/assets")
+	engine.asset_db_init("moonhug/tests/fixtures/prefab_chain")
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
 	context.user_ptr = &tc_mem.uc
 	defer common.teardown(tc_mem)
 
 	// c_Variant inherits from c.scene.
-	var_guid, vok := engine.asset_db_get_guid("moonhug/packages/prefabs_example/assets/c_Variant.scene")
+	var_guid, vok := engine.asset_db_get_guid("moonhug/tests/fixtures/prefab_chain/c_Variant.scene")
 	testing.expect(t, vok, "c_Variant should be in the AssetDB")
-	base_guid, bok := engine.asset_db_get_guid("moonhug/packages/prefabs_example/assets/c.scene")
+	base_guid, bok := engine.asset_db_get_guid("moonhug/tests/fixtures/prefab_chain/c.scene")
 	testing.expect(t, bok, "c.scene should be in the AssetDB")
 	if !vok || !bok do return
 

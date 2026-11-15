@@ -1,15 +1,14 @@
 package prefabs_example_tests
 
-// Invariant tests over this package's OWN committed assets — the editable
-// prefab/variant chain in ../assets (see ../prefabs_example.odin). These are
-// the counterpart to the hermetic fixture tests in moonhug/tests: those pin
-// the MECHANISM with known values, these validate real editor-authored FILES.
-// Edit the scenes freely — expectations are derived from the files, never
-// hardcoded, so a test fails only when an edit removes the structure it
-// exercises (its guard assertion says which).
+// Invariant tests over a prefab/variant chain authored in the editor: a copy
+// of this package's example chain under moonhug/tests/fixtures/prefab_chain,
+// with its own guids. The example in ../assets is free to change: tests read
+// only the copy. Expectations are derived from the files, never hardcoded, so
+// a test fails only when the copy loses the structure it exercises (its guard
+// assertion says which).
 //
 // Tests that MUTATE files first copy the chain into a temp dir. Read-only
-// tests run directly on the committed assets.
+// tests run directly on the fixture.
 
 import "core:fmt"
 import "core:encoding/json"
@@ -20,9 +19,9 @@ import "moonhug:packages/engine"
 import sprites "moonhug:packages/sprites"
 import common "moonhug:tests/common"
 
-ASSETS :: "moonhug/packages/prefabs_example/assets"
+ASSETS :: "moonhug/tests/fixtures/prefab_chain"
 
-// Every .scene under assets/ — a scene added in the editor joins the
+// Every .scene in the fixture chain: a scene added there joins the
 // glob-driven tests without touching test code.
 @(private = "file")
 _scene_paths :: proc(dir := ASSETS) -> []string {
@@ -163,7 +162,7 @@ test_prefabs_example_no_spurious_overrides :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 
-	// Saves land OUTSIDE assets/ so the committed files stay untouched.
+	// Saves land outside the fixture so its files stay untouched.
 	tmp := "moonhug/packages/prefabs_example/tests/_tmp_save.scene"
 	defer os.remove(tmp)
 

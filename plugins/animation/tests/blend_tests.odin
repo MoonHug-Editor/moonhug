@@ -4,16 +4,11 @@ package animation_tests
 // entry tree, the 1D weight rule, and the shared phase that keeps children of
 // different lengths in step.
 
-import "base:runtime"
-import "core:encoding/json"
-import "core:encoding/uuid"
-import "core:os"
 import "core:strings"
 import "core:testing"
 import "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
 import common "moonhug:tests/common"
-import cgltf "vendor:cgltf"
 
 // A layer holding one blend with `children` clips placed at 0, 1, 2... on the axis.
 @(private = "file")
@@ -266,94 +261,6 @@ test_entry_tree_round_trips :: proc(t: ^testing.T) {
 	if is_clip do testing.expect_value(t, c.clip, engine.PPtr{guid = run})
 }
 
-// The shipped sample scene is hand-generated JSON, and its entry tree carries
-// hand-written union tags. Loading it here catches a wrong guid or a renamed
-// field at test time rather than when someone opens the scene and finds every
-// state turned into an empty clip.
-@(test)
-test_animation_demo_scene_loads :: proc(t: ^testing.T) {
-	tc := new(common.TestCtx)
-	defer free(tc)
-	common.setup(tc)
-	context.user_ptr = &tc.uc
-	defer common.teardown(tc)
-	anim.animation_clip_cache_init()
-	// The cache entries are default-allocator memory (animation_clip_preview),
-	// so the shutdown frees them with that allocator, not the test's tracking one.
-	defer {
-		context.allocator = runtime.default_allocator()
-		anim.animation_clip_cache_shutdown()
-	}
-
-	// The test asset DB does not scan the model's plugin, so the blend's clips
-	// would never load and the posing assertion below would pass on a blend
-	// that poses nothing.
-	_load_model_clips(t, "plugins/essentials/assets/meshes/characters/UAL1_Standard.glb", {"Walk_Loop", "Jog_Fwd_Loop", "Idle_Loop"})
-
-	PATH :: "plugins/animation/samples/animation_sample/assets/animation_demo.scene"
-	s := engine.scene_load(PATH)
-	testing.expect(t, s != nil, "the sample scene parses and loads")
-	if s == nil do return
-	tc.scene = s
-
-	root := engine.Transform_Handle(s.root.handle)
-	char := _find_child_named(tc, root, "UAL1")
-	testing.expect(t, char != {}, "the character is in the scene")
-	if char == {} do return
-	_, a := engine.transform_get_comp(char, anim.Animation)
-	testing.expect(t, a != nil, "the character carries an Animation")
-	if a == nil do return
-
-	testing.expect_value(t, len(a.layers), 1)
-	if len(a.layers) != 1 do return
-
-	blend_id, blend_ok := anim.animation_find(a, "Locomotion")
-	testing.expect(t, blend_ok, "the walk/run blend resolves by name")
-	if !blend_ok do return
-	e := anim.animation_entry(a, blend_id)
-	testing.expect(t, e != nil, "the blend entry is there")
-	if e == nil do return
-	_, is_blend := e.kind.(anim.Animation_Entry_Blend1D)
-	testing.expect(t, is_blend, "it survived as a blend, not the zero variant")
-
-	children := 0
-	for &entry in a.layers[0].entries {
-		if entry.parent == blend_id do children += 1
-	}
-	testing.expect_value(t, children, 2)
-
-	_, idle_ok := anim.animation_find(a, "Idle")
-	_, jump_ok := anim.animation_find(a, "Jump")
-	_, death_ok := anim.animation_find(a, "Death")
-	testing.expect(t, idle_ok && jump_ok && death_ok, "the single-clip states resolve too")
-
-	// End to end: playing the blend poses a joint several levels down the name
-	// path, which is the thing a bad clip target or a broken entry would break.
-	a.enabled = true
-	a.started = true
-	arm := _find_child_named(tc, char, "upperarm_l")
-	testing.expect(t, arm != {}, "the armature is intact")
-	if arm == {} do return
-	before := engine.pool_get(&tc.world.transforms, engine.Handle(arm)).rotation
-
-	anim.animation_play_entry(a, blend_id)
-	anim.animation_tick(0.2)
-	after := engine.pool_get(&tc.world.transforms, engine.Handle(arm)).rotation
-	testing.expectf(t, before != after, "the blend poses the rig, rotation stayed %v", after)
-}
-
-// Depth-first by name, since a scene has no by-name lookup.
-@(private = "file")
-_find_child_named :: proc(tc: ^common.TestCtx, h: engine.Transform_Handle, name: string) -> engine.Transform_Handle {
-	t := engine.pool_get(&tc.world.transforms, engine.Handle(h))
-	if t == nil do return {}
-	if t.name == name do return h
-	for ch in t.children {
-		if got := _find_child_named(tc, engine.Transform_Handle(ch.handle), name); got != {} do return got
-	}
-	return {}
-}
-
 // One builder for every reader of the tree. The Playable Graph window and the
 // scrub preview used to build their own copies of this shape, and the preview's
 // never learned about blends — so what the window showed while scrubbing was not
@@ -533,48 +440,4 @@ test_clip_cycle_offset_shifts_a_loop :: proc(t: ^testing.T) {
 	anim.animation_clip_apply_settings(&once, {wrap = .Once, cycle_offset = 0.25})
 	testing.expectf(t, abs(anim.animation_clip_sample_time(&once, 0)) < 0.001,
 		"Once ignores the offset, got %v", anim.animation_clip_sample_time(&once, 0))
-}
-
-// Bakes the named clips of the model at `path` from its .glb into the clip
-// cache, under {the model's guid, the clip's id}: the reference a scene holds.
-// The cache owns its entries, so each clip goes in as a default-allocator deep
-// copy (animation_clip_preview). A model that does not load, or a requested
-// clip missing from the .glb or its .meta, fails the test.
-@(private = "file")
-_load_model_clips :: proc(t: ^testing.T, path: string, names: []string) {
-	Meta_Clip :: struct {
-		id:   engine.Local_ID,
-		name: string,
-	}
-	Meta :: struct {
-		guid:     string,
-		settings: struct {
-			clips: []Meta_Clip,
-		},
-	}
-	meta_bytes, merr := os.read_entire_file(strings.concatenate({path, ".meta"}, context.temp_allocator), context.temp_allocator)
-	if !testing.expectf(t, merr == nil, "%s.meta reads: %v", path, merr) do return
-	meta: Meta
-	jerr := json.unmarshal(meta_bytes, &meta, .JSON, context.temp_allocator)
-	if !testing.expectf(t, jerr == nil, "%s.meta parses: %v", path, jerr) do return
-	id, err := uuid.read(meta.guid)
-	if !testing.expectf(t, err == nil, "%s.meta has a guid: %q", path, meta.guid) do return
-	path_c := strings.clone_to_cstring(path, context.temp_allocator)
-	data, res := cgltf.parse_file({}, path_c)
-	if !testing.expectf(t, res == .success, "%s parses: %v", path, res) do return
-	defer cgltf.free(data)
-	lres := cgltf.load_buffers({}, data, path_c)
-	if !testing.expectf(t, lres == .success, "%s buffers load: %v", path, lres) do return
-	for name in names {
-		found := false
-		for &an in data.animations do if string(an.name) == name {
-			for c in meta.settings.clips do if c.name == name {
-				clip, ok := anim.animation_clip_from_gltf(data, &an)
-				if !testing.expectf(t, ok, "clip %q converts", name) do continue
-				anim.animation_clip_preview(engine.PPtr{guid = engine.Asset_GUID(id), local_id = c.id}, clip)
-				found = true
-			}
-		}
-		testing.expectf(t, found, "clip %q is in %s and its .meta", name, path)
-	}
 }
