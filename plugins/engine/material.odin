@@ -53,7 +53,8 @@ Material_Texture :: struct {
 	texture: PPtr `ext:"png,jpg,jpeg,bmp"`,
 }
 
-@(typ_guid={guid = "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4", menu_assets_create = {menu_name = "Material", file_name = "New Material.mat", order = -6}})
+@(typ_guid={guid = "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4"})
+@(asset={menu = "Material", file = "New Material.mat", order = -6})
 Material :: struct {
 	shader:        Material_Shader,
 	custom_shader: PPtr `ext:"glsl,shadergraph"`, // user .glsl or .shadergraph asset; overrides `shader` when set

@@ -25,7 +25,8 @@ LAYER_DOMAIN :: "physics2d"
 // unused layer. `rows`: bit j of rows[i] set means a collider on layer i and
 // a collider on layer j collide, kept symmetric by the inspector. A new asset
 // names layer 0 "Default" and lets every pair collide.
-@(typ_guid={guid = "0461355a-7f74-4cc5-b77d-90c32307761f", menu_assets_create = {menu_name = "Physics 2D Layers", file_name = "Physics2DLayers.asset", order = -3}})
+@(typ_guid={guid = "0461355a-7f74-4cc5-b77d-90c32307761f"})
+@(asset={menu = "Physics 2D Layers", file = "Physics2DLayers.asset", order = -3})
 Physics2D_Layers :: struct {
 	names: [engine.LAYER_COUNT]string,
 	rows:  [engine.LAYER_COUNT]u32 `decor:collision_matrix(names="names")`,

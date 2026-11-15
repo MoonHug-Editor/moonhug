@@ -28,7 +28,8 @@ Material_Combine2D :: enum u8 {
 	Maximum,  // box2d's own restitution mix
 }
 
-@(typ_guid={guid = "e493fc86-9dc9-4b0d-9636-db8c304f435a", menu_assets_create = {menu_name = "Physics Material 2D", file_name = "PhysicsMaterial2D.asset", order = -2}})
+@(typ_guid={guid = "e493fc86-9dc9-4b0d-9636-db8c304f435a"})
+@(asset={menu = "Physics Material 2D", file = "PhysicsMaterial2D.asset", order = -2})
 PhysicsMaterial2D :: struct {
 	// How much a contact resists sliding, from 0 (ice) up.
 	friction:         f32 `decor:min(0)`,

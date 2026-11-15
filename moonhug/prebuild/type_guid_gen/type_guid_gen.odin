@@ -36,13 +36,13 @@ TypeGuid_GenComp :: struct {
 	has_reset:        bool,
 	has_cleanup:      bool,
 	has_on_validate:  bool,
-	// `no_embed = true` in menu_assets_create: no field holds an asset of
+	// `no_embed = true` in @(asset): no field holds an asset of
 	// the type as its own (the picker's Embed action is off for it).
 	no_embed:  bool,
 	create_file_name: string,
 	create_menu_name: string,
 	create_order:     int,
-	// Where the nested menu_assets_create was declared, rendered by
+	// Where the @(asset) was declared, rendered by
 	// gen_facts.attr_origin. Emitted into the Assets/Create menu registration
 	// and shown in the item's tooltip with debug tooltips on.
 	create_origin:    string,
@@ -101,12 +101,12 @@ _has_typ_guid_attr :: proc(attr_set: ^gen_facts.Attrs_GenComp, decl: ^db.DeclInf
 	makeProcName = args.fields["makeProcName"]
 
 	create = {}
-	if menu, menu_ok := gen_facts.attr_nested(args, "menu_assets_create"); menu_ok {
+	if asset, asset_ok := gen_facts.attr_find(attr_set, "asset"); asset_ok {
 		has_create_menu = true
-		create.file_name = menu.fields["file_name"]
-		create.menu_name = menu.fields["menu_name"]
-		create.order = gen_facts.attr_int(menu, "order")
-		create.origin = gen_facts.attr_origin(menu, gen_facts.decl_rel_path(decl), decl.decl.pos.line, decl.name)
+		create.file_name = asset.fields["file"]
+		create.menu_name = asset.fields["menu"]
+		create.order = gen_facts.attr_int(asset, "order")
+		create.origin = gen_facts.attr_origin(asset, gen_facts.decl_rel_path(decl), decl.decl.pos.line, decl.name)
 	}
 	return guid, makeProcName, create, has_create_menu, guid != ""
 }
@@ -142,6 +142,10 @@ provide :: proc(w: ^db.World) -> bool {
 		type_name := decl.name
 		if type_name != "" && db.has(structs, entity) && !strings.has_suffix(decl.pkg_path, "/editor") {
 			guid, make_proc, create, has_create_menu, found := _has_typ_guid_attr(attr_set, decl)
+			if _, is_asset := gen_facts.attr_find(attr_set, "asset"); is_asset && !found {
+				fmt.eprintf("type_guid_gen: %s.%s: @(asset) needs @(typ_guid) on the type, its identity in files\n", pkg_name, type_name)
+				return false
+			}
 			if found {
 				if make_proc != "" {
 					fmt.eprintf("type_guid_gen: %s.%s: makeProcName is gone, write type_reset_%s next to the type for its defaults (plugins/engine/docs/Components.md)\n", pkg_name, type_name, type_name)
@@ -161,9 +165,7 @@ provide :: proc(w: ^db.World) -> bool {
 					has_cleanup     = gen_core.FileHasProc(decl.file, cleanup_name),
 					has_on_validate = gen_core.FileHasProc(decl.file, on_validate_name),
 				}
-				if targs, has_targs := gen_facts.attr_find(attr_set, "typ_guid"); has_targs {
-					if create_args, has_create := gen_facts.attr_nested(targs, "menu_assets_create"); has_create do tag.no_embed = create_args.fields["no_embed"] == "true"
-				}
+				if asset, has_asset := gen_facts.attr_find(attr_set, "asset"); has_asset do tag.no_embed = asset.fields["no_embed"] == "true"
 				delete(reset_name)
 				delete(cleanup_name)
 				delete(on_validate_name)

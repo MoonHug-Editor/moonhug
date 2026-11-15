@@ -22,7 +22,8 @@ import "core:strings"
 import "moonhug:libs/log"
 
 // The names of the 32 groups. An empty name is an unused group.
-@(typ_guid={guid = "9d4c2b7e-1a53-4f8e-b6d0-3e7a5c91f2b4", menu_assets_create = {menu_name = "Group Names", file_name = "GroupNames.asset", order = -3}})
+@(typ_guid={guid = "9d4c2b7e-1a53-4f8e-b6d0-3e7a5c91f2b4"})
+@(asset={menu = "Group Names", file = "GroupNames.asset", order = -3})
 Group_Names :: struct {
 	names: [LAYER_COUNT]string `decor:layer_names(builtin="")`,
 }

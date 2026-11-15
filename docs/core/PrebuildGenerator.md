@@ -232,8 +232,6 @@ if a, ok := gen_facts.attr_find(attrs, "component"); ok {
 }
 // enum-variant fields: @(phase={key=app.Phase.Init}) -> "Init"
 key := gen_facts.attr_keyname(a, "key")
-// nested literals: @(typ_guid={menu_assets_create={menu_name=...}})
-if menu, ok := gen_facts.attr_nested(a, "menu_assets_create"); ok { … }
 ```
 
 `gen_facts` stays agnostic of what any attribute *means*: it flattens every `@(...)` to

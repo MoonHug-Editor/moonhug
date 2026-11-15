@@ -24,7 +24,8 @@ Material_Combine :: enum u8 {
 	Maximum,
 }
 
-@(typ_guid={guid = "2f42e801-bc46-42c0-ba13-d3d8c3e2a2c6", menu_assets_create = {menu_name = "Physics Material", file_name = "PhysicsMaterial.asset", order = -2}})
+@(typ_guid={guid = "2f42e801-bc46-42c0-ba13-d3d8c3e2a2c6"})
+@(asset={menu = "Physics Material", file = "PhysicsMaterial.asset", order = -2})
 PhysicsMaterial :: struct {
 	// How much a contact resists sliding, from 0 (ice) up.
 	friction:         f32 `decor:min(0)`,

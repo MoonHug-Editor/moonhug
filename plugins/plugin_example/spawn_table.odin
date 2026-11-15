@@ -12,7 +12,8 @@ package plugin_example
 
 import "core:strings"
 
-@(typ_guid={guid = "1eee5162-8b62-47c7-8273-ab82d1504a39", menu_assets_create = {menu_name = "PluginExample/Spawn Table", file_name = "SpawnTable.asset"}})
+@(typ_guid={guid = "1eee5162-8b62-47c7-8273-ab82d1504a39"})
+@(asset={menu = "PluginExample/Spawn Table", file = "SpawnTable.asset"})
 Spawn_Table :: struct {
 	// The sum of the weights, for spawn_table_pick. Never saved: rebuilt on
 	// load and after every edit, shown greyed out in the inspector, with the

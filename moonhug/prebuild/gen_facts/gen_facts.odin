@@ -145,13 +145,6 @@ attr_key_index :: proc(attribute, key: string) -> (index: int, descending: bool)
 	return len(keys), false
 }
 
-// attr_nested returns a nested compound-literal member of an attribute
-// (e.g. typ_guid's "menu_assets_create"), if present.
-attr_nested :: proc(args: Attr_Args, key: string) -> (Attr_Args, bool) {
-	n, ok := args.nested[key]
-	return n, ok
-}
-
 // attr_keyname reads a field as an enum-variant name: the last dotted segment,
 // reproducing gen_core.ExtractKeyName (e.g. "app.Phase.Init" -> "Init").
 attr_keyname :: proc(args: Attr_Args, field: string) -> string {

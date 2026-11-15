@@ -67,7 +67,8 @@ Pipeline_Slot :: struct {
 	name: string,
 }
 
-@(typ_guid={guid = "6b1f3c2e-7d4a-4e85-9c0b-2a5f8d1e4c73", menu_assets_create = {menu_name = "Render Pipeline", file_name = "New Render Pipeline.renderpipeline", order = -4}})
+@(typ_guid={guid = "6b1f3c2e-7d4a-4e85-9c0b-2a5f8d1e4c73"})
+@(asset={menu = "Render Pipeline", file = "New Render Pipeline.renderpipeline", order = -4})
 Render_Pipeline :: struct {
 	slots:   [dynamic]Pipeline_Slot,
 	steps:   [dynamic]Pipeline_Entry,

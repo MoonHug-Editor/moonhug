@@ -97,5 +97,5 @@ A reference is a `PPtr`, a file's guid and a local id:
 - In memory an embedded field holds `PPtr{core.EMBEDDED_ASSETS, id}` with a session id, and its data is a record in the same table. So loaders, documents and the foldout work for it as for a sub-asset. Records live until the editor or game exits.
 - The inspector remembers what holds each embedded asset, from where it is made and where its foldout is drawn (`inspector.embedded_holder_set`). An edit marks that holder edited, not the active scene.
 - An undo snapshot and the Play snapshot write an embedded asset with its id (`serialization.pptr_embedded_ids`), so reading the snapshot back gives the field the same embedded asset. A file, a copy and a multi-edit never write the id, so two fields never share one.
-- `no_embed = true` in an asset type's `menu_assets_create` keeps the embedded rows off every field for that type.
+- `no_embed = true` in an asset type's `@(asset)` keeps the embedded rows off every field for that type.
 - The Project window rows, the picker rows and the documents come from a provider per file type: see [Plugins](Plugins.md), sub-asset providers. The scene file's provider is `plugins/engine/editor/drawers/scene_sub_assets.odin`.

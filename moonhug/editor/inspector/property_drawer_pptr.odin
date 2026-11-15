@@ -76,7 +76,7 @@ property_drawer_PPtr :: proc(ctx: ^Ctx) {
 //
 //   - "New <Type> (embedded)" and "Copy (embedded)": an embedded asset,
 //     written inside the field (core.EMBEDDED_ASSETS). Nothing else can use
-//     it. Not for a type that opts out (`no_embed` in its menu_assets_create).
+//     it. Not for a type that opts out (`no_embed` in its @(asset)).
 //     The change is the field's value, so the row's own edit records it
 //   - "New <Type> (sub-asset)" and "Copy (sub-asset)": a sub-asset of the file
 //     in scope (sub_asset_scope), where that file takes one

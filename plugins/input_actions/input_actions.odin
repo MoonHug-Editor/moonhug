@@ -24,7 +24,8 @@ import "moonhug:libs/assets"
 import "moonhug:libs/core"
 
 // The asset: action maps with their actions and bindings.
-@(typ_guid={guid = "c2f1a9e4-5b7d-4e83-9a06-1f4d8c2b7e65", menu_assets_create = {menu_name = "Input Actions", file_name = "InputActions.asset"}})
+@(typ_guid={guid = "c2f1a9e4-5b7d-4e83-9a06-1f4d8c2b7e65"})
+@(asset={menu = "Input Actions", file = "InputActions.asset"})
 Input_Actions :: struct {
 	contexts: [dynamic]Mapping_Context,
 }

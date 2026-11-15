@@ -128,7 +128,6 @@ generate :: proc(w: ^db.World) -> bool {
 				continue
 			}
 			for k in args.fields do _check_field(d, k, decl.name, where_, &errors)
-			for k in args.nested do _check_field(d, k, decl.name, where_, &errors)
 			origin := gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, decl.name)
 			parts := strings.split(origin, "  ", context.temp_allocator)
 			append(&d.uses, Use{name = decl.name, pkg = decl.pkg.name, where_ = where_, attr = parts[0], summary = _doc_summary(decl), order = gen_facts.attr_int(args, "order"), key = gen_facts.attr_keyname(args, "key")})

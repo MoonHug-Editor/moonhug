@@ -69,7 +69,8 @@ Graph_Link :: struct {
 @(typ_guid={guid="b8ce42c4-ab2f-4777-953f-7f798906ebff"})
 Shader_Graph_Settings :: struct {}
 
-@(typ_guid={guid = "63d79718-e863-4004-a6e3-d8e372be9476", menu_assets_create = {menu_name = "Shader Graph", file_name = "New Shader Graph.shadergraph", order = -5}})
+@(typ_guid={guid = "63d79718-e863-4004-a6e3-d8e372be9476"})
+@(asset={menu = "Shader Graph", file = "New Shader Graph.shadergraph", order = -5})
 Shader_Graph :: struct {
 	properties: [dynamic]Graph_Property,
 	nodes:      [dynamic]Graph_Node,

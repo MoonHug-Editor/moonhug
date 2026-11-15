@@ -22,7 +22,8 @@ import "moonhug:libs/log"
 // The names of the 32 render layers. An empty name is an unused layer.
 // Layers 0 ("Default") and 31 ("Editor") are built in: the inspector shows
 // their names fixed, and the picker does not list layer 31.
-@(typ_guid={guid = "61bc7a2f-3326-4f13-b233-7bccf12f709e", menu_assets_create = {menu_name = "Render Layers", file_name = "RenderLayers.asset", order = -3}})
+@(typ_guid={guid = "61bc7a2f-3326-4f13-b233-7bccf12f709e"})
+@(asset={menu = "Render Layers", file = "RenderLayers.asset", order = -3})
 Render_Layers :: struct {
 	names: [LAYER_COUNT]string `decor:layer_names(builtin="0,31")`,
 }

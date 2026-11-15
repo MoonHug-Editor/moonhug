@@ -25,7 +25,8 @@ Noise_Kind :: enum u8 {
 	Cellular, // cells: stones, scales, bubbles
 }
 
-@(typ_guid={guid = "2eb41971-9bc0-4aac-83e0-b274fdff8f0f", menu_assets_create = {menu_name = "Noise Map", file_name = "New Noise Map.noise", order = -5}})
+@(typ_guid={guid = "2eb41971-9bc0-4aac-83e0-b274fdff8f0f"})
+@(asset={menu = "Noise Map", file = "New Noise Map.noise", order = -5})
 NoiseMap :: struct {
 	kind:       Noise_Kind,
 	// The texture's width and height in pixels.

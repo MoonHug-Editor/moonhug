@@ -183,8 +183,7 @@ unique_name :: proc(guid: core.Asset_GUID, base: string) -> string {
 
 // --- Asset types the user creates ----------------------------------------------
 
-// An asset type with `menu_assets_create` on its @(typ_guid): Assets > Create
-// makes a file of it, and a reference field that takes its kind makes a
+// An asset type, one with @(asset): Assets > Create makes a file of it, and a reference field that takes its kind makes a
 // sub-asset or an embedded asset of it, when the kind can live inside
 // another file (can_live_inside).
 Creatable :: struct {
@@ -196,8 +195,20 @@ Creatable :: struct {
 @(private)
 _creatables: [dynamic]Creatable
 
-// Called for each type by the generated register_create_asset_menus.
+// Makes a type an asset type: Assets > Create makes a file of it, and a
+// reference field of its kind can hold one. The type also carries
+// @(typ_guid), its identity in files.
+//
+// `menu` is its path under Assets > Create, the type's name when left out.
+// `file` is the name a new file gets ("New Material.mat"), whose extension is
+// the asset's kind, `<Type>.asset` when left out. `order` places the menu
+// entry. `no_embed = true` says no field holds an asset of the type as its
+// own: it stays a file or a sub-asset, for a type that has to be shared or is
+// too heavy to copy into every user.
+//
+// Called for each asset type by the generated register_create_asset_menus.
 // `file_name` is the name Assets > Create gives a new file of the type.
+@(extension_point={attribute="asset", target="type", fields="menu file order no_embed"})
 creatable_register :: proc(file_name, title: string, type_key: core.TypeKey) {
 	// Registry state never borrows the caller's allocator.
 	context.allocator = runtime.default_allocator()

@@ -140,7 +140,8 @@ animation_channel_is_property :: proc(ch: ^Animation_Channel) -> bool {
 	return len(ch.component) > 0
 }
 
-@(typ_guid={guid = "0a4f3b1c-8e57-4c2d-9b6a-5d1e7f2c8a90", menu_assets_create = {menu_name = "Animation", file_name = "New Animation.anim", order = -5}})
+@(typ_guid={guid = "0a4f3b1c-8e57-4c2d-9b6a-5d1e7f2c8a90"})
+@(asset={menu = "Animation", file = "New Animation.anim", order = -5})
 AnimationClip :: struct {
 	length:   f32, // seconds; set from the last keyframe at import
 	// Baked from the .meta's Animation_Clip_Settings at import — authored

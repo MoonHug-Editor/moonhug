@@ -283,16 +283,13 @@ Struct_Field :: struct {
 
 // Attr_Args is one @(...) attribute element, flattened to plain data. `key` is
 // the attribute name ("component", "menu_item", …); `fields` holds its compound-
-// literal members rendered via RenderValue; `nested` holds members that are
-// themselves compound literals (e.g. typ_guid's menu_assets_create={...}), one
-// level deep. A bare attribute like @(poolable) yields {key="poolable"} — present,
+// literal members rendered via RenderValue. A bare attribute like @(poolable) yields {key="poolable"} — present,
 // empty. If a same-package string-constant map is supplied to DeclAttrs, a field
 // whose value is a bare identifier matching a constant is resolved to that
 // constant's value (reproducing the old ResolveString).
 Attr_Args :: struct {
 	key:    string,
 	fields: map[string]string,
-	nested: map[string]Attr_Args,
 }
 
 // RenderValue renders an expression to the canonical string the old extractors
@@ -383,17 +380,7 @@ DeclAttrs :: proc(v_decl: ^ast.Value_Decl, constants: ^map[string]string = nil) 
 				for sub in comp.elems {
 					k, v, kv_ok := AttrElemKeyValue(sub)
 					if !kv_ok do continue
-					if subcomp, sub_ok := v.derived.(^ast.Comp_Lit); sub_ok {
-						// one-level-deep nested literal (e.g. menu_assets_create={...})
-						nested := Attr_Args{key = k}
-						for n in subcomp.elems {
-							nk, nv, nok := AttrElemKeyValue(n)
-							if nok do nested.fields[nk] = _render_resolved(nv, constants)
-						}
-						args.nested[k] = nested
-					} else {
-						args.fields[k] = _render_resolved(v, constants)
-					}
+					args.fields[k] = _render_resolved(v, constants)
 				}
 			} else {
 				// scalar value form: @(key=value) — store under "".
