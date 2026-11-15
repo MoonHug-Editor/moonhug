@@ -227,7 +227,7 @@ _State :: struct {
 _blackboard_init :: proc "contextless" () {
 	context = runtime.default_context()
 	_states = make(map[rawptr]^_State, runtime.default_allocator())
-	slots.scope_install({dict_of = _dict_of, entries_of = _entries_of, label_of = _label_of})
+	slots.scope_install({dict_of = _dict_of, entries_of = _entries_of, origin_of = _origin_of})
 }
 
 @(private)
@@ -359,14 +359,14 @@ _entries_of :: proc(owner: core.Transform_Handle, T: typeid) -> []slots.Scope_En
 }
 
 @(private)
-_label_of :: proc(owner: core.Transform_Handle, slot: slots.Slot) -> (name, from: string, ok: bool) {
+_origin_of :: proc(owner: core.Transform_Handle, slot: slots.Slot) -> (slots.Origin, bool) {
 	w := engine.ctx_world()
 	b := nearest(owner)
 	for depth := 0; w != nil && b != nil && depth < 256; depth += 1 {
 		t := engine.pool_get(&w.transforms, engine.Handle(b.owner))
 		if t == nil do break
-		for &e in b.entries do if entry_key(&e) == slot do return e.name, t.name, true
+		for &e in b.entries do if entry_key(&e) == slot do return {name = e.name, from = t.name, holder = b.owner}, true
 		b = nearest(engine.Transform_Handle(t.parent.handle))
 	}
-	return "", "", false
+	return {}, false
 }

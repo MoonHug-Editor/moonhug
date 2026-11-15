@@ -63,6 +63,7 @@ slot_row_begin :: proc(row: ^Slot_Row) {
 	row.column_x = field_column_screen_x()
 	_value_tid = row.value_tid
 	_column_x = row.column_x
+	_origin = {}
 }
 
 // Where the row's value column starts, for property_drawer_Slot.
@@ -73,6 +74,16 @@ _column_x: f32
 // the type a connected slot's value is shown as.
 @(private = "file")
 _value_tid: typeid
+
+// Where the row's drawer put the origin text, drawn with its button by
+// slot_row_link: a button inside the row's group would need an item after it.
+@(private = "file")
+_origin: struct {
+	pos:    im.Vec2,
+	right:  f32,
+	text:   cstring,
+	holder: core.Transform_Handle,
+}
 
 // What the link's popup offers, for the drawer field_edit_row calls.
 @(private = "file")
@@ -94,6 +105,10 @@ slot_row_link :: proc(row: ^Slot_Row, offset: uintptr) {
 		y = im.GetItemRectMin().y + (h - size) * 0.5
 	}
 	_link_size = size
+	if _origin.text != nil {
+		_origin_link(_origin.pos, _origin.right, _origin.text, _origin.holder)
+		_origin = {}
+	}
 	im.SetCursorScreenPos({row.column_x - size - im.GetStyle().ItemInnerSpacing.x, y})
 
 	_value_tid = nil
@@ -111,7 +126,7 @@ _draw_link :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	row := _link
 	connected := slot^ != slots.INLINE
 	owner := _owner_object()
-	tip := connected ? fmt.ctprintf("Takes its value from %s. Click to change", _origin_text(owner, slot^)) : cstring("Takes the value set here. Click to take it from an entry")
+	tip := connected ? strings.clone_to_cstring(_origin_text(slots.origin(owner, slot^)), context.temp_allocator) : cstring("Takes the value set here. Click to take it from an entry")
 	if widgets.icon_button(icons.ICON_MD_LINK, "##slot_link", tip, active = connected, size = _link_size) do im.OpenPopup("##slot_sources")
 	if !im.BeginPopup("##slot_sources") do return
 	defer im.EndPopup()
@@ -165,28 +180,46 @@ _owner_object :: proc() -> core.Transform_Handle {
 // Blackboard holds the entry and the entry's name as it is now, or the
 // entry's name alone when nothing says where it is.
 @(private = "file")
-_origin_text :: proc(owner: core.Transform_Handle, slot: slots.Slot) -> string {
-	name, from := slots.origin(owner, slot)
-	if from == "" do return fmt.tprintf("%s (not set)", name)
-	return fmt.tprintf("%s: %s", from, name)
+_origin_text :: proc(o: slots.Origin) -> string {
+	if o.from == "" do return fmt.tprintf("%s (not set)", o.name)
+	return fmt.tprintf("%s: %s", o.from, o.name)
 }
 
 // The origin in the label column of the row that starts at `start`:
 // right-aligned against the link button, pushed right by a label that
 // reaches it, and cut at the button.
 @(private = "file")
-_origin_in_label :: proc(start: im.Vec2, label: cstring, origin: string) {
+_origin_in_label :: proc(start: im.Vec2, label: cstring, o: slots.Origin) {
 	if _column_x <= 0 do return
 	style := im.GetStyle()
-	text := strings.clone_to_cstring(origin, context.temp_allocator)
+	text := strings.clone_to_cstring(_origin_text(o), context.temp_allocator)
 	right := _column_x - im.GetFrameHeight() - style.ItemInnerSpacing.x * 2
 	label_end := start.x + im.CalcTextSize(label, nil, true).x + style.ItemInnerSpacing.x * 2
 	x := max(label_end, right - im.CalcTextSize(text).x)
 	if x >= right do return
-	y := start.y + (im.GetFrameHeight() - im.GetTextLineHeight()) * 0.5
+	_origin = {{x, start.y}, right, text, o.holder}
+}
+
+// The origin text at `pos`, one frame high and cut at `right`. When an
+// object holds the entry, the text is a button: a click pings that object in
+// the Hierarchy, a double click selects it. A cut text shows in full in its tooltip.
+// Moves the cursor: slot_row_link puts it back.
+@(private = "file")
+_origin_link :: proc(pos: im.Vec2, right: f32, text: cstring, holder: core.Transform_Handle) {
+	h := im.GetFrameHeight()
+	hovered := false
+	if holder != {} {
+		im.SetCursorScreenPos(pos)
+		if im.InvisibleButton("##slot_origin", {right - pos.x, h}) do core.inspector_request_ping(holder)
+		hovered = im.IsItemHovered()
+		if hovered && im.IsMouseDoubleClicked(.Left) do core.inspector_request_select(holder)
+		if hovered do im.SetMouseCursor(.Hand)
+		if pos.x + im.CalcTextSize(text).x > right do widgets.tooltip(text)
+	}
+	y := pos.y + (h - im.GetTextLineHeight()) * 0.5
 	dl := im.GetWindowDrawList()
-	im.DrawList_PushClipRect(dl, {x, start.y}, {right, start.y + im.GetFrameHeight()}, true)
-	im.DrawList_AddText(dl, {x, y}, im.GetColorU32(.TextDisabled), text)
+	im.DrawList_PushClipRect(dl, pos, {right, pos.y + h}, true)
+	im.DrawList_AddText(dl, {pos.x, y}, im.GetColorU32(hovered ? im.Col.Text : im.Col.TextDisabled), text)
 	im.DrawList_PopClipRect(dl)
 }
 
@@ -207,7 +240,7 @@ property_drawer_Slot :: proc(ctx: ^Ctx) {
 		return
 	}
 	owner := _owner_object()
-	origin := _origin_text(owner, slot)
+	origin := slots.origin(owner, slot)
 	if T := _value_tid; T != nil && type_info_of(T).size <= slots.MAX_VALUE_SIZE {
 		value: [slots.MAX_VALUE_SIZE]u8
 		if slots.lookup_raw(slot, T, slots.scope_of(owner), &value[0]) {
@@ -219,7 +252,10 @@ property_drawer_Slot :: proc(ctx: ^Ctx) {
 			return
 		}
 	}
+	// No value to show: the origin takes the value column.
 	field_row(ctx.label)
-	im.AlignTextToFramePadding()
-	im.TextDisabled(strings.clone_to_cstring(origin, context.temp_allocator))
+	pos := im.GetCursorScreenPos()
+	right := pos.x + max(im.GetContentRegionAvail().x, 1)
+	im.Dummy({right - pos.x, im.GetFrameHeight()})
+	_origin = {pos, right, strings.clone_to_cstring(_origin_text(origin), context.temp_allocator), origin.holder}
 }

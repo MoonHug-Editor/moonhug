@@ -5,371 +5,165 @@
       "local_id": 1,
       "name": "SubAssetsDemo",
       "is_active": true,
-      "position": [
-        0,
-        0,
-        0
-      ],
-      "rotation": [
-        0,
-        0,
-        0,
-        1
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ],
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [1.0, 1.0, 1.0],
       "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 0,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
+      "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}},
       "children": [
-        {
-          "pptr": {
-            "local_id": 11,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 13,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 15,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 17,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 20,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 23,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 26,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 29,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        }
+        {"pptr": {"local_id": 11, "guid": "00000000-0000-0000-0000-000000000000"}},
+        {"pptr": {"local_id": 13, "guid": "00000000-0000-0000-0000-000000000000"}},
+        {"pptr": {"local_id": 15, "guid": "00000000-0000-0000-0000-000000000000"}},
+        {"pptr": {"local_id": 17, "guid": "00000000-0000-0000-0000-000000000000"}},
+        {"pptr": {"local_id": 20, "guid": "00000000-0000-0000-0000-000000000000"}},
+        {"pptr": {"local_id": 23, "guid": "00000000-0000-0000-0000-000000000000"}},
+        {"pptr": {"local_id": 26, "guid": "00000000-0000-0000-0000-000000000000"}},
+        {"pptr": {"local_id": 29, "guid": "00000000-0000-0000-0000-000000000000"}}
       ],
-      "components": []
+      "components": [
+
+      ]
     },
     {
       "local_id": 11,
       "name": "Camera",
       "is_active": true,
-      "position": [
-        0.0,
-        2.6,
-        9.0
-      ],
-      "rotation": [
-        -0.10452846,
-        0.0,
-        0.0,
-        0.99452192
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
+      "position": [0.0, 2.5999999, 9.0],
+      "rotation": [-0.10452846, 0.0, 0.0, 0.99452192],
+      "scale": [1.0, 1.0, 1.0],
       "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 1,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [
+
+      ],
       "components": [
-        {
-          "local_id": 12
-        }
+        {"local_id": 12}
       ]
     },
     {
       "local_id": 13,
       "name": "Sun",
       "is_active": true,
-      "position": [
-        2.0,
-        4.0,
-        5.0
-      ],
-      "rotation": [
-        -0.23911799,
-        -0.209272,
-        0.052422,
-        0.94676399
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
+      "position": [2.0, 4.0, 5.0],
+      "rotation": [-0.23911799, -0.209272, 0.052422, 0.94676399],
+      "scale": [1.0, 1.0, 1.0],
       "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 1,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [
+
+      ],
       "components": [
-        {
-          "local_id": 14
-        }
+        {"local_id": 14}
       ]
     },
     {
       "local_id": 15,
       "name": "Environment",
       "is_active": true,
-      "position": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [1.0, 1.0, 1.0],
       "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 1,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [
+
+      ],
       "components": [
-        {
-          "local_id": 16
-        }
+        {"local_id": 16}
       ]
     },
     {
       "local_id": 17,
       "name": "Floor",
       "is_active": true,
-      "position": [
-        0,
-        -0.05,
-        0
-      ],
-      "rotation": [
-        0,
-        0,
-        0,
-        1
-      ],
-      "scale": [
-        16,
-        0.1,
-        10
-      ],
+      "position": [0.0, -0.05, 0.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [16.0, 0.1, 10.0],
       "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 1,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [
+
+      ],
       "components": [
-        {
-          "local_id": 18
-        },
-        {
-          "local_id": 19
-        }
+        {"local_id": 18},
+        {"local_id": 19}
       ]
     },
     {
       "local_id": 20,
       "name": "Marble",
       "is_active": true,
-      "position": [
-        -4.5,
-        1.1,
-        0
-      ],
-      "rotation": [
-        0,
-        0,
-        0,
-        1
-      ],
-      "scale": [
-        2.2,
-        2.2,
-        2.2
-      ],
+      "position": [-4.5, 1.10000002, 0.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [2.20000005, 2.20000005, 2.20000005],
       "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 1,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [
+
+      ],
       "components": [
-        {
-          "local_id": 21
-        },
-        {
-          "local_id": 22
-        }
+        {"local_id": 21},
+        {"local_id": 22}
       ]
     },
     {
       "local_id": 23,
       "name": "Clouds",
       "is_active": true,
-      "position": [
-        -1.5,
-        1.1,
-        0
-      ],
-      "rotation": [
-        0,
-        0,
-        0,
-        1
-      ],
-      "scale": [
-        2.2,
-        2.2,
-        2.2
-      ],
+      "position": [-1.5, 1.10000002, 0.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [2.20000005, 2.20000005, 2.20000005],
       "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 1,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [
+
+      ],
       "components": [
-        {
-          "local_id": 24
-        },
-        {
-          "local_id": 25
-        }
+        {"local_id": 24},
+        {"local_id": 25}
       ]
     },
     {
       "local_id": 26,
       "name": "Lava",
       "is_active": true,
-      "position": [
-        1.5,
-        1.1,
-        0
-      ],
-      "rotation": [
-        0,
-        0,
-        0,
-        1
-      ],
-      "scale": [
-        2.2,
-        2.2,
-        2.2
-      ],
+      "position": [1.5, 1.10000002, 0.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [2.20000005, 2.20000005, 2.20000005],
       "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 1,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [
+
+      ],
       "components": [
-        {
-          "local_id": 27
-        },
-        {
-          "local_id": 28
-        }
+        {"local_id": 27},
+        {"local_id": 28}
       ]
     },
     {
       "local_id": 29,
       "name": "Scales",
       "is_active": true,
-      "position": [
-        4.5,
-        1.1,
-        0
-      ],
-      "rotation": [
-        0,
-        0,
-        0,
-        1
-      ],
-      "scale": [
-        2.2,
-        2.2,
-        2.2
-      ],
+      "position": [4.5, 1.10000002, 0.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [2.20000005, 2.20000005, 2.20000005],
       "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 1,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [
+
+      ],
       "components": [
-        {
-          "local_id": 30
-        },
-        {
-          "local_id": 31
-        }
+        {"local_id": 30},
+        {"local_id": 31}
       ]
     }
   ],
-  "nested_scenes": [],
-  "breadcrumbs": [],
+  "nested_scenes": [
+
+  ],
+  "breadcrumbs": [
+
+  ],
   "components": [
     {
       "__type": "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d",
@@ -403,9 +197,11 @@
         0.89999998,
         1.0
       ],
-      "inner_spot_angle": 21.79999924,
+      "culling_mask": 4294967295,
+      "inner_spot_angle": 21.7999992399999982,
       "intensity": 1.39999998,
       "range": 10.0,
+      "shadow_caster_mask": 4294967295,
       "shadows": 0,
       "spot_angle": 30.0,
       "type": 0
@@ -440,7 +236,10 @@
         0.30000001,
         1.0
       ],
-      "panorama": "00000000-0000-0000-0000-000000000000",
+      "panorama": {
+        "guid": "00000000-0000-0000-0000-000000000000",
+        "local_id": 0
+      },
       "panorama_rotation": 0.0,
       "reflection_intensity": 1.0,
       "sky": 0,
@@ -460,123 +259,118 @@
     },
     {
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "mesh": {
-        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
-        "local_id": 0
-      },
       "base": {
         "enabled": true,
         "local_id": 18
-      }
+      },
+      "mesh": "9b978885-12f8-4d30-be4d-d9c2c2074477"
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "materials": [
-        {
-          "local_id": 9002,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      ],
       "base": {
         "enabled": true,
         "local_id": 19
-      }
+      },
+      "cast_shadows": 0,
+      "materials": [
+        {
+          "guid": "00000000-0000-0000-0000-000000000000",
+          "local_id": 9002
+        }
+      ],
+      "reflections": 0
     },
     {
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "mesh": {
-        "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
-        "local_id": 0
-      },
       "base": {
         "enabled": true,
         "local_id": 21
-      }
+      },
+      "mesh": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b"
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "materials": [
-        {
-          "local_id": 9004,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      ],
       "base": {
         "enabled": true,
         "local_id": 22
-      }
+      },
+      "cast_shadows": 0,
+      "materials": [
+        {
+          "guid": "00000000-0000-0000-0000-000000000000",
+          "local_id": 9004
+        }
+      ],
+      "reflections": 0
     },
     {
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "mesh": {
-        "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
-        "local_id": 0
-      },
       "base": {
         "enabled": true,
         "local_id": 24
-      }
+      },
+      "mesh": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b"
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "materials": [
-        {
-          "local_id": 9006,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      ],
       "base": {
         "enabled": true,
         "local_id": 25
-      }
+      },
+      "cast_shadows": 0,
+      "materials": [
+        {
+          "guid": "00000000-0000-0000-0000-000000000000",
+          "local_id": 9006
+        }
+      ],
+      "reflections": 0
     },
     {
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "mesh": {
-        "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
-        "local_id": 0
-      },
       "base": {
         "enabled": true,
         "local_id": 27
-      }
+      },
+      "mesh": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b"
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "materials": [
-        {
-          "local_id": 9008,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      ],
       "base": {
         "enabled": true,
         "local_id": 28
-      }
+      },
+      "cast_shadows": 0,
+      "materials": [
+        {
+          "guid": "00000000-0000-0000-0000-000000000000",
+          "local_id": 9008
+        }
+      ],
+      "reflections": 0
     },
     {
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "mesh": {
-        "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
-        "local_id": 0
-      },
       "base": {
         "enabled": true,
         "local_id": 30
-      }
+      },
+      "mesh": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b"
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "materials": [
-        {
-          "local_id": 9010,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      ],
       "base": {
         "enabled": true,
         "local_id": 31
-      }
+      },
+      "cast_shadows": 0,
+      "materials": [
+        {
+          "guid": "00000000-0000-0000-0000-000000000000",
+          "local_id": 9010
+        }
+      ],
+      "reflections": 0
     }
   ],
   "assets": [
@@ -586,24 +380,24 @@
       "name": "Floor Noise",
       "data": {
         "__type_guid": "2eb41971-9bc0-4aac-83e0-b274fdff8f0f",
-        "kind": 2,
-        "size": 512,
         "frequency": 14,
-        "octaves": 2,
         "gain": 0.35,
-        "seed": 3,
+        "high": [
+          0.55,
+          0.5600000000000001,
+          0.58,
+          1
+        ],
+        "kind": 2,
         "low": [
           0.16,
           0.17,
           0.19,
           1
         ],
-        "high": [
-          0.55,
-          0.56,
-          0.58,
-          1
-        ]
+        "octaves": 2,
+        "seed": 3,
+        "size": 512
       }
     },
     {
@@ -619,8 +413,8 @@
           1
         ],
         "texture": {
-          "local_id": 9001,
-          "guid": "00000000-0000-0000-0000-000000000000"
+          "guid": "00000000-0000-0000-0000-000000000000",
+          "local_id": 9001
         }
       }
     },
@@ -630,23 +424,23 @@
       "name": "Marble Noise",
       "data": {
         "__type_guid": "2eb41971-9bc0-4aac-83e0-b274fdff8f0f",
-        "kind": 1,
-        "size": 512,
         "frequency": 3,
-        "octaves": 5,
-        "seed": 11,
+        "high": [
+          0.22,
+          0.24,
+          0.3,
+          1
+        ],
+        "kind": 1,
         "low": [
           0.93,
           0.91,
           0.87,
           1
         ],
-        "high": [
-          0.22,
-          0.24,
-          0.3,
-          1
-        ]
+        "octaves": 5,
+        "seed": 11,
+        "size": 512
       }
     },
     {
@@ -662,8 +456,8 @@
           1
         ],
         "texture": {
-          "local_id": 9003,
-          "guid": "00000000-0000-0000-0000-000000000000"
+          "guid": "00000000-0000-0000-0000-000000000000",
+          "local_id": 9003
         }
       }
     },
@@ -673,23 +467,23 @@
       "name": "Clouds Noise",
       "data": {
         "__type_guid": "2eb41971-9bc0-4aac-83e0-b274fdff8f0f",
-        "kind": 0,
-        "size": 512,
         "frequency": 3,
-        "octaves": 5,
-        "seed": 5,
+        "high": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "kind": 0,
         "low": [
           0.2,
           0.45,
           0.9,
           1
         ],
-        "high": [
-          1,
-          1,
-          1,
-          1
-        ]
+        "octaves": 5,
+        "seed": 5,
+        "size": 512
       }
     },
     {
@@ -705,8 +499,8 @@
           1
         ],
         "texture": {
-          "local_id": 9005,
-          "guid": "00000000-0000-0000-0000-000000000000"
+          "guid": "00000000-0000-0000-0000-000000000000",
+          "local_id": 9005
         }
       }
     },
@@ -716,24 +510,24 @@
       "name": "Lava Noise",
       "data": {
         "__type_guid": "2eb41971-9bc0-4aac-83e0-b274fdff8f0f",
-        "kind": 1,
-        "size": 512,
         "frequency": 4,
-        "octaves": 4,
         "gain": 0.6,
-        "seed": 23,
+        "high": [
+          1,
+          0.5,
+          0.08,
+          1
+        ],
+        "kind": 1,
         "low": [
           0.07,
           0.02,
           0.01,
           1
         ],
-        "high": [
-          1,
-          0.5,
-          0.08,
-          1
-        ]
+        "octaves": 4,
+        "seed": 23,
+        "size": 512
       }
     },
     {
@@ -749,8 +543,8 @@
           1
         ],
         "texture": {
-          "local_id": 9007,
-          "guid": "00000000-0000-0000-0000-000000000000"
+          "guid": "00000000-0000-0000-0000-000000000000",
+          "local_id": 9007
         }
       }
     },
@@ -760,24 +554,24 @@
       "name": "Scales Noise",
       "data": {
         "__type_guid": "2eb41971-9bc0-4aac-83e0-b274fdff8f0f",
-        "kind": 2,
-        "size": 512,
         "frequency": 12,
-        "octaves": 2,
         "gain": 0.4,
-        "seed": 9,
+        "high": [
+          0.6,
+          0.9,
+          0.45,
+          1
+        ],
+        "kind": 2,
         "low": [
           0.05,
           0.25,
           0.12,
           1
         ],
-        "high": [
-          0.6,
-          0.9,
-          0.45,
-          1
-        ]
+        "octaves": 2,
+        "seed": 9,
+        "size": 512
       }
     },
     {
@@ -793,8 +587,8 @@
           1
         ],
         "texture": {
-          "local_id": 9009,
-          "guid": "00000000-0000-0000-0000-000000000000"
+          "guid": "00000000-0000-0000-0000-000000000000",
+          "local_id": 9009
         }
       }
     }

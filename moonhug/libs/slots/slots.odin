@@ -284,10 +284,18 @@ Scope :: struct {
 	// The entries of type `T` it offers `owner`, nearest first.
 	// Temp-allocated.
 	entries_of: proc(owner: core.Transform_Handle, T: typeid) -> []Scope_Entry,
-	// The name the entry `slot` connects to is shown by for `owner`, and what
-	// holds it ("Squad B"), false when the scope has no such entry.
-	// Temp-allocated.
-	label_of:   proc(owner: core.Transform_Handle, slot: Slot) -> (name, from: string, ok: bool),
+	// Where the entry `slot` connects to is for `owner`, false when the scope
+	// has no such entry. Temp-allocated.
+	origin_of:  proc(owner: core.Transform_Handle, slot: Slot) -> (Origin, bool),
+}
+
+// Where a slot's entry is: the name it is shown by ("lift"), what holds it
+// ("Squad B", "Global", "" when nothing does), and the object that holds it,
+// {} when no object does.
+Origin :: struct {
+	name:   string,
+	from:   string,
+	holder: core.Transform_Handle,
 }
 
 @(private) _scope: Scope
@@ -318,20 +326,19 @@ scope_entries :: proc(owner: core.Transform_Handle, T: typeid) -> []Scope_Entry 
 // installed scope gives the entry, else the slot's own name, which is the
 // entry's name for an entry code fills.
 label :: proc(owner: core.Transform_Handle, slot: Slot) -> string {
-	text, _ := origin(owner, slot)
-	return text
+	return origin(owner, slot).name
 }
 
-// What a slot's connection is shown as for a reader on `owner`, and what
-// holds the entry: the installed scope's answer ("lift", "Squad B"), else the
-// slot's own name and "Global" when the game-wide dictionary has the entry,
-// "" when nothing has it.
-origin :: proc(owner: core.Transform_Handle, slot: Slot) -> (entry_name, from: string) {
-	if _scope.label_of != nil {
-		if n, f, ok := _scope.label_of(owner, slot); ok do return n, f
+// Where the entry a slot connects to is for a reader on `owner`: the
+// installed scope's answer ("lift" on "Squad B"), else the slot's own name,
+// from "Global" when the game-wide dictionary has the entry, from "" when
+// nothing has it.
+origin :: proc(owner: core.Transform_Handle, slot: Slot) -> Origin {
+	if _scope.origin_of != nil {
+		if o, ok := _scope.origin_of(owner, slot); ok do return o
 	}
-	if slot in _global.entries do return name(slot), "Global"
-	return name(slot), ""
+	if slot in _global.entries do return {name = name(slot), from = "Global"}
+	return {name = name(slot)}
 }
 
 // lookup for a type known only at run time: copies the value of the entry

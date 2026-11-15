@@ -66,7 +66,7 @@ A component reads its slots from `slots.scope_of(owner)`, the dictionary of the 
 
 - A package installs how that dictionary is found, a scope (`slots.scope_install`). The [blackboard plugin](/plugins/blackboard/docs/_index.md) installs one: the nearest Blackboard component on the object or above it, then the ones further up, then the game-wide dictionary.
 - Without a scope, or for an object the scope has nothing for, `scope_of` is the game-wide dictionary. So a reader never depends on the package that installs the scope.
-- `slots.scope_entries(owner, T)` lists what the scope offers an object, for the inspector: each entry's slot, the name it is shown by, and where it comes from. `slots.label(owner, slot)` is the name a connection is shown by now, `slots.origin(owner, slot)` adds what holds it, and `slots.lookup_raw` reads a value whose type is known only at run time.
+- `slots.scope_entries(owner, T)` lists what the scope offers an object, for the inspector: each entry's slot, the name it is shown by, and where it comes from. `slots.label(owner, slot)` is the name a connection is shown by now, `slots.origin(owner, slot)` adds what holds it and the object it is on, and `slots.lookup_raw` reads a value whose type is known only at run time.
 
 ## Declared entries
 
@@ -81,7 +81,7 @@ Declaring an entry says its name and type exist. It makes no value. The inspecto
 A slot and its inline field are one row under the slot's name:
 
 - Not connected, the row is the inline field's: its own drawer and decorators, its undo and its prefab override.
-- Connected, the row shows the entry's value with the inline field's widget, read-only, since the value belongs to the entry. Where the value comes from is in the label column, right-aligned against the link button, pushed right by a long label and cut at the button: `Squad B: lift`, the object whose Blackboard holds the entry and the entry's name as it is now, or `Global: demo_bob` for the game-wide dictionary.
+- Connected, the row shows the entry's value with the inline field's widget, read-only, since the value belongs to the entry. Where the value comes from is in the label column, right-aligned against the link button, pushed right by a long label and cut at the button: `Squad B: lift`, the object whose Blackboard holds the entry and the entry's name as it is now, or `Global: demo_bob` for the game-wide dictionary. When an object holds the entry, a click on that text pings the object in the Hierarchy and a double click selects it. A text cut at the button shows in full in its tooltip, and the link button's tooltip is the same text.
 - When the value cannot be read, the row shows only where it would come from, marked `(not set)` when nothing holds the entry.
 - The link button at the end of the label column lists what the slot can take its value from: the inline value, the entries of the type the scope offers the object, such as those of the Blackboards above it, and every declared entry of the type. Picking one is one undo step, applied to every selected object.
 - A connection to an entry nothing offers, such as one of a Blackboard that was removed, is listed as not offered, so it can be seen and replaced.
