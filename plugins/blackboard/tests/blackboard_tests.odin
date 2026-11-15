@@ -2,7 +2,8 @@ package blackboard_tests
 
 // The Blackboard component as the slots library's scope: a slot on an object
 // takes an entry from the nearest Blackboard on the object or above it, then
-// from further up, then from the game-wide dictionary.
+// from further up, then from the game-wide dictionary. Slots connect to an
+// entry's id, which stays through a rename.
 
 import "core:strings"
 import "core:testing"
@@ -18,9 +19,13 @@ _board :: proc(t: ^testing.T, object: engine.Transform_Handle) -> ^blackboard.Bl
 	return cast(^blackboard.Blackboard)ptr
 }
 
+// A Number entry with a new id, and the slot that connects to it.
 @(private = "file")
-_number :: proc(b: ^blackboard.Blackboard, name: string, value: f32) {
-	append(&b.entries, blackboard.Blackboard_Entry{name = strings.clone(name), type = .Number, number = value})
+_number :: proc(b: ^blackboard.Blackboard, name: string, value: f32) -> slots.Slot {
+	e := blackboard.entry_add(b, name)
+	e.type = .Number
+	e.number = value
+	return blackboard.entry_key(e)
 }
 
 @(test)
@@ -37,23 +42,48 @@ test_blackboard_lookup_up_the_tree :: proc(t: ^testing.T) {
 	other := engine.transform_new("Other")
 
 	on_root := _board(t, root)
-	_number(on_root, "bb_speed", 1)
-	_number(on_root, "bb_far", 9)
+	speed := _number(on_root, "speed", 1)
+	far := _number(on_root, "far", 9)
+	// The enemy's Blackboard stands in for the root's speed: the same id.
 	on_enemy := _board(t, enemy)
-	_number(on_enemy, "bb_speed", 2)
+	blackboard.entry_override(on_enemy, &on_root.entries[0]).number = 2
 
-	speed := slots.entry("bb_speed")
-	far := slots.entry("bb_far")
-	// The nearest Blackboard's entry wins, the one further up fills in.
 	testing.expect_value(t, slots.get(speed, f32(0), slots.scope_of(legs)), 2)
 	testing.expect_value(t, slots.get(far, f32(0), slots.scope_of(legs)), 9)
 	testing.expect_value(t, slots.get(speed, f32(0), slots.scope_of(root)), 1)
 	// No Blackboard above: the inline value.
 	testing.expect_value(t, slots.get(speed, f32(7), slots.scope_of(other)), 7)
-	// The game-wide dictionary is last in the chain.
+	// The game-wide dictionary is last in the chain, its entries keyed by name.
 	slots.set(slots.global(), "bb_global", f32(5))
 	defer slots.remove(slots.global(), "bb_global")
 	testing.expect_value(t, slots.get(slots.entry("bb_global"), f32(0), slots.scope_of(legs)), 5)
+}
+
+// A slot connects to an entry's id: a rename breaks nothing, and an entry of
+// another Blackboard with the same name is another entry.
+@(test)
+test_blackboard_rename_keeps_connections :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	enemy := engine.transform_new("Enemy")
+	legs := engine.transform_new("Legs", enemy)
+	b := _board(t, enemy)
+	speed := _number(b, "speed", 3)
+	testing.expect_value(t, slots.label(legs, speed), "speed")
+
+	delete(b.entries[0].name)
+	b.entries[0].name = strings.clone("pace")
+	testing.expect_value(t, slots.get(speed, f32(0), slots.scope_of(legs)), 3)
+	testing.expect_value(t, slots.label(legs, speed), "pace")
+
+	// A second entry called speed is not what the slot was connected to.
+	again := _number(b, "speed", 8)
+	testing.expect(t, again != speed, "an entry made anew has an id of its own")
+	testing.expect_value(t, slots.get(speed, f32(0), slots.scope_of(legs)), 3)
 }
 
 @(test)
@@ -66,15 +96,14 @@ test_blackboard_authored_edit_is_read_again :: proc(t: ^testing.T) {
 
 	enemy := engine.transform_new("Enemy")
 	b := _board(t, enemy)
-	_number(b, "bb_edit", 1)
-	s := slots.entry("bb_edit")
+	s := _number(b, "edit", 1)
 	testing.expect_value(t, slots.get(s, f32(0), slots.scope_of(enemy)), 1)
 	// As the inspector edits it: in place, with nothing told.
 	b.entries[0].number = 4
 	testing.expect_value(t, slots.get(s, f32(0), slots.scope_of(enemy)), 4)
-	// Another type under the same name: the slot's type no longer fits.
+	// Another type for the same entry: it is a flag now.
 	b.entries[0].type = .Flag
-	_, ok := slots.lookup(slots.entry("bb_edit"), bool, slots.scope_of(enemy))
+	_, ok := slots.lookup(s, bool, slots.scope_of(enemy))
 	testing.expect(t, ok, "the entry is a flag now")
 }
 
@@ -90,15 +119,18 @@ test_blackboard_set_and_unset :: proc(t: ^testing.T) {
 	legs := engine.transform_new("Legs", enemy)
 	lone := engine.transform_new("Lone")
 	b := _board(t, enemy)
-	_number(b, "bb_hp", 10)
-	s := slots.entry("bb_hp")
+	s := _number(b, "hp", 10)
 
-	testing.expect(t, blackboard.set(legs, "bb_hp", f32(3)), "set reaches the Blackboard above the object")
+	// Code names the entry, and the name finds its id.
+	testing.expect(t, blackboard.set(legs, "hp", f32(3)), "set reaches the Blackboard above the object")
 	testing.expect_value(t, slots.get(s, f32(0), slots.scope_of(legs)), 3)
 	testing.expect_value(t, b.entries[0].number, 10) // the authored entry is not touched
-	testing.expect(t, blackboard.unset(legs, "bb_hp"), "unset reaches it too")
+	testing.expect(t, blackboard.unset(legs, "hp"), "unset reaches it too")
 	testing.expect_value(t, slots.get(s, f32(0), slots.scope_of(legs)), 10)
-	testing.expect(t, !blackboard.set(lone, "bb_hp", f32(3)), "no Blackboard on the object or above it")
+	testing.expect(t, !blackboard.set(lone, "hp", f32(3)), "no Blackboard on the object or above it")
+	// A name no entry has is an entry of its own, keyed by the name.
+	testing.expect(t, blackboard.set(legs, "bb_code_only", f32(6)), "set of a name no entry has")
+	testing.expect_value(t, slots.get(slots.entry("bb_code_only"), f32(0), slots.scope_of(legs)), 6)
 }
 
 @(test)
@@ -112,19 +144,23 @@ test_blackboard_offers_entries_by_type :: proc(t: ^testing.T) {
 	root := engine.transform_new("Root")
 	enemy := engine.transform_new("Enemy", root)
 	on_root := _board(t, root)
-	_number(on_root, "bb_a", 1)
-	_number(on_root, "bb_b", 1)
-	append(&on_root.entries, blackboard.Blackboard_Entry{name = strings.clone("bb_tint"), type = .Color})
+	a := _number(on_root, "a", 1)
+	b := _number(on_root, "b", 1)
+	tint := blackboard.entry_add(on_root, "tint")
+	tint.type = .Color
 	on_enemy := _board(t, enemy)
-	_number(on_enemy, "bb_a", 2)
+	testing.expect_value(t, len(blackboard.entries_above(on_enemy)), 3)
+	blackboard.entry_override(on_enemy, &on_root.entries[0])
+	// What is left to stand in for: b and tint.
+	testing.expect_value(t, len(blackboard.entries_above(on_enemy)), 2)
 
 	numbers := slots.scope_entries(enemy, f32)
 	testing.expect_value(t, len(numbers), 2)
 	if len(numbers) == 2 {
-		// Nearest first, and a name once: the entry a slot would get.
-		testing.expect_value(t, numbers[0].name, "bb_a")
+		// Nearest first, and an entry once: the one a slot would get.
+		testing.expect_value(t, numbers[0].slot, a)
 		testing.expect_value(t, numbers[0].from, "Enemy")
-		testing.expect_value(t, numbers[1].name, "bb_b")
+		testing.expect_value(t, numbers[1].slot, b)
 		testing.expect_value(t, numbers[1].from, "Root")
 	}
 	testing.expect_value(t, len(slots.scope_entries(enemy, [4]f32)), 1)

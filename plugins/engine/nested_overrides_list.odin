@@ -57,13 +57,17 @@ nested_scene_list_overrides :: proc(s: ^Scene, ns: ^NestedScene) -> []Override_E
 
     for &ov in ns.overrides {
         label, obj := _override_object_label(s, ns, ov.target)
+        // A copy, not the record's own string: a row outlives its record
+        // when the row is reverted, and the revert's undo step is recorded
+        // from the row after the record is freed.
+        path := strings.clone(ov.property_path, context.temp_allocator)
         append(&out, Override_Entry{
             kind          = .Modified_Property,
             object_label  = label,
             object_tH     = obj,
-            detail        = ov.property_path,
+            detail        = path,
             target        = ov.target,
-            property_path = ov.property_path,
+            property_path = path,
         })
     }
     for &rc in ns.removed_components {

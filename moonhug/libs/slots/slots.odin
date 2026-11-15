@@ -57,7 +57,8 @@ package slots
 //   (`scope_install`), a way to find an object's dictionary. The blackboard
 //   plugin installs one: the nearest Blackboard component on the object or
 //   above it, with the global dictionary last in its chain.
-// - `scope_entries` lists what a scope offers an object, for the inspector.
+// - `scope_entries` lists what a scope offers an object, for the inspector,
+//   and `label` is what a connection is shown as.
 //
 // Dictionaries are not shared between threads. Names and declarations are.
 
@@ -176,6 +177,18 @@ set :: proc(d: ^Dict, name: string, value: $T) {
 	d.entries[entry(name)] = e
 }
 
+// Sets the entry `slot` connects to. What `set` does, for a caller that holds
+// the slot and not the name.
+put :: proc(d: ^Dict, slot: Slot, value: $T) {
+	#assert(size_of(T) <= MAX_VALUE_SIZE, "a slot value holds MAX_VALUE_SIZE bytes at most")
+	if slot == INLINE do return
+	_ensure(d)
+	e := Entry{type = T}
+	v := value
+	runtime.mem_copy(&e.data[0], &v, size_of(T))
+	d.entries[slot] = e
+}
+
 // Sets entry `name` of `d` to a value `read` computes on every read. `user`
 // is handed back to it, and must outlive the entry.
 set_proc :: proc(d: ^Dict, name: string, $T: typeid, read: proc(out: ^T, user: rawptr), user: rawptr = nil) {
@@ -252,9 +265,14 @@ _report_type :: proc(slot: Slot, have, want: typeid) {
 	log.errorf("slots: entry %q holds a %v and a slot reads it as a %v, the slot's inline value is used", name(slot), have, want)
 }
 
-// An entry a scope offers an object: its name, and what it comes from, for
-// the picker ("Enemy's Blackboard").
+// An entry a scope offers an object: the slot that connects to it, the name
+// it is shown by, and what it comes from, for the picker ("Enemy").
+//
+// The slot is the entry's key, and need not be its name: a Blackboard's
+// entry is keyed by an id that stays when the entry is renamed, so a rename
+// breaks no connection, and its name is read where it is shown.
 Scope_Entry :: struct {
+	slot: Slot,
 	name: string,
 	from: string,
 }
@@ -266,6 +284,9 @@ Scope :: struct {
 	// The entries of type `T` it offers `owner`, nearest first.
 	// Temp-allocated.
 	entries_of: proc(owner: core.Transform_Handle, T: typeid) -> []Scope_Entry,
+	// The name the entry `slot` connects to is shown by for `owner`, false
+	// when the scope has no such entry. Temp-allocated.
+	label_of:   proc(owner: core.Transform_Handle, slot: Slot) -> (string, bool),
 }
 
 @(private) _scope: Scope
@@ -290,5 +311,15 @@ scope_of :: proc(owner: core.Transform_Handle) -> ^Dict {
 scope_entries :: proc(owner: core.Transform_Handle, T: typeid) -> []Scope_Entry {
 	if _scope.entries_of == nil do return nil
 	return _scope.entries_of(owner, T)
+}
+
+// What a slot's connection is shown as for a reader on `owner`: the name the
+// installed scope gives the entry, else the slot's own name, which is the
+// entry's name for an entry code fills.
+label :: proc(owner: core.Transform_Handle, slot: Slot) -> string {
+	if _scope.label_of != nil {
+		if text, ok := _scope.label_of(owner, slot); ok do return text
+	}
+	return name(slot)
 }
 

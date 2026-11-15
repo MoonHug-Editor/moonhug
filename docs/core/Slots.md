@@ -26,7 +26,7 @@ speed := slots.get(m.speed, m._speed, slots.global())
 - The inline value is a field of its own, named as the slot with `_` in front and tagged `inspect:"-"`. It has the value's type, so any type works with no extra declaration.
 - Code reads through `slots.get(slot, inline, dict)`. The underscore says the inline field is not the value: reading it directly ignores a connection.
 - The prebuild checks the pair: a slot without its `_name` field, or an inline field without `inspect:"-"`, stops the build.
-- A slot is plain data and saves as the entry's name, an empty string when it is not connected.
+- A slot is plain data and saves as the entry's key, an empty string when it is not connected. The key of an entry code fills is its name. The key of a [Blackboard](/plugins/blackboard/docs/components/Blackboard.md)'s entry is its id, written `#0b160001`, which stays when the entry is renamed.
 
 ## Reading
 
@@ -66,7 +66,7 @@ A component reads its slots from `slots.scope_of(owner)`, the dictionary of the 
 
 - A package installs how that dictionary is found, a scope (`slots.scope_install`). The [blackboard plugin](/plugins/blackboard/docs/_index.md) installs one: the nearest Blackboard component on the object or above it, then the ones further up, then the game-wide dictionary.
 - Without a scope, or for an object the scope has nothing for, `scope_of` is the game-wide dictionary. So a reader never depends on the package that installs the scope.
-- `slots.scope_entries(owner, T)` lists what the scope offers an object, for the inspector.
+- `slots.scope_entries(owner, T)` lists what the scope offers an object, for the inspector: each entry's slot, the name it is shown by, and where it comes from. `slots.label(owner, slot)` is the name a connection is shown by now.
 
 ## Declared entries
 
@@ -81,7 +81,7 @@ Declaring an entry says its name and type exist. It makes no value. The inspecto
 A slot and its inline field are one row under the slot's name:
 
 - Not connected, the row is the inline field's: its own drawer and decorators, its undo and its prefab override.
-- Connected, the row reads `from <entry>`.
+- Connected, the row reads `from <entry>`, the entry's name as it is now.
 - The link button at the end of the label column lists what the slot can take its value from: the inline value, the entries of the type the scope offers the object, such as those of the Blackboards above it, and every declared entry of the type. Picking one is one undo step, applied to every selected object.
 - A connection to an entry nothing offers, such as one of a Blackboard that was removed, is listed as not offered, so it can be seen and replaced.
 

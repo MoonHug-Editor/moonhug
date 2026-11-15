@@ -22,7 +22,7 @@ The blackboard plugin holds named values on objects. A slot field on any compone
 1. Add Component, Blackboard/Blackboard on an object with children. Open `entries`, press Add, name the entry `big`, keep its type Number and set it to 2.
 2. On a child, add Component, Demo/SlotExample (the app plugin).
 3. Click the link button on the child's `size` row and pick `big`. The row reads `from big`.
-4. Press Play: the child is twice its size. Change `big` on the Blackboard and it follows.
+4. Press Play: the child is twice its size. Change `big` on the Blackboard and it follows. Rename `big` and the child's row shows the new name: the connection is to the entry, not to its name.
 
 ## Extending
 
@@ -33,7 +33,7 @@ The plugin declares no attributes and has no registries.
 
 ## Limits
 
-- A slot connects by name. Renaming an entry leaves the slots connected to the old name on their inline value, and their link button lists the old name as not offered.
+- An entry made anew is another entry, whatever its name. To change an entry for part of a tree, use Override Entry on a nearer Blackboard, which keeps the entry's id.
 - A prefab instance that changes one entry overrides the whole `entries` list.
 - A value set from code is not saved, and lasts as long as the component.
 - Blackboards are not assets: a list of entries cannot be shared between objects that are not under one Blackboard.

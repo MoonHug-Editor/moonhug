@@ -15,12 +15,23 @@ package blackboard
 // - Entries are authored on the component: a name, a type and a value. The
 //   inspector's link button on a slot lists the entries of the slot's type
 //   from the blackboards above the object.
+// - A slot connects to an entry's id, not its name. The id is given once,
+//   when the entry is made, and never changes, so renaming an entry breaks no
+//   connection: the name is read where it is shown. A copy of a Blackboard
+//   keeps the ids, so the copy's entries answer the same slots. A nearer
+//   Blackboard changes an entry for the objects under it with an entry of the
+//   same id (entry_override).
+// - An entry code fills is keyed by its name (slots.set, slots.declare): a
+//   name in code is stable already.
 // - Game code changes a value while the game runs with set(object, name,
 //   value). It goes on top of the authored entry and is never saved. The
 //   authored entries are read again when they change, so an edit shows at
 //   once, in edit mode too.
 
 import "base:runtime"
+import "core:fmt"
+import "core:math/rand"
+import "core:strings"
 import "core:sync"
 import "moonhug:libs/slots"
 import core "moonhug:libs/core"
@@ -38,9 +49,11 @@ Value_Type :: enum u8 {
 	Asset,   // core.PPtr, an asset or a sub-asset
 }
 
-// One authored entry: the value is the field its type names.
+// One authored entry: the value is the field its type names. `id` is what
+// slots connect to (entry_key), given when the entry is made (entry_id_new).
 @(typ_guid={guid = "2f5ee6c0-4990-46a8-9c83-0759d649e16a"})
 Blackboard_Entry :: struct {
+	id:      u32 `inspect:"-"`,
 	name:    string,
 	type:    Value_Type,
 	number:  f32,
@@ -91,23 +104,93 @@ value_typeid :: proc(t: Value_Type) -> typeid {
 	return nil
 }
 
-// Sets entry `name` to `value` on the nearest Blackboard on `object` or
-// above it, for as long as the component lives. It goes on top of the
-// authored entry of that name and is not saved. False when no Blackboard is
-// there.
+// A new entry id: random, never 0, which means "not given yet".
+entry_id_new :: proc() -> u32 {
+	for {
+		if id := rand.uint32(); id != 0 do return id
+	}
+}
+
+// The slot that connects to entry `e`: its id. An entry without one yet is
+// keyed by its name, as an entry code fills is.
+entry_key :: proc(e: ^Blackboard_Entry) -> slots.Slot {
+	if e.id == 0 do return slots.entry(e.name)
+	return slots.entry(fmt.tprintf("#%08x", e.id))
+}
+
+// Adds an entry named `name` to `b` with a new id, and returns it. The
+// caller sets its type and value. The pointer holds until the list changes.
+entry_add :: proc(b: ^Blackboard, name: string) -> ^Blackboard_Entry {
+	append(&b.entries, Blackboard_Entry{id = entry_id_new(), name = strings.clone(name), color = {1, 1, 1, 1}})
+	return &b.entries[len(b.entries) - 1]
+}
+
+// Adds to `b` an entry that stands in for `from`, an entry of a Blackboard
+// above it: the same id, so the slots under `b` connected to `from` take this
+// one, starting from `from`'s name, type and value.
+entry_override :: proc(b: ^Blackboard, from: ^Blackboard_Entry) -> ^Blackboard_Entry {
+	e := from^
+	e.name = strings.clone(from.name)
+	append(&b.entries, e)
+	return &b.entries[len(b.entries) - 1]
+}
+
+// The entries of the Blackboards above `b`'s object that `b` has no entry
+// for, nearest first: what entry_override can stand in for. Temp-allocated.
+entries_above :: proc(b: ^Blackboard) -> []^Blackboard_Entry {
+	out := make([dynamic]^Blackboard_Entry, context.temp_allocator)
+	w := engine.ctx_world()
+	if w == nil do return out[:]
+	t := engine.pool_get(&w.transforms, engine.Handle(b.owner))
+	if t == nil do return out[:]
+	up := nearest(engine.Transform_Handle(t.parent.handle))
+	for depth := 0; up != nil && depth < 256; depth += 1 {
+		next: for &e in up.entries {
+			if e.name == "" do continue
+			key := entry_key(&e)
+			for &mine in b.entries do if entry_key(&mine) == key do continue next
+			for have in out do if entry_key(have) == key do continue next
+			append(&out, &e)
+		}
+		ut := engine.pool_get(&w.transforms, engine.Handle(up.owner))
+		if ut == nil do break
+		up = nearest(engine.Transform_Handle(ut.parent.handle))
+	}
+	return out[:]
+}
+
+// The slot that connects to the entry named `name` a reader on `object`
+// would get: the nearest Blackboard's entry of that name, else the name
+// itself, an entry code fills.
+key_of :: proc(object: engine.Transform_Handle, name: string) -> slots.Slot {
+	w := engine.ctx_world()
+	b := nearest(object)
+	for depth := 0; w != nil && b != nil && depth < 256; depth += 1 {
+		for &e in b.entries do if e.name == name do return entry_key(&e)
+		t := engine.pool_get(&w.transforms, engine.Handle(b.owner))
+		if t == nil do break
+		b = nearest(engine.Transform_Handle(t.parent.handle))
+	}
+	return slots.entry(name)
+}
+
+// Sets the entry named `name` to `value` on the nearest Blackboard on
+// `object` or above it, for as long as the component lives. It goes on top
+// of the authored entry and is not saved. False when no Blackboard is there.
 set :: proc(object: engine.Transform_Handle, name: string, value: $T) -> bool {
 	b := nearest(object)
 	if b == nil do return false
-	slots.set(&_state_of(b).written, name, value)
+	slots.put(&_state_of(b).written, key_of(object, name), value)
 	return true
 }
 
-// Takes back what set put on entry `name`: readers get the authored entry
-// again. False when no Blackboard is on `object` or above it.
+// Takes back what set put on the entry named `name`: readers get the
+// authored entry again. False when no Blackboard is on `object` or above it.
 unset :: proc(object: engine.Transform_Handle, name: string) -> bool {
 	b := nearest(object)
 	if b == nil do return false
-	slots.remove(&_state_of(b).written, name)
+	st := _state_of(b)
+	if st.written.entries != nil do delete_key(&st.written.entries, key_of(object, name))
 	return true
 }
 
@@ -144,7 +227,7 @@ _State :: struct {
 _blackboard_init :: proc "contextless" () {
 	context = runtime.default_context()
 	_states = make(map[rawptr]^_State, runtime.default_allocator())
-	slots.scope_install({dict_of = _dict_of, entries_of = _entries_of})
+	slots.scope_install({dict_of = _dict_of, entries_of = _entries_of, label_of = _label_of})
 }
 
 @(private)
@@ -186,6 +269,8 @@ _stamp :: proc(b: ^Blackboard) -> u64 {
 	}
 	h: u64 = 0xcbf29ce484222325
 	for &e in b.entries {
+		id := e.id
+		h = mix(h, ([^]u8)(&id)[:size_of(id)])
 		h = mix(h, transmute([]u8)e.name)
 		h = mix(h, {0xff, u8(e.type)})
 		ptr, size := _value_bytes(&e)
@@ -217,16 +302,19 @@ _dict :: proc(b: ^Blackboard) -> ^slots.Dict {
 		st.stamp = stamp
 		slots.destroy(&st.authored)
 		for &e in b.entries {
-			if e.name == "" do continue
+			key := entry_key(&e)
+			// The first entry of a key is the one: a later one is a mistake
+			// the inspector shows.
+			if key == slots.INLINE || key in st.authored.entries do continue
 			switch e.type {
-			case .Number:  slots.set(&st.authored, e.name, e.number)
-			case .Integer: slots.set(&st.authored, e.name, e.integer)
-			case .Flag:    slots.set(&st.authored, e.name, e.flag)
-			case .Vector2: slots.set(&st.authored, e.name, e.vector2)
-			case .Vector3: slots.set(&st.authored, e.name, e.vector3)
-			case .Color:   slots.set(&st.authored, e.name, e.color)
-			case .Object:  slots.set(&st.authored, e.name, e.object)
-			case .Asset:   slots.set(&st.authored, e.name, e.asset)
+			case .Number:  slots.put(&st.authored, key, e.number)
+			case .Integer: slots.put(&st.authored, key, e.integer)
+			case .Flag:    slots.put(&st.authored, key, e.flag)
+			case .Vector2: slots.put(&st.authored, key, e.vector2)
+			case .Vector3: slots.put(&st.authored, key, e.vector3)
+			case .Color:   slots.put(&st.authored, key, e.color)
+			case .Object:  slots.put(&st.authored, key, e.object)
+			case .Asset:   slots.put(&st.authored, key, e.asset)
 			}
 		}
 	}
@@ -258,13 +346,27 @@ _entries_of :: proc(owner: core.Transform_Handle, T: typeid) -> []slots.Scope_En
 	for depth := 0; b != nil && depth < 256; depth += 1 {
 		t := engine.pool_get(&w.transforms, engine.Handle(b.owner))
 		if t == nil do break
-		next: for e in b.entries {
+		next: for &e in b.entries {
 			if e.name == "" || value_typeid(e.type) != T do continue
-			// A nearer Blackboard's entry of the name is the one a slot gets.
-			for have in out do if have.name == e.name do continue next
-			append(&out, slots.Scope_Entry{name = e.name, from = t.name})
+			key := entry_key(&e)
+			// A nearer Blackboard's entry of the key is the one a slot gets.
+			for have in out do if have.slot == key do continue next
+			append(&out, slots.Scope_Entry{slot = key, name = e.name, from = t.name})
 		}
 		b = nearest(engine.Transform_Handle(t.parent.handle))
 	}
 	return out[:]
+}
+
+@(private)
+_label_of :: proc(owner: core.Transform_Handle, slot: slots.Slot) -> (string, bool) {
+	w := engine.ctx_world()
+	b := nearest(owner)
+	for depth := 0; w != nil && b != nil && depth < 256; depth += 1 {
+		for &e in b.entries do if entry_key(&e) == slot do return e.name, true
+		t := engine.pool_get(&w.transforms, engine.Handle(b.owner))
+		if t == nil do break
+		b = nearest(engine.Transform_Handle(t.parent.handle))
+	}
+	return "", false
 }

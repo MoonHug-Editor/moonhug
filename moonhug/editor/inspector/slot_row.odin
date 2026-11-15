@@ -98,7 +98,8 @@ _draw_link :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	slot := cast(^slots.Slot)ptr
 	row := _link
 	connected := slot^ != slots.INLINE
-	tip := connected ? fmt.ctprintf("Takes its value from the entry %q. Click to change", slots.name(slot^)) : cstring("Takes the value set here. Click to take it from an entry the game fills")
+	owner := _owner_object()
+	tip := connected ? fmt.ctprintf("Takes its value from the entry %q. Click to change", slots.label(owner, slot^)) : cstring("Takes the value set here. Click to take it from an entry")
 	if widgets.icon_button(icons.ICON_MD_LINK, "##slot_link", tip, active = connected, size = _link_size) do im.OpenPopup("##slot_sources")
 	if !im.BeginPopup("##slot_sources") do return
 	defer im.EndPopup()
@@ -110,18 +111,18 @@ _draw_link :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	listed := false
 	// What the installed scope offers the object the component is on, a
 	// Blackboard above it for instance, nearest first.
-	scoped := slots.scope_entries(_owner_object(), row.value_tid)
+	scoped := slots.scope_entries(owner, row.value_tid)
 	if len(scoped) > 0 do im.Separator()
-	for e in scoped {
-		s := slots.entry(e.name)
-		if s == slot^ do listed = true
-		if im.MenuItem(strings.clone_to_cstring(e.name, context.temp_allocator), strings.clone_to_cstring(e.from, context.temp_allocator), slot^ == s) do slot^ = s
+	for e, i in scoped {
+		if e.slot == slot^ do listed = true
+		// Two entries may share a name: the id keeps the items apart.
+		if im.MenuItem(fmt.ctprintf("%s##scoped%d", e.name, i), strings.clone_to_cstring(e.from, context.temp_allocator), slot^ == e.slot) do slot^ = e.slot
 	}
 	// What code declares.
 	entries := slots.declared_of(row.value_tid)
 	if len(entries) > 0 do im.Separator()
 	next: for e in entries {
-		for have in scoped do if have.name == e.name do continue next
+		for have in scoped do if have.slot == slots.entry(e.name) do continue next
 		s := slots.entry(e.name)
 		if s == slot^ do listed = true
 		if im.MenuItem(strings.clone_to_cstring(e.name, context.temp_allocator), nil, slot^ == s) do slot^ = s
@@ -135,13 +136,13 @@ _draw_link :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	// Blackboard that was removed: shown, so it can be seen and replaced.
 	if connected && !listed {
 		im.Separator()
-		im.MenuItem(fmt.ctprintf("%s (not offered)", slots.name(slot^)), nil, true)
+		im.MenuItem(fmt.ctprintf("%s (not offered)", slots.label(owner, slot^)), nil, true)
 	}
 }
 
 // The object whose component the inspector is drawing, {} when it draws
 // something else: an asset, a settings struct.
-@(private = "file")
+@(private)
 _owner_object :: proc() -> core.Transform_Handle {
 	o, ok := undo.current_owner()
 	if !ok || o.kind != .Pooled || o.base_ptr == nil || o.handle.type_key == .Transform do return {}
@@ -160,5 +161,7 @@ property_drawer_Slot :: proc(ctx: ^Ctx) {
 		im.TextDisabled("no inline value")
 		return
 	}
-	im.TextDisabled(fmt.ctprintf("from %s", slots.name(slot)))
+	// The entry's name as it is now: a Blackboard's entry is connected by
+	// its id, and its name is read here.
+	im.TextDisabled(fmt.ctprintf("from %s", slots.label(_owner_object(), slot)))
 }
