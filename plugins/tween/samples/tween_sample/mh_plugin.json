@@ -1,0 +1,7 @@
+{
+  "name": "tween_sample",
+  "guid": "486dd884-2aed-4625-8ab6-ae69c5492b09",
+  "description": "",
+  "dependencies": ["engine", "essentials", "tween"],
+  "dependencies_custom": []
+}

@@ -13,6 +13,7 @@ import "base:runtime"
 import "core:encoding/json"
 import "core:io"
 import "core:math/ease"
+import "moonhug:libs/time"
 import engine "moonhug:packages/engine"
 
 Status :: enum {
@@ -32,6 +33,10 @@ Tween :: struct {
 	// The object this node animates. Empty: the subject the run was started
 	// with. Set: this object, whatever the code passed.
 	subject:  engine.Ref `ref:"Transform"`,
+	// On a tree's root: the clock the tree runs on. Off: the clock the code
+	// passed when it started the tree.
+	own_clock: bool,
+	clock:     time.Clock,
 
 	// runtime only fields:
 	delay_elapsed: f32 `json:"-"`,
@@ -49,6 +54,8 @@ subject_of :: proc(base: ^Tween, ctx: TweenContext) -> engine.Transform_Handle {
 
 TweenContext :: struct {
 	subject: engine.Transform_Handle `json:"-"`,
+	// The run the node ticks in. The runtime fills it.
+	run:     Handle `json:"-"`,
 }
 
 // How a value node moves between its start and its end over one cycle.
@@ -112,6 +119,9 @@ Tween_Anim :: struct {
 	// runtime only fields:
 	elapsed: f32 `json:"-" inspect:"-"`,
 	started: bool `json:"-" inspect:"-"`,
+	// The order the node began in, among all value nodes: rewind undoes them
+	// newest first.
+	began:   u64 `json:"-" inspect:"-"`,
 }
 
 // Frees the curve's keys. A value node's own type_cleanup calls this.

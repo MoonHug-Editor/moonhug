@@ -23,18 +23,28 @@ Shake_Part :: enum u8 {
     Scale,
 }
 
-// Made from code (shake_position and the others).
+// A shake or a punch. A tree authors it, and shake_position and the others
+// make it from code.
 @(typ_guid={guid="f96f6958-de3a-41e7-8035-8756fec359ac"})
 TweenShake :: struct {
     using base: Tween `inline:""`,
     using anim: Tween_Anim `inline:""`,
     duration: f32,
 
-    part:      Shake_Part `json:"-" inspect:"-"`,
-    punch:     bool `json:"-" inspect:"-"`,
-    strength:  [3]f32 `json:"-" inspect:"-"`,
-    frequency: f32 `json:"-" inspect:"-"`,
+    part:      Shake_Part,
+    // A swing along the strength, in place of a wobble on every axis.
+    punch:     bool,
+    // The largest offset: units for position, degrees for rotation.
+    strength:  [3]f32,
+    // Swings per second.
+    frequency: f32 `decor:min(0)`,
     from:      [4]f32 `json:"-" inspect:"-"`,
+}
+
+type_reset_TweenShake :: proc(self: ^TweenShake) {
+    self.strength = {0.3, 0.3, 0}
+    self.frequency = 10
+    self.duration = 0.5
 }
 
 type_cleanup_TweenShake :: proc(self: ^TweenShake) {

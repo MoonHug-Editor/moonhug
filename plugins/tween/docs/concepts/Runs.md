@@ -70,6 +70,24 @@ tween.run("Dodge", ctx, .Bullet_Time)        // a clock a package adds
 - Runs on `Fixed`, and on clocks based on it, advance on the fixed tick. The others advance every frame.
 - `tween.tick_all(dt)` ticks every run by `dt` whatever its clock, for tests and for stepping by hand.
 
+- An authored tree names its own clock on its root node (`own_clock` and `clock`). It then runs on that clock whatever the code passes, the same way a node's own `subject` wins over the code's.
+
+## Rewind, hold and stepping by hand
+
+What a preview needs, and a tool that scrubs a tween:
+
+```odin
+tween.set_paused(h, true)   // the game's ticks leave it alone
+tween.set_hold(h, true)     // it stays alive when its tree is done
+tween.tick(h, dt)           // one run, by hand, paused or not
+tween.is_done(h)            // a held run whose tree is done
+tween.rewind(h)             // end it and put back every value it changed
+```
+
+- `tween.rewind` makes every value node that began write its start value again, the newest first, so each finds what it captured. The run ends and `on_complete` is not called.
+- A held run that is done keeps every value at its end until it is stopped or rewound.
+- `tween.run_infos()` lists the live runs for tools: handle, root node type, object, clock, time and state. The [Tweens window](../windows/TweensWindow.md) shows it.
+
 ## Binding a run to an object
 
 Nothing ties a run to an object by default: a run started from a component keeps going when that component is disabled or destroyed. `tween.bind` hands a run over to an object.

@@ -48,6 +48,10 @@ _Run :: struct {
 	owner:          engine.Transform_Handle,
 	on_complete:    proc(user: rawptr),
 	user:           rawptr,
+	on_event:       proc(name: string, user: rawptr),
+	event_user:     rawptr,
+	hold:           bool, // stays alive when its tree is done (set_hold)
+	done:           bool, // its tree is done and the run is held
 	waits_on:       Handle, // holds until that run has ended (wait_for)
 
 	// A sequence built from code (code.odin): the root is a Parallel whose
@@ -147,6 +151,9 @@ run_value :: proc(v: json.Value, ctx: TweenContext, clock := time.Clock.Update) 
 		node_destroy(root)
 		return {}
 	}
+	// The root's own clock, set in the inspector, wins over the code's.
+	clock := clock
+	if base != nil && base.own_clock do clock = base.clock
 	// A node's own subject, set in the inspector, wins over the run's.
 	scene: ^engine.Scene
 	if t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(ctx.subject)); t != nil do scene = t.scene
@@ -215,6 +222,7 @@ complete :: proc(h: Handle) {
 	if r == nil do return
 	assert(!r.ticking, "tween.complete: called from inside this run's own tick")
 	root, ctx := r.root, r.ctx
+	ctx.run = h
 	_completing = true
 	for _ in 0 ..< _COMPLETE_MAX_TICKS {
 		if tick_node(root, _COMPLETE_DT, ctx) == .Done do break
@@ -273,6 +281,100 @@ on_complete :: proc(h: Handle, on_complete: proc(user: rawptr), user: rawptr = n
 		r.on_complete = on_complete
 		r.user = user
 	}
+}
+
+// Sets the proc called when the run reaches a TweenEvent node, with the
+// node's name. It is how an authored tree calls into code.
+on_event :: proc(h: Handle, on_event: proc(name: string, user: rawptr), user: rawptr = nil) {
+	if r := _run_ptr(h); r != nil {
+		r.on_event = on_event
+		r.event_user = user
+	}
+}
+
+// Called by a TweenEvent node: hands the name to the run's on_event proc.
+event_emit :: proc(h: Handle, name: string) {
+	r := _run_ptr(h)
+	if r == nil || r.on_event == nil do return
+	r.on_event(name, r.event_user)
+}
+
+// Ticks one run by `dt` seconds, whatever its clock, paused or not. For
+// previews and for stepping a run by hand.
+tick :: proc(h: Handle, dt: f32) {
+	r := _run_ptr(h)
+	if r == nil do return
+	was_paused := r.paused
+	_tick_run(h.index, dt)
+	if r = _run_ptr(h); r != nil do r.paused = was_paused
+}
+
+// A held run stays alive when its tree is done, with every value at its end,
+// until it is stopped or rewound. on_complete waits for that too and is then
+// not called. A preview holds its run so it can still put things back.
+set_hold :: proc(h: Handle, hold: bool) {
+	if r := _run_ptr(h); r != nil do r.hold = hold
+}
+
+// True when a held run's tree is done.
+is_done :: proc(h: Handle) -> bool {
+	r := _run_ptr(h)
+	return r != nil && r.done
+}
+
+// Ends the run and puts back what it changed: every value it animated is
+// where it was when the run began to animate it. on_complete is not called.
+rewind :: proc(h: Handle) {
+	r := _run_ptr(h)
+	if r == nil do return
+	assert(!r.ticking, "tween.rewind: called from inside this run's own tick")
+	ctx := r.ctx
+	ctx.run = h
+	node_rewind(r.root, ctx)
+	_run_end(h.index, false)
+}
+
+// What a live run is doing, for tools that list runs.
+Run_Info :: struct {
+	handle:        Handle,
+	root:          typeid, // the root node's type
+	subject:       engine.Transform_Handle,
+	bound:         bool,
+	owner:         engine.Transform_Handle,
+	clock:         time.Clock,
+	paused:        bool,
+	waiting:       bool, // held by wait_for
+	done:          bool, // a held run whose tree is done
+	time_scale:    f32,
+	elapsed:       f32,
+	length:        f32,
+	length_known:  bool,
+}
+
+// Every live run, in slot order.
+run_infos :: proc(allocator := context.temp_allocator) -> []Run_Info {
+	out := make([dynamic]Run_Info, 0, len(_runs), allocator)
+	for &r, i in _runs {
+		if !r.alive do continue
+		root: typeid
+		if int(r.root.kind) < len(_descs) do root = _descs[r.root.kind].tid
+		append(&out, Run_Info {
+			handle       = Handle{index = u32(i), generation = r.generation},
+			root         = root,
+			subject      = r.ctx.subject,
+			bound        = r.bound,
+			owner        = r.owner,
+			clock        = r.clock,
+			paused       = r.paused,
+			waiting      = r.waits_on != {} && is_alive(r.waits_on),
+			done         = r.done,
+			time_scale   = r.time_scale,
+			elapsed      = r.elapsed,
+			length       = r.length,
+			length_known = r.length_known,
+		})
+	}
+	return out[:]
 }
 
 // Hands the run over to an object: the run stops when the object is
@@ -385,6 +487,7 @@ _tick_run :: proc(index: u32, step: f32) {
 		}
 		if !engine.transform_active_in_hierarchy(r.owner) do return
 	}
+	if r.done do return
 	if r.waits_on != {} {
 		if is_alive(r.waits_on) do return
 		r.waits_on = {}
@@ -392,7 +495,9 @@ _tick_run :: proc(index: u32, step: f32) {
 	dt := step * r.time_scale
 	if dt <= 0 do return
 	r.ticking = true
-	status := tick_node(r.root, dt, r.ctx)
+	ctx := r.ctx
+	ctx.run = Handle{index = index, generation = r.generation}
+	status := tick_node(r.root, dt, ctx)
 	// A node may have started a run: the array may have moved.
 	r = &_runs[index]
 	r.ticking = false
@@ -400,7 +505,11 @@ _tick_run :: proc(index: u32, step: f32) {
 	if r.stop_requested {
 		_run_end(index, false)
 	} else if status == .Done {
-		_run_end(index, true)
+		if r.hold {
+			r.done = true
+		} else {
+			_run_end(index, true)
+		}
 	}
 }
 

@@ -90,6 +90,7 @@ time.set_base(.Cutscene, .Unscaled)
 - One on `Update` slows down with the game. One on `Unscaled` does not.
 - One on `Fixed` advances on the fixed tick. `time.is_fixed` tells which stage a clock advances in.
 - A clock gives a group of timed things one switch: everything on `Bullet_Time` slows down together.
+- A `time.Clock` field saves as the clock's name, so scenes keep their meaning when a package that adds clocks comes or goes. A name no installed package declares reads as `Update`.
 - `plugins/plugin_example/plugin_example.odin` declares `Example_Slow` as the reference.
 
 ## Who advances it

@@ -23,6 +23,7 @@ import "core:encoding/uuid"
 import "core:fmt"
 import "core:mem"
 import "core:reflect"
+import "core:slice"
 import "core:strings"
 import core "moonhug:libs/core"
 import engine "moonhug:packages/engine"
@@ -232,6 +233,8 @@ _tick_value_node :: proc(ptr: rawptr, desc: ^Node_Desc, dt: f32, ctx: TweenConte
 	if !anim.started {
 		if !desc.begin_thunk(desc.begin_raw, ptr, ctx) do return .Done
 		anim.started = true
+		_began_counter += 1
+		anim.began = _began_counter
 	}
 	// The object went away under the node: nothing is left to animate.
 	if target := subject_of(base, ctx); target != {} && !engine.pool_valid(&engine.ctx_world().transforms, engine.Handle(target)) {
@@ -255,6 +258,38 @@ _tick_value_node :: proc(ptr: rawptr, desc: ^Node_Desc, dt: f32, ctx: TweenConte
 	local := anim.elapsed / duration - f32(cycle)
 	desc.apply_thunk(desc.apply_raw, ptr, anim_factor(anim, cycle, local), ctx)
 	return .Running
+}
+
+@(private) _began_counter: u64
+
+@(private)
+_Began :: struct {
+	ptr:   rawptr,
+	desc:  ^Node_Desc,
+	began: u64,
+}
+
+@(private)
+_collect_began :: proc(h: Node_Handle, out: ^[dynamic]_Began) {
+	ptr, desc := _node_ptr(h)
+	if ptr == nil do return
+	if desc.anim_offset >= 0 {
+		anim := cast(^Tween_Anim)(uintptr(ptr) + uintptr(desc.anim_offset))
+		if anim.started do append(out, _Began{ptr, desc, anim.began})
+	}
+	if desc.children_offset >= 0 {
+		children := cast(^[dynamic]Node_Handle)(uintptr(ptr) + uintptr(desc.children_offset))
+		for k in children^ do _collect_began(k, out)
+	}
+}
+
+// Puts back what a live tree changed: every value node that began writes its
+// start value again, the newest first, so each one finds what it captured.
+node_rewind :: proc(h: Node_Handle, ctx: TweenContext) {
+	began := make([dynamic]_Began, context.temp_allocator)
+	_collect_began(h, &began)
+	slice.sort_by(began[:], proc(a, b: _Began) -> bool { return a.began > b.began })
+	for b in began do b.desc.apply_thunk(b.desc.apply_raw, b.ptr, 0, ctx)
 }
 
 // Seconds a live tree takes from start to end, `ok` false when it cannot be

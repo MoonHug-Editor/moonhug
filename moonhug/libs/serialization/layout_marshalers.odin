@@ -15,6 +15,7 @@ import "core:io"
 import "core:reflect"
 import "core:strings"
 import core "moonhug:libs/core"
+import "moonhug:libs/time"
 
 register_layout_marshalers :: proc() {
 	json.register_user_marshaler([2]f32, array_one_line_marshal)
@@ -26,6 +27,8 @@ register_layout_marshalers :: proc() {
 	json.register_user_marshaler(core.Ref, struct_one_line_marshal)
 	json.register_user_marshaler(core.Ref_Local, struct_one_line_marshal)
 	json.register_user_marshaler(core.Owned, struct_one_line_marshal)
+	json.register_user_marshaler(time.Clock, clock_marshal)
+	json.register_user_unmarshaler(time.Clock, clock_unmarshal)
 }
 
 // A fixed array on one line. Each element goes through the writer, so an
@@ -72,4 +75,38 @@ struct_one_line_marshal :: proc(w: io.Writer, v: any, opt: ^json.Marshal_Options
 _separator :: proc(w: io.Writer, opt: ^json.Marshal_Options) -> io.Error {
 	_, err := io.write_string(w, opt.pretty ? ", " : ",")
 	return err
+}
+
+// time.Clock saves as its name. The enum is generated from what the installed
+// packages add (Clock_Extra), so a clock's number changes when a package comes
+// or goes, and its name does not.
+clock_marshal :: proc(w: io.Stream, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
+	clock := (cast(^time.Clock)v.data)^
+	name, _ := reflect.enum_name_from_value(clock)
+	io.write_quoted_string(w, name)
+	return nil
+}
+
+// Reads a clock by name. A number is accepted too, for values written before
+// clocks saved by name. A name no installed package declares reads as Update.
+clock_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
+	val, perr := json.parse_value(p)
+	if perr != nil do return perr
+	prev := context.allocator
+	context.allocator = p.allocator
+	defer {
+		json.destroy_value(val)
+		context.allocator = prev
+	}
+	out := cast(^time.Clock)v.data
+	out^ = .Update
+	#partial switch x in val {
+	case json.String:
+		if clock, ok := reflect.enum_from_name(time.Clock, string(x)); ok do out^ = clock
+	case json.Integer:
+		if x >= 0 && int(x) < len(time.Clock) do out^ = time.Clock(x)
+	case json.Float:
+		if x >= 0 && int(x) < len(time.Clock) do out^ = time.Clock(int(x))
+	}
+	return nil
 }

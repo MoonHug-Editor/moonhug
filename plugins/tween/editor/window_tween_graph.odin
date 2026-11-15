@@ -44,6 +44,50 @@ _state: struct {
 	sel_active: bool,
 
 	framed: bool, // frame_all once, on first draw with content
+
+	// The tree playing in edit mode. A held run, so it can put back what it
+	// changed when it stops.
+	preview:      tween.Handle,
+	preview_done: f32, // seconds the finished preview has shown its end pose
+}
+
+// How long a finished preview shows its end pose before it puts things back.
+@(private = "file")
+_PREVIEW_HOLD_SECONDS :: f32(0.75)
+
+@(private = "file")
+_preview_start :: proc(owner: engine.Transform_Handle, root: ^tween.Authored) {
+	_preview_stop()
+	_state.preview = tween.run(root, tween.TweenContext{subject = owner})
+	tween.set_hold(_state.preview, true)
+	// The window ticks it. A paused run does not move when a game ticks runs.
+	tween.set_paused(_state.preview, true)
+	_state.preview_done = 0
+}
+
+// Ends the preview and puts back every value it changed.
+@(private = "file")
+_preview_stop :: proc() {
+	tween.rewind(_state.preview)
+	_state.preview = {}
+}
+
+@(private = "file")
+_preview_tick :: proc() {
+	if !tween.is_alive(_state.preview) do return
+	dt := min(im.GetIO().DeltaTime, 0.1)
+	if tween.is_done(_state.preview) {
+		_state.preview_done += dt
+		if _state.preview_done >= _PREVIEW_HOLD_SECONDS do _preview_stop()
+		return
+	}
+	tween.tick(_state.preview, dt)
+}
+
+// Play starts from the scene as it was authored, not from a preview's pose.
+@(phase={key=ExitingEditMode, mode=Editor})
+tween_graph_exiting_edit_mode :: proc() {
+	_preview_stop()
 }
 
 // One node of the walk: the authored value (shares the blob's storage, so
@@ -56,7 +100,12 @@ _Walked :: struct {
 	child_ord: int, // ordinal in the parent's children array, -1 for a root
 }
 
-@(editor_window={id="tween_graph", title="Tween Graph", icon="SHOW_CHART", width=900, height=520})
+// The window closed: a preview left playing would keep its pose in the scene.
+tween_graph_window_closed :: proc(w: ^wnd.Window) {
+	_preview_stop()
+}
+
+@(editor_window={id="tween_graph", title="Tween Graph", icon="SHOW_CHART", width=900, height=520, closed=tween_graph_window_closed})
 tween_graph_window_draw :: proc(w: ^wnd.Window) {
 	w := engine.ctx_world()
 	if w == nil {
@@ -77,12 +126,14 @@ tween_graph_window_draw :: proc(w: ^wnd.Window) {
 		}
 	}
 	if base == nil || _state.root_idx >= len(roots) {
+		_preview_stop()
 		_state.has_target = false
 		im.TextDisabled("No tween tree open.")
 		im.TextDisabled("Click a tween row's graph button in the inspector.")
 		return
 	}
 
+	_preview_tick()
 	_draw_toolbar(base, roots)
 	im.Separator()
 
@@ -264,6 +315,7 @@ _draw_toolbar :: proc(base: rawptr, roots: []^tween.Authored) {
 		if im.BeginCombo("##root", _root_label(roots, _state.root_idx)) {
 			for _, i in roots {
 				if im.Selectable(_root_label(roots, i), i == _state.root_idx) {
+					_preview_stop()
 					_state.root_idx = i
 					_state.sel_active = false
 					_state.framed = false
@@ -274,6 +326,20 @@ _draw_toolbar :: proc(base: rawptr, roots: []^tween.Authored) {
 	} else {
 		im.TextUnformatted(_root_label(roots, 0))
 	}
+
+	// Preview: the tree plays on its object in edit mode, shows its end pose
+	// for a moment and puts everything back.
+	im.SameLine()
+	if engine.game_running() {
+		im.BeginDisabled()
+		im.Button("Preview")
+		im.EndDisabled()
+	} else if tween.is_alive(_state.preview) {
+		if im.Button("Stop") do _preview_stop()
+	} else if im.Button("Preview") {
+		_preview_start(comp.owner, roots[_state.root_idx])
+	}
+	widgets.tooltip("Plays the tree on its object in edit mode, then puts every value back. In Play, the game starts the tree.", im.HoveredFlags_ForTooltip | im.HoveredFlags_AllowWhenDisabled)
 
 	im.SameLine()
 	if im.Button("Frame All") do _state.framed = false
@@ -706,6 +772,7 @@ _draw_node_inline :: proc(owner: engine.Handle, root_idx: int, path: []i32, dept
 // inspector's ambient owner — the button lives inside a component's draw.
 @(private = "file")
 _open_graph_for :: proc(a: ^tween.Authored) {
+	_preview_stop()
 	o, o_ok := undo.current_owner()
 	if !o_ok || o.kind != .Pooled || o.base_ptr == nil do return
 	tid := engine.get_typeid_by_type_key(o.handle.type_key)

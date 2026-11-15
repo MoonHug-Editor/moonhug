@@ -16,17 +16,18 @@ A run ticks on one of the game's clocks ([Time](/docs/core/Time.md)). For poses 
 
 **Scripts**
 
-- [Tween nodes](scripts/TweenNodes.md): Sequence, Parallel, the transform and UI value nodes, and their easing and cycles.
+- [Tween nodes](scripts/TweenNodes.md): Sequence, Parallel, the transform, UI, camera and light value nodes, shake, events, and their easing and cycles.
 
 **Windows**
 
-- [Tween Graph](windows/TweenGraphWindow.md): a tree on a canvas, edited node by node.
+- [Tween Graph](windows/TweenGraphWindow.md): a tree on a canvas, edited node by node and previewed in edit mode.
+- [Tweens](windows/TweensWindow.md): every running tween, with pause, complete and stop.
 
 **Concepts**
 
 - [Tweens from code](concepts/TweensFromCode.md): one-line tweens for transforms, UI, cameras and lights, any component field, any value through a proc, shake and punch, delays and sequences built step by step.
 - [Authored and live trees](concepts/AuthoredAndLive.md): the two forms of a tree, and adding node types.
-- [Runs](concepts/Runs.md): the handle of a running tree, its controls, clocks and binding to an object.
+- [Runs](concepts/Runs.md): the handle of a running tree, its controls, clocks, rewind and binding to an object.
 
 ## What it needs
 
@@ -64,23 +65,28 @@ h := tween.run(&a, tween.TweenContext{subject = cube})
 
 The plugin ticks its runs itself, every frame and every fixed tick.
 
-## Demo
+## Sample
 
-`plugins/app/assets/demo_tweens/demo_tweens.scene` shows the plugin on a field of cubes, and `plugins/app/component_TweenDemo.odin` is the code behind it. Open the scene and press Play, or pick it from the demo menu.
+The `tween_sample` package (`plugins/tween/samples/tween_sample`) is a field of cubes in `tween_demo.scene`. Open the scene and press Play, pick it from the demo menu, or run the package's run config.
 
-| Cubes | Show |
-|---|---|
-| Red row | the same hop with six eases: Linear, Quad In Out, Back In Out, Bounce Out, Elastic Out, Expo In Out |
-| Spin | Incremental cycles: a turn that keeps going |
-| Pulse | a scale that goes out and back forever |
-| Punch, Shake | `punch_scale` and `shake_position`, repeated by a bound `delay` |
-| Unscaled | a tween on the `Unscaled` clock. Press T for slow motion: it keeps its speed |
-| Orbit | `custom`: an angle written as a place on a circle |
-| Sequence | `sequence`, `chain`, `group` and `chain_delay`, restarted from its completion |
-| Speed | `world_position` with the speed option |
-| Tree Actor, Tree Other | an authored tree. The code starts it on Tree Actor, and one node names Tree Other as its own subject |
+Every cube carries the script that moves it, configured in the inspector: select a cube to see what it does and with which numbers. The same script is on every cube it fits, and only its data differs. The scripts are in `tween_demo.odin`, a few lines each.
 
-The hop and the spin read their timing from `tween.Settings` fields on the TweenDemo component, so the inspector changes them.
+| Cube | Script | Its data says |
+|---|---|---|
+| Red row | DemoTween | move up by 2, Yoyo forever. Each cube has another ease: Linear, Quad In Out, Back In Out, Bounce Out, Elastic Out, Expo In Out |
+| Spin | DemoTween | turn by 120 degrees, Incremental forever: a turn that keeps going |
+| Pulse | DemoTween | scale to 1.5, Yoyo forever |
+| Hop Unscaled | DemoTween | the hop on the `Unscaled` clock. Press T for slow motion: it keeps its speed |
+| Patrol | DemoTween | a world-space move at a speed in place of a duration |
+| Punch | DemoTweenShake | a punch of the scale, every 1.5 seconds |
+| Shake | DemoTweenShake | a shake of the position, every 2 seconds |
+| Orbit | DemoTweenOrbit | `custom`: an angle written as a place on a circle |
+| Sequence | DemoTweenSequence | `sequence`, `chain`, `group` and `chain_delay`, restarted from its completion |
+| Tree, Tree Other | DemoTweenTree | an authored tree. The script runs it on its own cube, two nodes name Tree Other as their subject, and the last one is an authored shake |
+
+- Timing is a `tween.Settings` field on the script, so the duration, the ease and the cycles are set per cube.
+- A script that repeats binds its run to its cube, so the run stops with the cube.
+- DemoTweenControls on the scene's root toggles slow motion with T.
 
 ## Extending
 
@@ -89,13 +95,12 @@ The plugin declares no attributes. A node type registers with `register_tween` o
 ## Limits
 
 - Easing and cycles belong to value nodes. A sequence plays once.
-- Time a node has left over when it ends is dropped, so a sequence's next step starts on the next tick.
-- An authored tree does not name its clock. `tween.run` takes it.
+- A step that ends hands over to the next one in the same tick, and the next one gets the whole tick, so a sequence can run a fraction of a tick long.
 - The eases have fixed shapes. Overshoot, bounce and elastic take no strength.
-- A callback is a proc and a pointer. Authored trees have no callback node.
-- Field tweens, shakes and punches are made from code. A tree authors the transform and UI layout nodes.
+- An authored tree calls code by name through TweenEvent. It holds no proc, so `custom`, `field`, callbacks and wait-until steps are made from code.
 - No material property tween: a material is a shared asset with no per-object properties, so a tween would change every object that uses it.
 - A speed-based tween reports no useful progress, since its length is known only when it begins.
+- The sprite and audio tweens are one-line calls. A tree does not author them.
 
 ## Reference
 

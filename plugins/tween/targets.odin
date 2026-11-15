@@ -10,8 +10,10 @@ package tween
 //   nothing points at freed memory. The plugins that own other components
 //   build their tweens on it (plugins/sprites/tween, plugins/audio/tween).
 //
-// The world and UI layout tweens are node types, so a tree authors them. The
-// field tweens hold a proc, so they are made from code.
+// Every tween here but `field` is also a node type, so a tree authors it:
+// the world and UI layout moves, the tint, the camera and light fields, and
+// TweenEvent, which calls into code by name. `field` holds a proc, so it is
+// made from code.
 
 import "base:runtime"
 import "core:math/linalg"
@@ -237,6 +239,168 @@ field_masked :: proc(target: engine.Transform_Handle, access: Field_Access, to: 
     return start_value_node(h, &node.base, &node.anim, target, e, o)
 }
 
+// --- Authored field tweens ----------------------------------------------------------------
+//
+// The same fields ui_tint, camera_fov, light_intensity and light_color reach
+// from code, as node types a tree authors.
+
+@(private = "file")
+_field_begin :: proc(p: rawptr, from: []f32) -> bool {
+    if p == nil do return false
+    for i in 0 ..< len(from) do from[i] = (cast([^]f32)p)[i]
+    return true
+}
+
+// Tints a UI graphic: the runtime color its CanvasRenderer multiplies the
+// graphic's own color with. `alpha_only` fades it and leaves the color.
+@(typ_guid={guid="8ca73f00-13f9-4d42-a2d9-432e52f1625b"})
+TweenUITint :: struct {
+    using base : Tween `inline:""`,
+    using anim : Tween_Anim `inline:""`,
+    tint       : [4]f32 `decor:color()`,
+    alpha_only : bool,
+    duration   : f32,
+
+    from       : [4]f32 `json:"-"`,
+}
+
+type_reset_TweenUITint :: proc(self: ^TweenUITint) {
+    self.tint = {1, 1, 1, 1}
+}
+
+type_cleanup_TweenUITint :: proc(self: ^TweenUITint) {
+    type_cleanup_Tween_Anim(&self.anim)
+    self^ = {}
+}
+
+begin_TweenUITint :: proc(self: ^TweenUITint, ctx: TweenContext) -> bool {
+    return _field_begin(_tint_of(subject_of(&self.base, ctx)), self.from[:])
+}
+
+apply_TweenUITint :: proc(self: ^TweenUITint, t: f32, ctx: TweenContext) {
+    p := cast(^[4]f32)_tint_of(subject_of(&self.base, ctx))
+    if p == nil do return
+    v := self.from + (self.tint - self.from) * t
+    if self.alpha_only do p.a = v.a
+    else do p^ = v
+}
+
+@(typ_guid={guid="51493940-83f6-4bd0-9fc0-1b2fd0f6891d"})
+TweenCameraFov :: struct {
+    using base : Tween `inline:""`,
+    using anim : Tween_Anim `inline:""`,
+    fov      : f32 `decor:range(1, 179)`,
+    duration : f32,
+
+    from     : f32 `json:"-"`,
+}
+
+type_reset_TweenCameraFov :: proc(self: ^TweenCameraFov) {
+    self.fov = 60
+}
+
+type_cleanup_TweenCameraFov :: proc(self: ^TweenCameraFov) {
+    type_cleanup_Tween_Anim(&self.anim)
+    self^ = {}
+}
+
+begin_TweenCameraFov :: proc(self: ^TweenCameraFov, ctx: TweenContext) -> bool {
+    from: [1]f32
+    ok := _field_begin(_camera_fov_of(subject_of(&self.base, ctx)), from[:])
+    self.from = from[0]
+    return ok
+}
+
+apply_TweenCameraFov :: proc(self: ^TweenCameraFov, t: f32, ctx: TweenContext) {
+    p := cast(^f32)_camera_fov_of(subject_of(&self.base, ctx))
+    if p != nil do p^ = self.from + (self.fov - self.from) * t
+}
+
+@(typ_guid={guid="156cabca-8ea7-43d9-9b2d-340ccc1076bd"})
+TweenLightIntensity :: struct {
+    using base : Tween `inline:""`,
+    using anim : Tween_Anim `inline:""`,
+    intensity : f32 `decor:min(0)`,
+    duration  : f32,
+
+    from      : f32 `json:"-"`,
+}
+
+type_reset_TweenLightIntensity :: proc(self: ^TweenLightIntensity) {
+    self.intensity = 1
+}
+
+type_cleanup_TweenLightIntensity :: proc(self: ^TweenLightIntensity) {
+    type_cleanup_Tween_Anim(&self.anim)
+    self^ = {}
+}
+
+begin_TweenLightIntensity :: proc(self: ^TweenLightIntensity, ctx: TweenContext) -> bool {
+    from: [1]f32
+    ok := _field_begin(_light_intensity_of(subject_of(&self.base, ctx)), from[:])
+    self.from = from[0]
+    return ok
+}
+
+apply_TweenLightIntensity :: proc(self: ^TweenLightIntensity, t: f32, ctx: TweenContext) {
+    p := cast(^f32)_light_intensity_of(subject_of(&self.base, ctx))
+    if p != nil do p^ = self.from + (self.intensity - self.from) * t
+}
+
+// A light's color. Its alpha is unused.
+@(typ_guid={guid="1397b975-3c30-457e-afa9-cb4ca231c114"})
+TweenLightColor :: struct {
+    using base : Tween `inline:""`,
+    using anim : Tween_Anim `inline:""`,
+    color    : [4]f32 `decor:color()`,
+    duration : f32,
+
+    from     : [3]f32 `json:"-"`,
+}
+
+type_reset_TweenLightColor :: proc(self: ^TweenLightColor) {
+    self.color = {1, 1, 1, 1}
+}
+
+type_cleanup_TweenLightColor :: proc(self: ^TweenLightColor) {
+    type_cleanup_Tween_Anim(&self.anim)
+    self^ = {}
+}
+
+begin_TweenLightColor :: proc(self: ^TweenLightColor, ctx: TweenContext) -> bool {
+    return _field_begin(_light_color_of(subject_of(&self.base, ctx)), self.from[:])
+}
+
+apply_TweenLightColor :: proc(self: ^TweenLightColor, t: f32, ctx: TweenContext) {
+    p := cast(^[3]f32)_light_color_of(subject_of(&self.base, ctx))
+    if p != nil do p^ = self.from + (self.color.rgb - self.from) * t
+}
+
+// --- Events ------------------------------------------------------------------------------
+
+// How an authored tree calls into code: when the tree gets here, the run's
+// on_event proc is called with `name`. A tree cannot hold a proc, so the code
+// that starts the tree says what a name means:
+//
+//   h := tween.run(&d.tree, tween.TweenContext{subject = d.owner})
+//   tween.on_event(h, door_event, d)   // door_event(name, user): "opened", "closed"
+@(typ_guid={guid="171f4755-5cb0-4edd-b2fc-c415e7d529ae"})
+TweenEvent :: struct {
+    using base : Tween `inline:""`,
+    name       : string,
+}
+
+type_cleanup_TweenEvent :: proc(self: ^TweenEvent) {
+    delete(self.name)
+    self^ = {}
+}
+
+tick_TweenEvent :: proc(self: ^TweenEvent, dt: f32, ctx: TweenContext) -> Status {
+    if has_delay(&self.base, dt) do return .Running
+    event_emit(ctx.run, self.name)
+    return .Done
+}
+
 // --- Code API over the nodes above -------------------------------------------------------
 
 // Moves the object's world position from where it is to `to`.
@@ -337,7 +501,12 @@ register_target_nodes :: proc() {
     register_tween(TweenAnchoredPosition, begin_TweenAnchoredPosition, apply_TweenAnchoredPosition)
     register_tween(TweenSizeDelta, begin_TweenSizeDelta, apply_TweenSizeDelta)
     register_tween(TweenField, begin_TweenField, apply_TweenField, code_only = true)
-    register_tween(TweenShake, begin_TweenShake, apply_TweenShake, code_only = true)
+    register_tween(TweenShake, begin_TweenShake, apply_TweenShake)
+    register_tween(TweenUITint, begin_TweenUITint, apply_TweenUITint)
+    register_tween(TweenCameraFov, begin_TweenCameraFov, apply_TweenCameraFov)
+    register_tween(TweenLightIntensity, begin_TweenLightIntensity, apply_TweenLightIntensity)
+    register_tween(TweenLightColor, begin_TweenLightColor, apply_TweenLightColor)
+    register_node(TweenEvent, tick_TweenEvent, .Instant)
 }
 
 // Fills what every value node shares from the code API's arguments and starts

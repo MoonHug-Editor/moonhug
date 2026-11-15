@@ -1,6 +1,6 @@
 ---
 title: "Tween nodes"
-description: "The stock tween node types: Sequence and Parallel composites, the transform and UI value nodes, and the easing and cycles every value node has"
+description: "The stock tween node types: Sequence and Parallel composites, the transform, UI, camera and light value nodes, shake, events, and the easing and cycles every value node has"
 weight: 10
 tags: ["tween", "scripts"]
 ---
@@ -12,6 +12,7 @@ The node types a tween tree is made of. Every node has these base fields:
 | `subject` | The object the node animates. Empty: the object the code passed when it started the tree. Set: this object, whatever the code passed. |
 | `delay` | Seconds to wait before the node starts. |
 | `skip` | Keeps the node from running. |
+| `own_clock`, `clock` | On the tree's root: with `own_clock` on, the tree runs on `clock`. Off: on the clock the code passed. On other nodes they are not read. |
 
 | Node | Fields | What it does |
 |---|---|---|
@@ -24,6 +25,12 @@ The node types a tween tree is made of. Every node has these base fields:
 | TweenRotateToWorld | `rotation`, `duration` | Rotates the subject to the world rotation `rotation`. |
 | TweenAnchoredPosition | `position`, `duration`, `speed` | Moves a UI subject's anchored position: canvas units from its anchors. |
 | TweenSizeDelta | `size`, `duration` | Resizes a UI subject: its size delta. |
+| TweenUITint | `tint`, `alpha_only`, `duration` | Tints a UI graphic through its CanvasRenderer's runtime tint. With `alpha_only` it fades the graphic and leaves the color. |
+| TweenCameraFov | `fov`, `duration` | Changes a camera's field of view. |
+| TweenLightIntensity | `intensity`, `duration` | Changes a light's intensity. |
+| TweenLightColor | `color`, `duration` | Changes a light's color. |
+| TweenShake | `part`, `punch`, `strength`, `frequency`, `duration` | Shakes the subject's position, rotation or scale around where it is, fading out. With `punch` it swings along the strength. |
+| TweenEvent | `name` | Calls the run's `on_event` proc with `name`. |
 
 - A value node captures its start when it begins, after its delay. A `duration` of 0 sets the value at once.
 - A `speed` above 0 is units per second: the node takes the distance divided by the speed, and its `duration` is ignored.
@@ -34,7 +41,7 @@ The node types a tween tree is made of. Every node has these base fields:
 
 ## Easing and cycles
 
-Every node in the table except Sequence and Parallel is a value node. Every value node has these fields on top of its own:
+Every node in the table except Sequence, Parallel and TweenEvent is a value node. Every value node has these fields on top of its own:
 
 | Field | What it does |
 |---|---|
@@ -54,3 +61,23 @@ The eases are `Linear`, `Curve`, and the `In`, `Out` and `In_Out` forms of `Quad
 
 - A node with `Yoyo` or `Rewind` and an even number of cycles ends at its start value.
 - `Incremental` with 3 cycles and a move by 2 ends 6 away from the start.
+
+## Events
+
+A tree cannot hold a proc, so it calls into code by name. A TweenEvent node hands its `name` to the proc the code gave the run:
+
+```odin
+h := tween.run(&d.tree, tween.TweenContext{subject = d.owner})
+tween.on_event(h, door_event, d)
+
+door_event :: proc(name: string, user: rawptr) {
+	d := cast(^Door)user
+	switch name {
+	case "opened": d.is_open = true
+	case "slam":   play_slam(d)
+	}
+}
+```
+
+- A run with no `on_event` proc passes its event nodes without a word.
+- `tween.complete` still reaches every event node on the way to the end.
