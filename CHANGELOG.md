@@ -1,3 +1,19 @@
+## [0.165.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.164.0...v0.165.0) (2026-11-15)
+
+### Features
+
+* one shared node canvas with a mini-map, Tween Graph panes ([4a58761](https://github.com/MoonHug-Editor/moonhug/commit/4a58761eb26acc470284aae07636788196c20fb3))
+* time package, tween targets, node subject overrides the run's ([e4881f2](https://github.com/MoonHug-Editor/moonhug/commit/e4881f2e08a927cda7e86ebc6a7f6bf5c26a1274))
+* tween graph nodes show each fact on its own row, skipped nodes faded ([0d6298e](https://github.com/MoonHug-Editor/moonhug/commit/0d6298e3a095bea95fce2604f65bffdcadbfe68b))
+* tween runs have a handle, easing, cycles and clocks, engine time with one time scale ([5be10fb](https://github.com/MoonHug-Editor/moonhug/commit/5be10fb0729b034c92726c7984018cb23077a510))
+* tween settings as an inspector field, tween demo scene ([86223c0](https://github.com/MoonHug-Editor/moonhug/commit/86223c007ef5ae0d1c62a7baa531a23a58eb91f6))
+* tween_sample, authored shake, field and event nodes, preview and the Tweens window ([a87685f](https://github.com/MoonHug-Editor/moonhug/commit/a87685f71ab2a8665b4f00c7218f31d45b9cb7f3))
+
+### Bug Fixes
+
+* a tween preview poses the world only for the render, and no-plugins build ([c43ec1e](https://github.com/MoonHug-Editor/moonhug/commit/c43ec1ee93cc9f94c5f5a2a5290ebd699788709f))
+* tween node subject shows its object, reference fields accept a dropped object ([ee68999](https://github.com/MoonHug-Editor/moonhug/commit/ee689991e22932b17cff298d11e92ceec28edcb1))
+
 ## [0.164.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.163.1...v0.164.0) (2026-11-13)
 
 ### Features
