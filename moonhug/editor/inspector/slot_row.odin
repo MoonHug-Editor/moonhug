@@ -244,9 +244,11 @@ property_drawer_Slot :: proc(ctx: ^Ctx) {
 	if T := _value_tid; T != nil && type_info_of(T).size <= slots.MAX_VALUE_SIZE {
 		value: [slots.MAX_VALUE_SIZE]u8
 		if slots.lookup_raw(slot, T, slots.scope_of(owner), &value[0]) {
+			// The label as any row's, the value read-only and dimmed.
 			start := im.GetCursorScreenPos()
+			field_row(ctx.label)
 			im.BeginDisabled()
-			draw_value(&value[0], T, ctx.label)
+			draw_value(&value[0], T, "##slot_value")
 			im.EndDisabled()
 			_origin_in_label(start, ctx.label, origin)
 			return
