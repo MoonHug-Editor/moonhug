@@ -151,7 +151,7 @@ _Walked :: struct {
 	value:     json.Value,
 	tid:       typeid,
 	title:     string, // the node type's label
-	summary:   string, // delay, await, skipped: the node's one row
+	info:      []string, // own subject, delay, await, skipped: one row each
 	skip:      bool,
 	parent:    int, // index into the walk, -1 for a root
 	child_ord: int, // ordinal in the parent's children array, -1 for a root
@@ -194,7 +194,10 @@ tween_graph_window_draw :: proc(w: ^wnd.Window) {
 	im.Separator()
 
 	walked := make([dynamic]_Walked, context.temp_allocator)
-	_walk(roots[_state.root_idx].value, -1, -1, &walked, 0)
+	// The scene the nodes' own subjects are looked up in: the owner's.
+	scene: ^engine.Scene
+	if t := engine.pool_get(&w.transforms, engine.Handle((cast(^engine.CompData)base).owner)); t != nil do scene = t.scene
+	_walk(roots[_state.root_idx].value, -1, -1, &walked, scene, 0)
 
 	parents := make([]int, len(walked), context.temp_allocator)
 	for wk, i in walked do parents[i] = wk.parent
@@ -205,10 +208,10 @@ tween_graph_window_draw :: proc(w: ^wnd.Window) {
 	}
 	if sel_idx < 0 do _state.sel_active = false
 
-	// Every node has one row, its summary, so all are the same size and the
-	// links meet the row's ports.
+	// A row per piece of information, at least one: the links meet the first
+	// row's ports.
 	sizes := make([]im.Vec2, len(walked), context.temp_allocator)
-	for &sz in sizes do sz = nc.canvas_node_size(1)
+	for &sz, i in sizes do sz = nc.canvas_node_size(max(len(walked[i].info), 1))
 	positions := make([]im.Vec2, len(walked), context.temp_allocator)
 	nc.canvas_layout_tree(parents, sizes, positions)
 
@@ -249,12 +252,12 @@ tween_graph_window_draw :: proc(w: ^wnd.Window) {
 				nc.canvas_link(cv, from, to, im.GetColorU32(.Text, 0.45))
 			}
 			for &wk, i in walked {
-				color := _color_for(wk.tid)
-				if wk.skip do color.w = 0.45
 				has_children := false
 				for p in parents do if p == i do has_children = true
-				rows := [1]nc.Canvas_Row{{label = strings.clone_to_cstring(wk.summary, context.temp_allocator), port = wk.parent >= 0}}
-				nc.canvas_node(cv, i, &positions[i], strings.clone_to_cstring(wk.title, context.temp_allocator), color, rows[:], has_children, movable = false)
+				rows := make([]nc.Canvas_Row, max(len(wk.info), 1), context.temp_allocator)
+				for line, r in wk.info do rows[r].label = strings.clone_to_cstring(line, context.temp_allocator)
+				rows[0].port = wk.parent >= 0
+				nc.canvas_node(cv, i, &positions[i], strings.clone_to_cstring(wk.title, context.temp_allocator), _color_for(wk.tid), rows, has_children, movable = false, dimmed = wk.skip)
 			}
 		}
 		nc.canvas_end(cv)
@@ -473,6 +476,7 @@ _walk :: proc(
 	parent: int,
 	child_ord: int,
 	walked: ^[dynamic]_Walked,
+	scene: ^engine.Scene,
 	depth: int,
 ) {
 	if depth > 64 do return
@@ -481,13 +485,13 @@ _walk :: proc(
 
 	title := "?"
 	if tok do title = _type_label(tid)
-	skip, summary := _base_summary(v)
+	skip, info := _base_summary(v, scene)
 
-	append(walked, _Walked{value = v, tid = tid, title = title, summary = summary, skip = skip, parent = parent, child_ord = child_ord})
+	append(walked, _Walked{value = v, tid = tid, title = title, info = info, skip = skip, parent = parent, child_ord = child_ord})
 
 	if children, kok := tween.authored_children(v); kok {
 		for child, i in children {
-			_walk(child, idx, i, walked, depth + 1)
+			_walk(child, idx, i, walked, scene, depth + 1)
 		}
 	}
 }
@@ -512,13 +516,26 @@ _type_label :: proc(tid: typeid) -> string {
 // The base fields worth seeing without selecting the node, read from the
 // node's "base" object.
 @(private = "file")
-_base_summary :: proc(v: json.Value) -> (skip: bool, subtitle: string) {
+_base_summary :: proc(v: json.Value, scene: ^engine.Scene) -> (skip: bool, info: []string) {
 	obj, is_obj := v.(json.Object)
-	if !is_obj do return false, ""
+	if !is_obj do return false, nil
 	base, has_base := obj["base"].(json.Object)
-	if !has_base do return false, ""
+	if !has_base do return false, nil
 
 	parts := make([dynamic]string, context.temp_allocator)
+	// A node with its own subject names it: it animates that object, not the
+	// one the tree runs on.
+	if subj, ok := base["subject"].(json.Object); ok {
+		if pp, pok := subj["pptr"].(json.Object); pok {
+			if lid, lok := pp["local_id"].(json.Integer); lok && lid != 0 {
+				name := "Missing"
+				if tH, found := engine.scene_ref_resolve_transform(scene, engine.Ref{pptr = {local_id = engine.Local_ID(lid)}}); found {
+					if t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(tH)); t != nil do name = t.name
+				}
+				append(&parts, fmt.tprintf("on %s", name))
+			}
+		}
+	}
 	if d, ok := base["delay"].(json.Float); ok && d > 0 {
 		append(&parts, fmt.tprintf("delay %.2fs", d))
 	}
@@ -529,8 +546,7 @@ _base_summary :: proc(v: json.Value) -> (skip: bool, subtitle: string) {
 		skip = true
 		append(&parts, "skipped")
 	}
-	if len(parts) == 0 do return skip, ""
-	return skip, strings.join(parts[:], "  ", context.temp_allocator)
+	return skip, parts[:]
 }
 
 @(private = "file")

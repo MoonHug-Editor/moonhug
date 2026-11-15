@@ -291,7 +291,10 @@ canvas_node :: proc(
 	has_out: bool,
 	out_row: int = 0,
 	movable := true, // false: a drag on the node pans the canvas, for clients that lay nodes out themselves
+	dimmed := false, // drawn at half opacity: a node that will not run
 ) {
+	if dimmed do im.PushStyleVar(.Alpha, im.GetStyle().Alpha * 0.45)
+	defer if dimmed do im.PopStyleVar()
 	dl := im.GetWindowDrawList()
 	sz := canvas_node_size(len(rows))
 	rmin := canvas_to_screen(cv, pos^)

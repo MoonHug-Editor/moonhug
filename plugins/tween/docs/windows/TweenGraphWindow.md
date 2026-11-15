@@ -10,7 +10,7 @@ Shows a tween tree on a canvas and edits it node by node. Open it with an `Autho
 ## Layout
 
 - **Toolbar.** The object and the tree, Preview, Frame All, and on the right the Node toggle and the mini-map toggle.
-- **Canvas**, the editor's shared node canvas, the one Shader Graph and Playable Graph draw on. The tree reads left to right: a node's children sit in the column to its right, joined from its right edge to their left edges. A node shows its type and, on its row, its delay, await and skip. A skipped node is faded.
+- **Canvas**, the editor's shared node canvas, the one Shader Graph and Playable Graph draw on. The tree reads left to right: a node's children sit in the column to its right, joined from its right edge to their left edges. A node shows its type, then one row for each of its own subject (`on Door`, or `on Missing` when the object is gone), its delay, await and skip. A skipped node is drawn faded.
 - **Node**, right. The selected node's fields. Drag the gap between it and the canvas to resize it. The Node toggle hides and shows it.
 - **Mini-map**, over the canvas, top right. The whole tree and the visible area. Click or drag in it to go there. Hold Ctrl or Cmd and drag to move it, drag a corner to resize it. The map toggle hides and shows it.
 
