@@ -61,7 +61,18 @@ slot_row_of :: proc(ptr: rawptr, tid: typeid, fi: int, path_prefix: string) -> (
 slot_row_begin :: proc(row: ^Slot_Row) {
 	row.row_y = im.GetCursorScreenPos().y
 	row.column_x = field_column_screen_x()
+	_value_tid = row.value_tid
+	_column_x = row.column_x
 }
+
+// Where the row's value column starts, for property_drawer_Slot.
+@(private = "file")
+_column_x: f32
+
+// The inline field's type of the row being drawn, for property_drawer_Slot:
+// the type a connected slot's value is shown as.
+@(private = "file")
+_value_tid: typeid
 
 // What the link's popup offers, for the drawer field_edit_row calls.
 @(private = "file")
@@ -85,6 +96,7 @@ slot_row_link :: proc(row: ^Slot_Row, offset: uintptr) {
 	_link_size = size
 	im.SetCursorScreenPos({row.column_x - size - im.GetStyle().ItemInnerSpacing.x, y})
 
+	_value_tid = nil
 	_link = row
 	defer _link = nil
 	prev_path := field_edit_set_path(row.path)
@@ -99,7 +111,7 @@ _draw_link :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	row := _link
 	connected := slot^ != slots.INLINE
 	owner := _owner_object()
-	tip := connected ? fmt.ctprintf("Takes its value from the entry %q. Click to change", slots.label(owner, slot^)) : cstring("Takes the value set here. Click to take it from an entry")
+	tip := connected ? fmt.ctprintf("Takes its value from %s. Click to change", _origin_text(owner, slot^)) : cstring("Takes the value set here. Click to take it from an entry")
 	if widgets.icon_button(icons.ICON_MD_LINK, "##slot_link", tip, active = connected, size = _link_size) do im.OpenPopup("##slot_sources")
 	if !im.BeginPopup("##slot_sources") do return
 	defer im.EndPopup()
@@ -149,19 +161,65 @@ _owner_object :: proc() -> core.Transform_Handle {
 	return (cast(^core.CompData)o.base_ptr).owner
 }
 
-// A connected slot's row: the entry it takes its value from. The link button
-// changes it (slot_row_link).
+// What a connection is shown as: "Squad B: lift", the object whose
+// Blackboard holds the entry and the entry's name as it is now, or the
+// entry's name alone when nothing says where it is.
+@(private = "file")
+_origin_text :: proc(owner: core.Transform_Handle, slot: slots.Slot) -> string {
+	name, from := slots.origin(owner, slot)
+	if from == "" do return fmt.tprintf("%s (not set)", name)
+	return fmt.tprintf("%s: %s", from, name)
+}
+
+// The origin in the label column of the row that starts at `start`:
+// right-aligned against the link button, pushed right by a label that
+// reaches it, and cut at the button.
+@(private = "file")
+_origin_in_label :: proc(start: im.Vec2, label: cstring, origin: string) {
+	if _column_x <= 0 do return
+	style := im.GetStyle()
+	text := strings.clone_to_cstring(origin, context.temp_allocator)
+	right := _column_x - im.GetFrameHeight() - style.ItemInnerSpacing.x * 2
+	label_end := start.x + im.CalcTextSize(label, nil, true).x + style.ItemInnerSpacing.x * 2
+	x := max(label_end, right - im.CalcTextSize(text).x)
+	if x >= right do return
+	y := start.y + (im.GetFrameHeight() - im.GetTextLineHeight()) * 0.5
+	dl := im.GetWindowDrawList()
+	im.DrawList_PushClipRect(dl, {x, start.y}, {right, start.y + im.GetFrameHeight()}, true)
+	im.DrawList_AddText(dl, {x, y}, im.GetColorU32(.TextDisabled), text)
+	im.DrawList_PopClipRect(dl)
+}
+
+// A connected slot's row. When the entry's value can be read, the row shows
+// it with the inline field's own widget, read-only: the value belongs to the
+// entry, edited where the entry is. In the label column, where the value
+// comes from.
+// When it cannot be read, the row is where it would come from. The link
+// button changes the connection (slot_row_link).
 @(property_drawer={type = slots.Slot})
 property_drawer_Slot :: proc(ctx: ^Ctx) {
 	slot := (cast(^slots.Slot)ctx.ptr)^
-	field_row(ctx.label)
-	im.AlignTextToFramePadding()
 	if slot == slots.INLINE {
 		// A slot whose struct has no inline field: the prebuild reports it.
+		field_row(ctx.label)
+		im.AlignTextToFramePadding()
 		im.TextDisabled("no inline value")
 		return
 	}
-	// The entry's name as it is now: a Blackboard's entry is connected by
-	// its id, and its name is read here.
-	im.TextDisabled(fmt.ctprintf("from %s", slots.label(_owner_object(), slot)))
+	owner := _owner_object()
+	origin := _origin_text(owner, slot)
+	if T := _value_tid; T != nil && type_info_of(T).size <= slots.MAX_VALUE_SIZE {
+		value: [slots.MAX_VALUE_SIZE]u8
+		if slots.lookup_raw(slot, T, slots.scope_of(owner), &value[0]) {
+			start := im.GetCursorScreenPos()
+			im.BeginDisabled()
+			draw_value(&value[0], T, ctx.label)
+			im.EndDisabled()
+			_origin_in_label(start, ctx.label, origin)
+			return
+		}
+	}
+	field_row(ctx.label)
+	im.AlignTextToFramePadding()
+	im.TextDisabled(strings.clone_to_cstring(origin, context.temp_allocator))
 }

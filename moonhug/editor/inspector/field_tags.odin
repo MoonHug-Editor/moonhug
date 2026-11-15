@@ -93,8 +93,9 @@ TAG_EXT :: Field_Tag{key = "ext", form = .Value}
 // inspector. Opt-in per field: a material slot wants it, a mesh slot does not.
 TAG_EXPAND :: Field_Tag{key = "expand", form = .Flag}
 
-// Draws a nested struct's fields at the parent's level instead of under a
-// foldout.
+// Draws a nested struct's fields, or an array's elements, at the parent's
+// level instead of under a foldout. An inline array has no size line either:
+// its rows and its Add button are the field.
 //
 // Written `inline:""` or as a bare `inline`, both read the same.
 TAG_INLINE :: Field_Tag{key = "inline", form = .Flag}

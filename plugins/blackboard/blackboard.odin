@@ -79,7 +79,7 @@ type_cleanup_Blackboard_Entry :: proc(e: ^Blackboard_Entry) {
 @(typ_guid={guid = "9da7f7af-b616-4937-af42-8dea0c54aad9"})
 Blackboard :: struct {
 	using base: engine.CompData `inspect:"-"`,
-	entries: [dynamic]Blackboard_Entry,
+	entries: [dynamic]Blackboard_Entry `inline:""`,
 }
 
 type_cleanup_Blackboard :: proc(b: ^Blackboard) {
@@ -359,14 +359,14 @@ _entries_of :: proc(owner: core.Transform_Handle, T: typeid) -> []slots.Scope_En
 }
 
 @(private)
-_label_of :: proc(owner: core.Transform_Handle, slot: slots.Slot) -> (string, bool) {
+_label_of :: proc(owner: core.Transform_Handle, slot: slots.Slot) -> (name, from: string, ok: bool) {
 	w := engine.ctx_world()
 	b := nearest(owner)
 	for depth := 0; w != nil && b != nil && depth < 256; depth += 1 {
-		for &e in b.entries do if entry_key(&e) == slot do return e.name, true
 		t := engine.pool_get(&w.transforms, engine.Handle(b.owner))
 		if t == nil do break
+		for &e in b.entries do if entry_key(&e) == slot do return e.name, t.name, true
 		b = nearest(engine.Transform_Handle(t.parent.handle))
 	}
-	return "", false
+	return "", "", false
 }

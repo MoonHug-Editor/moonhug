@@ -818,7 +818,7 @@ draw_kind_default :: proc(ctx: ^Ctx) {
     case is_enum_type(ctx.tid):
         draw_inspector_enum(ctx.ptr, ctx.tid, ctx.label)
     case is_array_type(ctx.tid):
-        draw_inspector_array_multi(ctx.ptr, ctx.tid, ctx.label, ctx.offset)
+        draw_inspector_array_multi(ctx.ptr, ctx.tid, ctx.label, ctx.offset, inline = ctx.inline)
         ctx.menu_drawn = true
     case is_union_type(ctx.tid):
         // A union's payload type can differ per object — see multi_suspend.

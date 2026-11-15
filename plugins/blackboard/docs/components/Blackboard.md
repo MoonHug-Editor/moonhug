@@ -49,6 +49,7 @@ An entry's type is one of:
 ## In the editor
 
 - A slot's link button lists the entries of its type from the Blackboards above the object, nearest first, each with the name of the object its Blackboard is on.
+- A connected slot's row shows the entry's value, read-only, and in its label column the object and the entry: `Squad B: lift`.
 - Each of an entry's name, type and value is its own undo step.
 - Override Entry, under the list, shows when a Blackboard above has entries this one has none for. Picking one adds an entry with its id, name, type and value, to change here.
 - An entry gets its id in the step that adds it, so an undo takes both and a redo brings the same id back.

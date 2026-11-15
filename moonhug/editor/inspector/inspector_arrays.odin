@@ -101,14 +101,17 @@ draw_inspector_array :: proc(field_ptr: rawptr, field_tid: typeid, label: cstrin
 // multi-selection. Rows are drawn up to the SHORTEST length across the
 // selection, each row showing its own mixed-value dash. Rows past that length
 // have no counterpart to edit, so they are not shown.
-draw_inspector_array_multi :: proc(field_ptr: rawptr, field_tid: typeid, label: cstring, array_offset: uintptr) {
+//
+// `inline` (the field's `inline` tag) draws the elements at the field's level
+// with no foldout and no size line, the way an inline struct draws its fields.
+draw_inspector_array_multi :: proc(field_ptr: rawptr, field_tid: typeid, label: cstring, array_offset: uintptr, inline := false) {
 	ti := runtime.type_info_base(type_info_of(field_tid))
 
 	if info, ok := ti.variant.(runtime.Type_Info_Dynamic_Array); ok {
 		da := (^runtime.Raw_Dynamic_Array)(field_ptr)
-		draw_dynamic_array(da, info.elem, field_ptr, field_tid, label, array_offset)
+		draw_dynamic_array(da, info.elem, field_ptr, field_tid, label, array_offset, inline)
 	} else if info, ok := ti.variant.(runtime.Type_Info_Array); ok {
-		draw_fixed_array(field_ptr, info.count, info.elem, field_tid, label, array_offset)
+		draw_fixed_array(field_ptr, info.count, info.elem, field_tid, label, array_offset, inline)
 	} else {
 		im.TextColored(im.Vec4{1, 0, 0, 1}, "Not an array type")
 	}
@@ -122,12 +125,14 @@ is_array_type :: proc(tid: typeid) -> bool {
 	return is_dyn || is_fixed
 }
 
-draw_fixed_array :: proc(ptr: rawptr, count: int, elem_ti: ^runtime.Type_Info, field_tid: typeid, label: cstring, array_offset: uintptr = 0) {
-	tree_open := im.TreeNode(label)
-	draw_field_context_menu(ptr, field_tid)
-	if !tree_open do return
-	defer im.TreePop()
-	im.TextDisabled("Fixed size: %d", count)
+draw_fixed_array :: proc(ptr: rawptr, count: int, elem_ti: ^runtime.Type_Info, field_tid: typeid, label: cstring, array_offset: uintptr = 0, inline := false) {
+	if !inline {
+		tree_open := im.TreeNode(label)
+		draw_field_context_menu(ptr, field_tid)
+		if !tree_open do return
+		im.TextDisabled("Fixed size: %d", count)
+	}
+	defer if !inline do im.TreePop()
 
 	readonly := core.inspector_is_readonly()
 	_reorder_apply_if_released(ptr, ptr, elem_ti.size, count)
@@ -169,11 +174,13 @@ array_remove_element :: proc(da: ^runtime.Raw_Dynamic_Array, array_offset: uintp
 
 ARRAY_REMOVE_BTN_W :: f32(24)
 
-draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Type_Info, field_ptr: rawptr, field_tid: typeid, label: cstring, array_offset: uintptr = 0) {
-	tree_open := im.TreeNode(label)
-	draw_field_context_menu(field_ptr, field_tid)
-	if !tree_open do return
-	defer im.TreePop()
+draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Type_Info, field_ptr: rawptr, field_tid: typeid, label: cstring, array_offset: uintptr = 0, inline := false) {
+	if !inline {
+		tree_open := im.TreeNode(label)
+		draw_field_context_menu(field_ptr, field_tid)
+		if !tree_open do return
+	}
+	defer if !inline do im.TreePop()
 
 	// Rows are drawn up to the SHORTEST length across the selection: past that
 	// there is no counterpart on some object, so there is nothing to edit. The
@@ -187,7 +194,9 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 	multi_prev, common_len := multi_rebase_to_dynamic_array(array_offset, da.len, elem_ti.size)
 	defer multi_rebase_end(multi_prev)
 
-	if len_mixed {
+	if inline {
+		// No size line: the rows are the field's content.
+	} else if len_mixed {
 		// The dash is the mixed marker every other field uses. The counts spell
 		// out what it means for a list, since "mixed length" alone does not say
 		// why some rows are missing.

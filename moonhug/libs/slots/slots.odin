@@ -284,9 +284,10 @@ Scope :: struct {
 	// The entries of type `T` it offers `owner`, nearest first.
 	// Temp-allocated.
 	entries_of: proc(owner: core.Transform_Handle, T: typeid) -> []Scope_Entry,
-	// The name the entry `slot` connects to is shown by for `owner`, false
-	// when the scope has no such entry. Temp-allocated.
-	label_of:   proc(owner: core.Transform_Handle, slot: Slot) -> (string, bool),
+	// The name the entry `slot` connects to is shown by for `owner`, and what
+	// holds it ("Squad B"), false when the scope has no such entry.
+	// Temp-allocated.
+	label_of:   proc(owner: core.Transform_Handle, slot: Slot) -> (name, from: string, ok: bool),
 }
 
 @(private) _scope: Scope
@@ -317,9 +318,42 @@ scope_entries :: proc(owner: core.Transform_Handle, T: typeid) -> []Scope_Entry 
 // installed scope gives the entry, else the slot's own name, which is the
 // entry's name for an entry code fills.
 label :: proc(owner: core.Transform_Handle, slot: Slot) -> string {
+	text, _ := origin(owner, slot)
+	return text
+}
+
+// What a slot's connection is shown as for a reader on `owner`, and what
+// holds the entry: the installed scope's answer ("lift", "Squad B"), else the
+// slot's own name and "Global" when the game-wide dictionary has the entry,
+// "" when nothing has it.
+origin :: proc(owner: core.Transform_Handle, slot: Slot) -> (entry_name, from: string) {
 	if _scope.label_of != nil {
-		if text, ok := _scope.label_of(owner, slot); ok do return text
+		if n, f, ok := _scope.label_of(owner, slot); ok do return n, f
 	}
-	return name(slot)
+	if slot in _global.entries do return name(slot), "Global"
+	return name(slot), ""
+}
+
+// lookup for a type known only at run time: copies the value of the entry
+// `slot` is connected to into `out`, which holds a `T`. False as lookup is.
+lookup_raw :: proc(slot: Slot, T: typeid, d: ^Dict, out: rawptr) -> bool {
+	if slot == INLINE || out == nil do return false
+	size := type_info_of(T).size
+	if size > MAX_VALUE_SIZE do return false
+	for at := d; at != nil; at = at.parent {
+		e, has := &at.entries[slot]
+		if !has do continue
+		if e.type != T {
+			_report_type(slot, e.type, T)
+			return false
+		}
+		if e.read != nil {
+			e.read(out, e.user)
+		} else {
+			runtime.mem_copy(out, &e.data[0], size)
+		}
+		return true
+	}
+	return false
 }
 
