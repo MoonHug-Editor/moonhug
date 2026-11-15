@@ -29,7 +29,6 @@ import "core:strings"
 import sdl "vendor:sdl3"
 import stbi "vendor:stb/image"
 import im "moonhug:external/odin-imgui"
-import im_sdlgpu "moonhug:external/odin-imgui/imgui_impl_sdlgpu3"
 import mcp "moonhug:editor/mcp"
 import assets "moonhug:libs/assets"
 import core "moonhug:libs/core"
@@ -657,7 +656,7 @@ mcp_bridge_capture_frame :: proc() {
 	else do gfx.rt_resize(_mcp.window_rt, w, h)
 	gfx.pass_begin_target(_mcp.window_rt, [4]f32{0.96, 0.96, 0.96, 1}, depth = false)
 	gfx.pass_end(proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURenderPass) {
-		im_sdlgpu.RenderDrawData(im.GetDrawData(), cmd, rp)
+		imgui_render_draw_data(im.GetDrawData(), cmd, rp)
 	})
 	dl := gfx.frame_capture_begin(_mcp.window_rt)
 	if dl == nil {

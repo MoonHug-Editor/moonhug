@@ -47,15 +47,16 @@ _Input_Kind :: enum u8 {
 	Key,
 	Text,
 	Wait,
+	Wheel,
 }
 
 @(private = "file")
-_INPUT_KIND_NAMES := [_Input_Kind]string{.Move = "move", .Down = "down", .Up = "up", .Key = "key", .Text = "text", .Wait = "wait"}
+_INPUT_KIND_NAMES := [_Input_Kind]string{.Move = "move", .Down = "down", .Up = "up", .Key = "key", .Text = "text", .Wait = "wait", .Wheel = "wheel"}
 
 @(private = "file")
 _Input_Step :: struct {
 	kind:   _Input_Kind,
-	pos:    [2]f32, // Move: points from the editor's top-left
+	pos:    [2]f32, // Move: points from the editor's top-left. Wheel: the scroll, x across and y up
 	button: i32,    // Down, Up: 0 left, 1 right, 2 middle
 	key:    im.Key, // Key: the key as imgui names it
 	mod:    im.Key, // Key: the modifier flag a modifier key sets as well, None otherwise
@@ -183,13 +184,18 @@ _input_parse :: proc(raw: json.Array) -> (steps: [dynamic]_Input_Step, err: Mcp_
 			text, has := obj["text"].(json.String)
 			if !has || len(text) == 0 || len(text) > _INPUT_MAX_TEXT do err = {"bad_request", fmt.tprintf("step %d: text needs text, 1 to %d bytes", i, _INPUT_MAX_TEXT)}
 			step = {kind = .Text, text = strings.clone(text, runtime.default_allocator())}
+		case "wheel":
+			x, _ := mcp.json_f32(obj, "x")
+			y, _ := mcp.json_f32(obj, "y")
+			if x == 0 && y == 0 do err = {"bad_request", fmt.tprintf("step %d: wheel needs x or y", i)}
+			step = {kind = .Wheel, pos = {x, y}}
 		case "wait":
 			n := int(mcp.json_int(obj, "frames", 1))
 			if n < 1 || n > _INPUT_MAX_WAIT do err = {"bad_request", fmt.tprintf("step %d: wait needs frames 1 to %d", i, _INPUT_MAX_WAIT)}
 			step = {kind = .Wait, frames = n}
 			frames += n - 1
 		case:
-			err = {"bad_request", fmt.tprintf("step %d: type must be move, down, up, key, text or wait (got %q)", i, kind)}
+			err = {"bad_request", fmt.tprintf("step %d: type must be move, down, up, key, text, wheel or wait (got %q)", i, kind)}
 		}
 		if err.code != "" {
 			delete(step.text, runtime.default_allocator())
@@ -204,7 +210,7 @@ _input_parse :: proc(raw: json.Array) -> (steps: [dynamic]_Input_Step, err: Mcp_
 }
 
 @(mcp_tool={
-	description="Drive the editor's widgets with real mouse and keyboard input: a script of steps played one per frame into imgui, the way the OS feeds it. Steps are objects with a type: move {x, y} (points from the editor's top-left, item_rect and window_list use the same frame), down {button} and up {button} (left, right, middle, default left), key {name, down} (an imgui key name, or ctrl, shift, alt, cmd for the physical modifier keys, down defaults to true, a press needs a down and an up), text {text} (characters typed into the focused field), wait {frames}. A drag is move, down, a few moves, up. Answers when the script is done, with what each step's frame saw: the mouse position, the window under it, whether an item was hovered or active. The script's position holds until the real cursor moves. One script at a time, and not in a batch.",
+	description="Drive the editor's widgets with real mouse and keyboard input: a script of steps played one per frame into imgui, the way the OS feeds it. Steps are objects with a type: move {x, y} (points from the editor's top-left, item_rect and window_list use the same frame), down {button} and up {button} (left, right, middle, default left), key {name, down} (an imgui key name, or ctrl, shift, alt, cmd for the physical modifier keys, down defaults to true, a press needs a down and an up), text {text} (characters typed into the focused field), wheel {x, y} (a scroll at the mouse, in wheel notches, y up and x across), wait {frames}. A drag is move, down, a few moves, up. Answers when the script is done, with what each step's frame saw: the mouse position, the window under it, whether an item was hovered or active. The script's position holds until the real cursor moves. One script at a time, and not in a batch.",
 	param_steps="object[]!:The steps, in order, at most 500 and 3000 frames",
 })
 mcp_tool_input :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
@@ -291,6 +297,8 @@ mcp_bridge_input_feed :: proc() {
 		im.IO_AddKeyEvent(io, step.key, step.down)
 	case .Text:
 		im.IO_AddInputCharactersUTF8(io, strings.clone_to_cstring(step.text, context.temp_allocator))
+	case .Wheel:
+		im.IO_AddMouseWheelEvent(io, step.pos.x, step.pos.y)
 	case .Wait:
 		// This frame is the first of them.
 		_input.wait = step.frames - 1

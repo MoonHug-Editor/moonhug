@@ -58,7 +58,7 @@ _render_floating_window :: proc "c" (vp: ^im.Viewport, render_arg: rawptr) {
 		im_sdlgpu.PrepareDrawData(vp.DrawData_, cmd)
 		target := sdl.GPUColorTargetInfo{texture = image, clear_color = {0, 0, 0, 1}, load_op = .CLEAR, store_op = .STORE}
 		pass := sdl.BeginGPURenderPass(cmd, &target, 1, nil)
-		im_sdlgpu.RenderDrawData(vp.DrawData_, cmd, pass)
+		imgui_render_draw_data(vp.DrawData_, cmd, pass)
 		sdl.EndGPURenderPass(pass)
 	}
 	_ = sdl.SubmitGPUCommandBuffer(cmd)
@@ -74,3 +74,27 @@ imgui_platform_windows :: proc() {
 	_imgui_update_platform_windows()
 	_imgui_render_platform_windows_default(nil, nil)
 }
+
+// Draws imgui's draw data `dd` in render pass `pass`: every call that draws
+// imgui goes through here. A command that draws nothing is dropped first.
+// imgui allows one ("very rare but can technically be manufactured by user
+// code", its Metal backend's notes), and its Metal backend skips it, since
+// Metal's validation stops the process on a draw with no indices. The SDL
+// GPU backend draws every command, so on Metal one such command would end
+// the editor.
+imgui_render_draw_data :: proc(dd: ^im.DrawData, cmd: ^sdl.GPUCommandBuffer, pass: ^sdl.GPURenderPass) {
+	if dd == nil do return
+	for list in ([^]^im.DrawList)(dd.CmdLists.Data)[:dd.CmdLists.Size] {
+		if list == nil do continue
+		cmds := ([^]im.DrawCmd)(list.CmdBuffer.Data)[:list.CmdBuffer.Size]
+		kept: i32 = 0
+		for c in cmds {
+			if c.ElemCount == 0 && c.UserCallback == nil do continue
+			cmds[kept] = c
+			kept += 1
+		}
+		list.CmdBuffer.Size = kept
+	}
+	im_sdlgpu.RenderDrawData(dd, cmd, pass)
+}
+

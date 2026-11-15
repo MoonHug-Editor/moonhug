@@ -90,7 +90,7 @@ _progress_pump :: proc(title, info: string, fraction: f32) {
 	im_sdlgpu.PrepareDrawData(dd, gfx.command_buffer())
 	if gfx.pass_begin_swapchain(theme_clear_color(), depth = false) {
 		gfx.pass_end(proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURenderPass) {
-			im_sdlgpu.RenderDrawData(im.GetDrawData(), cmd, rp)
+			imgui_render_draw_data(im.GetDrawData(), cmd, rp)
 		})
 	}
 	gfx.frame_end()

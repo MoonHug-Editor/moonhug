@@ -383,7 +383,7 @@ main :: proc() {
         im_sdlgpu.PrepareDrawData(dd, gfx.command_buffer())
         if gfx.pass_begin_swapchain(theme_clear_color(), depth = false) {
             gfx.pass_end(proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURenderPass) {
-                im_sdlgpu.RenderDrawData(im.GetDrawData(), cmd, rp)
+                imgui_render_draw_data(im.GetDrawData(), cmd, rp)
             })
             // A queued full-window screenshot copies the swapchain HERE: the UI
             // has drawn into it and the command buffer is still open. Costs
