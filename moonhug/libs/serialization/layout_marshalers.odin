@@ -15,6 +15,7 @@ import "core:io"
 import "core:reflect"
 import "core:strings"
 import core "moonhug:libs/core"
+import "moonhug:libs/slots"
 import "moonhug:libs/time"
 
 register_layout_marshalers :: proc() {
@@ -29,6 +30,8 @@ register_layout_marshalers :: proc() {
 	json.register_user_marshaler(core.Owned, struct_one_line_marshal)
 	json.register_user_marshaler(time.Clock, clock_marshal)
 	json.register_user_unmarshaler(time.Clock, clock_unmarshal)
+	json.register_user_marshaler(slots.Slot, slot_marshal)
+	json.register_user_unmarshaler(slots.Slot, slot_unmarshal)
 }
 
 // A fixed array on one line. Each element goes through the writer, so an
@@ -108,5 +111,28 @@ clock_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
 	case json.Float:
 		if x >= 0 && int(x) < len(time.Clock) do out^ = time.Clock(int(x))
 	}
+	return nil
+}
+
+// slots.Slot saves as the name of the entry it is connected to, an empty
+// string when it is not connected. The number in memory is given out as names
+// are first used, so it is not the same in every run.
+slot_marshal :: proc(w: io.Stream, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
+	io.write_quoted_string(w, slots.name((cast(^slots.Slot)v.data)^))
+	return nil
+}
+
+slot_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
+	val, perr := json.parse_value(p)
+	if perr != nil do return perr
+	prev := context.allocator
+	context.allocator = p.allocator
+	defer {
+		json.destroy_value(val)
+		context.allocator = prev
+	}
+	out := cast(^slots.Slot)v.data
+	out^ = slots.INLINE
+	if name, ok := val.(json.String); ok do out^ = slots.entry(string(name))
 	return nil
 }

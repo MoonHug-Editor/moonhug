@@ -106,3 +106,10 @@ _field_column_x :: proc() -> f32 {
 	left, _ := _panel_content_bounds()
 	return max(left + field_label_width() + PREFIX_PADDING_RIGHT, im.GetCursorPosX())
 }
+
+// Screen x where the value column of the row about to be drawn starts. Call
+// it with the cursor at the row's start.
+field_column_screen_x :: proc() -> f32 {
+	return im.GetCursorScreenPos().x + _field_column_x() - im.GetCursorPosX()
+}
+

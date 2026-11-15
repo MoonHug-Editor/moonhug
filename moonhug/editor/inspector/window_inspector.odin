@@ -12,6 +12,7 @@ import "moonhug:editor/subassets"
 import "moonhug:editor/widgets"
 import assets "moonhug:libs/assets"
 import core "moonhug:libs/core"
+import "moonhug:libs/slots"
 import clip "../clipboard"
 import undo "moonhug:editor/undo"
 import "moonhug:editor/icons"
@@ -632,6 +633,7 @@ _is_picker_type :: proc(tid: typeid) -> bool {
            tid == typeid_of(core.PPtr) ||
            tid == typeid_of(core.Ref) ||
            tid == typeid_of(core.Ref_Local) ||
+           tid == typeid_of(slots.Slot) ||
            is_enum_type(tid)
 }
 
@@ -1093,19 +1095,32 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
     // with show_in_array=false skip array elements.
     draw_inspector_buttons(tid, ptr, above = true, element_ctx = _in_array_element)
 
-    for i in 0..<count {
-        field_info := reflect.struct_field_at(tid, i)
-        inspect_val, has_inspect := tag_value(field_info.tag, TAG_INSPECT)
-        if has_inspect && inspect_val == "-" {
-            continue
+    for fi in 0..<count {
+        // A slot (moonhug/libs/slots) and its inline field, `_name`, are one
+        // row under the slot's name (slot_row.odin). While the slot is not
+        // connected the row is the inline field's, drawn as any field is,
+        // so `i` is that field. Its `inspect:"-"` hides only a row of its own.
+        i := fi
+        slot: Slot_Row
+        if types[fi].id == typeid_of(slots.Slot) {
+            slot = slot_row_of(ptr, tid, fi, path_prefix)
+            if slot.inline_index >= 0 && slot.ptr^ == slots.INLINE do i = slot.inline_index
         }
-        json_val, has_json := tag_value(field_info.tag, TAG_JSON)
-        if !has_inspect && has_json && json_val == "-" {
-            continue
+        field_info := reflect.struct_field_at(tid, i)
+        if i == fi {
+            inspect_val, has_inspect := tag_value(field_info.tag, TAG_INSPECT)
+            if has_inspect && inspect_val == "-" {
+                continue
+            }
+            json_val, has_json := tag_value(field_info.tag, TAG_JSON)
+            if !has_inspect && has_json && json_val == "-" {
+                continue
+            }
         }
 
         field_name := names[i]
-        c_field_name := strings.clone_to_cstring(field_name)
+        // What the row is called: the slot's name on a slot's row.
+        c_field_name := strings.clone_to_cstring(names[fi])
         defer delete(c_field_name)
         field_type := types[i]
 
@@ -1125,6 +1140,7 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
         im.PushID(c_field_name)
         prev_changed_outside := inspector_changed
         inspector_changed = false
+        if slot.ptr != nil do slot_row_begin(&slot)
 
         if is_field_overridden do override_style_push()
 
@@ -1217,7 +1233,7 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
                 label       = c_field_name,
                 path_prefix = full_path,
                 offset      = multi_offset_of(field_ptr, ptr),
-                name        = field_name,
+                name        = names[fi],
                 path        = full_path,
                 nested      = true,
                 inline      = tag_has(field_info.tag, TAG_INLINE),
@@ -1253,6 +1269,8 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
         }
 
         override_style_pop(is_field_overridden)
+
+        if slot.ptr != nil do slot_row_link(&slot, multi_offset_of(slot.ptr, ptr))
 
         if prev_changed_outside || inspector_changed do inspector_changed = true
         im.PopID()

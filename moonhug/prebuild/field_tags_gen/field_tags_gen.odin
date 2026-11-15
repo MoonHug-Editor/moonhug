@@ -39,6 +39,8 @@ OUT_DIR :: "docs/reference/field_tags"
 INSPECTOR_PKG :: "moonhug/editor/inspector"
 INSPECTOR_IMPORT :: "moonhug:editor/inspector"
 DECORATOR_PREFIX :: "decorator_"
+// A slot field's type as code writes it (moonhug/libs/slots).
+SLOT_TYPE :: "slots.Slot"
 
 // Field_Tag_Form, as the declarations name it.
 Form :: enum {
@@ -140,6 +142,25 @@ generate :: proc(w: ^db.World) -> bool {
 		decl := db.get(decls, entity)
 		if decl.name == "" || _skipped(decl) do continue
 		rel := gen_facts.decl_rel_path(decl)
+		// A slot (moonhug/libs/slots) takes its inline value from the field
+		// named as it with `_` in front. The inspector draws the two as one
+		// row under the slot's name, so the inline field has no row of its
+		// own: `inspect:"-"`.
+		for f in db.get(fields, entity).fields {
+			if f.type != SLOT_TYPE do continue
+			inline_name := fmt.tprintf("_%s", f.name)
+			found := false
+			for g in db.get(fields, entity).fields {
+				if g.name != inline_name do continue
+				found = true
+				if !strings.contains(g.tag, `inspect:"-"`) {
+					append(&errors, fmt.tprintf("%s:%d: `%s.%s` is the inline value of the slot `%s` and needs `inspect:\"-\"`: the slot's row draws it", rel, g.line, decl.name, g.name, f.name))
+				}
+			}
+			if !found {
+				append(&errors, fmt.tprintf("%s:%d: the slot `%s.%s` has no inline value, add a field `%s` of the value's type with `inspect:\"-\"`", rel, f.line, decl.name, f.name, inline_name))
+			}
+		}
 		for f in db.get(fields, entity).fields {
 			if strings.trim_space(f.tag) == "" do continue
 			field := fmt.tprintf("%s.%s", decl.name, f.name)
