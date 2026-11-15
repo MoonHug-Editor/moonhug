@@ -49,11 +49,22 @@ package slots
 // - Declaring an entry makes no value. It says the name and the type exist,
 //   so the picker can list it before the game runs.
 //
+// A reader that belongs to an object asks for the object's dictionary:
+//
+//   speed := slots.get(m.speed, m._speed, slots.scope_of(m.owner))
+//
+// - `scope_of` is the global dictionary until a package installs a scope
+//   (`scope_install`), a way to find an object's dictionary. The blackboard
+//   plugin installs one: the nearest Blackboard component on the object or
+//   above it, with the global dictionary last in its chain.
+// - `scope_entries` lists what a scope offers an object, for the inspector.
+//
 // Dictionaries are not shared between threads. Names and declarations are.
 
 import "base:runtime"
 import "core:strings"
 import "core:sync"
+import core "moonhug:libs/core"
 import log "moonhug:libs/log"
 
 // A slot: the entry it is connected to, or INLINE.
@@ -240,3 +251,44 @@ _report_type :: proc(slot: Slot, have, want: typeid) {
 	}
 	log.errorf("slots: entry %q holds a %v and a slot reads it as a %v, the slot's inline value is used", name(slot), have, want)
 }
+
+// An entry a scope offers an object: its name, and what it comes from, for
+// the picker ("Enemy's Blackboard").
+Scope_Entry :: struct {
+	name: string,
+	from: string,
+}
+
+// How a package finds the dictionary of an object.
+Scope :: struct {
+	// The dictionary readers on `owner` look in, nil for none of this scope's.
+	dict_of:    proc(owner: core.Transform_Handle) -> ^Dict,
+	// The entries of type `T` it offers `owner`, nearest first.
+	// Temp-allocated.
+	entries_of: proc(owner: core.Transform_Handle, T: typeid) -> []Scope_Entry,
+}
+
+@(private) _scope: Scope
+
+// Installs the scope `scope_of` and `scope_entries` ask. One scope at a
+// time: a later install replaces it.
+scope_install :: proc(scope: Scope) {
+	_scope = scope
+}
+
+// The dictionary a reader on `owner` looks in: the installed scope's, or the
+// global one when no scope is installed or it has none for the object.
+scope_of :: proc(owner: core.Transform_Handle) -> ^Dict {
+	if _scope.dict_of != nil {
+		if d := _scope.dict_of(owner); d != nil do return d
+	}
+	return &_global
+}
+
+// The entries of type `T` the installed scope offers `owner`. Empty without a
+// scope. Temp-allocated.
+scope_entries :: proc(owner: core.Transform_Handle, T: typeid) -> []Scope_Entry {
+	if _scope.entries_of == nil do return nil
+	return _scope.entries_of(owner, T)
+}
+

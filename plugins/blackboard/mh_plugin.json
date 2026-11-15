@@ -1,0 +1,7 @@
+{
+  "name": "blackboard",
+  "guid": "252ceef6-c120-4970-9172-0b49151af870",
+  "description": "A component that holds named values for the slots of its object and the objects under it",
+  "dependencies": ["engine"],
+  "dependencies_custom": []
+}

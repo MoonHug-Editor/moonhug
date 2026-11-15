@@ -7,9 +7,11 @@ package inspector
 //   decorators, its undo and its prefab override.
 // - Connected: the row names the entry (property_drawer_Slot).
 // - Either way a link button sits at the end of the label column. It opens
-//   the list of what the slot can take its value from: the inline value, and
-//   every declared entry of the inline field's type (slots.declare). Picking
-//   one is an edit of the slot field, recorded as any row's.
+//   the list of what the slot can take its value from: the inline value, the
+//   entries of the inline field's type the installed scope offers the object
+//   (slots.scope_entries: the Blackboards above it), and every declared one
+//   (slots.declare). Picking one is an edit of the slot field, recorded as
+//   any row's.
 //
 // The struct field loop (draw_inspector_default) pairs the two fields and
 // calls in here.
@@ -19,7 +21,9 @@ import "core:reflect"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/icons"
+import "moonhug:editor/undo"
 import "moonhug:editor/widgets"
+import core "moonhug:libs/core"
 import "moonhug:libs/slots"
 
 // What the field loop knows about a slot's row.
@@ -103,23 +107,45 @@ _draw_link :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 		return
 	}
 	if im.MenuItem("Inline value", nil, !connected) do slot^ = slots.INLINE
-	im.Separator()
-	entries := slots.declared_of(row.value_tid)
-	if len(entries) == 0 {
-		im.TextDisabled(fmt.ctprintf("No entry of type %v is declared", row.value_tid))
-	}
-	for e in entries {
+	listed := false
+	// What the installed scope offers the object the component is on, a
+	// Blackboard above it for instance, nearest first.
+	scoped := slots.scope_entries(_owner_object(), row.value_tid)
+	if len(scoped) > 0 do im.Separator()
+	for e in scoped {
 		s := slots.entry(e.name)
+		if s == slot^ do listed = true
+		if im.MenuItem(strings.clone_to_cstring(e.name, context.temp_allocator), strings.clone_to_cstring(e.from, context.temp_allocator), slot^ == s) do slot^ = s
+	}
+	// What code declares.
+	entries := slots.declared_of(row.value_tid)
+	if len(entries) > 0 do im.Separator()
+	next: for e in entries {
+		for have in scoped do if have.name == e.name do continue next
+		s := slots.entry(e.name)
+		if s == slot^ do listed = true
 		if im.MenuItem(strings.clone_to_cstring(e.name, context.temp_allocator), nil, slot^ == s) do slot^ = s
 		if e.doc != "" do widgets.tooltip(strings.clone_to_cstring(e.doc, context.temp_allocator))
 	}
-	// A connection to an entry nothing declares now, such as one of a plugin
-	// that is not installed: shown, so it can be seen and replaced.
-	if connected {
-		listed := false
-		for e in entries do if slots.entry(e.name) == slot^ do listed = true
-		if !listed do im.MenuItem(fmt.ctprintf("%s (not declared)", slots.name(slot^)), nil, true)
+	if len(scoped) == 0 && len(entries) == 0 {
+		im.Separator()
+		im.TextDisabled(fmt.ctprintf("Nothing offers an entry of type %v", row.value_tid))
 	}
+	// A connection to an entry nothing offers now, such as one of a
+	// Blackboard that was removed: shown, so it can be seen and replaced.
+	if connected && !listed {
+		im.Separator()
+		im.MenuItem(fmt.ctprintf("%s (not offered)", slots.name(slot^)), nil, true)
+	}
+}
+
+// The object whose component the inspector is drawing, {} when it draws
+// something else: an asset, a settings struct.
+@(private = "file")
+_owner_object :: proc() -> core.Transform_Handle {
+	o, ok := undo.current_owner()
+	if !ok || o.kind != .Pooled || o.base_ptr == nil || o.handle.type_key == .Transform do return {}
+	return (cast(^core.CompData)o.base_ptr).owner
 }
 
 // A connected slot's row: the entry it takes its value from. The link button

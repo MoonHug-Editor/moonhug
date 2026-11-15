@@ -56,6 +56,18 @@ defer slots.destroy(&d)
 - `slots.global()` is one dictionary for the whole game, for values many readers share. A dictionary of the caller's own puts it last in its chain.
 - A dictionary is used from one thread.
 
+## An object's dictionary
+
+```odin
+speed := slots.get(m.speed, m._speed, slots.scope_of(m.owner))
+```
+
+A component reads its slots from `slots.scope_of(owner)`, the dictionary of the object it is on.
+
+- A package installs how that dictionary is found, a scope (`slots.scope_install`). The [blackboard plugin](/plugins/blackboard/docs/_index.md) installs one: the nearest Blackboard component on the object or above it, then the ones further up, then the game-wide dictionary.
+- Without a scope, or for an object the scope has nothing for, `scope_of` is the game-wide dictionary. So a reader never depends on the package that installs the scope.
+- `slots.scope_entries(owner, T)` lists what the scope offers an object, for the inspector.
+
 ## Declared entries
 
 ```odin
@@ -70,9 +82,9 @@ A slot and its inline field are one row under the slot's name:
 
 - Not connected, the row is the inline field's: its own drawer and decorators, its undo and its prefab override.
 - Connected, the row reads `from <entry>`.
-- The link button at the end of the label column lists what the slot can take its value from: the inline value, and every declared entry of the type. Picking one is one undo step, applied to every selected object.
-- A connection to an entry nothing declares, such as one of a plugin that is not installed, is listed as not declared, so it can be seen and replaced.
+- The link button at the end of the label column lists what the slot can take its value from: the inline value, the entries of the type the scope offers the object, such as those of the Blackboards above it, and every declared entry of the type. Picking one is one undo step, applied to every selected object.
+- A connection to an entry nothing offers, such as one of a Blackboard that was removed, is listed as not offered, so it can be seen and replaced.
 
 ## Example
 
-`SlotExample` in the app plugin (`plugins/app/component_SlotExample.odin`, Component > Demo > SlotExample) has an `offset` and a `size` slot, and declares and fills the entries `demo_bob`, `demo_pulse` and `demo_double` in the game-wide dictionary.
+`SlotExample` in the app plugin (`plugins/app/component_SlotExample.odin`, Component > Demo > SlotExample) has an `offset` and a `size` slot, read from its object's dictionary. It declares and fills the entries `demo_bob`, `demo_pulse` and `demo_double` in the game-wide dictionary.

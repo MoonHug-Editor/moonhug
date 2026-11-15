@@ -2,8 +2,8 @@ package app
 
 // Slots example: an object whose height offset and size are slots
 // (moonhug/libs/slots). Each is set in the inspector, or connected there to
-// an entry the game fills. The entries are declared and filled below, in the
-// game-wide dictionary.
+// an entry: one a Blackboard on the object or above it holds, or one of the
+// game-wide dictionary, which the entries below are declared and filled in.
 
 import "base:runtime"
 import "core:math"
@@ -39,8 +39,8 @@ comp_awake_SlotExample :: proc(comp: ^SlotExample) {
 comp_update_SlotExample :: proc(dt: f32, comp: ^SlotExample) {
     t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(comp.owner))
     if t == nil do return
-    t.position = comp.home + slots.get(comp.offset, comp._offset, slots.global())
-    size := slots.get(comp.size, comp._size, slots.global())
+    t.position = comp.home + slots.get(comp.offset, comp._offset, slots.scope_of(comp.owner))
+    size := slots.get(comp.size, comp._size, slots.scope_of(comp.owner))
     t.scale = {size, size, size}
 }
 
