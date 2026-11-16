@@ -18,6 +18,7 @@ The loaded scenes and their objects, each scene a section with its objects as a 
 - Drag objects onto another to reparent them, or between rows to reorder them.
 - Drag a file or sub-asset from the Project window onto a row to make an object of it under that row, or onto empty space to make it under the scene's root: a scene becomes a nested instance, a model its node hierarchy, a sprite a SpriteRenderer ([Asset drop](../attributes/AssetDrop.md)).
 - Right-click empty space for the GameObject menu's create items. A new object becomes the selection in the same undo step.
+- GameObject, Create Prefab writes each selected object to a new scene file and puts an instance of it in its place ([Scene](../assets/Scene.md#making-a-prefab-of-objects)).
 - A scene's header menu has Discard, which reloads the scene from its file, Unload and Save Scene As.
 - The Filter field shows only the objects that match every word in it. A word matches inside an object's name. A word that starts with `c:` matches part of a component type's name: `c:sprite` shows the objects with a Sprite or a SpriteRenderer. A `$` at the end marks the end of the name: `c:sprite$` shows the objects with a Sprite only. `c:mesh enemy` shows the objects named like "enemy" that have a mesh component. The Project window's search takes the same words ([Windows](../../../../docs/core/Windows.md#search-fields)).
 - An object that is a nested scene's instance has a `>` button that opens its source scene in place of the current one. `<` returns to the scene it came from.
