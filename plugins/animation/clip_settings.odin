@@ -17,6 +17,9 @@ package animation
 //   do not add.
 // Each becomes worth adding the day the system behind it exists.
 
+import "core:slice"
+import "core:strings"
+
 @(typ_guid={guid = "6b1f9d3a-7c42-4e85-b0a6-1d28e5f47c93", })
 Animation_Clip_Settings :: struct {
 	// Once holds the final pose, Loop restarts. Every state defaults to this
@@ -38,10 +41,30 @@ Animation_Clip_Settings :: struct {
 	// nothing pays for it at runtime. stop <= start means the whole clip.
 	trim_start: f32,
 	trim_stop:  f32,
+
+	// Named moments of the clip. When playback crosses one, the components
+	// of the playing object that take animation events get its name
+	// (comp_on_animation_event). Times are in seconds of the SOURCE clip,
+	// as the trim's are: the importer shifts them with the trim and drops the
+	// ones it cuts.
+	events: [dynamic]Animation_Clip_Event,
+}
+
+// A named moment in a clip.
+Animation_Clip_Event :: struct {
+	time: f32,
+	name: string,
 }
 
 type_reset_Animation_Clip_Settings :: proc(p: ^Animation_Clip_Settings) {
 	p.frame_rate = ANIMATION_FRAME_RATE_DEFAULT
+}
+
+// Frees the events, on the allocator the settings were read with.
+type_cleanup_Animation_Clip_Settings :: proc(p: ^Animation_Clip_Settings) {
+	for e in p.events do delete(e.name)
+	delete(p.events)
+	p.events = nil
 }
 
 // A zero frame rate (an entry from before the field, or typed) is the default.
@@ -70,7 +93,27 @@ animation_clip_apply_settings :: proc(clip: ^AnimationClip, s: Animation_Clip_Se
 	clip.wrap = s.wrap
 	clip.frame_rate = s.frame_rate
 	clip.cycle_offset = s.cycle_offset
+	_animation_clip_bake_events(clip, s)
 	_animation_clip_trim(clip, s.trim_start, s.trim_stop)
+}
+
+// The settings' events onto the clip: in the clip's own time once the trim
+// is applied, inside it, and sorted by time. Before the trim, which changes
+// the length the range is read from.
+@(private = "file")
+_animation_clip_bake_events :: proc(clip: ^AnimationClip, s: Animation_Clip_Settings) {
+	for e in clip.events do delete(e.name)
+	clear(&clip.events)
+	lo, hi := f32(0), clip.length
+	if s.trim_stop > s.trim_start {
+		lo = max(s.trim_start, 0)
+		hi = min(s.trim_stop, clip.length)
+	}
+	for e in s.events {
+		if e.name == "" || e.time < lo || e.time > hi do continue
+		append(&clip.events, Animation_Clip_Event{time = e.time - lo, name = strings.clone(e.name)})
+	}
+	slice.sort_by(clip.events[:], proc(a, b: Animation_Clip_Event) -> bool { return a.time < b.time })
 }
 
 // Keep only `start..stop` and rebase to 0. A channel keeps an interpolated key

@@ -521,7 +521,18 @@ multi_array_structural :: proc(
 		if op == .Remove && index >= da.len do continue
 		append(&targets, undo.edit_target_whole(peer.handle))
 	}
-	if len(targets) == 0 do return
+	// No owner and no peer: whoever draws the value records its undo. Import
+	// settings do, by comparing their document after the frame
+	// (import_settings_track). The op applies all the same, or an Add there
+	// would do nothing.
+	if len(targets) == 0 {
+		switch op {
+		case .Append: append_dynamic_array_element(self_da, elem_ti)
+		case .Remove: remove_dynamic_array_element(self_da, elem_ti, index)
+		}
+		mark_inspector_changed()
+		return
+	}
 
 	sess := undo.edit_session_begin(targets[:], label)
 

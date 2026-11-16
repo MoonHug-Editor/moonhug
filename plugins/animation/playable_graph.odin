@@ -188,6 +188,14 @@ playable_set_input_weight :: proc(g: ^Playable_Graph, parent, child: Playable_Ha
 	}
 }
 
+// The weight `child` enters `parent` with, 0 when it is not an input of it.
+playable_input_weight :: proc(g: ^Playable_Graph, parent, child: Playable_Handle) -> f32 {
+	p := playable_node(g, parent)
+	if p == nil do return 0
+	for inp in p.inputs do if inp.node == child do return inp.weight
+	return 0
+}
+
 // The clip node's clip length in seconds. false for non-clip nodes and
 // unloadable clips.
 playable_clip_length :: proc(g: ^Playable_Graph, h: Playable_Handle) -> (f32, bool) {

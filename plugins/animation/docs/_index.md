@@ -32,6 +32,7 @@ The animation plugin plays keyframed clips on a transform hierarchy. A clip anim
 - [Clip format](concepts/ClipFormat.md): what a clip stores and how its keys interpolate.
 - [Animation states](concepts/States.md): how the Animation component stores and plays its states.
 - [Playback levels](concepts/PlaybackLevels.md): how an Animation, a timeline track and a TimelineAnimator stack.
+- [Animation events](concepts/Events.md): named moments of a clip, and the components that act on them.
 
 **Extends**
 
@@ -61,7 +62,9 @@ To make a clip of your own: Assets, Create, Animation makes a `.anim` file. Put 
 
 ## Extending
 
-The plugin declares no attributes. Code extends it through the graph:
+- **Animation events.** `@(comp_on_animation_event={component = T})` on a component's proc gives it every event the Animation on its object crosses ([Animation events](concepts/Events.md)).
+
+Code also extends it through the graph:
 
 - **Your own driver.** Build clip, mixer and layer mixer nodes, add an output bound to an object, and tick the graph. The Animation component, the TimelineAnimator and the editor preview are drivers built this way ([Playable graph](concepts/PlayableGraph.md), "The graph evaluates, drivers decide").
 - **Script nodes.** A `Playable_Script` node calls your procs with its time and weight after every output has written ([Playable graph](concepts/PlayableGraph.md), "Script nodes").

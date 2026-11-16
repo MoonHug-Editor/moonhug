@@ -66,6 +66,10 @@ _play_extracted_clip :: proc(root: engine.Transform_Handle, clip: engine.PPtr) {
 // JSON value because the type is this package's. Zeroed, the entry on top,
 // then on_validate: a field the entry lacks is zero, and zero means default.
 bake_gltf_clip :: proc(data: ^cgltf.data, an: ^cgltf.animation, settings: json.Value, out_path: string) -> bool {
+	// The clip is built on the temp allocator (animation_clip_from_gltf), so
+	// the settings and everything the bake adds to the clip go there too, and
+	// nothing of it is freed by hand.
+	context.allocator = context.temp_allocator
 	clip, ok := anim.animation_clip_from_gltf(data, an)
 	if !ok do return false
 	s: anim.Animation_Clip_Settings

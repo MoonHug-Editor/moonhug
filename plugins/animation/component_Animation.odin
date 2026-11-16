@@ -142,6 +142,9 @@ Animation_State_Runtime :: struct {
 	fade_t:      f32,
 	fade_dur:    f32, // 0 = not fading
 	done:        bool,
+	// The state has stepped before. Its first step also crosses an event at
+	// the time it starts from (animation_events_crossed).
+	stepped:     bool,
 }
 
 // The clip a CLIP state plays. A blend has no clip of its own, so clip-keyed
@@ -680,6 +683,9 @@ animation_stop :: proc(a: ^Animation) {
 @(update={order=2})
 animation_tick :: proc(dt: f32) {
 	w := engine.ctx_world()
+	// Events reach game code: only while the game runs (events.odin).
+	_animation_events_on = engine.game_running()
+	defer if _animation_events_on do _anim_dispatch_events()
 	it := engine.pool_iterator(animations(w))
 	for a, _ in engine.pool_next(&it) {
 		if !a.enabled do continue
@@ -741,9 +747,21 @@ _anim_blend_advance :: proc(a: ^Animation, st: ^Animation_State_Runtime, b: ^Ani
 	// answer belongs, and the child is only the default.
 	wrap := animation_entry_wrap(a, st.entry, b.children[0].wrap)
 
+	from := b.phase
 	if !st.done do b.phase += dt * a.speed / cycle
 	p, done := animation_wrap_time(b.phase, 1, wrap)
 	if done do st.done = true
+
+	// Each child crosses its own events at the shared phase, weighted by
+	// how much of the blend it is.
+	if _animation_events_on {
+		for &k in b.children {
+			clip, ok := animation_clip_load(k.clip)
+			if !ok do continue
+			weight := st.weight * playable_input_weight(&a.graph, st.node, k.node)
+			_anim_collect_events(a, k.clip, clip, from * k.length, b.phase * k.length, wrap == .Loop, !st.stepped, weight)
+		}
+	}
 
 	animation_blend_sample(&a.graph, b.children[:], p)
 	return true
@@ -829,8 +847,11 @@ _anim_comp_tick :: proc(a: ^Animation, dt: f32) {
 				advanced = _anim_blend_advance(a, st, &k, dt)
 			case Animation_State_Clip:
 				if clip, ok := animation_clip_load(k.clip); ok {
+					from := k.time
 					if !st.done do k.time += dt * a.speed
-					t, done := animation_wrap_time(k.time, clip.length, animation_entry_wrap(a, st.entry, clip.wrap))
+					wrap := animation_entry_wrap(a, st.entry, clip.wrap)
+					_anim_collect_events(a, k.clip, clip, from, k.time, wrap == .Loop, !st.stepped, st.weight)
+					t, done := animation_wrap_time(k.time, clip.length, wrap)
 					if done do st.done = true
 					if node := playable_node(&a.graph, st.node); node != nil do node.time = t
 					advanced = true
@@ -843,6 +864,7 @@ _anim_comp_tick :: proc(a: ^Animation, dt: f32) {
 				i += 1
 				continue
 			}
+			st.stepped = true
 			playable_set_input_weight(&a.graph, l.mixer, st.node, st.weight)
 
 			any_state = true

@@ -22,12 +22,14 @@ Shown in the Project Inspector when the clip is selected, applied with Apply.
 | `frame_rate` | 60 | The frame grid the Animation window snaps keys and the playhead to. Authoring only: playback is continuous in seconds. |
 | `cycle_offset` | 0 | Where in a loop sampling starts, as a fraction of the clip. 0.5 starts halfway, so two characters sharing one walk do not march in step. |
 | `trim_start`, `trim_stop` | 0, 0 | The part of the source clip to keep, in source seconds. A stop at or before the start keeps the whole clip. |
+| `events` | none | Named moments, each a time in source seconds and a name. Playback crossing one tells the components of the playing object ([Animation events](../concepts/Events.md)). |
 
 The settings live in the `.meta` rather than the `.anim` because a clip extracted from a model is a generated file: extracting again rewrites it, and the settings have to survive that. A `.anim` holds only `length` and `channels`.
 
 ## Artifact
 
 - The importer bakes the trim: it drops the keys outside the range, moves the times to start at 0, and keeps an interpolated key at each cut, so a cut between keys starts on the value the clip had there. Nothing pays for the trim at runtime.
+- The events are baked the same way: sorted by time, moved with the trim, and dropped outside it.
 - `cycle_offset` is applied where every clip is sampled, so the Animation component, the editor preview and a timeline track all honour it.
 - The runtime loads the artifact and never opens the `.meta`.
 

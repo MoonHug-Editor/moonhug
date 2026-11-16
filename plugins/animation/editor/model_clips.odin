@@ -67,12 +67,18 @@ _sample_clip :: proc(root: engine.Transform_Handle, clip: engine.PPtr, t: f32) -
 	valid: bool,
 }
 
+//
+// The copy's events are on the inspector's document allocator: the reflected
+// drawer frees and allocates a typed name with the allocator in context,
+// which is that one.
 @(private = "file")
 _clip_edit_load :: proc(path: string, clip: ^engine.Mesh_Clip) {
 	context.allocator = runtime.default_allocator()
 	delete(_clip_edit.path)
 	_clip_edit.path = strings.clone(path)
 	_clip_edit.id = clip.id
+	context.allocator = inspector.doc_alloc()
+	anim.type_cleanup_Animation_Clip_Settings(&_clip_edit.s)
 	_clip_edit.s = {}
 	if clip.settings != nil {
 		engine._settings_overlay(any{&_clip_edit.s, typeid_of(anim.Animation_Clip_Settings)}, clip.settings)

@@ -144,6 +144,8 @@ animation_blend_get(a, id) -> f32
 animation_entry(a, id) -> ^Animation_Entry
 ```
 
+A component on the same object takes the clips' events with `@(comp_on_animation_event)` ([Animation events](../concepts/Events.md)).
+
 Find a state by name once and keep its id: ids do not change when other states are added or removed. The full list is in the [API reference](/docs/reference/packages/animation/animation.md).
 
 ## Limits

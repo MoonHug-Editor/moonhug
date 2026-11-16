@@ -156,6 +156,8 @@ AnimationClip :: struct {
 	// Edited as a dopesheet in the Animation window, never as reflected rows —
 	// a clip has hundreds of channels each holding two parallel key arrays.
 	channels: [dynamic]Animation_Channel `inspect:"-"`,
+	// Baked from the settings' events at import: in this clip's time, sorted.
+	events: [dynamic]Animation_Clip_Event `inspect:"-"`,
 }
 
 // The clip's authoring frame rate, defaulted for a clip saved before the
@@ -363,11 +365,16 @@ animation_clip_preview :: proc(ref: engine.PPtr, clip: AnimationClip) {
 	// document's zeros, or previewing an unsaved key edit would quietly turn a
 	// looping clip into a one-shot.
 	wrap, rate, offset := clip.wrap, clip.frame_rate, clip.cycle_offset
+	events := clip.events[:]
 	if old, ok := &animation_clip_cache[ref]; ok {
 		wrap, rate, offset = old.wrap, old.frame_rate, old.cycle_offset
-		_animation_clip_entry_free(ref, old)
+		events = old.events[:]
 	}
 	cp := AnimationClip{length = clip.length, wrap = wrap, frame_rate = rate, cycle_offset = offset}
+	// Copied before the old entry goes: they may be its.
+	cp.events = make([dynamic]Animation_Clip_Event, 0, len(events))
+	for e in events do append(&cp.events, Animation_Clip_Event{time = e.time, name = strings.clone(e.name)})
+	if old, ok := &animation_clip_cache[ref]; ok do _animation_clip_entry_free(ref, old)
 	cp.channels = make([dynamic]Animation_Channel, 0, len(clip.channels))
 	for &ch in clip.channels {
 		c := Animation_Channel{
@@ -422,6 +429,8 @@ type_cleanup_AnimationClip :: proc(clip: ^AnimationClip) {
 		delete(ch.tangents)
 	}
 	delete(clip.channels)
+	for e in clip.events do delete(e.name)
+	delete(clip.events)
 	clip^ = {}
 }
 
