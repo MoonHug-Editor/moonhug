@@ -185,7 +185,10 @@ test_prefab_instance_records_leave_with_it :: proc(t: ^testing.T) {
 	}
 
 	// A duplicate recorded as Duplicate records it, undone and redone a few
-	// times, as the settings panel does on every count change.
+	// times, as the settings panel does on every count change. An instance
+	// rebuilt by redo composes the lids its undone content had: those are
+	// free, not a collision.
+	collisions := engine._composed_lid_collisions
 	dup := engine.scene_duplicate_subtree(inst)
 	undo.record_create(dup, root_h)
 	dup_records, dup_objects := len(sc.nested_scenes), _transform_count(w)
@@ -213,4 +216,5 @@ test_prefab_instance_records_leave_with_it :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(sc.nested_scenes), records)
 	undo.apply_undo(s)
 	testing.expect_value(t, len(sc.nested_scenes), dup_records)
+	testing.expect_value(t, engine._composed_lid_collisions, collisions)
 }

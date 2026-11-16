@@ -1041,6 +1041,10 @@ nested_scene_instance_lid :: proc(s: ^Scene, ns: ^NestedScene, source_lid: Local
 // Remove a torn-down instance's composed lids from the scene bimap (the host
 // lid stays — it is host-authored). Stale entries would dangle on destroyed
 // handles until the next resolve overwrote them.
+// How many composed lid collisions nested_scene_resolve has logged, for
+// tests: a collision is a bug, so this stays 0.
+_composed_lid_collisions: int
+
 _ns_purge_instance_lids :: proc(s: ^Scene, ns: ^NestedScene) {
     if s == nil || ns == nil do return
     for lid in ns.source_of_inst {
@@ -1628,11 +1632,16 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
         // The 52-bit hash makes collisions astronomically unlikely, but a silent
         // one would corrupt the bimap and be near-impossible to trace — so check
         // both ways it could happen and log loudly. This instance's own lids were
-        // purged just before the remap, so any bimap hit is foreign content.
+        // purged just before the remap, so a bimap hit on a LIVE object is
+        // foreign content. A hit on a destroyed one is not: transform_destroy
+        // leaves entries behind on purpose, and an instance rebuilt by redo or
+        // a reload composes the very lids its earlier content had.
         if prev, dup := c.ns.source_of_inst[new_id]; dup && prev != old {
+            _composed_lid_collisions += 1
             fmt.printfln("[Scene] COMPOSED LID COLLISION: instance %v sources %v and %v both hash to %v — overrides/refs will mis-target", c.key, prev, old, new_id)
         } else if old != c.root {
-            if _, taken := bimap_get(&c.scene.local_ids, new_id); taken {
+            if h, taken := bimap_get(&c.scene.local_ids, new_id); taken && world_pool_valid(ctx_world(), h) {
+                _composed_lid_collisions += 1
                 fmt.printfln("[Scene] COMPOSED LID COLLISION: instance %v source %v hashes to %v, already registered to other scene content — overrides/refs will mis-target", c.key, old, new_id)
             }
         }

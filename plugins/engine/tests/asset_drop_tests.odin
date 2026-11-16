@@ -48,6 +48,7 @@ test_dropped_scene_is_an_instance_at_the_point :: proc(t: ^testing.T) {
 	testing.expect(t, _near3(engine.transform_world(inst).position, {1, 2, 3}), "at the drop point")
 
 	// One undo step takes it away, redo brings it back where it was dropped.
+	collisions := engine._composed_lid_collisions
 	undo.apply_undo(s)
 	testing.expect_value(t, len(engine.pool_get(&w.transforms, engine.Handle(root)).children), before)
 	undo.apply_redo(s)
@@ -57,6 +58,7 @@ test_dropped_scene_is_an_instance_at_the_point :: proc(t: ^testing.T) {
 		again := engine.Transform_Handle(children[before].handle)
 		testing.expect(t, _near3(engine.transform_world(again).position, {1, 2, 3}), "redone at the drop point")
 	}
+	testing.expect_value(t, engine._composed_lid_collisions, collisions)
 }
 
 @(test)
