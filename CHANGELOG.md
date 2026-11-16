@@ -1,3 +1,28 @@
+## [0.167.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.166.0...v0.167.0) (2026-11-16)
+
+### Features
+
+* a Blackboard entry holds a Blackboard_Value union, other plugins add value types ([6bb9495](https://github.com/MoonHug-Editor/moonhug/commit/6bb94950722530187d260128be23bdd422f05eac))
+* a connected slot shows the entry's value and where it comes from, inline arrays have no foldout ([e2ffecd](https://github.com/MoonHug-Editor/moonhug/commit/e2ffecd82e51e5142ea85e418b772920540855a6))
+* a slot's origin pings the object that holds the entry, a double click selects it ([d072f59](https://github.com/MoonHug-Editor/moonhug/commit/d072f596f47c8b2dfab6dd35d027543f715ea984))
+* animation events, named moments of a clip that components on the playing object act on ([733ec2a](https://github.com/MoonHug-Editor/moonhug/commit/733ec2ad2df21a978e146e744291a501d48e0228))
+* blackboard entries are connected by a stable id, a rename breaks no connection ([1ebf741](https://github.com/MoonHug-Editor/moonhug/commit/1ebf74194fa3155831a6b5355b1df54c746deb11))
+* blackboard plugin, named values authored on a component for the slots under it ([4217289](https://github.com/MoonHug-Editor/moonhug/commit/42172897ec777af67338555c6154108342778552))
+* one-shots share a pool of tracks and play at most 64 at once, physics3d.raycast ([81c9347](https://github.com/MoonHug-Editor/moonhug/commit/81c93476412c6c12ca73b26f0fb373fb872fbbca))
+* slots demo scene, cubes reading inline values, the game's entries and Blackboards ([8b39273](https://github.com/MoonHug-Editor/moonhug/commit/8b39273f1db4ed0c0535655734f819f4fe25cc77))
+* slots, a field that takes its value inline or from a dictionary the game fills ([9fca88b](https://github.com/MoonHug-Editor/moonhug/commit/9fca88b23f19370b9991071dce739f2ba24b1dc5))
+* slots.write sets the entry a slot is connected to for every reader of it, blackboard.get reads an entry by name ([8443378](https://github.com/MoonHug-Editor/moonhug/commit/8443378567a7a22ae2b3f9ba7688c4fedd9bc940))
+* streamed audio clips, orthographic Camera, physics2d.raycast ([bc9a07a](https://github.com/MoonHug-Editor/moonhug/commit/bc9a07a85655512a7bc71b5445832eaa3cdaab0e))
+* union variants can be literal types, saved by their text ([f7330a0](https://github.com/MoonHug-Editor/moonhug/commit/f7330a0c0563ee666d1277178ae3610b906d1acd))
+
+### Bug Fixes
+
+* a connected slot's label is drawn as any row's, only its value is dimmed ([2d8ce8e](https://github.com/MoonHug-Editor/moonhug/commit/2d8ce8e16a7e95da69a68ece65a1aead968c0155))
+* bug fixes ([5278b30](https://github.com/MoonHug-Editor/moonhug/commit/5278b3084a833e2ed40c6e64b8e19602e7b4f773))
+* imgui commands that draw nothing are dropped before the GPU, Metal stopped the editor on them ([8069e4c](https://github.com/MoonHug-Editor/moonhug/commit/8069e4c553cc6d7f8ebae64d3075075948b88673))
+* slots review, a write makes no entry, the link button reverts a connection override ([df279d0](https://github.com/MoonHug-Editor/moonhug/commit/df279d08832baadd02d3e86cd8b9487f19cd6a33))
+* spawned prefabs keep the references between their own objects, override capture indexes the prefab once ([a534366](https://github.com/MoonHug-Editor/moonhug/commit/a534366e03fc7e35fc812ad335a6c69073cd6ca0))
+
 ## [0.166.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.165.0...v0.166.0) (2026-11-15)
 
 ### Features
