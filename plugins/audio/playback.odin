@@ -121,8 +121,10 @@ audio_is_playing :: proc(src: ^AudioSource) -> bool {
 
 // --- One-shots ---------------------------------------------------------------
 
-// Fire-and-forget transient tracks — no component owns them, the update
-// sweep frees each one when its playback ends.
+// Fire-and-forget voices: no component owns them. At most MAX_ONE_SHOTS
+// play at once: a new one past that takes the place of the quietest. A voice
+// that ends goes back to a pool of tracks the next one-shot reuses, so a
+// burst of sounds does not create and destroy a track each.
 
 _One_Shot :: struct {
 	track:    ^mix.Track,
@@ -132,6 +134,12 @@ _One_Shot :: struct {
 }
 
 _one_shots: [dynamic]_One_Shot
+
+// The most one-shots that play at once.
+MAX_ONE_SHOTS :: 64
+
+// Tracks of one-shots that ended, with no audio on them, for the next ones.
+_free_one_shot_tracks: [dynamic]^mix.Track
 
 // The last known listener (refreshed by audio_update) — lets a one-shot
 // spatialize on its very first frame.
@@ -155,10 +163,20 @@ play_clip_at_point :: proc(guid: engine.Asset_GUID, position: [3]f32, volume: f3
 _one_shot_start :: proc(guid: engine.Asset_GUID, position: [3]f32, volume: f32, spatial: bool) -> bool {
 	clip, ok := clip_load(guid)
 	if !ok do return false
-	track := mix.CreateTrack(_audio_state.mixer)
+	// Ended voices first, so a full list is full of sounds still playing.
+	_one_shots_reap()
+	if len(_one_shots) >= MAX_ONE_SHOTS {
+		quietest := 0
+		for &shot, i in _one_shots {
+			if _one_shot_level(&shot) < _one_shot_level(&_one_shots[quietest]) do quietest = i
+		}
+		_one_shot_release(_one_shots[quietest].track)
+		unordered_remove(&_one_shots, quietest)
+	}
+	track := pop(&_free_one_shot_tracks) if len(_free_one_shot_tracks) > 0 else mix.CreateTrack(_audio_state.mixer)
 	if track == nil do return false
 	if !mix.SetTrackAudio(track, clip.audio) || !mix.PlayTrack(track, 0) {
-		mix.DestroyTrack(track)
+		_one_shot_release(track)
 		return false
 	}
 	shot := _One_Shot{track, position, volume, spatial}
@@ -168,20 +186,52 @@ _one_shot_start :: proc(guid: engine.Asset_GUID, position: [3]f32, volume: f32, 
 	return true
 }
 
+@(private = "file")
+_one_shot_gains :: proc(shot: ^_One_Shot) -> Spatial_Gains {
+	if shot.spatial && _listener.ok do return spatial_gains(_listener.pos, _listener.rot, shot.position, 1, 500, 1)
+	return Spatial_Gains{1, 1, 1}
+}
+
+// How loud a one-shot is at the listener: the one a full list gives up.
+@(private = "file")
+_one_shot_level :: proc(shot: ^_One_Shot) -> f32 {
+	return shot.volume * _one_shot_gains(shot).gain
+}
+
 _one_shot_apply :: proc(shot: ^_One_Shot) {
-	sp := Spatial_Gains{1, 1, 1}
-	if shot.spatial && _listener.ok {
-		sp = spatial_gains(_listener.pos, _listener.rot, shot.position, 1, 500, 1)
-	}
+	sp := _one_shot_gains(shot)
 	_ = mix.SetTrackGain(shot.track, shot.volume * sp.gain)
 	stereo := mix.StereoGains{sp.left, sp.right}
 	_ = mix.SetTrackStereo(shot.track, &stereo)
 }
 
-_one_shots_clear :: proc() {
-	for shot in _one_shots {
-		mix.DestroyTrack(shot.track)
+// Stops a one-shot's track and puts it in the pool, its audio taken off, so
+// a reimport can free the audio. A full pool frees it instead.
+@(private = "file")
+_one_shot_release :: proc(track: ^mix.Track) {
+	_ = mix.StopTrack(track, 0)
+	_ = mix.SetTrackAudio(track, nil)
+	if len(_free_one_shot_tracks) >= MAX_ONE_SHOTS {
+		mix.DestroyTrack(track)
+		return
 	}
+	context.allocator = runtime.default_allocator()
+	append(&_free_one_shot_tracks, track)
+}
+
+// Ended one-shots go back to the pool.
+@(private = "file")
+_one_shots_reap :: proc() {
+	for i := len(_one_shots) - 1; i >= 0; i -= 1 {
+		if mix.TrackPlaying(_one_shots[i].track) do continue
+		_one_shot_release(_one_shots[i].track)
+		unordered_remove(&_one_shots, i)
+	}
+}
+
+// Stops every one-shot. Their tracks stay in the pool.
+_one_shots_clear :: proc() {
+	for shot in _one_shots do _one_shot_release(shot.track)
 	clear(&_one_shots)
 }
 
@@ -263,15 +313,8 @@ audio_update :: proc(dt: f32) {
 
 	// One-shots: reap the finished, respatialize the rest. Before the
 	// sources loop — a world with no AudioSource still owns one-shots.
-	for i := len(_one_shots) - 1; i >= 0; i -= 1 {
-		shot := &_one_shots[i]
-		if !mix.TrackPlaying(shot.track) {
-			mix.DestroyTrack(shot.track)
-			unordered_remove(&_one_shots, i)
-			continue
-		}
-		_one_shot_apply(shot)
-	}
+	_one_shots_reap()
+	for &shot in _one_shots do _one_shot_apply(&shot)
 
 	pool := audio_sources(w)
 	if pool == nil do return

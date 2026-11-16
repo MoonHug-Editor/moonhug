@@ -24,6 +24,7 @@ The physics3d plugin simulates 3D physics with box3d. Add a Rigidbody and collid
 
 - [Bodies](concepts/Bodies.md): how components become box3d bodies, the fixed step, and contact events.
 - [Collision layers](concepts/CollisionLayers.md): which colliders collide, with the matrix and per-object overrides.
+- [Queries](concepts/Queries.md): what a ray hits, with `raycast`.
 
 **Extends**
 
@@ -59,7 +60,8 @@ Gravity is 0, -9.81, 0 by default, and `set_gravity` changes it from code.
 The plugin declares no attributes and has no registries.
 
 - Game code reads contacts and triggers from `@(fixed_update)` procs ordered after the physics step ([Bodies](concepts/Bodies.md), "Contact events").
-- `body_of(handle)` returns an object's live box3d body, and `world()` the box3d world, so forces, joints, raycasts and the rest of box3d work from game code.
+- `raycast` asks what a ray hits ([Queries](concepts/Queries.md)).
+- `body_of(handle)` returns an object's live box3d body, and `world()` the box3d world, so forces, joints, shape casts and the rest of box3d work from game code.
 
 ## Limits
 

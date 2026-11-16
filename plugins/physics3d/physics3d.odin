@@ -12,8 +12,9 @@ package physics3d
 // - Contacts are POLLED, not called back: the step buffers box3d's begin/end
 //   contact + sensor events; read them from a @(fixed_update) subscriber
 //   ordered AFTER this step (order > 1000), or next tick at any order.
+// - Queries: raycast (queries.odin) for what a ray hits.
 // - Escape hatch: body_of(tH) returns the live b3.BodyId — use vendor:box3d
-//   directly for forces, joints, mass overrides, raycasts, runtime mutation.
+//   directly for forces, joints, mass overrides, shape casts, runtime mutation.
 //
 // Transform scale affects shapes (see collider_scale). The
 // whole relative transform, scale included, is BAKED at shape creation:

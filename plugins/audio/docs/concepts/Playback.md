@@ -11,7 +11,7 @@ How the plugin plays sound. The code is `playback.odin`, `clip.odin` and `spatia
 
 - One SDL3_mixer mixer. A built game opens its playback device at engine start (`EngineInit`), so the first sound does not wait for the device. The editor opens it when Play starts, so a session without Play starts and quits without it (about 190 ms to open and 150 ms to close). Anything else opens it on first use: the first clip load or sound. Each playing [AudioSource](../components/AudioSource.md) owns one track on it, and each one-shot gets a track of its own.
 - `clip_load(guid)` loads a clip's artifact once and caches it by guid, the way the engine caches textures. A missing artifact is imported on demand.
-- Every frame (`@(update)`) the plugin finds the listener, starts `play_on_awake` sources, applies each playing source's volume, pitch, mute, fade and pan, and frees finished one-shots. It runs in play mode in the editor and always in a game.
+- Every frame (`@(update)`) the plugin finds the listener, starts `play_on_awake` sources, applies each playing source's volume, pitch, mute, fade and pan, and returns finished one-shots to the pool. It runs in play mode in the editor and always in a game.
 - Leaving play mode stops every source and clears every one-shot.
 
 ## Headless runs
@@ -25,7 +25,7 @@ Sounds with no component to own them:
 - `play_clip(guid, volume := 1)` plays in 2D.
 - `play_clip_at_point(guid, position, volume := 1)` plays fully spatial at a world position, with distances 1 and 500, and keeps panning as the listener moves.
 
-Each one-shot is freed when it ends.
+At most `MAX_ONE_SHOTS` (64) play at once. One past that takes the place of the quietest at the listener, its volume times its spatial gain. A one-shot that ends gives its track back to a pool, and the next one-shot plays on it instead of making a track.
 
 ## Spatial sound
 
