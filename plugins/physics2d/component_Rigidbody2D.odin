@@ -3,7 +3,7 @@ package physics2d
 // Rigidbody2D: authored as plain data (inspector/serialization
 // come from the attributes), synced to a box2d body by the fixed step. The
 // live b2 body id is runtime-only — for anything not wrapped here (forces,
-// joints, filters) use body_of(tH) and vendor:box2d directly.
+// filters) use body_of(tH) and vendor:box2d directly.
 
 import b2 "vendor:box2d"
 import "moonhug:packages/engine"

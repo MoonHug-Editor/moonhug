@@ -12,8 +12,9 @@ package physics2d
 // - Contacts are POLLED, not called back: the step buffers box2d's begin/end
 //   contact + sensor events; read them from a @(fixed_update) subscriber
 //   ordered AFTER this step (order > 1000), or next tick at any order.
+// - Joints (joints.odin) connect a body to another or to the world.
 // - Escape hatch: body_of(tH) returns the live b2.BodyId — use vendor:box2d
-//   directly for forces, joints, filter groups, raycasts and runtime mutation.
+//   directly for forces, filter groups, shape casts and runtime mutation.
 //
 // Transform scale affects shapes (see collider_scale). The
 // whole relative transform, scale included, is BAKED at shape creation:
@@ -40,6 +41,8 @@ _state: struct {
 	world_ready:   bool,
 	gravity:       [2]f32,
 	shape_owner:   map[u64]engine.Transform_Handle,
+	// The static body a joint with no connected body holds to (joints.odin).
+	ground:        b2.BodyId,
 	contact_begin: [dynamic]Contact,
 	contact_end:   [dynamic]Contact,
 	sensor_begin:  [dynamic]Contact,
@@ -95,7 +98,9 @@ physics_step :: proc(fixed_dt: f32) {
 	_sync_bodies(w, fixed_dt)
 	_sync_colliders(w)
 	_sync_mass(w)
+	_sync_joints(w)
 	b2.World_Step(_state.world, fixed_dt, _SUB_STEPS)
+	_break_joints(w)
 	_write_back(w)
 	_collect_events(w)
 	_dispatch_events()

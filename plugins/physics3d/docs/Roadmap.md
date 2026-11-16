@@ -9,7 +9,7 @@ What the physics3d plugin does not do yet. How it works is in [Bodies](concepts/
 
 ## Next
 
-- **Joints** as components. Today they are box3d calls on `body_of` from game code.
+- **Slider, ball and wheel joints**, and an event when a joint breaks.
 - **Effectors**: areas that push or float bodies.
 - **Faster convex decompositions.** A mesh that is not closed is slow: the DamagedHelmet takes about 2 minutes for 8 hulls and 5 for 44. Settings worth trying for speed, a decimation setting for the source mesh, and a list of decimations in the set, for an extra set of models with fewer polygons.
 

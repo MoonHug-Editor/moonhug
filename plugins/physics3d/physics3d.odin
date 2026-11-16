@@ -13,8 +13,9 @@ package physics3d
 //   contact + sensor events; read them from a @(fixed_update) subscriber
 //   ordered AFTER this step (order > 1000), or next tick at any order.
 // - Queries: raycast (queries.odin) for what a ray hits.
+// - Joints (joints.odin) connect a body to another or to the world.
 // - Escape hatch: body_of(tH) returns the live b3.BodyId — use vendor:box3d
-//   directly for forces, joints, mass overrides, shape casts, runtime mutation.
+//   directly for forces, mass overrides, shape casts, runtime mutation.
 //
 // Transform scale affects shapes (see collider_scale). The
 // whole relative transform, scale included, is BAKED at shape creation:
@@ -42,6 +43,8 @@ _state: struct {
 	world_ready:   bool,
 	gravity:       [3]f32,
 	shape_owner:   map[u64]engine.Transform_Handle,
+	// The static body a joint with no connected body holds to (joints.odin).
+	ground:        b3.BodyId,
 	contact_begin: [dynamic]Contact,
 	contact_end:   [dynamic]Contact,
 	sensor_begin:  [dynamic]Contact,
@@ -113,7 +116,9 @@ physics_step :: proc(fixed_dt: f32) {
 	}
 	if _state.hulls_waiting do return
 	_sync_mass(w)
+	_sync_joints(w)
 	b3.World_Step(_state.world, fixed_dt, _SUB_STEPS)
+	_break_joints(w)
 	_write_back(w)
 	_collect_events(w)
 	_dispatch_events()

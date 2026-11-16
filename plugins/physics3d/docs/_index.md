@@ -1,6 +1,6 @@
 ---
 title: "physics3d"
-description: "3D physics on box3d: Rigidbody, box, sphere, capsule and mesh colliders, convex decompositions, physics materials, collision layers and polled contact events"
+description: "3D physics on box3d: Rigidbody, box, sphere, capsule and mesh colliders, convex decompositions, joints, physics materials, collision layers and polled contact events"
 tags: ["physics3d", "plugin"]
 ---
 
@@ -13,6 +13,7 @@ The physics3d plugin simulates 3D physics with box3d. Add a Rigidbody and collid
 - [Rigidbody](components/Rigidbody.md) makes an object a dynamic or kinematic body.
 - [BoxCollider](components/BoxCollider.md), [SphereCollider](components/SphereCollider.md) and [CapsuleCollider](components/CapsuleCollider.md): primitive shapes.
 - [MeshCollider](components/MeshCollider.md): a mesh's own shape, as one convex hull, a convex decomposition, or its triangles.
+- [HingeJoint](components/HingeJoint.md), [DistanceJoint](components/DistanceJoint.md) and [FixedJoint](components/FixedJoint.md): joints between two bodies or a body and the world.
 
 **Assets**
 
@@ -24,6 +25,7 @@ The physics3d plugin simulates 3D physics with box3d. Add a Rigidbody and collid
 
 - [Bodies](concepts/Bodies.md): how components become box3d bodies, the fixed step, and contact events.
 - [Collision layers](concepts/CollisionLayers.md): which colliders collide, with the matrix and per-object overrides.
+- [Joints](concepts/Joints.md): how a joint is built, which fields stay live, and how it breaks.
 - [Queries](concepts/Queries.md): what a ray hits, with `raycast`.
 
 **Extends**
@@ -61,11 +63,11 @@ The plugin declares no attributes and has no registries.
 
 - Game code reads contacts and triggers from `@(fixed_update)` procs ordered after the physics step ([Bodies](concepts/Bodies.md), "Contact events").
 - `raycast` asks what a ray hits ([Queries](concepts/Queries.md)).
-- `body_of(handle)` returns an object's live box3d body, and `world()` the box3d world, so forces, joints, shape casts and the rest of box3d work from game code.
+- `body_of(handle)` returns an object's live box3d body, and `world()` the box3d world, so forces, shape casts and the rest of box3d work from game code.
 
 ## Limits
 
-- No joints and no effectors as components ([Roadmap](Roadmap.md)).
+- No effectors, and no slider, ball or wheel joints ([Roadmap](Roadmap.md)).
 - A non-convex MeshCollider works on a static body only.
 - After a body is built, moving or scaling a child collider does not rebuild its shape, and runtime edits of collider fields other than the layers do not reach the live shape.
 

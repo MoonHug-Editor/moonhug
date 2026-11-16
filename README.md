@@ -156,11 +156,9 @@ For more details see [Architecture](docs/core/Architecture.md)
 - project file ops: Windows trash/reveal (darwin-only today, see project_os_stub.odin)
 
 - physics2d follow-ups:
-  - joints
   - effectors
 
 - physics3d follow-ups:
-  - joints
   - effectors
   - MeshCollider
     - convex decompositions:

@@ -9,7 +9,7 @@ What the physics2d plugin does not do yet. How it works is in [Bodies](concepts/
 
 ## Next
 
-- **Joints** as components. Today they are box2d calls on `body_of` from game code.
+- **Slider and wheel joints**, and an event when a joint breaks.
 - **Effectors**: areas that push, float or one-way platforms.
 
 ## Open

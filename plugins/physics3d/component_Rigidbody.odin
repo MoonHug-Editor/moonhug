@@ -4,7 +4,7 @@ package physics3d
 // body by the fixed step. No body-type enum: a collider
 // WITHOUT a Rigidbody is static, is_kinematic switches dynamic/kinematic.
 // The live b3 body id is runtime-only — for anything not wrapped here
-// (forces, joints, mass overrides) use body_of(tH) and vendor:box3d.
+// (forces, mass overrides) use body_of(tH) and vendor:box3d.
 
 import b3 "vendor:box3d"
 import "moonhug:packages/engine"

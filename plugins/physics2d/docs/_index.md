@@ -1,6 +1,6 @@
 ---
 title: "physics2d"
-description: "2D physics on box2d: Rigidbody2D, five collider shapes, physics materials, collision layers and polled contact events"
+description: "2D physics on box2d: Rigidbody2D, five collider shapes, joints, physics materials, collision layers and polled contact events"
 tags: ["physics2d", "plugin"]
 ---
 
@@ -14,6 +14,7 @@ The physics2d plugin simulates 2D physics with box2d. Add a Rigidbody2D and coll
 - [BoxCollider2D](components/BoxCollider2D.md), [CircleCollider2D](components/CircleCollider2D.md) and [CapsuleCollider2D](components/CapsuleCollider2D.md): primitive shapes.
 - [PolygonCollider2D](components/PolygonCollider2D.md): any simple polygon, concave included, taken from a sprite's outline when it has one.
 - [EdgeCollider2D](components/EdgeCollider2D.md): an open line, for ground.
+- [HingeJoint2D](components/HingeJoint2D.md), [DistanceJoint2D](components/DistanceJoint2D.md) and [FixedJoint2D](components/FixedJoint2D.md): joints between two bodies or a body and the world.
 
 **Assets**
 
@@ -24,6 +25,7 @@ The physics2d plugin simulates 2D physics with box2d. Add a Rigidbody2D and coll
 
 - [Bodies](concepts/Bodies.md): how components become box2d bodies, the fixed step, and contact events.
 - [Collision layers](concepts/CollisionLayers.md): which colliders collide, with the matrix and per-object overrides.
+- [Joints](concepts/Joints.md): how a joint is built, which fields stay live, and how it breaks.
 - [Queries](concepts/Queries.md): what a ray hits, with `raycast`.
 
 **Extends**
@@ -59,11 +61,11 @@ The plugin declares no attributes and has no registries.
 
 - Game code reads contacts and triggers from `@(fixed_update)` procs ordered after the physics step ([Bodies](concepts/Bodies.md), "Contact events").
 - `raycast` asks what a ray hits ([Queries](concepts/Queries.md)).
-- `body_of(handle)` returns an object's live box2d body, and `world()` the box2d world, so forces, joints, shape casts and the rest of box2d work from game code.
+- `body_of(handle)` returns an object's live box2d body, and `world()` the box2d world, so forces, shape casts and the rest of box2d work from game code.
 
 ## Limits
 
-- No joints and no effectors as components ([Roadmap](Roadmap.md)).
+- No effectors, and no slider or wheel joints ([Roadmap](Roadmap.md)).
 - After a body is built, moving or scaling a child collider does not rebuild its shape, and runtime edits of collider fields other than the layers do not reach the live shape.
 
 ## Reference
