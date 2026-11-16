@@ -2,11 +2,12 @@ package engine_tests
 
 // Dropping an asset into the scene (scene_tools/asset_drop.odin): what an
 // asset becomes is found by its kind, the drop is one undo step, and the
-// Scene window's drop lands where the pointer meets an object, or at the
-// point it is given over empty space.
+// Scene window's drop rule (moonhug/editor/drag) lands it where the pointer
+// meets an object, or at the point it is given over empty space.
 
 import "core:math/linalg"
 import "core:testing"
+import "moonhug:editor/drag"
 import assets "moonhug:libs/assets"
 import "moonhug:packages/engine"
 import "moonhug:packages/engine/editor/scene_tools"
@@ -36,7 +37,7 @@ test_dropped_scene_is_an_instance_at_the_point :: proc(t: ^testing.T) {
 	c_guid, gok := engine.asset_db_get_guid(fx.c_path)
 	testing.expect(t, gok, "c.scene is an asset")
 	ref := engine.PPtr{guid = engine.Asset_GUID(c_guid)}
-	testing.expect_value(t, scene_tools.asset_drop_kind(ref), "scene")
+	testing.expect_value(t, drag.asset_kind(ref), "scene")
 	testing.expect(t, scene_tools.asset_drop_accepts(ref), "a scene can be dropped")
 	testing.expect(t, !scene_tools.asset_drop_accepts({}), "an unknown asset cannot")
 
@@ -80,8 +81,8 @@ test_dropped_model_part_draws_it :: proc(t: ^testing.T) {
 	guid := engine.Asset_GUID(c_guid)
 	assets.asset_db_sub_assets_set(guid, []assets.Asset_Sub_Info{{id = 7, name = "Wheel", kind = "mesh"}})
 	part := engine.PPtr{guid = guid, local_id = 7}
-	testing.expect_value(t, scene_tools.asset_drop_kind(part), "mesh")
-	testing.expect_value(t, scene_tools.asset_drop_kind({guid = guid, local_id = 8}), "")
+	testing.expect_value(t, drag.asset_kind(part), "mesh")
+	testing.expect_value(t, drag.asset_kind({guid = guid, local_id = 8}), "")
 
 	tH := scene_tools.asset_drop(part, root)
 	testing.expect(t, tH != {}, "the drop made an object")
@@ -102,6 +103,13 @@ _drop_view :: proc() -> engine.Render_View {
 	cam := cast(^engine.Camera)ptr
 	engine.type_reset_Camera(cam)
 	return engine.camera_render_view(cam, 100, 100)
+}
+
+@(private = "file")
+_last_child :: proc(tH: engine.Transform_Handle) -> engine.Transform_Handle {
+	t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(tH))
+	if t == nil || len(t.children) == 0 do return {}
+	return engine.Transform_Handle(t.children[len(t.children) - 1].handle)
 }
 
 @(test)
@@ -132,10 +140,20 @@ test_drop_in_view_lands_on_the_object_under_the_pointer :: proc(t: ^testing.T) {
 	_, hit = scene_tools.scene_window_surface_point(view, 2, 2)
 	testing.expect(t, !hit, "a corner of the view meets nothing")
 
-	on_box := scene_tools.asset_drop_in_view(view, 50, 50, ref, {9, 9, 9})
+	// The Scene view's rule: while hovering it only says what it would do.
+	root := engine.Transform_Handle(tc_mem.scene.root.handle)
+	before := len(engine.pool_get(&tc_mem.world.transforms, engine.Handle(root)).children)
+	items := []drag.Item{ref}
+	hint, taken := drag.run(items, drag.Scene_Place{view = view, px = 50, py = 50, fallback = {9, 9, 9}}, false)
+	testing.expect(t, taken, "the Scene view takes a scene asset")
+	testing.expect_value(t, hint, "Place c")
+	testing.expect_value(t, len(engine.pool_get(&tc_mem.world.transforms, engine.Handle(root)).children), before)
+
+	drag.run(items, drag.Scene_Place{view = view, px = 50, py = 50, fallback = {9, 9, 9}}, true)
+	on_box := _last_child(root)
 	testing.expect(t, on_box != {} && _near3(engine.transform_world(on_box).position, {0, 0, 1}), "dropped on the box")
-	off := scene_tools.asset_drop_in_view(view, 2, 2, ref, {9, 9, 9})
-	testing.expect(t, off != {} && _near3(engine.transform_world(off).position, {9, 9, 9}), "over empty space, at the point given")
-	parent := engine.pool_get(&tc_mem.world.transforms, engine.Handle(on_box)).parent.handle
-	testing.expect(t, parent == tc_mem.scene.root.handle, "under the active scene's root")
+	drag.run(items, drag.Scene_Place{view = view, px = 2, py = 2, fallback = {9, 9, 9}}, true)
+	off := _last_child(root)
+	testing.expect(t, off != on_box && _near3(engine.transform_world(off).position, {9, 9, 9}), "over empty space, at the point given")
+	testing.expect_value(t, len(engine.pool_get(&tc_mem.world.transforms, engine.Handle(root)).children), before + 2)
 }

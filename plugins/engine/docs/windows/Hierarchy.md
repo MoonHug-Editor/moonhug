@@ -15,8 +15,10 @@ The loaded scenes and their objects, each scene a section with its objects as a 
 
 ## Editing
 
-- Drag objects onto another to reparent them, or between rows to reorder them.
-- Drag a file or sub-asset from the Project window onto a row to make an object of it under that row, or onto empty space to make it under the scene's root: a scene becomes a nested instance, a model its node hierarchy, a sprite a SpriteRenderer ([Asset drop](../attributes/AssetDrop.md)).
+- Drag objects onto another to reparent them, or between rows to reorder them. A selected row drags the whole selection.
+- Drag a file or sub-asset from the Project window onto a row to make an object of it under that row, between rows to put it there, or onto empty space to make it under the scene's root: a scene becomes a nested instance, a model its node hierarchy, a sprite a SpriteRenderer ([Asset drop](../attributes/AssetDrop.md)). A scene dropped on the window's background opens beside the loaded scenes.
+- Drag objects onto a Project folder to make prefabs of them there ([Scene](../assets/Scene.md#making-a-prefab-of-objects)).
+- While a drag hovers, its tooltip says what a drop there does ([Drag and drop](/docs/core/DragAndDrop.md)).
 - Right-click empty space for the GameObject menu's create items. A new object becomes the selection in the same undo step.
 - GameObject, Create Prefab writes each selected object to a new scene file and puts an instance of it in its place ([Scene](../assets/Scene.md#making-a-prefab-of-objects)).
 - A scene's header menu has Discard, which reloads the scene from its file, Unload and Save Scene As.

@@ -103,3 +103,37 @@ create_prefab_keeps_references_through_save :: proc(t: ^testing.T) {
 	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
 	editor_quit(r)
 }
+
+// Dragged from the Hierarchy onto a Project folder, an object becomes a
+// prefab in that folder and an instance of it.
+@(test)
+hierarchy_object_dropped_on_a_project_folder_becomes_a_prefab :: proc(t: ^testing.T) {
+	r := begin(t)
+	project_write(r, "assets/Main.scene", _tank_scene())
+	project_write(r, "assets/Prefabs/Note.txt", "the folder the prefab goes in")
+	editor_start(r)
+	call(r, "open_scene", `{"path":"assets/Main.scene"}`)
+	call(r, "ping_asset", `{"path":"assets/Main.scene"}`)
+	frames(r, 3)
+
+	row, listed := item_rect(r, "Hierarchy", "Tank")
+	if !testing.expectf(t, listed, "the Hierarchy lists Tank") do return
+	folder, shown := item_rect(r, "Project", "Prefabs")
+	if !testing.expectf(t, shown, "the Project window shows the Prefabs folder") do return
+	drag_mouse(r, row.x + 10, row.y + row[3] / 2, folder.x + 10, folder.y + folder[3] / 2, release = false)
+	// Hovering, the drag says what the drop does, and nothing is written yet.
+	_, says := item_rect(r, "tooltip", "Make prefab Tank.scene")
+	testing.expectf(t, says, "the drag's tooltip says what the drop does")
+	testing.expectf(t, !os.exists(project_path(r, "assets/Prefabs/Tank.scene")), "hovering writes nothing")
+	call(r, "input", `{"steps":[{"type":"up"},{"type":"wait","frames":3}]}`)
+
+	testing.expectf(t, os.exists(project_path(r, "assets/Prefabs/Tank.scene")), "the prefab is written in the folder it was dropped on")
+	turret := _lid(r, "Turret")
+	testing.expectf(t, turret != 13 && turret > 0, "Tank is an instance of it, its Turret the instance's, %v", turret)
+	testing.expectf(t, _aim(r, "Player") == turret, "Player names the instance's Turret")
+
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 3)
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	editor_quit(r)
+}

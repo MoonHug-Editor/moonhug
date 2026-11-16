@@ -5,6 +5,9 @@ import "core:mem"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import core "moonhug:libs/core"
+import assets "moonhug:libs/assets"
+import "core:encoding/uuid"
+import "moonhug:editor/drag"
 import "../undo"
 import "moonhug:editor/widgets"
 
@@ -33,18 +36,12 @@ picker_search_bar :: proc() -> []string {
 // Unity-like reference field row: Label [value][x][pick]. Single click on the
 // value pings the target, double click opens/selects it (out params); [x]
 // clears (shown before [pick] only when set); [pick] opens the picker popup.
-// The drag-and-drop payload of a scene object: one core.Transform_Handle.
-// The window that lists objects is its source (the Hierarchy), and a
-// reference field's value button accepts it.
-OBJECT_DRAG_TYPE :: "HIERARCHY_TRANSFORM"
-
-// Returns true when the popup should open. When dropped_asset is non-nil, the
-// value button accepts ASSET_PATH drag-drops and writes the dropped path
-// (temp-allocated) there. When dropped_pptr is non-nil it also accepts
-// ASSET_PPTR — a sub-asset dragged from the project window (a sprite slice,
-// later a mesh part) — and sets dropped_pptr_ok. When dropped_object is
-// non-nil it also accepts a scene object dragged from the Hierarchy
-// (OBJECT_DRAG_TYPE) and writes its transform there.
+// Returns true when the popup should open. The value button takes a drag
+// of one item (moonhug/editor/drag) of a kind the caller asks for: a file
+// when dropped_asset is non-nil, its path written there (temp-allocated); a
+// sub-asset (a sprite slice, a mesh part) when dropped_pptr is non-nil, with
+// dropped_pptr_ok set; a scene object when dropped_object is non-nil, its
+// transform written there.
 //
 // An EMPTY field ("None") has nothing to ping or open, so its value area acts
 // as the pick button — clicking anywhere on the row opens the picker instead of
@@ -98,22 +95,18 @@ picker_field_row :: proc(label: cstring, display: string, has_value: bool, value
 	if has_value && value_double_clicked != nil && im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) {
 		value_double_clicked^ = true
 	}
-	if (dropped_asset != nil || dropped_pptr != nil || dropped_object != nil) && im.BeginDragDropTarget() {
-		if dropped_object != nil {
-			if payload := im.AcceptDragDropPayload(OBJECT_DRAG_TYPE); payload != nil && payload.Data != nil && payload.DataSize == size_of(core.Transform_Handle) {
-				dropped_object^ = (cast(^core.Transform_Handle)payload.Data)^
-			}
-		}
-		if dropped_asset != nil {
-			if payload := im.AcceptDragDropPayload("ASSET_PATH"); payload != nil && payload.Data != nil {
-				path := string((cast([^]u8)payload.Data)[:payload.DataSize])
-				dropped_asset^ = strings.clone(path, context.temp_allocator)
-			}
-		}
-		if dropped_pptr != nil {
-			if payload := im.AcceptDragDropPayload("ASSET_PPTR"); payload != nil && payload.Data != nil && payload.DataSize == size_of(core.PPtr) {
-				dropped_pptr^ = (cast(^core.PPtr)payload.Data)^
-				if dropped_pptr_ok != nil do dropped_pptr_ok^ = true
+	if item, takes := _field_takes(dropped_asset != nil, dropped_pptr != nil, dropped_object != nil); takes && im.BeginDragDropTarget() {
+		if p := im.AcceptDragDropPayload(drag.PAYLOAD); p != nil {
+			switch v in item {
+			case core.Transform_Handle:
+				dropped_object^ = v
+			case core.PPtr:
+				if v.local_id == 0 {
+					if path, ok := assets.asset_db_get_path(uuid.Identifier(v.guid)); ok do dropped_asset^ = strings.clone(path, context.temp_allocator)
+				} else {
+					dropped_pptr^ = v
+					if dropped_pptr_ok != nil do dropped_pptr_ok^ = true
+				}
 			}
 		}
 		im.EndDragDropTarget()
@@ -134,6 +127,19 @@ picker_field_row :: proc(label: cstring, display: string, has_value: bool, value
 		fmt.tprintf("%s##pick_%s", ICON_MD_SEARCH, label), context.temp_allocator,
 	)
 	return im.Button(pick_label, {BTN_W, 0}) || open_picker
+}
+
+// The drag's item when it is one a field takes: a file, a sub-asset or an
+// object, as the caller asks.
+@(private = "file")
+_field_takes :: proc(file, sub_asset, object: bool) -> (item: drag.Item, ok: bool) {
+	its := drag.items()
+	if len(its) != 1 do return
+	switch v in its[0] {
+	case core.Transform_Handle: ok = object
+	case core.PPtr:             ok = v.local_id == 0 ? file : sub_asset
+	}
+	return its[0], ok
 }
 
 @(property_drawer={type = core.Ref_Local})

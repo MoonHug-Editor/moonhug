@@ -409,6 +409,23 @@ click :: proc(r: ^Run, x, y: f64, loc := #caller_location) {
 	call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":1}},{{"type":"down"}},{{"type":"up"}},{{"type":"wait","frames":3}}]}}`, x, y), loc)
 }
 
+// A press on (x0, y0), a move to (x1, y1) in small steps a frame apart, as a
+// hand drags, and the release there. With release false the button stays
+// down over (x1, y1): the drag hovers there until a later "up" step.
+drag_mouse :: proc(r: ^Run, x0, y0, x1, y1: f64, release := true) {
+	b := strings.builder_make(context.temp_allocator)
+	fmt.sbprintf(&b, `{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":1}},{{"type":"down"}}`, x0, y0)
+	STEPS :: 12
+	for i in 1 ..= STEPS {
+		f := f64(i) / STEPS
+		fmt.sbprintf(&b, `,{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":1}}`, x0 + (x1 - x0) * f, y0 + (y1 - y0) * f)
+	}
+	strings.write_string(&b, `,{"type":"wait","frames":2}`)
+	if release do strings.write_string(&b, `,{"type":"up"},{"type":"wait","frames":3}`)
+	strings.write_string(&b, `]}`)
+	call(r, "input", strings.to_string(b))
+}
+
 // --- The log -----------------------------------------------------------------
 
 // The editor's console entries at the level Error (temp).

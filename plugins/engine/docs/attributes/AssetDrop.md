@@ -6,14 +6,14 @@ tags: ["engine", "attributes", "editor"]
 path: engine/attributes
 ---
 
-A file or sub-asset dragged from the Project window into the Scene window or the Hierarchy becomes an object. What it becomes is up to the package that knows the asset type, with an `@(asset_on_drop)` proc.
+A file or sub-asset dragged from the Project window into the Scene window or the Hierarchy becomes an object. The drop rules for assets on those places ([Drag and drop](/docs/core/DragAndDrop.md)) ask what each asset becomes, and that is up to the package that knows the asset type, with an `@(asset_on_drop)` proc.
 
 ## Where the object goes
 
 - **Scene window:** under the active scene's root, where the pointer meets the nearest object. Objects are met the way a click picks them, so a mesh is met at its bounds. Over empty space it goes where the pointer meets the grid: the XY plane in the 2D view, otherwise the first plane the grid shows, XZ when it shows none. A pointer that meets no plane in front of the camera puts it at the camera's pivot distance.
-- **Hierarchy:** under the row it is dropped on, or under the scene's root on empty space, at its parent's origin.
-- The drop is one undo step and selects the new object.
-- The Scene window takes only an asset some package makes an object of.
+- **Hierarchy:** under the row it is dropped on, between two rows at that place, or under the scene's root on empty space, at its parent's origin.
+- Several assets dragged at once make an object each. The drop is one undo step and selects them.
+- The places take only assets some package makes an object of. While a drag hovers, its tooltip says "Place Crate".
 
 ## What the engine and its plugins make
 
@@ -39,7 +39,8 @@ asset_on_drop_sprite :: proc(ref: engine.PPtr, parent: engine.Transform_Handle) 
 - `kind` is what the proc takes: a file extension without the dot, or the kind of a sub-asset as the Project window search's `t:` word knows it. Several kinds are separated by spaces. One proc per kind: a second stops the build.
 - The proc builds the object under `parent` and returns its root, or `{}` for an asset it makes nothing of. It leaves the position, the undo step and the selection to the drop.
 - The proc is named `asset_on_drop_<name>` and lives in an editor package, never the editor root.
-- `scene_tools.asset_drop(ref, parent, at)` drops from code, as both windows do.
+- `drag.asset_kind(ref)` gives an asset's kind.
+- From code: `scene_tools.asset_drop(ref, parent, at, index)` makes one object and records it, and `scene_tools.place_assets(refs, parent, at, index)` makes several as one undo step and selects them, as the drop rules do.
 
 ## Reference
 

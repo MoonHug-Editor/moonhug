@@ -331,6 +331,7 @@ _Item_Probe :: struct {
 	window: string, // the imgui window name, owned
 	label:  string, // owned
 	popups: bool,   // asked for "popup": text in any open popup matches
+	tooltips: bool, // asked for "tooltip": text in the tooltip shown matches (a drag's)
 }
 
 // Probes waiting for the frame they armed to draw, on the default allocator.
@@ -349,22 +350,29 @@ _Item_Match :: struct {
 
 @(mcp_tool={
 	description="Where an item is, for input: the rectangle of an inspector row's widget by the field it edits, or of a piece of text drawn in a window (a button, a component header, a tab, an object in the hierarchy), in points from the editor's top-left, the frame input moves in. Answers after the next frame draws. Rows come from the inspector's own row drawing and text from the frame's draw data, so a row folded away or scrolled out of view, or text clipped away, is not found: window_place and window_resize make room first. A row's rectangle is its last widget (the z of a vector).",
-	param_window="string!:Title or id of the window (window_list), or popup for the open popups (a context menu and its open submenu)",
+	param_window="string!:Title or id of the window (window_list), popup for the open popups (a context menu and its open submenu), or tooltip for the tooltip shown (a drag's, saying what a drop would do)",
 	param_label="string!:The row's field name as get_property addresses it (duration), or the text to find, case ignored, a part of a longer text matches",
 })
 mcp_tool_item_rect :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	query, _ := params["window"].(json.String)
-	w, err := _find_window(query)
-	if err.code != "" do return "", err
+	// A tooltip is a window of no title, made fresh each time it shows.
+	tooltips := strings.equal_fold(string(query), "tooltip")
+	window := "tooltip"
+	if !tooltips {
+		w, err := _find_window(query)
+		if err.code != "" do return "", err
+		window = string(w.Name)
+	}
 	label, _ := params["label"].(json.String)
 	label = strings.trim_space(label)
 	if label == "" do return mcp.tool_fail("bad_request", "need label: a row's field name or text in the window")
 	if _item_probes == nil do _item_probes = make([dynamic]_Item_Probe, runtime.default_allocator())
 	append(&_item_probes, _Item_Probe{
 		id     = id,
-		window = strings.clone(string(w.Name), runtime.default_allocator()),
-		label  = strings.clone(label, runtime.default_allocator()),
-		popups = strings.equal_fold(string(query), "popup"),
+		window   = strings.clone(window, runtime.default_allocator()),
+		label    = strings.clone(label, runtime.default_allocator()),
+		popups   = strings.equal_fold(string(query), "popup"),
+		tooltips = tooltips,
 	})
 	inspector.row_probe_arm()
 	return MCP_DEFERRED, {}
@@ -411,7 +419,12 @@ _mcp_item_rects_poll :: proc() {
 		}
 		q := strings.to_lower(probe.label, context.temp_allocator)
 		for run in runs {
-			owned := _owned_by_open_popup(run.owner) if probe.popups else _owned_by(run.owner, probe.window)
+			owned: bool
+			switch {
+			case probe.tooltips: owned = strings.has_prefix(run.owner, "##Tooltip_")
+			case probe.popups:   owned = _owned_by_open_popup(run.owner)
+			case:                owned = _owned_by(run.owner, probe.window)
+			}
 			if !owned do continue
 			if !strings.contains(strings.to_lower(run.text, context.temp_allocator), q) do continue
 			append(&matches, _Item_Match{"text", run.text, run.min.x - vp.Pos.x, run.min.y - vp.Pos.y, run.max.x - run.min.x, run.max.y - run.min.y})

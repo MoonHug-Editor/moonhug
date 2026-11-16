@@ -9,7 +9,7 @@ import "core:math"
 import "core:math/linalg"
 import "inspector"
 import core "moonhug:libs/core"
-import assets "moonhug:libs/assets"
+import "moonhug:editor/drag"
 import "moonhug:libs/gizmos"
 import "moonhug:editor/viewport"
 import "core:strings"
@@ -612,7 +612,7 @@ scene_window_draw :: proc(w: ^wnd.Window) {
 			im.SetCursorScreenPos({content_min.x + bar_l, content_min.y + bar_t})
 			im.Image(im.TextureRef{_TexID = tex_id}, avail)
 			_sv.img_min = im.GetItemRectMin()
-			_scene_asset_drop_target()
+			_scene_drop_target()
 			// Gizmo labels (anchor percentages and such) over the image,
 			// shadowed so they read on any background.
 			dl := im.GetWindowDrawList()
@@ -640,40 +640,20 @@ scene_window_draw :: proc(w: ^wnd.Window) {
 	}
 }
 
-// --- Asset drop ------------------------------------------------------------------------
-// A file or sub-asset dragged from the Project window onto the image becomes
-// an object (viewport.drop): on the object under the pointer, or on the grid
-// over empty space. The image is a target only for an asset some package
-// makes an object of.
-
-// The asset the current drag carries, from a Project window row.
-@(private = "file")
-_dragged_asset :: proc() -> (ref: core.PPtr, ok: bool) {
-	p := im.GetDragDropPayload()
-	if p == nil || p.Data == nil do return
-	if im.Payload_IsDataType(p, "ASSET_PPTR") do return (^core.PPtr)(p.Data)^, true
-	if im.Payload_IsDataType(p, "ASSET_PATH") {
-		guid, gok := assets.asset_db_get_guid(string(([^]byte)(p.Data)[:p.DataSize]))
-		if !gok do return
-		return core.PPtr{guid = core.Asset_GUID(guid)}, true
-	}
-	return
-}
+// --- Drop ------------------------------------------------------------------------------
+// The image is a drop target (moonhug/editor/drag): a drag's items go to the
+// rules for the Scene view, at the pointer's pixel, with the grid point as
+// the place over empty space.
 
 // Right after the image: the image as the drop target.
 @(private = "file")
-_scene_asset_drop_target :: proc() {
-	ref, ok := _dragged_asset()
-	if !ok || !viewport.drop_accepts(ref) do return
-	if !im.BeginDragDropTarget() do return
+_scene_drop_target :: proc() {
+	if drag.items() == nil || !im.BeginDragDropTarget() do return
 	defer im.EndDragDropTarget()
-	p := im.AcceptDragDropPayload("ASSET_PATH")
-	if p == nil do p = im.AcceptDragDropPayload("ASSET_PPTR")
-	if p == nil do return
 	mp := im.GetMousePos()
 	px, py := mp.x - _sv.img_min.x, mp.y - _sv.img_min.y
 	view := scene_render_view(f32(_sv.rt.width), f32(_sv.rt.height))
-	viewport.drop(view, px, py, ref, scene_drop_fallback(view, px, py))
+	drag.target(drag.Scene_Place{view = view, px = px, py = py, fallback = scene_drop_fallback(view, px, py)})
 }
 
 // Where a drop over empty space puts the object: where the pointer's ray

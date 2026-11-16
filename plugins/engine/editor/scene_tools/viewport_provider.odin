@@ -27,8 +27,6 @@ install_viewport_provider :: proc() {
 		dirty               = _vp_dirty,
 		render_game         = _vp_render_game,
 		debug_draw          = _vp_debug_draw,
-		drop_accepts        = asset_drop_accepts,
-		drop                = _vp_drop,
 	})
 }
 
@@ -59,11 +57,6 @@ _vp_render_game :: proc(target: ^gfx.Render_Target, over: proc()) -> bool {
 	had_camera := engine.camera_active() != nil
 	engine.render_world_cameras(target, over)
 	return had_camera
-}
-
-@(private = "file")
-_vp_drop :: proc(view: engine.Render_View, px, py: f32, ref: engine.PPtr, fallback: [3]f32) {
-	asset_drop_in_view(view, px, py, ref, fallback)
 }
 
 @(private = "file")

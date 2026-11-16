@@ -13,16 +13,12 @@ import im "moonhug:external/odin-imgui"
 import engine "moonhug:packages/engine"
 import "moonhug:editor/menu"
 import undo "moonhug:packages/engine/editor/undo"
-import "moonhug:packages/engine/editor/scene_tools"
+import "moonhug:editor/drag"
 import "moonhug:editor/simulate"
 import "moonhug:editor/widgets"
 import "moonhug:editor/icons"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/keymap"
-import "moonhug:editor/inspector"
-
-// One engine.Transform_Handle. Reference fields in the inspector accept it too.
-HIERARCHY_DRAG_TYPE :: inspector.OBJECT_DRAG_TYPE
 
 _HANDLE_NONE :: engine.Transform_Handle{}
 
@@ -296,14 +292,9 @@ hierarchy_window_draw :: proc(w: ^wnd.Window) {
 		_hv = _hierarchy_window(last) if last != nil else &_hv_none
 	}
 
+	// The window's background: no parent, beside the loaded scenes.
 	if im.BeginDragDropTarget() {
-		payload := im.AcceptDragDropPayload("ASSET_PATH", {})
-		if payload != nil && payload.Data != nil {
-			path := string(([^]byte)(payload.Data)[:payload.DataSize])
-			if strings.has_suffix(path, ".scene") {
-				engine.scene_load(path, additive = true)
-			}
-		}
+		drag.target(drag.Hierarchy_Place{index = -1})
 		im.EndDragDropTarget()
 	}
 
@@ -1110,16 +1101,18 @@ _create_empty_parent :: proc(tH: engine.Transform_Handle) {
 	_hierarchy_reveal_open(new_parent)
 }
 
+// The row as a drag source: its object, or the selection when it is selected.
 @(private)
 _draw_drag_source :: proc(tH: engine.Transform_Handle) {
 	if im.BeginDragDropSource({}) {
-		payload_data := tH
-		im.SetDragDropPayload(HIERARCHY_DRAG_TYPE, &payload_data, size_of(engine.Transform_Handle))
-		w := engine.ctx_world()
-		t := engine.pool_get(&w.transforms, engine.Handle(tH))
-		if t != nil {
-			im.TextUnformatted(strings.clone_to_cstring(t.name, context.temp_allocator))
+		items := _hierarchy_drag_items(tH)
+		label := ""
+		if len(items) > 1 {
+			label = fmt.tprintf("%d objects", len(items))
+		} else if t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(tH)); t != nil {
+			label = t.name
 		}
+		drag.source(items, label)
 		im.EndDragDropSource()
 	}
 }
@@ -1144,26 +1137,15 @@ _draw_drop_target_on_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Sc
 	im.InvisibleButton(strings.clone_to_cstring(id_before, context.temp_allocator), im.Vec2{width, before_h})
 	root_tH := engine.Transform_Handle(scene.root.handle)
 
+	// Before and after the row: its parent, at its place. The root's
+	// own rows have no parent: the root then.
+	row_parent := engine.Transform_Handle(t.parent.handle)
+	if !engine.pool_valid(&w.transforms, engine.Handle(row_parent)) do row_parent = root_tH
+	row_index := engine.transform_get_sibling_index(tH)
+
 	if im.BeginDragDropTarget() {
-		im.DrawList_AddLine(draw_list, im.Vec2{rect_min.x, rect_min.y}, im.Vec2{rect_max.x, rect_min.y}, indicator_color, 3.0)
-		payload := im.AcceptDragDropPayload(HIERARCHY_DRAG_TYPE, {.AcceptNoDrawDefaultRect})
-		if payload != nil && payload.Data != nil {
-			dragged := (^engine.Transform_Handle)(payload.Data)^
-			if dragged != tH && dragged != root_tH && !_is_ancestor(dragged, tH) {
-				target_parent := engine.Transform_Handle(t.parent.handle)
-				if !engine.pool_valid(&w.transforms, engine.Handle(target_parent)) {
-					target_parent = root_tH
-				}
-				target_idx := engine.transform_get_sibling_index(tH)
-				dt := engine.pool_get(&w.transforms, engine.Handle(dragged))
-				if dt != nil && dt.parent.handle == t.parent.handle {
-					dragged_idx := engine.transform_get_sibling_index(dragged)
-					if dragged_idx < target_idx {
-						target_idx -= 1
-					}
-				}
-				undo.record_reparent_to(dragged, target_parent, target_idx)
-			}
+		if taken, _ := drag.target(drag.Hierarchy_Place{parent = row_parent, index = row_index}, {.AcceptNoDrawDefaultRect}); taken {
+			im.DrawList_AddLine(draw_list, im.Vec2{rect_min.x, rect_min.y}, im.Vec2{rect_max.x, rect_min.y}, indicator_color, 3.0)
 		}
 		im.EndDragDropTarget()
 	}
@@ -1172,14 +1154,7 @@ _draw_drop_target_on_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Sc
 	id_child := fmt.tprintf("##drop_child_%v_%v", engine.Handle(tH).index, engine.Handle(tH).generation)
 	im.InvisibleButton(strings.clone_to_cstring(id_child, context.temp_allocator), im.Vec2{width, item_height - 2 * zone_h})
 	if im.BeginDragDropTarget() {
-		payload := im.AcceptDragDropPayload(HIERARCHY_DRAG_TYPE, {})
-		if payload != nil && payload.Data != nil {
-			dragged := (^engine.Transform_Handle)(payload.Data)^
-			if dragged != tH && dragged != root_tH && !_is_ancestor(dragged, tH) {
-				undo.record_reparent_to(dragged, tH)
-			}
-		}
-		_hierarchy_accept_asset_drop(tH)
+		drag.target(drag.Hierarchy_Place{parent = tH, index = -1})
 		im.EndDragDropTarget()
 	}
 
@@ -1188,25 +1163,8 @@ _draw_drop_target_on_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Sc
 	id_after := fmt.tprintf("##drop_after_%v_%v", engine.Handle(tH).index, engine.Handle(tH).generation)
 	im.InvisibleButton(strings.clone_to_cstring(id_after, context.temp_allocator), im.Vec2{width, after_h})
 	if im.BeginDragDropTarget() {
-		im.DrawList_AddLine(draw_list, im.Vec2{rect_min.x, rect_max.y}, im.Vec2{rect_max.x, rect_max.y}, indicator_color, 3.0)
-		payload := im.AcceptDragDropPayload(HIERARCHY_DRAG_TYPE, {.AcceptNoDrawDefaultRect})
-		if payload != nil && payload.Data != nil {
-			dragged := (^engine.Transform_Handle)(payload.Data)^
-			if dragged != tH && dragged != root_tH && !_is_ancestor(dragged, tH) {
-				target_parent := engine.Transform_Handle(t.parent.handle)
-				if !engine.pool_valid(&w.transforms, engine.Handle(target_parent)) {
-					target_parent = root_tH
-				}
-				target_idx := engine.transform_get_sibling_index(tH) + 1
-				dt := engine.pool_get(&w.transforms, engine.Handle(dragged))
-				if dt != nil && dt.parent.handle == t.parent.handle {
-					dragged_idx := engine.transform_get_sibling_index(dragged)
-					if dragged_idx < target_idx {
-						target_idx -= 1
-					}
-				}
-				undo.record_reparent_to(dragged, target_parent, target_idx)
-			}
+		if taken, _ := drag.target(drag.Hierarchy_Place{parent = row_parent, index = row_index + 1}, {.AcceptNoDrawDefaultRect}); taken {
+			im.DrawList_AddLine(draw_list, im.Vec2{rect_min.x, rect_max.y}, im.Vec2{rect_max.x, rect_max.y}, indicator_color, 3.0)
 		}
 		im.EndDragDropTarget()
 	}
@@ -1218,36 +1176,10 @@ _draw_drop_target_empty_space :: proc(scene: ^engine.Scene) {
 	if avail.y > 8 {
 		im.InvisibleButton("##drop_empty_space", im.Vec2{avail.x, avail.y})
 		if im.BeginDragDropTarget() {
-			payload := im.AcceptDragDropPayload(HIERARCHY_DRAG_TYPE, {})
-			if payload != nil && payload.Data != nil {
-				dragged := (^engine.Transform_Handle)(payload.Data)^
-				root_tH := engine.Transform_Handle(scene.root.handle)
-				if dragged != root_tH {
-					undo.record_reparent_to(dragged, root_tH)
-				}
-			}
-			_hierarchy_accept_asset_drop(engine.Transform_Handle(scene.root.handle))
+			drag.target(drag.Hierarchy_Place{parent = engine.Transform_Handle(scene.root.handle), index = -1})
 			im.EndDragDropTarget()
 		}
 	}
-}
-
-// Inside a drop target: a file or sub-asset from the Project window dropped
-// here becomes an object under `parent_tH` (scene_tools.asset_drop), with
-// its local position at the origin.
-@(private)
-_hierarchy_accept_asset_drop :: proc(parent_tH: engine.Transform_Handle) {
-	ref: engine.PPtr
-	if p := im.AcceptDragDropPayload("ASSET_PATH", {}); p != nil && p.Data != nil {
-		guid, ok := engine.asset_db_get_guid(string(([^]byte)(p.Data)[:p.DataSize]))
-		if !ok do return
-		ref = engine.PPtr{guid = engine.Asset_GUID(guid)}
-	} else if p := im.AcceptDragDropPayload("ASSET_PPTR", {}); p != nil && p.Data != nil {
-		ref = (^engine.PPtr)(p.Data)^
-	} else {
-		return
-	}
-	if scene_tools.asset_drop(ref, parent_tH) != {} do _hierarchy_reveal_open(parent_tH)
 }
 
 @(private)

@@ -17,6 +17,7 @@ import "inspector"
 import "menu"
 import asset_pipeline "moonhug:editor/assets"
 import "subassets"
+import "drag"
 import "moonhug:editor/thumbnails"
 import "undo"
 import "moonhug:editor/widgets"
@@ -711,6 +712,7 @@ _project_draw_tree_node :: proc(full_path: string, name: string, is_link := fals
     }
 
     node_open := im.TreeNodeEx(node_label, node_flags)
+    _project_folder_drop_target(full_path)
     // A leaf reports open==true but can't be collapsed; record it as closed so
     // Left-arrow skips straight to the parent.
     open := node_open && !is_leaf
@@ -919,7 +921,7 @@ _project_draw_grid_sub_cell :: proc(parent_path: string, guid: core.Asset_GUID, 
             _project_sub_asset_clicked(parent_path, guid, s, provider)
         }
         _project_sub_asset_right_click(parent_path, s)
-        _project_sub_asset_drag(guid, s, fmt.ctprintf("%s%s", icons.ICON_MD_IMAGE, s.name))
+        _project_sub_asset_drag(parent_path, guid, s, fmt.ctprintf("%s%s", icons.ICON_MD_IMAGE, s.name))
         _project_item_ping_flash(parent_path, s.id)
         _project_sub_scroll_to_selection(is_selected)
     }
@@ -1223,13 +1225,39 @@ _project_renaming_sub :: proc(path: string, sub: core.Local_ID) -> bool {
     return _pv.rename_active && _pv.rename_sub != 0 && _pv.rename_sub == sub && _pv.rename_path == path
 }
 
-_project_sub_asset_drag :: proc(guid: core.Asset_GUID, s: subassets.Sub_Asset, drag_label: cstring) {
+_project_sub_asset_drag :: proc(parent_path: string, guid: core.Asset_GUID, s: subassets.Sub_Asset, drag_label: cstring) {
     if im.BeginDragDropSource({}) {
-        payload := core.PPtr{guid = guid, local_id = s.id}
-        im.SetDragDropPayload("ASSET_PPTR", &payload, size_of(core.PPtr))
-        im.TextUnformatted(drag_label)
+        items := _project_drag_items(parent_path, s.id, core.PPtr{guid = guid, local_id = s.id})
+        drag.source(items, len(items) > 1 ? fmt.tprintf("%d assets", len(items)) : string(drag_label))
         im.EndDragDropSource()
     }
+}
+
+// What a drag from a Project row carries: the selection's assets when the
+// row is selected, else the row's own asset `own`.
+@(private = "file")
+_project_drag_items :: proc(path: string, sub_id: core.Local_ID, own: core.PPtr) -> []drag.Item {
+    out := make([dynamic]drag.Item, context.temp_allocator)
+    selected := sub_id == 0 ? sel_proj_is(path) : sel_proj_is_sub(path, sub_id)
+    if selected && len(_sel_proj) > 1 {
+        for e in _sel_proj {
+            guid, ok := assets.asset_db_get_guid(e.path)
+            if !ok do continue
+            append(&out, drag.Item(core.PPtr{guid = core.Asset_GUID(guid), local_id = e.sub_id}))
+        }
+    }
+    if len(out) == 0 do append(&out, drag.Item(own))
+    return out[:]
+}
+
+// A folder of the Project window as a drop target: the drag's items go to
+// the rules for a Project folder.
+@(private = "file")
+_project_folder_drop_target :: proc(folder: string) {
+    if folder == "" || folder == _PROJECT_PACKAGES_PATH do return
+    if drag.items() == nil || !im.BeginDragDropTarget() do return
+    drag.target(drag.Project_Place{folder = folder})
+    im.EndDragDropTarget()
 }
 
 _project_draw_sub_asset_rows :: proc(parent_path: string, sub: []subassets.Sub_Asset, provider: subassets.Provider, indent: f32) {
@@ -1271,7 +1299,7 @@ _project_draw_sub_asset_row :: proc(parent_path: string, guid: core.Asset_GUID, 
     if pressed do _project_sub_asset_clicked(parent_path, guid, s, provider)
     _project_sub_scroll_to_selection(_pv.active_pane == .List && selected)
     _project_sub_asset_right_click(parent_path, s)
-    _project_sub_asset_drag(guid, s, label)
+    _project_sub_asset_drag(parent_path, guid, s, label)
     _project_item_ping_flash(parent_path, s.id)
     if tid, uv0, uv1, tok := thumbnails.get_sub(parent_path, s); tok {
         _project_row_preview(tid, uv0, uv1, s.size.x, s.size.y)
@@ -1330,9 +1358,14 @@ _project_item_ping_flash :: proc(full_path: string, sub: core.Local_ID = 0) {
     im.DrawList_AddRectFilled(im.GetWindowDrawList(), im.GetItemRectMin(), im.GetItemRectMax(), flash)
 }
 
-// Right-click select and the drag source, on the LAST item (files only).
+// Right-click select and the drag source, on the LAST item (files only),
+// and the item as a drop target: a folder, or the folder of a file.
 _project_item_extras :: proc(full_path: string, is_dir: bool, drag_label: cstring) {
-    if is_dir do return
+    if is_dir {
+        _project_folder_drop_target(full_path)
+        return
+    }
+    defer _project_folder_drop_target(filepath.dir(full_path))
     // Right-click also selects, so the context menu (which acts on the
     // selected asset) targets the item under the cursor, not whatever was
     // previously selected. Inside an existing multi-selection it only
@@ -1347,8 +1380,10 @@ _project_item_extras :: proc(full_path: string, is_dir: bool, drag_label: cstrin
         }
     }
     if im.BeginDragDropSource({}) {
-        im.SetDragDropPayload("ASSET_PATH", raw_data(full_path), len(full_path))
-        im.TextUnformatted(drag_label)
+        if guid, ok := assets.asset_db_get_guid(full_path); ok {
+            items := _project_drag_items(full_path, 0, core.PPtr{guid = core.Asset_GUID(guid)})
+            drag.source(items, len(items) > 1 ? fmt.tprintf("%d assets", len(items)) : string(drag_label))
+        }
         im.EndDragDropSource()
     }
 }
@@ -1823,6 +1858,17 @@ project_window_draw :: proc(w: ^wnd.Window) {
         _project_draw_grid(_pv.current_path, cell)
     } else {
         draw_file_list(_pv.current_path)
+    }
+    // The rest of the pane is the open folder, as a drop target. A rect of
+    // its own, no item: clicks there stay the pane's.
+    if query == "" && drag.items() != nil && _pv.current_path != _PROJECT_PACKAGES_PATH {
+        if avail := im.GetContentRegionAvail(); avail.y > 8 && avail.x > 8 {
+            from := im.GetCursorScreenPos()
+            if im.BeginDragDropTargetCustom({from, from + avail}, im.GetID("##prj_open_folder_drop")) {
+                drag.target(drag.Project_Place{folder = _pv.current_path})
+                im.EndDragDropTarget()
+            }
+        }
     }
     if im.BeginPopupContextWindow("ProjectFileListContext", im.PopupFlags_MouseButtonRight) {
         // The Assets menu up to its database band: what acts on the selected

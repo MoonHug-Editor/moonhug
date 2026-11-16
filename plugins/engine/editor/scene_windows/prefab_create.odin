@@ -1,12 +1,14 @@
 package scene_windows
 
-// GameObject > Create Prefab: each selected object becomes a scene file of
-// its own, a prefab, and the object becomes an instance of that file, in its
-// place. One undo step: undo puts the objects back, the files stay.
+// Objects become prefabs: GameObject > Create Prefab on the selection, or
+// Hierarchy objects dragged onto a Project folder (a drop rule of
+// moonhug/editor/drag). Each object becomes a scene file of its own, a
+// prefab, and the object becomes an instance of that file, in its place.
+// One undo step: undo puts the objects back, the files stay.
 //
-// - The file is written in the Project window's open folder, named after the
-//   object. Its root sits at the file's origin: the instance keeps the
-//   object's place.
+// - The file is written in the Project window's open folder, or the folder
+//   the objects are dropped on, named after the object. Its root sits at
+//   the file's origin: the instance keeps the object's place.
 // - References between the objects of the subtree stay in the prefab.
 // - References from the rest of the scene to them move to the instance's
 //   objects.
@@ -23,6 +25,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:reflect"
 import "core:strings"
+import "moonhug:editor/drag"
 import "moonhug:editor/inspector"
 import "moonhug:editor/keymap"
 import "moonhug:editor/session"
@@ -34,12 +37,38 @@ import undo "moonhug:packages/engine/editor/undo"
 @(menu_item={path="GameObject/Create Prefab", order=-97, enabled=_can_create_prefab, help="Saves each selected object as a prefab in the Project window's open folder and puts an instance of it in its place"})
 create_prefab_menu :: proc() {
 	if !_can_create_prefab() do return
-	dir := session.project_dir()
-	g := undo.group_begin("Create Prefab")
+	create_prefabs(session.top_level(), session.project_dir())
+}
+
+// Objects dragged onto a Project folder become prefabs there.
+@(drop={what = "object", on = "project"})
+drop_objects_in_project :: proc(d: ^drag.Drop) -> bool {
+	if engine.game_running() do return false
+	folder := d.place.(drag.Project_Place).folder
+	objects := make([dynamic]engine.Transform_Handle, context.temp_allocator)
+	for h in drag.objects_of(d.items) do if _prefab_refusal(h) == "" do append(&objects, h)
+	if len(objects) == 0 do return false
+	if !d.perform {
+		if len(objects) == 1 {
+			t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(objects[0]))
+			d.hint = fmt.tprintf("Make prefab %s", filepath.base(_prefab_free_path(folder, t.name)))
+		} else {
+			d.hint = fmt.tprintf("Make %d prefabs", len(objects))
+		}
+		return true
+	}
+	create_prefabs(objects[:], folder)
+	return true
+}
+
+// Each of `objects` that can becomes a prefab in `dir` and an instance of it,
+// as one undo step, the instances selected.
+create_prefabs :: proc(objects: []engine.Transform_Handle, dir: string) {
+	g := undo.group_begin(len(objects) == 1 ? "Create Prefab" : "Create Prefabs")
 	defer undo.group_end(&g)
 	undo.record_selection_snapshot()
 	made := make([dynamic]engine.Transform_Handle, context.temp_allocator)
-	for h in session.top_level() {
+	for h in objects {
 		if _prefab_refusal(h) != "" do continue
 		t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(h))
 		path := _prefab_free_path(dir, t.name)

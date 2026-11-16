@@ -7,23 +7,7 @@ package scenarios
 
 import "core:encoding/json"
 import "core:fmt"
-import "core:strings"
 import "core:testing"
-
-// A press on (x0, y0), a move to (x1, y1) in small steps a frame apart, as a
-// hand drags, and the release there.
-@(private = "file")
-_drag :: proc(r: ^Run, x0, y0, x1, y1: f64) {
-	b := strings.builder_make(context.temp_allocator)
-	fmt.sbprintf(&b, `{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":1}},{{"type":"down"}}`, x0, y0)
-	STEPS :: 12
-	for i in 1 ..= STEPS {
-		f := f64(i) / STEPS
-		fmt.sbprintf(&b, `,{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":1}}`, x0 + (x1 - x0) * f, y0 + (y1 - y0) * f)
-	}
-	strings.write_string(&b, `,{"type":"wait","frames":2},{"type":"up"},{"type":"wait","frames":3}]}`)
-	call(r, "input", strings.to_string(b))
-}
 
 @(private = "file")
 _objects :: proc(r: ^Run, params: string) -> json.Array {
@@ -61,7 +45,7 @@ assets_dragged_into_the_scene_become_objects :: proc(t: ^testing.T) {
 	if !testing.expectf(t, listed, "the Project window lists Crate.scene") do return
 	scene, shown := window_rect(r, "Scene")
 	if !testing.expectf(t, shown, "the Scene window is open") do return
-	_drag(r, row.x + 20, row.y + row[3] / 2, scene.x + scene[2] / 2, scene.y + scene[3] / 2)
+	drag_mouse(r, row.x + 20, row.y + row[3] / 2, scene.x + scene[2] / 2, scene.y + scene[3] / 2)
 	crates := _objects(r, `{"name":"Crate","detail":true}`)
 	if !testing.expectf(t, len(crates) == 1, "the drop made one Crate, got %v", len(crates)) do return
 	pos, _ := at(crates[0], "position").(json.Array)
@@ -75,7 +59,7 @@ assets_dragged_into_the_scene_become_objects :: proc(t: ^testing.T) {
 	if !testing.expectf(t, mlisted, "the Project window lists Cube.glb") do return
 	hier, hshown := window_rect(r, "Hierarchy")
 	if !testing.expectf(t, hshown, "the Hierarchy is open") do return
-	_drag(r, model.x + 20, model.y + model[3] / 2, hier.x + hier[2] / 2, hier.y + hier[3] - 20)
+	drag_mouse(r, model.x + 20, model.y + model[3] / 2, hier.x + hier[2] / 2, hier.y + hier[3] - 20)
 	drawn := _objects(r, `{"component":"MeshFilter"}`)
 	testing.expectf(t, len(drawn) >= 1, "the model's mesh node draws its part, %v MeshFilters", len(drawn))
 

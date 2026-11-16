@@ -16,9 +16,9 @@ A `.scene` file: a tree of objects and their components. The same file is a leve
 
 ## Making a prefab of objects
 
-GameObject, Create Prefab, in the main menu or an object's context menu, turns each selected object into a prefab:
+GameObject, Create Prefab, in the main menu or an object's context menu, turns each selected object into a prefab. Dragging objects from the Hierarchy onto a Project folder does the same, in that folder.
 
-- The object and everything under it are written to a new scene file in the Project window's open folder, named after the object. The file's root sits at its own origin.
+- The object and everything under it are written to a new scene file in the Project window's open folder, or the folder dropped on, named after the object. The file's root sits at its own origin.
 - The object becomes an instance of that file, in its place: same parent, same position among its siblings, same position.
 - References between the objects stay inside the prefab. References from the rest of the scene to them now name the instance's objects. References from them to the rest of the scene cannot live in an asset: the file has them empty, and the instance keeps them as overrides.
 - Prefab instances inside the object stay prefab instances in the new file.

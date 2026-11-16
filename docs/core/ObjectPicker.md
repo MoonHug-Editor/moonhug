@@ -33,7 +33,7 @@ what the field's type can physically reference (see
   migrate old values: `{"local_id"}` data doesn't parse into
   `{"pptr":{...}}` — re-pick and save after converting.
 - Dropping a scene object: the value of a `Ref_Local` or `Ref` field accepts an
-  object dragged from the Hierarchy (`inspector.OBJECT_DRAG_TYPE`). The field
+  object dragged from the Hierarchy ([Drag and drop](DragAndDrop.md)). The field
   takes the object when it asks for transforms, or the component on it that
   it asks for. A drop assigns only what the picker would list, so the field's
   type, its `has:` filter and its scene scope hold.

@@ -32,6 +32,7 @@ Every proc the generators call by name starts with the word for what it is about
 | `type_` | a value of a type in memory, no world and no file | editor and game | `type_reset_<T>` sets the defaults, `type_cleanup_<T>` frees what it owns, `type_on_validate_<T>` runs after a value is written into it, `type_before_serialize_<T>` and `type_after_deserialize_<T>` run around its JSON ([Components](../../plugins/engine/docs/Components.md) "Lifecycle procs") |
 | `doc_` | an asset open as a document in the editor | editor | `doc_on_changed_<T>` once per change by any route, `doc_on_saved_<T>` after the file is written (`@(doc_on_changed)`, `@(doc_on_saved)`) |
 | `asset_` | a file on disk and its artifact | editor | `asset_on_changed_<name>` with the change modified, removed or reimported (`@(asset_on_changed)`), `asset_on_drop_<name>` builds the object an asset dragged into the scene becomes (`@(asset_on_drop)`) |
+| `drop_` | a drag's items landing on a place | editor | `drop_<name>` says and does what a drop of objects or assets does on the Scene view, the Hierarchy or a Project folder (`@(drop)`, [Drag and drop](DragAndDrop.md)) |
 | `property_drawer_` | how a type draws in the inspector | editor | `property_drawer_<T>` the type's own drawing, `property_drawer_<T>_<what>` a step around it (`@(property_drawer)`, "Inspector funnel" below) |
 
 `on_` marks a proc that answers an event. `reset`, `cleanup`, `before_serialize` and `after_deserialize` are done to the value, so they carry no `on_`.
