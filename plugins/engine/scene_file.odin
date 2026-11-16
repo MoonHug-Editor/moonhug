@@ -231,7 +231,15 @@ register_ref_remap_hook :: proc(tid: typeid, hook: Ref_Remap_Hook) {
 	_ref_remap_hooks[tid] = hook
 }
 
-_remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Local_ID]Local_ID) {
+// Rewrites the local ids of a value's scene-internal references through
+// `remap` (old id -> new id).
+//
+// With `from_handles`, a reference whose handle is live takes the id of the
+// object it points at instead, and the map is the fallback. That is the right
+// source when ids were re-minted under live objects: a subtree can hold the
+// same old id twice, from two prefab namespaces, and a map keyed by it cannot
+// tell them apart. A PPtr and a hooked blob have no handle and use the map.
+_remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Local_ID]Local_ID, from_handles := false) {
 	if ptr == nil || ti == nil do return
 	base := runtime.type_info_base(ti)
 	if base == nil do return
@@ -261,7 +269,9 @@ _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Lo
 		if tid == typeid_of(Ref) {
 			ref := cast(^Ref)ptr
 			if ref.pptr.local_id != 0 && pptr_guid_is_empty(ref.pptr.guid) {
-				if new_id, ok := remap[ref.pptr.local_id]; ok {
+				if id, live := _local_id_of_handle(ref.handle); from_handles && live {
+					ref.pptr.local_id = id
+				} else if new_id, ok := remap[ref.pptr.local_id]; ok {
 					ref.pptr.local_id = new_id
 				}
 			}
@@ -270,7 +280,9 @@ _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Lo
 		if tid == typeid_of(Ref_Local) || tid == typeid_of(Owned) {
 			rl := cast(^Ref_Local)ptr
 			if rl.local_id != 0 {
-				if new_id, ok := remap[rl.local_id]; ok {
+				if id, live := _local_id_of_handle(rl.handle); from_handles && live {
+					rl.local_id = id
+				} else if new_id, ok := remap[rl.local_id]; ok {
 					rl.local_id = new_id
 				}
 			}
@@ -280,7 +292,7 @@ _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Lo
 		count := int(info.field_count)
 		for i in 0..<count {
 			field_ptr := rawptr(uintptr(ptr) + info.offsets[i])
-			_remap_refs_in_value(field_ptr, info.types[i], remap)
+			_remap_refs_in_value(field_ptr, info.types[i], remap, from_handles)
 		}
 
 	case runtime.Type_Info_Union:
@@ -295,7 +307,7 @@ _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Lo
 		idx := tag if info.no_nil else tag - 1
 		if idx < 0 || int(idx) >= len(info.variants) do return
 		variant_ti := info.variants[idx]
-		_remap_refs_in_value(ptr, variant_ti, remap)
+		_remap_refs_in_value(ptr, variant_ti, remap, from_handles)
 
 	case runtime.Type_Info_Dynamic_Array:
 		dyn := cast(^runtime.Raw_Dynamic_Array)ptr
@@ -303,16 +315,31 @@ _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Lo
 		elem_size := info.elem_size
 		for i in 0..<dyn.len {
 			elem_ptr := rawptr(uintptr(dyn.data) + uintptr(i * elem_size))
-			_remap_refs_in_value(elem_ptr, info.elem, remap)
+			_remap_refs_in_value(elem_ptr, info.elem, remap, from_handles)
 		}
 
 	case runtime.Type_Info_Array:
 		elem_size := info.elem_size
 		for i in 0..<info.count {
 			elem_ptr := rawptr(uintptr(ptr) + uintptr(i * elem_size))
-			_remap_refs_in_value(elem_ptr, info.elem, remap)
+			_remap_refs_in_value(elem_ptr, info.elem, remap, from_handles)
 		}
 	}
+}
+
+// The local id of the live object `h` points at, a transform or a
+// component. False when the handle is not live.
+_local_id_of_handle :: proc(h: Handle) -> (Local_ID, bool) {
+	w := ctx_world()
+	if w == nil || !world_pool_valid(w, h) do return 0, false
+	if h.type_key == .Transform {
+		t := pool_get(&w.transforms, h)
+		if t == nil do return 0, false
+		return t.local_id, true
+	}
+	c := cast(^CompData)world_pool_get(w, h)
+	if c == nil do return 0, false
+	return c.local_id, true
 }
 
 // The hosts of a scene's instances, resolved once per write and passed down

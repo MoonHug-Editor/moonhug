@@ -785,18 +785,24 @@ nested_scene_diff_overrides :: proc(base_raw: []byte, work_raw: []byte, prefab_g
         base_arr := get_array(base_root, section_key)
         work_arr := get_array(work_root, section_key)
         if len(work_arr) == 0 do continue
+        // The base's items by id, once per section: a scan of the base for
+        // every item made a capture quadratic in the section's size. The
+        // first item of an id is the one, as a scan would find it.
+        base_by_id := make(map[Local_ID]json.Object, len(base_arr), context.temp_allocator)
+        for base_item in base_arr {
+            bo, bok := base_item.(json.Object)
+            if !bok do continue
+            bid, bid_ok := _json_local_id_of(bo)
+            if !bid_ok || bid in base_by_id do continue
+            base_by_id[bid] = bo
+        }
         for work_item in work_arr {
             wo, ok := work_item.(json.Object)
             if !ok do continue
             tid, tid_ok := _json_local_id_of(wo)
             if !tid_ok do continue
-            for base_item in base_arr {
-                bo, bok := base_item.(json.Object)
-                if !bok do continue
-                bid, bid_ok := _json_local_id_of(bo)
-                if !bid_ok || bid != tid do continue
+            if bo, found := base_by_id[tid]; found {
                 _json_diff_objects(bo, wo, "", PPtr{guid = prefab_guid, local_id = tid}, &out)
-                break
             }
         }
     }
@@ -3793,12 +3799,13 @@ nested_scene_unpack_subtree :: proc(host_tH: Transform_Handle) {
     // registered in s.local_ids — but scene_copy_subtree serializes them by
     // their `local_id` field, producing JSON with duplicate ids that break
     // _scene_file_remap_local_ids on every subsequent paste.
-    renumber :: proc(w: ^World, tH: Transform_Handle, s: ^Scene) {
+    renumber :: proc(w: ^World, tH: Transform_Handle, s: ^Scene, remap: ^map[Local_ID]Local_ID) {
         t := pool_get(&w.transforms, Handle(tH))
         if t == nil do return
         t.nested_owned = false
 
         new_lid := scene_new_lid(s)
+        remap[t.local_id] = new_lid
         bimap_remove_by_val(&s.local_ids, Handle(tH))
         if pool_valid(&w.transforms, t.parent.handle) {
             pt := pool_get(&w.transforms, t.parent.handle)
@@ -3829,6 +3836,7 @@ nested_scene_unpack_subtree :: proc(host_tH: Transform_Handle) {
             base := cast(^CompData)raw
             base.nested_owned = false
             new_clid := scene_new_lid(s)
+            remap[base.local_id] = new_clid
             bimap_remove_by_val(&s.local_ids, c.handle)
             base.local_id = new_clid
             c.local_id = new_clid
@@ -3836,8 +3844,24 @@ nested_scene_unpack_subtree :: proc(host_tH: Transform_Handle) {
         }
 
         for child in t.children {
-            renumber(w, Transform_Handle(child.handle), s)
+            renumber(w, Transform_Handle(child.handle), s, remap)
         }
+    }
+    // The references the subtree's components hold still name the old ids:
+    // a copy or a save of the subtree would write ids no object has, and a
+    // paste of that copy (the next spawn of the prefab) would bind them to
+    // nothing or to the wrong object. Each takes the id of the object its
+    // handle points at. `remap` covers a reference without a live handle.
+    rebind :: proc(w: ^World, tH: Transform_Handle, remap: ^map[Local_ID]Local_ID) {
+        t := pool_get(&w.transforms, Handle(tH))
+        if t == nil do return
+        for c in t.components {
+            if c.handle.type_key == INVALID_TYPE_KEY || !world_pool_valid(w, c.handle) do continue
+            raw := world_pool_get(w, c.handle)
+            if raw == nil do continue
+            _remap_refs_in_value(raw, type_info_of(get_typeid_by_type_key(c.handle.type_key)), remap, from_handles = true)
+        }
+        for child in t.children do rebind(w, Transform_Handle(child.handle), remap)
     }
     is_in_subtree :: proc(w: ^World, tH, root: Transform_Handle) -> bool {
         cur := tH
@@ -3876,7 +3900,9 @@ nested_scene_unpack_subtree :: proc(host_tH: Transform_Handle) {
         }
     }
 
-    renumber(w, host_tH, s)
+    remap := make(map[Local_ID]Local_ID, context.temp_allocator)
+    renumber(w, host_tH, s, &remap)
+    rebind(w, host_tH, &remap)
 }
 
 nested_scene_remove :: proc(s: ^Scene, host_tH: Transform_Handle) {
