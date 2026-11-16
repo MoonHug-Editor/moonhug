@@ -1227,7 +1227,7 @@ _project_sub_asset_drag :: proc(guid: core.Asset_GUID, s: subassets.Sub_Asset, d
     if im.BeginDragDropSource({}) {
         payload := core.PPtr{guid = guid, local_id = s.id}
         im.SetDragDropPayload("ASSET_PPTR", &payload, size_of(core.PPtr))
-        im.Text(drag_label)
+        im.TextUnformatted(drag_label)
         im.EndDragDropSource()
     }
 }
@@ -1348,7 +1348,7 @@ _project_item_extras :: proc(full_path: string, is_dir: bool, drag_label: cstrin
     }
     if im.BeginDragDropSource({}) {
         im.SetDragDropPayload("ASSET_PATH", raw_data(full_path), len(full_path))
-        im.Text(drag_label)
+        im.TextUnformatted(drag_label)
         im.EndDragDropSource()
     }
 }
@@ -1792,9 +1792,9 @@ project_window_draw :: proc(w: ^wnd.Window) {
     // the search box used to sit. Text height, not frame height — nothing
     // here is a widget, so the bar stays as thin as one line.
     if query != "" {
-        im.Text(strings.clone_to_cstring(fmt.tprintf("%d found", _pv.result_count), context.temp_allocator))
+        im.TextUnformatted(strings.clone_to_cstring(fmt.tprintf("%d found", _pv.result_count), context.temp_allocator))
     } else if sel_proj_count() > 1 {
-        im.Text(strings.clone_to_cstring(fmt.tprintf("%d selected", sel_proj_count()), context.temp_allocator))
+        im.TextUnformatted(strings.clone_to_cstring(fmt.tprintf("%d selected", sel_proj_count()), context.temp_allocator))
     } else {
         _project_draw_path_bar()
     }

@@ -441,7 +441,7 @@ game_window_draw :: proc(w: ^wnd.Window) {
 				im.DrawList_AddRectFilled(im.GetWindowDrawList(), rect_min, rect_max, 0x99333333, 4)
 				im.SetCursorScreenPos(text_pos)
 				im.PushStyleColorImVec4(.Text, im.Vec4{1, 1, 1, 1})
-				im.Text(msg)
+				im.TextUnformatted(msg)
 				im.PopStyleColor()
 			}
 		}

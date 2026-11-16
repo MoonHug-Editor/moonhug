@@ -824,7 +824,7 @@ _record_note_clear :: proc() {
 @(private)
 _record_draw_note :: proc() {
 	if !_pv.recording || _record_note == "" do return
-	im.TextColored({0.95, 0.7, 0.3, 1}, fmt.ctprintf("%s", _record_note))
+	im.TextColoredUnformatted({0.95, 0.7, 0.3, 1}, fmt.ctprintf("%s", _record_note))
 }
 
 // --- Test access -----------------------------------------------------------------------

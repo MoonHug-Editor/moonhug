@@ -366,7 +366,7 @@ tween_graph_window_draw :: proc(win: ^wnd.Window) {
 	if len(trees) == 0 {
 		_tg.has_target = false
 		if t := engine.pool_get(&w.transforms, engine.Handle(obj)); t != nil {
-			im.TextDisabled(fmt.ctprintf("%s has no tween trees.", t.name))
+			im.TextDisabledUnformatted(fmt.ctprintf("%s has no tween trees.", t.name))
 		} else {
 			im.TextDisabled("Select an object with a tween tree.")
 		}

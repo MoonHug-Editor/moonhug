@@ -1117,7 +1117,7 @@ _draw_drag_source :: proc(tH: engine.Transform_Handle) {
 		w := engine.ctx_world()
 		t := engine.pool_get(&w.transforms, engine.Handle(tH))
 		if t != nil {
-			im.Text(strings.clone_to_cstring(t.name, context.temp_allocator))
+			im.TextUnformatted(strings.clone_to_cstring(t.name, context.temp_allocator))
 		}
 		im.EndDragDropSource()
 	}

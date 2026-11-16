@@ -186,7 +186,7 @@ package_samples_draw :: proc(pkg: string) {
 		defer im.PopID()
 
 		im.AlignTextToFramePadding() // row text lines up with the buttons
-		im.Text(strings.clone_to_cstring(s.name, context.temp_allocator))
+		im.TextUnformatted(strings.clone_to_cstring(s.name, context.temp_allocator))
 
 		// Controls anchor to the RIGHT edge: shift the cursor so exactly
 		// their width remains.
@@ -197,7 +197,7 @@ package_samples_draw :: proc(pkg: string) {
 			w = im.CalcTextSize(icon).x + style.ItemSpacing.x + btn_w("Remove")
 			im.SameLine()
 			im.SetCursorPosX(im.GetCursorPosX() + im.GetContentRegionAvail().x - w)
-			im.TextDisabled(icon)
+			im.TextDisabledUnformatted(icon)
 			im.SameLine()
 			if im.Button("Remove") {
 				delete(_sample_confirm_name)

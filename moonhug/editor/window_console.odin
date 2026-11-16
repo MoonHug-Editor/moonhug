@@ -233,8 +233,8 @@ console_window_draw :: proc(w: ^wnd.Window) {
 		im.SetCursorScreenPos(im.Vec2{row_start.x + icon_col_w, row_start.y})
 		im.BeginGroup()
 		cmsg := fmt.ctprintf("%s  %s", _console_time_str(entry.time), entry.message)
-		im.TextColored(_console_level_color(entry.level), cmsg)
-		im.TextColored(im.Vec4{0.55, 0.55, 0.55, 1}, _console_loc_line(entry))
+		im.TextColoredUnformatted(_console_level_color(entry.level), cmsg)
+		im.TextColoredUnformatted(im.Vec4{0.55, 0.55, 0.55, 1}, _console_loc_line(entry))
 		im.EndGroup()
 
 		// Reserve exactly row_h of vertical space (regardless of text height)

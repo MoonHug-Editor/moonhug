@@ -55,11 +55,13 @@ sm_scene_set_active :: proc(s: ^Scene) {
             return
         }
     }
-    if scene_manager.count < MAX_SCENES {
-        scene_manager.loaded[scene_manager.count] = s
-        scene_manager.active_scene = Scene_ID(scene_manager.count)
-        scene_manager.count += 1
-    }
+    // Not registered yet: the first free slot, one an unloaded scene left
+    // included. All of them taken is a leak of scenes, not a state to run in.
+    slot := sm_find_free_slot()
+    fmt.assertf(slot >= 0, "scene manager: all %d scene slots are taken", MAX_SCENES)
+    scene_manager.loaded[slot] = s
+    if int(slot) >= scene_manager.count do scene_manager.count = int(slot) + 1
+    scene_manager.active_scene = slot
 }
 
 sm_find_free_slot :: proc() -> Scene_ID {

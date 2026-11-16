@@ -137,6 +137,17 @@ render_view_screen_ray :: proc(view: Render_View, px, py: f32) -> Ray {
 	return Ray{origin = near, direction = linalg.normalize(far - near)}
 }
 
+// Unit direction from world point `pos` to the viewer of `view`: to the eye in
+// a perspective view, against the view direction in an orthographic one,
+// where every ray is parallel and the eye's position says nothing.
+render_view_dir_to_viewer :: proc(view: Render_View, pos: [3]f32) -> [3]f32 {
+	// A perspective projection has 0 there, an orthographic one 1.
+	if view.proj[3, 3] == 0 do return linalg.normalize0(view.cam_pos - pos)
+	near4 := view.inv_view_proj * [4]f32{0, 0, 0, 1}
+	far4 := view.inv_view_proj * [4]f32{0, 0, 1, 1}
+	return linalg.normalize0(near4.xyz / near4.w - far4.xyz / far4.w)
+}
+
 trs_matrix :: proc(position: [3]f32, rotation: [4]f32, scale: [3]f32) -> matrix[4, 4]f32 {
 	q := quaternion(x = rotation.x, y = rotation.y, z = rotation.z, w = rotation.w)
 	return linalg.matrix4_from_trs_f32(position, q, scale)

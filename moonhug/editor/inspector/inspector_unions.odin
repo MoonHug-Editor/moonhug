@@ -100,7 +100,7 @@ draw_union_field :: proc(ptr: rawptr, info: runtime.Type_Info_Union, label: cstr
 		tree_open = im.TreeNodeEx(label, {.DefaultOpen})
 	} else {
 		im.AlignTextToFramePadding()
-		im.Text(label)
+		im.TextUnformatted(label)
 	}
 	draw_field_context_menu(ptr, field_tid)
 

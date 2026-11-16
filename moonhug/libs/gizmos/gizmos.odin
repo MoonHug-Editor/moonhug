@@ -247,7 +247,7 @@ helper_pixel :: proc(pos: [3]f32, px: f32) -> f32 {
 helper_pixel_in :: proc(v: core.Render_View, pos: [3]f32, px: f32) -> f32 {
 	sp, ok := helper_project_in(v, pos)
 	if !ok do return 0
-	n := linalg.normalize0(v.cam_pos - pos)
+	n := core.render_view_dir_to_viewer(v, pos)
 	if n == {} do n = {0, 0, 1}
 	a, aok := _ray_plane(core.render_view_screen_ray(v, sp.x, sp.y), pos, n)
 	b, bok := _ray_plane(core.render_view_screen_ray(v, sp.x + px, sp.y), pos, n)
@@ -348,7 +348,7 @@ _draw_prims :: proc(prims: []core.Gizmo_Prim, depth_test: bool) {
 helper_face :: proc(v: core.Render_View, p: core.Gizmo_Prim) -> (shade: f32, visible: bool) {
 	n := linalg.cross(p.p[1] - p.p[0], p.p[2] - p.p[0])
 	mid := (p.p[0] + p.p[1] + p.p[2]) / 3
-	facing := linalg.dot(linalg.normalize0(n), linalg.normalize0(v.cam_pos - mid))
+	facing := linalg.dot(linalg.normalize0(n), core.render_view_dir_to_viewer(v, mid))
 	if facing <= 0 do return 0, false
 	return 0.55 + 0.45 * facing, true
 }

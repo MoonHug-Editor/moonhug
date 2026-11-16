@@ -73,7 +73,7 @@ Restore reuses the ordinary scene load, so per-object teardown runs the same cod
 
 Stop turns playing off before the restore. That runs the game's `@(comp_on_destroy)` on every live component while the run's objects are all alive, so the restore's destroys and reloads after it run in edit mode and run no game hook (plugins/engine/docs/Components.md "Game lifecycle").
 
-Restore is **scoped to the simulated scene** (`scene_reload_in_place_bytes`, called from the engine's world provider). The restored scene keeps its slot and its active-scene status, so the editor carries on editing what it was editing. The scene SET is restored as well: scenes the run loaded additively are unloaded, and scenes the run unloaded come back from disk. Only the simulated scene's contents are snapshotted; other scenes present at Start keep whatever the run did to them.
+Restore covers **every scene loaded at Start** (`scene_reload_in_place_bytes`, called from the engine's world provider). Each scene is snapshotted, and each is put back in place, keeping its slot, its session id and its active-scene status, so the editor carries on editing what it was editing. The simulated scene is always put back. Another loaded scene is put back only when the run changed it: one the run left alone is not rebuilt and keeps its objects' handles. The scene SET is restored as well: scenes the run loaded additively are unloaded, and scenes the run unloaded come back from disk with their content of Start, unsaved edits included. A scene without a file that the run unloaded does not come back.
 
 It is not atomic: a snapshot that fails to load leaves the scene unrestored, and reports an error telling you to reopen it.
 

@@ -289,6 +289,10 @@ spawn :: proc(command: []string) -> int {
 		fmt.eprintf("run config: cannot start %v: %v\n", command, err)
 		return -1
 	}
+	// A stop sent to this config ends the child too.
+	_stop_child_set(p.pid)
+	_stop_install()
+	defer _stop_child_set(0)
 	state, werr := os.process_wait(p)
 	if werr != nil {
 		fmt.eprintf("run config: wait failed for %v: %v\n", command, werr)

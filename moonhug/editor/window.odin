@@ -117,20 +117,47 @@ apply_editor_theme :: proc() {
 }
 
 apply_default_window_size :: proc() {
+    _, _, dw, dh := gfx.display_usable_bounds()
+    center_window_on_display(i32(f32(dw) * 0.85), i32(f32(dh) * 0.85))
+}
+
+// The window at `w` by `h`, no larger than the display it is on, in that
+// display's middle.
+center_window_on_display :: proc(w, h: i32) {
     dx, dy, dw, dh := gfx.display_usable_bounds()
-    w := i32(f32(dw) * 0.85)
-    h := i32(f32(dh) * 0.85)
+    w, h := min(w, dw), min(h, dh)
     gfx.set_window_geometry(dx + (dw - w) / 2, dy + (dh - h) / 2, w, h)
+}
+
+// How much of a window's title strip a display has to show for the window to
+// be reachable: enough to grab and drag it.
+@(private = "file") _REACH_W :: i32(120)
+@(private = "file") _REACH_H :: i32(24)
+@(private = "file") _TITLE_STRIP_H :: i32(40)
+
+// Whether a window at `rect` (x, y, w, h) can be reached on one of
+// `displays` (x, y, w, h each): its title strip shows on it, far enough in to
+// grab.
+window_rect_reachable :: proc(rect: [4]i32, displays: [][4]i32) -> bool {
+    for d in displays {
+        overlap_w := min(rect.x + rect[2], d.x + d[2]) - max(rect.x, d.x)
+        overlap_h := min(rect.y + _TITLE_STRIP_H, d.y + d[3]) - max(rect.y, d.y)
+        if overlap_w >= min(_REACH_W, rect[2]) && overlap_h >= _REACH_H do return true
+    }
+    return false
 }
 
 save_editor_settings :: proc() {
     os.make_directory(core.USER_SETTINGS_DIR)
-    pos := gfx.window_position()
-    size := gfx.window_size()
-    editor_settings.width  = size.x
-    editor_settings.height = size.y
-    editor_settings.x      = pos.x
-    editor_settings.y      = pos.y
+    // A minimized window reports no place worth keeping: the last one stays.
+    if !gfx.window_minimized() {
+        pos := gfx.window_position()
+        size := gfx.window_size()
+        editor_settings.width  = size.x
+        editor_settings.height = size.y
+        editor_settings.x      = pos.x
+        editor_settings.y      = pos.y
+    }
     editor_settings.theme  = menu.active_theme
 
     editor_settings.has_window_state       = true

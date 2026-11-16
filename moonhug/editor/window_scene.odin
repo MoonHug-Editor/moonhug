@@ -1115,10 +1115,10 @@ handle_scene_input :: proc() {
 		delta := io.MouseDelta
 		_, r, u := _scene_cam_basis()
 
-		// Distance/viewport scaling keeps the grabbed point under the cursor
-		// at any zoom level and window size; exact in orthographic.
-		units_per_px := _sv.cam_dist / max(f32(_sv.rt.height), 1)
-		if _sv.cam_ortho do units_per_px = 2 * scene_cam_half_height() / max(f32(_sv.rt.height), 1)
+		// The world height the view shows at the pivot's depth, over its
+		// pixels: a point at that depth stays under the cursor at any zoom
+		// level and window size, in a perspective and an orthographic view.
+		units_per_px := 2 * scene_cam_half_height() / max(f32(_sv.rt.height), 1)
 		pan := r * (-delta.x * units_per_px) + u * (delta.y * units_per_px)
 		_sv.cam_pos += pan
 		update_scene_camera()

@@ -170,7 +170,7 @@ _draw_bindings :: proc(command: string, conflicts: []keymap.Conflict, by_binding
 				cf := conflicts[ci]
 				other := cf.km_b if cf.a == &b else cf.km_a
 				im.SameLine(0, 4)
-				im.TextColored({1, 0.7, 0.2, 1}, icons.ICON_MD_WARNING)
+				im.TextColoredUnformatted({1, 0.7, 0.2, 1}, icons.ICON_MD_WARNING)
 				widgets.tooltip(fmt.ctprintf("Also bound in %s. %s.", other.name, cf.why))
 			}
 			idx += 1

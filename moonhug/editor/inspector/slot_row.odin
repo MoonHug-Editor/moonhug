@@ -131,7 +131,7 @@ _draw_link :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	if !im.BeginPopup("##slot_sources") do return
 	defer im.EndPopup()
 	if row.inline_index < 0 {
-		im.TextDisabled(fmt.ctprintf("%s has no inline field _%s", row.name, row.name))
+		im.TextDisabledUnformatted(fmt.ctprintf("%s has no inline field _%s", row.name, row.name))
 		return
 	}
 	if im.MenuItem("Inline value", nil, !connected) do slot^ = slots.INLINE
@@ -157,7 +157,7 @@ _draw_link :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	}
 	if len(scoped) == 0 && len(entries) == 0 {
 		im.Separator()
-		im.TextDisabled(fmt.ctprintf("Nothing offers an entry of type %v", row.value_tid))
+		im.TextDisabledUnformatted(fmt.ctprintf("Nothing offers an entry of type %v", row.value_tid))
 	}
 	// A connection to an entry nothing offers now, such as one of a
 	// Blackboard that was removed: shown, so it can be seen and replaced.

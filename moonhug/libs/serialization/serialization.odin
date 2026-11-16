@@ -118,6 +118,26 @@ load_from_file :: proc(filepath: string) -> (file_data: any, ok: bool) {
     return
 }
 
+// The marshaled object `object` with `__type_guid` as its first member. An
+// object with no members, a struct whose fields are all `json:"-"` or that
+// has none, gets the guid alone.
+@(private)
+_write_with_type_guid :: proc(b: ^strings.Builder, guid_str: string, object: []byte) {
+    assert(len(object) >= 2 && object[0] == '{', "an asset marshals to a JSON object")
+    strings.write_string(b, "{\n  \"")
+    strings.write_string(b, TYPE_GUID_KEY)
+    strings.write_string(b, "\": \"")
+    strings.write_string(b, guid_str)
+    strings.write_byte(b, '"')
+    members := strings.trim_left_space(string(object[1:]))
+    if members == "}" {
+        strings.write_string(b, "\n}")
+        return
+    }
+    strings.write_string(b, ",\n  ")
+    strings.write_string(b, members)
+}
+
 // An asset from the bytes its file holds: the type its `__type_guid` names,
 // zeroed, with the bytes read over the type's reset defaults. The same for a
 // file and for a sub-asset another file holds.
@@ -167,6 +187,9 @@ load_from_bytes :: proc(data: []byte) -> (file_data: any, ok: bool) {
     unmarshal_err := core.unmarshal_over_reset_object(data, root, instance.data, instance.id, json.DEFAULT_SPECIFICATION, context.allocator)
     if unmarshal_err != nil {
         log.error(fmt.tprintf("Failed to unmarshal JSON: %v", unmarshal_err))
+        // What the fields read so far own, then the instance itself.
+        core.type_cleanup_by_typeid(instance.id, instance.data)
+        free(instance.data)
         return any{}, false
     }
 
@@ -208,12 +231,7 @@ write_asset_to_path :: proc(file_path: string, guid: uuid.Identifier, data: any)
     defer delete(guid_str)
     builder := strings.builder_make()
     defer strings.builder_destroy(&builder)
-    strings.write_string(&builder, "{\n  \"")
-    strings.write_string(&builder, TYPE_GUID_KEY)
-    strings.write_string(&builder, "\": \"")
-    strings.write_string(&builder, guid_str)
-    strings.write_string(&builder, "\",\n  ")
-    strings.write_bytes(&builder, data_bytes[4:])
+    _write_with_type_guid(&builder, guid_str, data_bytes)
     full_json := strings.to_string(builder)
     if write_err := os.write_entire_file(file_path, transmute([]byte)full_json); write_err != nil {
         log.error(fmt.tprintf("write_asset_to_path: failed to write %s", file_path))
@@ -258,12 +276,7 @@ save_to_file :: proc(filepath: string, file_data: any) -> bool {
     defer delete(guid_str)
     builder := strings.builder_make()
     defer strings.builder_destroy(&builder)
-    strings.write_string(&builder, "{\n  \"")
-    strings.write_string(&builder, TYPE_GUID_KEY)
-    strings.write_string(&builder, "\": \"")
-    strings.write_string(&builder, guid_str)
-    strings.write_string(&builder, "\",\n  ")
-    strings.write_bytes(&builder, data_bytes[4:])
+    _write_with_type_guid(&builder, guid_str, data_bytes)
 
     full_json := strings.to_string(builder)
 

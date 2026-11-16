@@ -6,6 +6,7 @@
 // components. See plugins/engine/docs/SDL3Renderer.md.
 package gfx
 
+import "core:c"
 import sdl "vendor:sdl3"
 import "moonhug:libs/input"
 
@@ -179,6 +180,28 @@ window_position :: proc() -> [2]i32 {
 set_window_geometry :: proc(x, y, w, h: i32) {
 	sdl.SetWindowSize(_platform.window, w, h)
 	sdl.SetWindowPosition(_platform.window, x, y)
+}
+
+// Usable bounds (x, y, w, h) of every connected display, in the coordinates
+// window positions use. A display left of or above the main one has negative
+// coordinates. Temp-allocated by default.
+displays_usable_bounds :: proc(allocator := context.temp_allocator) -> [][4]i32 {
+	count: c.int
+	ids := sdl.GetDisplays(&count)
+	if ids == nil do return nil
+	defer sdl.free(ids)
+	out := make([dynamic][4]i32, 0, int(count), allocator)
+	for i in 0 ..< int(count) {
+		rect: sdl.Rect
+		if sdl.GetDisplayUsableBounds(ids[i], &rect) do append(&out, [4]i32{rect.x, rect.y, rect.w, rect.h})
+	}
+	return out[:]
+}
+
+// True while the window is minimized: its position and size then say nothing
+// worth saving.
+window_minimized :: proc() -> bool {
+	return .MINIMIZED in sdl.GetWindowFlags(_platform.window)
 }
 
 // Usable bounds (excluding menu bar/dock) of the display the window is on.

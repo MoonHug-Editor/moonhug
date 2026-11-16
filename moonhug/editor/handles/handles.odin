@@ -344,9 +344,7 @@ _camera_basis :: proc() -> (right, up: [3]f32) {
 // orthographic view, where every point sees the camera the same way.
 @(private)
 _to_camera :: proc(p: [3]f32) -> [3]f32 {
-	v := _frame.view
-	if abs(v.proj[3, 3]) > 0.5 do return {v.view[2, 0], v.view[2, 1], v.view[2, 2]}
-	return linalg.normalize0(v.cam_pos - p)
+	return core.render_view_dir_to_viewer(_frame.view, p)
 }
 
 // --- Drawing: handle chrome ---------------------------------------------------------

@@ -75,7 +75,7 @@ scene_inspector_window_draw :: proc(w: ^wnd.Window) {
 	sel := session.window_objects(_inspector_window)
 	multi := multi_selection_editable(sel)
 	if n := len(sel); n > 1 {
-		im.TextDisabled(strings.clone_to_cstring(fmt.tprintf("%d selected", n), context.temp_allocator))
+		im.TextDisabledUnformatted(strings.clone_to_cstring(fmt.tprintf("%d selected", n), context.temp_allocator))
 		im.Separator()
 	}
 

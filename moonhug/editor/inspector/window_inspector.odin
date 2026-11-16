@@ -328,9 +328,9 @@ package_reveal: proc(pkg_name: string, select: bool)
 // the Project window's Packages section (left-pane node or right-pane row).
 _draw_package_inspector :: proc() {
     tc :: proc(s: string) -> cstring { return strings.clone_to_cstring(s, context.temp_allocator) }
-    im.Text(tc(fmt.tprintf("Package: %s", inspectorData.packageName)))
+    im.TextUnformatted(tc(fmt.tprintf("Package: %s", inspectorData.packageName)))
     im.Separator()
-    im.Text(tc(fmt.tprintf("Assets: %d", inspectorData.packageAssetCount)))
+    im.TextUnformatted(tc(fmt.tprintf("Assets: %d", inspectorData.packageAssetCount)))
     _draw_package_manifest(&inspectorData.packageManifest)
     if package_samples_draw != nil {
         package_samples_draw(inspectorData.packageName)
@@ -346,14 +346,14 @@ _draw_package_inspector :: proc() {
 _draw_package_manifest :: proc(m: ^Plugin_Manifest_View) {
     tc :: proc(s: string) -> cstring { return strings.clone_to_cstring(s, context.temp_allocator) }
     if !m.found {
-        im.TextDisabled(tc(fmt.tprintf("No mh_plugin.json (mh deps %s makes it)", inspectorData.packageName)))
+        im.TextDisabledUnformatted(tc(fmt.tprintf("No mh_plugin.json (mh deps %s makes it)", inspectorData.packageName)))
         return
     }
     if !m.ok {
         im.TextColored({1, 0.4, 0.4, 1}, "mh_plugin.json does not parse")
         return
     }
-    if m.description != "" do im.TextWrapped(tc(m.description))
+    if m.description != "" do im.TextWrappedUnformatted(tc(m.description))
     im.Spacing()
 
     missing := 0
@@ -439,7 +439,7 @@ _draw_dependency_table :: proc(id: cstring, rows: []Plugin_Dependency) {
                 package_reveal(d.name, im.IsMouseDoubleClicked(.Left))
             }
         } else {
-            im.TextColored({1, 0.75, 0.3, 1}, tc(fmt.tprintf("%s %s", icons.ICON_MD_WARNING, d.name)))
+            im.TextColoredUnformatted({1, 0.75, 0.3, 1}, tc(fmt.tprintf("%s %s", icons.ICON_MD_WARNING, d.name)))
             widgets.tooltip("Not installed: what this plugin uses from it will not load. mh setup relinks every committed plugin.")
         }
         if d.custom do widgets.tooltip("Custom: written by hand in mh_plugin.json (dependencies_custom).")
@@ -457,7 +457,7 @@ _dot :: proc() {
     DOT :: "\u2022"
     w := im.CalcTextSize(DOT).x
     im.SetCursorPosX(im.GetCursorPosX() + (im.GetContentRegionAvail().x - w) * 0.5)
-    im.Text(DOT)
+    im.TextUnformatted(DOT)
 }
 
 // The open file, by NAME. The full path is a folder listing the Project window
@@ -485,7 +485,7 @@ _draw_asset_inspector :: proc() {
     // (session/documents.odin), File/Save (Ctrl+S) writes every dirty file,
     // and the star after the path and on the tab is the pending mark.
     if inspectorData.statusMessage != "" {
-        im.Text(strings.clone_to_cstring(inspectorData.statusMessage, context.temp_allocator))
+        im.TextUnformatted(strings.clone_to_cstring(inspectorData.statusMessage, context.temp_allocator))
         im.Separator()
     }
 
@@ -528,7 +528,7 @@ draw_asset_doc :: proc(doc: ^Asset_Doc) {
         read_only = !has || p.save == nil
     }
     if read_only {
-        im.TextDisabled(fmt.ctprintf("Open %s to edit this.", filepath_base(doc.path)))
+        im.TextDisabledUnformatted(fmt.ctprintf("Open %s to edit this.", filepath_base(doc.path)))
         im.BeginDisabled()
     }
     prev_changed := inspector_changed
@@ -591,7 +591,7 @@ draw_default_import_settings :: proc() {
     im.SameLine()
 
     if inspectorData.statusMessage != "" {
-        im.Text(strings.clone_to_cstring(inspectorData.statusMessage, context.temp_allocator))
+        im.TextUnformatted(strings.clone_to_cstring(inspectorData.statusMessage, context.temp_allocator))
     }
 
     im.Separator()
@@ -838,7 +838,7 @@ draw_kind_default :: proc(ctx: ^Ctx) {
 draw_value_text :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     c_str := strings.clone_to_cstring(fmt.tprintf("%s: %v", label, any{ptr, tid}))
     defer delete(c_str)
-    im.Text(c_str)
+    im.TextUnformatted(c_str)
 }
 
 draw_default_inspector :: proc(ptr: rawptr, tid: typeid, label: cstring) {

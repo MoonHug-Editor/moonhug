@@ -24,6 +24,7 @@ package asset_pipeline
 //   importer refines its settings. nil = the main artifact only.
 
 import "base:runtime"
+import "core:strings"
 import "moonhug:libs/log"
 
 Importer_Desc :: struct {
@@ -45,7 +46,15 @@ _importer_by_ext: map[string]string        // extension -> importer name
 // The importer name owning an extension ("" when none). The inspector's
 // asset funnel keys wrappers by it.
 importer_for_extension :: proc(ext: string) -> string {
-	return _importer_by_ext[ext] or_else ""
+	return _importer_by_ext[_ext_key(ext)] or_else ""
+}
+
+// An extension as the registry keys it: lower case, so "Tree.PNG" imports as
+// "tree.png" does. Temp-allocated when it has to change.
+@(private)
+_ext_key :: proc(ext: string) -> string {
+	for c in ext do if c >= 'A' && c <= 'Z' do return strings.to_lower(ext, context.temp_allocator)
+	return ext
 }
 
 @(init)
@@ -69,9 +78,13 @@ importer_register :: proc(desc: Importer_Desc) {
 	for ext in desc.extensions {
 		// Two importers for one extension: the later registration takes it, and
 		// the log says so, since the files then import with the other one.
-		if owner, taken := _importer_by_ext[ext]; taken && owner != desc.name {
-			log.warningf("importer %q takes %s from importer %q", desc.name, ext, owner)
+		key := _ext_key(ext)
+		if owner, taken := &_importer_by_ext[key]; taken {
+			if owner^ != desc.name do log.warningf("importer %q takes %s from importer %q", desc.name, ext, owner^)
+			owner^ = desc.name
+			continue
 		}
-		_importer_by_ext[ext] = desc.name
+		// The map keeps the key: a copy of its own, not the temp one.
+		_importer_by_ext[strings.clone(key)] = desc.name
 	}
 }

@@ -490,7 +490,7 @@ test_tool_scale_uniform_from_the_center :: proc(t: ^testing.T) {
 	v := handles_test_view()
 	// Half the handle's length to the right of the center cube: the factor is
 	// the pointer's screen move over the handle's screen length.
-	size := linalg.length(v.cam_pos) * scene_tools._GIZMO_SIZE_FACTOR
+	size := scene_tools.gizmo_size(v, {0, 0, 0})
 	handles_drag(v, {0, 0, 0}, {size * 0.5, 0, 0}, _tool_body, nil)
 
 	sc := _scale(obj)

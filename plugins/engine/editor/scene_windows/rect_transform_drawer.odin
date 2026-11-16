@@ -460,13 +460,13 @@ _rt_draw_anchor_presets_popup :: proc() {
 		name := _RT_PRESET_H_NAMES[c]
 		tw := im.CalcTextSize(name).x
 		im.SetCursorScreenPos({origin.x + label_w + f32(c) * (cell + style.ItemSpacing.x) + (cell - tw) * 0.5, origin.y})
-		im.TextDisabled(name)
+		im.TextDisabledUnformatted(name)
 	}
 	grid_top := origin.y + im.GetTextLineHeight() + style.ItemSpacing.y
 	for r in 0 ..< 4 {
 		y := grid_top + f32(r) * (cell + style.ItemSpacing.y)
 		im.SetCursorScreenPos({origin.x, y + (cell - im.GetTextLineHeight()) * 0.5})
-		im.TextDisabled(_RT_PRESET_V_NAMES[r])
+		im.TextDisabledUnformatted(_RT_PRESET_V_NAMES[r])
 		for c in 0 ..< 4 {
 			p := im.Vec2{origin.x + label_w + f32(c) * (cell + style.ItemSpacing.x), y}
 			im.SetCursorScreenPos(p)
@@ -486,13 +486,19 @@ _rt_draw_anchor_presets_popup :: proc() {
 }
 
 // Alt (also set position) puts the rect onto the anchors: position zero, and
-// on a stretched axis a size equal to the anchor span. Otherwise the rect
-// stays where it is unless raw edit mode is on. Every selected object.
+// on a stretched axis a size equal to the anchor span. An axis that stops
+// being stretched keeps the size it had. Otherwise the rect stays where it is
+// unless raw edit mode is on. Every selected object.
 @(private = "file")
 _rt_apply_preset :: proc(amin, amax: [2]f32, stretch_x, stretch_y, set_pivot, set_position: bool) {
 	_rt_session_begin("Anchor Preset")
 	keep := !handles.rect_raw_edit && !set_position
 	for t in _rt_targets {
+		// The size before the change: an axis that stops being stretched
+		// keeps it. Its size_delta was an inset from the anchors until now,
+		// often 0, and would be the rect's whole size on a point anchor.
+		was := engine.rect_resolve(t.parent, t.rt)
+		was_stretched := [2]bool{t.rt.anchor_min.x != t.rt.anchor_max.x, t.rt.anchor_min.y != t.rt.anchor_max.y}
 		if set_pivot {
 			pivot := [2]f32{0.5 if stretch_x else amin.x, 0.5 if stretch_y else amin.y}
 			_rt_set_pivot(t, pivot, keep)
@@ -500,8 +506,16 @@ _rt_apply_preset :: proc(amin, amax: [2]f32, stretch_x, stretch_y, set_pivot, se
 		_rt_set_anchors(t, amin, amax, keep)
 		if set_position {
 			t.rt.anchored_position.xy = 0
-			if stretch_x do t.rt.size_delta.x = 0
-			if stretch_y do t.rt.size_delta.y = 0
+			if stretch_x {
+				t.rt.size_delta.x = 0
+			} else if was_stretched.x {
+				t.rt.size_delta.x = was.size.x
+			}
+			if stretch_y {
+				t.rt.size_delta.y = 0
+			} else if was_stretched.y {
+				t.rt.size_delta.y = was.size.y
+			}
 		}
 	}
 	inspector.mark_inspector_changed()

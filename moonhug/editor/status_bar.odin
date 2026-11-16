@@ -45,7 +45,7 @@ draw_status_bar :: proc() {
 	last := log.entries[n - 1]
 	cmsg := fmt.ctprintf("%s %s  %s", _console_level_icon(last.level), _console_time_str(last.time), last.message)
 	im.PushClipRect(im.GetCursorScreenPos(), im.Vec2{im.GetWindowPos().x + tasks_x - style.ItemSpacing.x, im.GetWindowPos().y + im.GetWindowHeight()}, true)
-	im.TextColored(_console_level_color(last.level), cmsg)
+	im.TextColoredUnformatted(_console_level_color(last.level), cmsg)
 	im.PopClipRect()
 }
 

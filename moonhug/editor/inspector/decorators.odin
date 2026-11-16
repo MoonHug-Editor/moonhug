@@ -85,7 +85,7 @@ decorator_header :: proc(ctx: ^DrawContext, text:cstring = "") {
 	if !field_shown(ctx) || !ctx.is_pre do return
 
 	im.Spacing()
-    im.TextColored({0.7, 0.7, 1.0, 1.0}, text) // Light blue tint for visibility
+    im.TextColoredUnformatted({0.7, 0.7, 1.0, 1.0}, text) // Light blue tint for visibility
     im.Separator()
 }
 

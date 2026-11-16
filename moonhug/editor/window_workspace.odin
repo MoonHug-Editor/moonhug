@@ -169,7 +169,7 @@ workspace_window_draw :: proc(w: ^wnd.Window) {
 		if ok do msg = "This workspace is open in another Workspace window: pick another one here."
 		else if workspace_window_selection(w.key) != "" do msg = "This workspace is not open: the source that holds it does not have it now."
 		im.SetCursorPos(im.GetCursorPos() + {12, 12})
-		im.TextDisabled(msg)
+		im.TextDisabledUnformatted(msg)
 		return
 	}
 	_ws_rename_popup(v, e.ws)

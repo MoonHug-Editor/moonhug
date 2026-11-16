@@ -667,11 +667,11 @@ _pv_draw_toolbar :: proc(clip: ^anim.AnimationClip, length: f32, read_only: bool
 	}
 	widgets.tooltip("Playhead frame")
 	im.SameLine()
-	im.TextDisabled(fmt.ctprintf("/ %d", i32(math.round(length * fps))))
+	im.TextDisabledUnformatted(fmt.ctprintf("/ %d", i32(math.round(length * fps))))
 
 	if read_only {
 		im.SameLine(0, 16)
-		im.TextDisabled(icons.ICON_MD_LOCK + " Read-Only")
+		im.TextDisabledUnformatted(icons.ICON_MD_LOCK + " Read-Only")
 		widgets.tooltip("A clip inside a model is read-only. Assets/Extract Assets makes an editable .anim")
 	}
 

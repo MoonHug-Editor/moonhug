@@ -58,7 +58,7 @@ property_drawer_Groups_inspector :: proc(ctx: ^inspector.Ctx) {
 		}
 		im.EndMenu()
 	}
-	if !any_group do im.TextDisabled(_members_all ? "No named groups" : "In no group")
+	if !any_group do im.TextDisabledUnformatted(_members_all ? "No named groups" : "In no group")
 }
 
 // Whether the open Members popup lists every named group (Alt at the click).

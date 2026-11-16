@@ -10,7 +10,7 @@ import log "moonhug:libs/log"
 //
 //   @(property_drawer={type=app.ButtonsExample})
 //   property_drawer_ButtonsExample :: proc(ctx: ^inspector.Ctx) {
-//       im.Text(fmt.ctprintf("Hello, %s", ctx.label))
+//       im.TextUnformatted(fmt.ctprintf("Hello, %s", ctx.label))
 //   }
 
 @(context_menu={type=sprites.SpriteRenderer, menu="Log Sprite Values", order=-100})

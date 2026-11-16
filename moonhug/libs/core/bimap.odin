@@ -5,7 +5,11 @@ Bimap :: struct($K, $V: typeid) {
     backward: map[V]K,
 }
 
+// Pairs `key` with `val`. A pair that either of them was in is taken out
+// first, so the two maps always mirror each other.
 bimap_insert :: proc(b: ^Bimap($K, $V), key: K, val: V) {
+    if old_val, had := b.forward[key]; had && old_val != val do delete_key(&b.backward, old_val)
+    if old_key, had := b.backward[val]; had && old_key != key do delete_key(&b.forward, old_key)
     b.forward[key]  = val
     b.backward[val] = key
 }
@@ -32,13 +36,13 @@ cleanup_Bimap :: proc(b: ^Bimap($K, $V)) {
 
 @(private="file")
 bimap_has_by_key :: proc(b: ^Bimap($K, $V), key: K) -> bool {
-    v, has := bimap_get(key)
+    _, has := b.forward[key]
     return has
 }
 
 @(private="file")
 bimap_has_by_val :: proc(b: ^Bimap($K, $V), val: V) -> bool {
-    k, has := bimap_get(val)
+    _, has := b.backward[val]
     return has
 }
 

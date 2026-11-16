@@ -245,7 +245,7 @@ _entry_row :: proc(a: ^anim.Animation, li: int, id: i32) -> bool {
 
 	_name_field(e)
 	im.SameLine()
-	im.TextDisabled(is_blend ? "Blend1D" : "Clip")
+	im.TextDisabledUnformatted(is_blend ? "Blend1D" : "Clip")
 
 	removed := _row_buttons(a, li, id)
 	if removed {

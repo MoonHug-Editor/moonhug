@@ -33,7 +33,7 @@ _importer_version :: proc(importer: string) -> int {
 }
 
 is_importable_extension :: proc(ext: string) -> bool {
-	return ext in _importer_by_ext
+	return importer_for_extension(ext) != ""
 }
 
 // The import settings of an importable asset: its .meta's, else the
@@ -451,7 +451,7 @@ _importer_artifacts :: proc(importer: string, artifact_path: string) -> []string
 @(private = "file")
 _run_import :: proc(source_path: string, artifact_path: string, settings: any) -> bool {
 	ext := filepath.ext(source_path)
-	name := _importer_by_ext[ext] or_else ""
+	name := importer_for_extension(ext)
 	if desc, ok := _importers[name]; ok && desc.run != nil {
 		// Hand over the typed instance only when it IS the desc's type (a
 		// stale meta importer string can disagree with the extension).

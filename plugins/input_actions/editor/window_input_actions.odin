@@ -24,9 +24,9 @@ input_actions_window_open :: proc() {
 
 @(editor_window={id="input_actions_debug", title="Input Actions", icon="SPORTS_ESPORTS", width=620, height=400})
 input_actions_window_draw :: proc(w: ^window.Window) {
-	im.TextDisabled(simulate.is_active() ? "Live values of the running game" : "The values update while the game runs")
+	im.TextDisabledUnformatted(simulate.is_active() ? "Live values of the running game" : "The values update while the game runs")
 	im.SameLine()
-	im.TextDisabled(input.gamepad_connected() ? "  gamepad connected" : "  no gamepad")
+	im.TextDisabledUnformatted(input.gamepad_connected() ? "  gamepad connected" : "  no gamepad")
 
 	// The asset behind the runtime, one click away: the Input setting's.
 	guid := actions.input_settings.actions
@@ -54,9 +54,9 @@ input_actions_window_draw :: proc(w: ^window.Window) {
 			im.TableNextRow()
 			im.TableSetColumnIndex(0)
 			if c.pushed {
-				im.TextColored({0.7, 0.7, 1, 1}, fmt.ctprintf("%s", c.name))
+				im.TextColoredUnformatted({0.7, 0.7, 1, 1}, fmt.ctprintf("%s", c.name))
 			} else {
-				im.TextDisabled(fmt.ctprintf("%s", c.name))
+				im.TextDisabledUnformatted(fmt.ctprintf("%s", c.name))
 			}
 			im.TableSetColumnIndex(1)
 			im.TextUnformatted(fmt.ctprintf("%d", c.priority))
@@ -96,7 +96,7 @@ input_actions_window_draw :: proc(w: ^window.Window) {
 			last = r.context_name
 			im.TableNextRow()
 			im.TableSetColumnIndex(0)
-			im.TextColored({0.7, 0.7, 1, 1}, fmt.ctprintf("%s", r.context_name))
+			im.TextColoredUnformatted({0.7, 0.7, 1, 1}, fmt.ctprintf("%s", r.context_name))
 			widgets.tooltip("A pushed mapping context, higher answers first")
 		}
 		im.TableNextRow()

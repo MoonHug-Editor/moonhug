@@ -96,7 +96,7 @@ position_handle :: proc(id: u64, pos: ^[3]f32, rotation := quaternion128(1), siz
 	s := _space()
 	o := _to_world(s, pos^)
 	dirs := _axes_world(s, rotation)
-	to_cam := linalg.normalize0(_frame.view.cam_pos - o)
+	to_cam := _to_camera(o)
 	signs: [3][2]f32
 	for i in 0 ..< 3 {
 		signs[i] = {

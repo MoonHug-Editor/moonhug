@@ -599,6 +599,11 @@ mcp_tool_screenshot :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 	// bridge tick runs before it. So the request is queued and serviced at the
 	// end of this frame (mcp_bridge_capture_frame). Nothing outside the editor's
 	// own window exists in a swapchain image, so there is nothing else to leak.
+	// One capture a frame: a second request would take the first one's place,
+	// and the first would never be answered.
+	if (target == "editor" || target == "window") && _mcp.pending_window_shot.wanted {
+		return mcp.tool_fail("busy", "a screenshot of the editor is already pending, ask again once it is answered")
+	}
 	if target == "editor" {
 		_mcp.pending_window_shot = _Mcp_Window_Shot{
 			id = id, max_size = max(max_size, 16), wanted = true,

@@ -45,11 +45,16 @@ _hosts_table :: proc() -> []simulate.Host {
 }
 
 // A loaded scene at Start, by session id: Stop unloads what the run loaded on
-// top and reloads from disk what the run unloaded.
+// top, brings back what the run unloaded, and gives every scene the run
+// changed its content of Start.
 @(private = "file")
 _Loaded_Scene :: struct {
-	id:   u32, // engine.Scene.session_id
-	path: string,
+	id:    u32, // engine.Scene.session_id
+	path:  string,
+	// The scene as a save writes it, nil for the simulated scene, whose
+	// bytes are the snapshot's own.
+	bytes: []byte,
+	dirty: bool,
 }
 
 // What the snapshot bytes point at. The record and everything in it live on
@@ -79,16 +84,7 @@ _capture :: proc() -> (snapshot: []byte, scene: engine.Scene_Ref, ok: bool) {
 		log.error("Simulate: no active scene")
 		return nil, {}, false
 	}
-	// With embedded assets' ids, as an undo snapshot: Stop gives each field
-	// its embedded asset back, so edit steps recorded before Play still reach it.
-	serialized: []byte
-	sok: bool
-	{
-		prev := ser.pptr_embedded_ids
-		ser.pptr_embedded_ids = true
-		defer ser.pptr_embedded_ids = prev
-		serialized, sok = engine.scene_serialize(active)
-	}
+	serialized, sok := _scene_bytes(active)
 	if !sok {
 		log.error("Simulate: failed to capture scene snapshot")
 		return nil, {}, false
@@ -114,17 +110,37 @@ _capture :: proc() -> (snapshot: []byte, scene: engine.Scene_Ref, ok: bool) {
 		for i in 0 ..< sm.count {
 			sc := sm.loaded[i]
 			if sc == nil do continue
-			append(&snap.loaded, _Loaded_Scene{id = sc.session_id, path = strings.clone(sc.path)})
+			l := _Loaded_Scene{id = sc.session_id, path = strings.clone(sc.path), dirty = sc.dirty}
+			// The other loaded scenes too: the run can change any of them.
+			if sc != active {
+				if other, other_ok := _scene_bytes(sc, context.temp_allocator); other_ok {
+					l.bytes = make([]byte, len(other))
+					copy(l.bytes, other)
+				}
+			}
+			append(&snap.loaded, l)
 		}
 	}
 	return ([^]byte)(snap)[:size_of(_Snapshot)], engine.Scene_Ref{id = snap.scene_id}, true
 }
 
-// Back to the scene set of Start: scenes the run loaded additively go, scenes
-// it unloaded come back from disk (their in-memory state at Start is not
-// kept, the simulated scene's is, through the scene bytes). Then the scene
-// bytes deserialize back over the simulated scene, scoped to that one scene,
-// keeping its slot and active status. Additively loaded scenes are untouched.
+// A scene as a save writes it, with embedded assets' ids, as an undo
+// snapshot: Stop gives each field its embedded asset back, so edit steps
+// recorded before Play still reach it.
+@(private = "file")
+_scene_bytes :: proc(s: ^engine.Scene, allocator := context.allocator) -> ([]byte, bool) {
+	prev := ser.pptr_embedded_ids
+	ser.pptr_embedded_ids = true
+	defer ser.pptr_embedded_ids = prev
+	context.allocator = allocator
+	return engine.scene_serialize(s)
+}
+
+// Back to the scene set of Start: scenes the run loaded additively go, and
+// scenes it unloaded come back from disk. Then each scene gets its content of
+// Start back from its bytes, in place, keeping its slot and active status.
+// The simulated scene always does. Another loaded scene does when the run
+// changed it, so one the run left alone keeps its objects' handles.
 //
 // Not atomic: on failure the target scene is already destroyed.
 @(private = "file")
@@ -139,8 +155,25 @@ _restore :: proc(snapshot: []byte) -> (scene: engine.Scene_Ref, ok: bool) {
 		if !known do engine.sm_scene_unload(sc)
 	}
 	for l in snap.loaded {
-		if engine.sm_scene_find_by_session_id(l.id) != nil || l.path == "" do continue
-		engine.scene_load(l.path, additive = true)
+		if l.id == snap.scene_id do continue
+		sc := engine.sm_scene_find_by_session_id(l.id)
+		if sc == nil {
+			// Unloaded by the run: from disk, then its content of Start over it.
+			if l.path == "" do continue
+			sc = engine.scene_load(l.path, additive = true)
+			if sc == nil do continue
+		} else if l.bytes != nil {
+			now, now_ok := _scene_bytes(sc, context.temp_allocator)
+			if now_ok && string(now) == string(l.bytes) do continue // the run left it alone
+		}
+		if l.bytes == nil do continue
+		back := engine.scene_reload_in_place_bytes(sc, l.bytes, sc.asset_guid, l.path)
+		if back == nil {
+			log.errorf("Simulate: scene %s did not restore", l.path)
+			continue
+		}
+		back.session_id = l.id
+		back.dirty = l.dirty
 	}
 
 	target := engine.sm_scene_find_by_session_id(snap.scene_id)
@@ -157,7 +190,10 @@ _release :: proc(snapshot: []byte) {
 	snap := _snapshot_of(snapshot)
 	delete(snap.scene_bytes)
 	delete(snap.scene_path)
-	for l in snap.loaded do delete(l.path)
+	for l in snap.loaded {
+		delete(l.path)
+		delete(l.bytes)
+	}
 	delete(snap.loaded)
 	free(snap)
 }

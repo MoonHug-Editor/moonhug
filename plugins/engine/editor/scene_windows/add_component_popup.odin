@@ -118,7 +118,7 @@ _ac_draw_matches :: proc(root: ^menu.MenuNode, query: string) {
 			im.EndDisabled()
 			if m.category != "" {
 				im.SameLine()
-				im.TextDisabled(strings.clone_to_cstring(m.category, context.temp_allocator))
+				im.TextDisabledUnformatted(strings.clone_to_cstring(m.category, context.temp_allocator))
 			}
 		}
 	}

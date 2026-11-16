@@ -24,6 +24,8 @@ _mm_mode_names := [core.MinMax_Mode]cstring{
 // One clickable curve plot with its own editor popup.
 @(private = "file")
 _mm_curve_cell :: proc(c: ^core.Curve, id: cstring, w: f32) {
+	// Never 0: imgui stops on a button without size.
+	w := max(w, 1)
 	h := im.GetFrameHeight()
 	p0 := im.GetCursorScreenPos()
 	popup_id := fmt.ctprintf("mm_curve_edit%s", id)

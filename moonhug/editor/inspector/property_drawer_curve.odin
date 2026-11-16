@@ -52,7 +52,9 @@ property_drawer_Curve :: proc(ctx: ^Ctx) {
 	c := cast(^core.Curve)ptr
 	field_row(label)
 
-	w := im.GetContentRegionAvail().x
+	// Never 0: a column squeezed shut gives that, and imgui stops on a
+	// button without size.
+	w := max(im.GetContentRegionAvail().x, 1)
 	h := im.GetFrameHeight()
 	p0 := im.GetCursorScreenPos()
 	p1 := im.Vec2{p0.x + w, p0.y + h}

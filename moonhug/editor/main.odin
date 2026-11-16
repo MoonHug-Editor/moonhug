@@ -84,9 +84,14 @@ main :: proc() {
     drop_window_close_key()
     defer gfx.shutdown()
 
-    if has_saved_settings && win_x >= 0 && win_y >= 0 {
+    // The saved place, when a display still has it: a monitor left of or
+    // above the main one gives negative coordinates, and one that is gone
+    // would leave the window out of reach.
+    if has_saved_settings && window_rect_reachable({win_x, win_y, win_w, win_h}, gfx.displays_usable_bounds()) {
         gfx.set_window_geometry(win_x, win_y, win_w, win_h)
-    } else if !has_saved_settings {
+    } else if has_saved_settings {
+        center_window_on_display(win_w, win_h)
+    } else {
         apply_default_window_size()
     }
     // The window is shown further down, once the theme is applied and a frame

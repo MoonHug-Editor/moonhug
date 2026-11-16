@@ -310,7 +310,7 @@ _toolbar_play :: proc() {
     }
     if phase_text != nil {
         im.AlignTextToFramePadding()
-        im.TextDisabled(phase_text)
+        im.TextDisabledUnformatted(phase_text)
         im.SameLine(0, im.GetStyle().ItemSpacing.x)
     }
 
@@ -407,10 +407,24 @@ _delete_command :: proc(cmd: []string, a: mem.Allocator) {
     delete(cmd, a)
 }
 
+// The child the play thread waits for now, {} for none: what quitting the
+// editor stops.
+@(private="file") _play_child:      os.Process
+@(private="file") _play_child_lock: sync.Mutex
+// Set on quit: the thread starts no further child.
+@(private="file") _play_quitting:   bool
+
+@(private="file")
+_play_child_set :: proc(p: os.Process) {
+    sync.guard(&_play_child_lock)
+    _play_child = p
+}
+
 // Runs one child to completion on the given pipe write-ends, returning its exit
 // code (negative when it never started).
 @(private="file")
 _run_child :: proc(run_dir: string, command: []string, out_w, err_w: ^os.File) -> int {
+    if sync.atomic_load(&_play_quitting) do return -1
     process, err := os.process_start({
         working_dir = run_dir,
         command     = command,
@@ -421,6 +435,10 @@ _run_child :: proc(run_dir: string, command: []string, out_w, err_w: ^os.File) -
         output_window_append_line(fmt.tprintf("run error: %v (%v)", err, command))
         return -1
     }
+    _play_child_set(process)
+    defer _play_child_set({})
+    // Quit came while this child was starting: it was not there to stop yet.
+    if sync.atomic_load(&_play_quitting) do process_stop(process)
     state, wait_err := os.process_wait(process)
     if wait_err != nil {
         output_window_append_line(fmt.tprintf("--- wait error: %v ---", wait_err))
@@ -701,7 +719,15 @@ run_app_play :: proc(id: string, source: string, with_current_scene := false, mo
     }
 }
 
+// On quit. The thread waits for the build or the game it started, so that
+// child is stopped first: the join would otherwise last until the user closes
+// the game.
 join_play_thread :: proc() {
+    sync.atomic_store(&_play_quitting, true)
+    {
+        sync.guard(&_play_child_lock)
+        if _play_child.pid != 0 do process_stop(_play_child)
+    }
     if _play_thread != nil {
         thread.join(_play_thread)
         thread.destroy(_play_thread)

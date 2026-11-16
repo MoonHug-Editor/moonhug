@@ -116,7 +116,7 @@ _draw_audio_preview :: proc(path: string) {
 
 	im.SameLine()
 	pos_s := playing ? f64(audio.preview_position()) / f64(wf.rate) : 0
-	im.Text(fmt.ctprintf("%.2f / %.2f s", pos_s, f64(wf.frames) / f64(wf.rate)))
+	im.TextUnformatted(fmt.ctprintf("%.2f / %.2f s", pos_s, f64(wf.frames) / f64(wf.rate)))
 
 	avail := im.GetContentRegionAvail()
 	if avail.y < 16 do return

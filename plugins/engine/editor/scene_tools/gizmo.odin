@@ -40,9 +40,22 @@ gizmo_origin :: proc(tH: engine.Transform_Handle) -> [3]f32 {
 	return engine.transform_world_position(tH)
 }
 
-// Gizmo screen presence: fraction of the camera distance, so it stays a
-// constant apparent size while zooming.
+// Gizmo screen presence in a perspective view: fraction of the camera
+// distance, so it stays a constant apparent size while zooming.
 _GIZMO_SIZE_FACTOR :: f32(0.15)
+
+// In an orthographic view distance changes nothing on screen: the size is a
+// part of the view's height. It is what the factor above gives in the Scene
+// view's 45 degree perspective, so switching projection does not resize it.
+_GIZMO_ORTHO_VIEW_PART :: f32(0.181)
+
+// The gizmo's world size at `origin` in `view`.
+gizmo_size :: proc(view: engine.Render_View, origin: [3]f32) -> f32 {
+	// A perspective projection has 0 there, an orthographic one 1.
+	if view.proj[3, 3] == 0 do return linalg.length(view.cam_pos - origin) * _GIZMO_SIZE_FACTOR
+	view_height := 2 / view.proj[1, 1]
+	return view_height * _GIZMO_ORTHO_VIEW_PART
+}
 
 // The tool's handle id: the composites salt their parts from it.
 @(private = "file")
@@ -111,7 +124,7 @@ gizmo_tool_frame :: proc() {
 // buttons, snap steps), and what its drag does to the selection.
 gizmo_draw_and_handle :: proc(tH: engine.Transform_Handle) {
 	origin := gizmo_origin(tH)
-	size := linalg.length(handles.frame().view.cam_pos - origin) * _GIZMO_SIZE_FACTOR
+	size := gizmo_size(handles.frame().view, origin)
 	if size <= 0 do return
 
 	d: handles.Drag
