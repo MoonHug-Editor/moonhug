@@ -34,6 +34,7 @@ Player          SpriteRenderer: sprite hero.png / idle_0, sorting_layer 1
 
 - The Sprite row shows the pick as `texture/slice`. Its picker lists every sprite in one list: a Single texture as its one sprite, a sliced texture as its slices. A texture dropped on the row picks the whole texture, a slice dragged from the Project window picks that slice. The ParticleSystem uses the same row.
 - Clicking a sprite in the Scene window picks it, by the same quad it draws.
+- A texture or a slice dragged from the Project window into the Scene window or the Hierarchy becomes an object with a SpriteRenderer drawing it: a sliced texture draws its first slice ([Asset drop](/plugins/engine/docs/attributes/AssetDrop.md)).
 
 ## From code
 

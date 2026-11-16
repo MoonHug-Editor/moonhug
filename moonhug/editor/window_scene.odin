@@ -9,6 +9,7 @@ import "core:math"
 import "core:math/linalg"
 import "inspector"
 import core "moonhug:libs/core"
+import assets "moonhug:libs/assets"
 import "moonhug:libs/gizmos"
 import "moonhug:editor/viewport"
 import "core:strings"
@@ -611,6 +612,7 @@ scene_window_draw :: proc(w: ^wnd.Window) {
 			im.SetCursorScreenPos({content_min.x + bar_l, content_min.y + bar_t})
 			im.Image(im.TextureRef{_TexID = tex_id}, avail)
 			_sv.img_min = im.GetItemRectMin()
+			_scene_asset_drop_target()
 			// Gizmo labels (anchor percentages and such) over the image,
 			// shadowed so they read on any background.
 			dl := im.GetWindowDrawList()
@@ -636,6 +638,64 @@ scene_window_draw :: proc(w: ^wnd.Window) {
 		_draw_pick_menu()
 		_draw_scene_context_menu()
 	}
+}
+
+// --- Asset drop ------------------------------------------------------------------------
+// A file or sub-asset dragged from the Project window onto the image becomes
+// an object (viewport.drop): on the object under the pointer, or on the grid
+// over empty space. The image is a target only for an asset some package
+// makes an object of.
+
+// The asset the current drag carries, from a Project window row.
+@(private = "file")
+_dragged_asset :: proc() -> (ref: core.PPtr, ok: bool) {
+	p := im.GetDragDropPayload()
+	if p == nil || p.Data == nil do return
+	if im.Payload_IsDataType(p, "ASSET_PPTR") do return (^core.PPtr)(p.Data)^, true
+	if im.Payload_IsDataType(p, "ASSET_PATH") {
+		guid, gok := assets.asset_db_get_guid(string(([^]byte)(p.Data)[:p.DataSize]))
+		if !gok do return
+		return core.PPtr{guid = core.Asset_GUID(guid)}, true
+	}
+	return
+}
+
+// Right after the image: the image as the drop target.
+@(private = "file")
+_scene_asset_drop_target :: proc() {
+	ref, ok := _dragged_asset()
+	if !ok || !viewport.drop_accepts(ref) do return
+	if !im.BeginDragDropTarget() do return
+	defer im.EndDragDropTarget()
+	p := im.AcceptDragDropPayload("ASSET_PATH")
+	if p == nil do p = im.AcceptDragDropPayload("ASSET_PPTR")
+	if p == nil do return
+	mp := im.GetMousePos()
+	px, py := mp.x - _sv.img_min.x, mp.y - _sv.img_min.y
+	view := scene_render_view(f32(_sv.rt.width), f32(_sv.rt.height))
+	viewport.drop(view, px, py, ref, scene_drop_fallback(view, px, py))
+}
+
+// Where a drop over empty space puts the object: where the pointer's ray
+// meets the grid plane (XY in the 2D view, else the first plane the grid
+// shows, XZ when it shows none), and when it meets it behind the camera or
+// far off, the point of the ray nearest the camera's anchor.
+scene_drop_fallback :: proc(view: core.Render_View, px, py: f32) -> [3]f32 {
+	ray := core.render_view_screen_ray(view, px, py)
+	anchor := ray.origin + ray.direction * linalg.dot(_sv.cam_target - ray.origin, ray.direction)
+	gs := grid_settings
+	normal := [3]f32{0, 1, 0}
+	if _sv.mode_2d || !gs.show_xz && gs.show_xy {
+		normal = {0, 0, 1}
+	} else if !gs.show_xz && gs.show_yz {
+		normal = {1, 0, 0}
+	}
+	facing := linalg.dot(ray.direction, normal)
+	if abs(facing) < 1e-4 do return anchor
+	t := -linalg.dot(ray.origin, normal) / facing
+	hit := ray.origin + ray.direction * t
+	if t < 0 || linalg.length(hit - anchor) > 100 * max(_sv.cam_dist, 1) do return anchor
+	return hit
 }
 
 // --- Context menu ----------------------------------------------------------------------

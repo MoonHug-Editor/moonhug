@@ -43,6 +43,12 @@ Viewport_Provider :: struct {
 	render_game:         proc(target: ^gfx.Render_Target, over: proc()) -> bool,
 	// Gameplay debug drawing is on: the Game window shows the .Game gizmo channel.
 	debug_draw:          proc() -> bool,
+	// An asset dragged from the Project window: whether dropping it makes an object.
+	drop_accepts:        proc(ref: core.PPtr) -> bool,
+	// Makes the object `ref` becomes, where the pointer at pixel (px, py)
+	// meets an object, or at `fallback` over empty space. One undo step,
+	// selected.
+	drop:                proc(view: core.Render_View, px, py: f32, ref: core.PPtr, fallback: [3]f32),
 }
 
 @(private) _provider: Viewport_Provider
@@ -145,4 +151,13 @@ render_game :: proc(target: ^gfx.Render_Target, over: proc()) -> bool {
 debug_draw :: proc() -> bool {
 	if _provider.debug_draw == nil do return false
 	return _provider.debug_draw()
+}
+
+drop_accepts :: proc(ref: core.PPtr) -> bool {
+	if _provider.drop_accepts == nil do return false
+	return _provider.drop_accepts(ref)
+}
+
+drop :: proc(view: core.Render_View, px, py: f32, ref: core.PPtr, fallback: [3]f32) {
+	if _provider.drop != nil do _provider.drop(view, px, py, ref, fallback)
 }

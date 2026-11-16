@@ -13,6 +13,7 @@ import im "moonhug:external/odin-imgui"
 import engine "moonhug:packages/engine"
 import "moonhug:editor/menu"
 import undo "moonhug:packages/engine/editor/undo"
+import "moonhug:packages/engine/editor/scene_tools"
 import "moonhug:editor/simulate"
 import "moonhug:editor/widgets"
 import "moonhug:editor/icons"
@@ -1178,11 +1179,7 @@ _draw_drop_target_on_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Sc
 				undo.record_reparent_to(dragged, tH)
 			}
 		}
-		asset_payload := im.AcceptDragDropPayload("ASSET_PATH", {})
-		if asset_payload != nil && asset_payload.Data != nil {
-			path := string(([^]byte)(asset_payload.Data)[:asset_payload.DataSize])
-			_hierarchy_drop_asset_as_child(path, tH)
-		}
+		_hierarchy_accept_asset_drop(tH)
 		im.EndDragDropTarget()
 	}
 
@@ -1229,29 +1226,28 @@ _draw_drop_target_empty_space :: proc(scene: ^engine.Scene) {
 					undo.record_reparent_to(dragged, root_tH)
 				}
 			}
-			asset_payload := im.AcceptDragDropPayload("ASSET_PATH", {})
-			if asset_payload != nil && asset_payload.Data != nil {
-				path := string(([^]byte)(asset_payload.Data)[:asset_payload.DataSize])
-				root_tH := engine.Transform_Handle(scene.root.handle)
-				_hierarchy_drop_asset_as_child(path, root_tH)
-			}
+			_hierarchy_accept_asset_drop(engine.Transform_Handle(scene.root.handle))
 			im.EndDragDropTarget()
 		}
 	}
 }
 
+// Inside a drop target: a file or sub-asset from the Project window dropped
+// here becomes an object under `parent_tH` (scene_tools.asset_drop), with
+// its local position at the origin.
 @(private)
-_hierarchy_drop_asset_as_child :: proc(path: string, parent_tH: engine.Transform_Handle) {
-	if !strings.has_suffix(path, ".scene") do return
-	guid, ok := engine.asset_db_get_guid(path)
-	if !ok do return
-
-	new_tH := engine.scene_instantiate_guid_nested(engine.Asset_GUID(guid), parent_tH)
-	if new_tH == {} do return
-
-	undo.record_create(new_tH, parent_tH)
-	session.select_only(new_tH)
-	_hierarchy_reveal_open(parent_tH)
+_hierarchy_accept_asset_drop :: proc(parent_tH: engine.Transform_Handle) {
+	ref: engine.PPtr
+	if p := im.AcceptDragDropPayload("ASSET_PATH", {}); p != nil && p.Data != nil {
+		guid, ok := engine.asset_db_get_guid(string(([^]byte)(p.Data)[:p.DataSize]))
+		if !ok do return
+		ref = engine.PPtr{guid = engine.Asset_GUID(guid)}
+	} else if p := im.AcceptDragDropPayload("ASSET_PPTR", {}); p != nil && p.Data != nil {
+		ref = (^engine.PPtr)(p.Data)^
+	} else {
+		return
+	}
+	if scene_tools.asset_drop(ref, parent_tH) != {} do _hierarchy_reveal_open(parent_tH)
 }
 
 @(private)

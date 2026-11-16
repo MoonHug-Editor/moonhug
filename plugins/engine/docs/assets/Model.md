@@ -27,5 +27,5 @@ Shown in the Project Inspector when the model is selected, and applied with Appl
 ## In the editor
 
 - In the Project window a model expands to its parts, clips and hull sets.
-- Dragging a model into the scene places it.
+- Dragging a model into the Scene window or the Hierarchy makes an object of its node hierarchy, with the default material, and dragging a part makes one object drawing it ([Asset drop](../attributes/AssetDrop.md)).
 - Assets, Extract Assets turns the selected model into ordinary editable assets next to it: its embedded images as image files, one `.mat` per glTF material with its maps wired into the Lit block, one clip per glTF animation with the animation plugin, and a `.scene` of its node hierarchy that uses them all. A file that already exists is skipped, so running it again keeps your edits.

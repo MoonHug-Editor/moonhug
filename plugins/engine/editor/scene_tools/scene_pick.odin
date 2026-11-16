@@ -69,15 +69,40 @@ scene_window_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Tran
 // geometry, nearest icon first.
 scene_window_pick_all :: proc(view: engine.Render_View, px, py: f32) -> []Scene_Hit {
 	ray := engine.render_view_screen_ray(view, px, py)
-	w := engine.ctx_world()
 	icons := make([dynamic]Scene_Hit, context.temp_allocator)
-	geo := make([dynamic]Scene_Hit, context.temp_allocator)
-
 	for ic in gizmos.icons(gizmos.scene_gizmo_channels()) {
 		sp, ok := gizmos.helper_project_in(view, ic.pos)
 		if !ok || linalg.length(sp - [2]f32{px, py}) > ic.px * 0.5 do continue
 		append(&icons, Scene_Hit{ic.owner, linalg.dot(ic.pos - ray.origin, ray.direction)})
 	}
+	slice.sort_by(icons[:], _nearest_first)
+	geo := _pick_geometry(view, ray)
+	out := make([dynamic]Scene_Hit, 0, len(icons) + len(geo), context.temp_allocator)
+	for h in icons do _add_hit(&out, h)
+	for h in geo do _add_hit(&out, h)
+	return out[:]
+}
+
+// Where the pointer meets the nearest object, by the tests a click uses
+// (meshes by their bounds), icons left out: they have no surface. False over
+// empty space.
+scene_window_surface_point :: proc(view: engine.Render_View, px, py: f32) -> (point: [3]f32, ok: bool) {
+	ray := engine.render_view_screen_ray(view, px, py)
+	geo := _pick_geometry(view, ray)
+	if len(geo) == 0 do return
+	return ray.origin + ray.direction * geo[0].t, true
+}
+
+@(private = "file")
+_nearest_first :: proc(a, b: Scene_Hit) -> bool { return a.t < b.t }
+
+// Every hit of `ray` on what `view` draws, nearest first (temp): quads,
+// meshes, skinned meshes, UI graphics and package shapes. An object may be
+// listed more than once.
+@(private = "file")
+_pick_geometry :: proc(view: engine.Render_View, ray: engine.Ray) -> []Scene_Hit {
+	w := engine.ctx_world()
+	geo := make([dynamic]Scene_Hit, context.temp_allocator)
 
 	for c in drawn_quads(view).all {
 		q := c.variant.(engine.Draw_Quad)
@@ -151,13 +176,8 @@ scene_window_pick_all :: proc(view: engine.Render_View, px, py: f32) -> []Scene_
 		if tH, t, ok := provider.click(view, ray); ok do append(&geo, Scene_Hit{tH, t})
 	}
 
-	nearest_first :: proc(a, b: Scene_Hit) -> bool { return a.t < b.t }
-	slice.sort_by(icons[:], nearest_first)
-	slice.sort_by(geo[:], nearest_first)
-	out := make([dynamic]Scene_Hit, 0, len(icons) + len(geo), context.temp_allocator)
-	for h in icons do _add_hit(&out, h)
-	for h in geo do _add_hit(&out, h)
-	return out[:]
+	slice.sort_by(geo[:], _nearest_first)
+	return geo[:]
 }
 
 // Appends `h` unless its object is listed: an object hit twice (both
