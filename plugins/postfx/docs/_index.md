@@ -15,7 +15,7 @@ The postfx plugin adds six render steps a render pipeline places after the engin
 | [Motion blur](render-steps/MotionBlur.md) | Smears each pixel along how far it moved since last frame. Muted by default. |
 | [Depth of field](render-steps/DepthOfField.md) | Blurs the scene by its distance from the focus, through a thin lens. Muted by default. |
 | [Auto exposure](render-steps/AutoExposure.md) | Meters the scene's brightness and adapts the exposure to it over time. Muted by default. |
-| [Bloom](render-steps/Bloom.md) | Blurs what is brighter than a threshold, for the tonemap to add. |
+| [Bloom](render-steps/Bloom.md) | Spreads what is brighter than a threshold into a glow, for the tonemap to add. |
 | [Tonemap](render-steps/Tonemap.md) | Exposure, bloom, colour grading, then HDR to LDR by an operator. |
 | [FXAA](render-steps/FXAA.md) | Fast approximate anti-aliasing. Not in the default pipeline. |
 

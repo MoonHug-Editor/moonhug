@@ -33,12 +33,15 @@ Tonemap_Operator :: enum u8 {
 Bloom_Settings :: struct {
 	threshold: f32 `decor:min(0)`, // scene color above this blooms
 	strength:  f32 `decor:min(0)`, // how much of it the tonemap adds back (baked into the bloom image)
+	// How far the glow spreads: 0 keeps it tight around what blooms, 1 lets
+	// the widest levels of the chain carry it.
+	scatter:   f32 `decor:range(0, 1)`,
 	// The brightest a scene pixel counts for: lower it to keep stray bright
 	// pixels from flaring. The default is half-float range.
 	clamp:     f32 `decor:min(0)`,
 }
 
-bloom_defaults := Bloom_Settings{threshold = 1, strength = 0.3, clamp = 65472}
+bloom_defaults := Bloom_Settings{threshold = 1, strength = 0.3, scatter = 0.7, clamp = 65472}
 
 Tonemap_Settings :: struct {
 	operator: Tonemap_Operator,
@@ -91,7 +94,8 @@ exposure_defaults := Exposure_Settings{target = 0.6, min_ev = -4, max_ev = 8, co
 
 // The shader assets, by the guid in their .meta files.
 @(private = "file") BLOOM_BRIGHT_GUID := uuid.read("caa45a1a-ee91-410b-951c-60afa81d716f") or_else uuid.Identifier{}
-@(private = "file") BLOOM_BLUR_GUID   := uuid.read("e241f892-9582-4ba3-a3df-8404558e446c") or_else uuid.Identifier{}
+@(private = "file") BLOOM_DOWN_GUID   := uuid.read("6707a6bd-c39d-4c9f-b62a-697c470333e6") or_else uuid.Identifier{}
+@(private = "file") BLOOM_UP_GUID     := uuid.read("441d3556-8cb6-4d3a-8324-b83fdce5aacc") or_else uuid.Identifier{}
 @(private = "file") TONEMAP_GUID      := uuid.read("ad09953d-bd1e-4958-ad8a-2ad37eae2edb") or_else uuid.Identifier{}
 @(private = "file") FXAA_GUID         := uuid.read("774894e7-d7e7-469b-9626-2c38b04cffb9") or_else uuid.Identifier{}
 @(private = "file") EXPOSURE_LUM_GUID    := uuid.read("d549108d-4d60-46b2-8c15-116703cefc10") or_else uuid.Identifier{}
@@ -105,10 +109,13 @@ exposure_defaults := Exposure_Settings{target = 0.6, min_ev = -4, max_ev = 8, co
 @(private = "file") EXPOSURE_PERCENTILE_GUID := uuid.read("c86417c6-cc5e-43ed-9972-7c8fbb225bf4") or_else uuid.Identifier{}
 
 // Target names, as the steps declare them. "bloom" is what tonemap reads,
-// the others are the chain's scratch.
+// the others are the chain's: the bright pass's source at half size, the
+// downsample levels below it, each half the one before, and the upsample
+// levels coming back up.
 BLOOM_TARGET   :: "bloom"
-BLOOM_SCRATCH  :: "bloom_scratch"
 BLOOM_SOURCE   :: "bloom_source"
+BLOOM_DOWN     :: [?]string{"bloom_down1", "bloom_down2", "bloom_down3", "bloom_down4", "bloom_down5"}
+BLOOM_UP       :: [?]string{"bloom_up1", "bloom_up2", "bloom_up3", "bloom_up4"}
 TONEMAP_TARGET :: "post"
 FXAA_TARGET    :: "aa"
 // The auto exposure, 1 x 1: red the factor the bloom and the tonemap
@@ -251,33 +258,50 @@ _exposure_input :: proc(ctx: ^engine.Render_Ctx, tex: ^gfx.Texture) -> ^gfx.Text
 	return tex
 }
 
-// Bloom: bright pass at half size, then a horizontal and a vertical blur.
-// Leaves the scene image as the final: tonemap reads the bloom beside it.
-// The bright pass sees the scene as exposed (`exposure?`), so what blooms
-// follows the auto exposure.
-@(render_step={summary="blurs what is brighter than the threshold", reads="final exposure?", writes="bloom_source:HDR@0.5 bloom_scratch:HDR@0.5 bloom:HDR@0.5", settings="bloom_defaults"})
+// Bloom: a bright pass at half size, then a chain of levels each half the
+// size of the one before, down to a 64th of the view, and back up, each
+// level blended with the glow from the smaller ones (`scatter`): a glow wide
+// at the cost of small images. Leaves the scene image as the final: tonemap
+// reads the bloom beside it. The bright pass sees the scene as exposed
+// (`exposure?`), so what blooms follows the auto exposure.
+@(render_step={summary="spreads what is brighter than the threshold into a glow, through a chain of ever smaller images", reads="final exposure?", writes="bloom_source:HDR@0.5 bloom_down1:HDR@0.25 bloom_down2:HDR@0.125 bloom_down3:HDR@0.0625 bloom_down4:HDR@0.03125 bloom_down5:HDR@0.015625 bloom_up4:HDR@0.03125 bloom_up3:HDR@0.0625 bloom_up2:HDR@0.125 bloom_up1:HDR@0.25 bloom:HDR@0.5", settings="bloom_defaults"})
 postfx_bloom :: proc(ctx: ^engine.Render_Ctx) {
 	s := (^Bloom_Settings)(ctx.settings)
 	src := engine.render_input(ctx, engine.FINAL_INPUT)
 	if src == nil do return
 	bright, ok1 := engine.shader_load_fullscreen(engine.Asset_GUID(BLOOM_BRIGHT_GUID))
-	blur, ok2 := engine.shader_load_fullscreen(engine.Asset_GUID(BLOOM_BLUR_GUID))
-	if !ok1 || !ok2 do return
+	down, ok2 := engine.shader_load_fullscreen(engine.Asset_GUID(BLOOM_DOWN_GUID))
+	up, ok3 := engine.shader_load_fullscreen(engine.Asset_GUID(BLOOM_UP_GUID))
+	if !ok1 || !ok2 || !ok3 do return
 
-	source := engine.render_target(ctx, BLOOM_SOURCE)
-	scratch := engine.render_target(ctx, BLOOM_SCRATCH)
-	bloom := engine.render_target(ctx, BLOOM_TARGET)
-	w, h := source.width, source.height
+	// levels[0] is the bright pass's source, levels[i] the downsample i.
+	levels: [len(BLOOM_DOWN) + 1]^gfx.Render_Target
+	levels[0] = engine.render_target(ctx, BLOOM_SOURCE)
+	for name, i in BLOOM_DOWN do levels[i + 1] = engine.render_target(ctx, name)
 
 	src_tex := gfx.rt_color_texture(src)
 	exposure_tex: gfx.Texture
-	_blit(source, bright, {&src_tex, _exposure_input(ctx, &exposure_tex)}, {s.threshold, 0.5, s.clamp > 0 ? s.clamp : 65472, 0})
-	source_tex := gfx.rt_color_texture(source)
-	_blit(scratch, blur, {&source_tex}, {1 / f32(w), 0, 1, 0})
-	// The last pass scales by the strength: the bloom image is the light the
-	// tonemap adds, so a tonemap needs nothing from this step but the image.
-	scratch_tex := gfx.rt_color_texture(scratch)
-	_blit(bloom, blur, {&scratch_tex}, {0, 1 / f32(h), max(s.strength, 0), 0})
+	_blit(levels[0], bright, {&src_tex, _exposure_input(ctx, &exposure_tex)}, {s.threshold, 0.5, s.clamp > 0 ? s.clamp : 65472, 0})
+	for i in 1 ..< len(levels) {
+		from := gfx.rt_color_texture(levels[i - 1])
+		_blit(levels[i], down, {&from}, {1 / f32(levels[i - 1].width), 1 / f32(levels[i - 1].height), 0, 0})
+	}
+
+	// Back up: each level blended with the combined level below it. The last
+	// pass writes `bloom` and scales by the strength: the bloom image is the
+	// light the tonemap adds, so a tonemap needs nothing from this step but
+	// the image.
+	scatter := clamp(s.scatter, 0, 1)
+	up_names := BLOOM_UP
+	lower := levels[len(levels) - 1]
+	for i := len(levels) - 2; i >= 0; i -= 1 {
+		dst := i == 0 ? engine.render_target(ctx, BLOOM_TARGET) : engine.render_target(ctx, up_names[i - 1])
+		high := gfx.rt_color_texture(levels[i])
+		low := gfx.rt_color_texture(lower)
+		scale := i == 0 ? max(s.strength, 0) : 1
+		_blit(dst, up, {&high, &low}, {1 / f32(lower.width), 1 / f32(lower.height), scatter, scale})
+		lower = dst
+	}
 }
 
 // Tonemap: the HDR scene times the auto exposure (when an exposure step ran
