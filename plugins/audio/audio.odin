@@ -18,6 +18,10 @@ AudioSettings :: struct {
 	volume: f32,
 	// Scale the decoded PCM so its peak hits 1 BEFORE volume applies.
 	normalize: bool,
+	// Read the clip from its file while it plays, instead of decoding all of
+	// it into memory when it loads. For long music: memory holds a small
+	// buffer, and playback reads the disk.
+	stream: bool,
 }
 
 type_reset_AudioSettings :: proc(p: ^AudioSettings) {

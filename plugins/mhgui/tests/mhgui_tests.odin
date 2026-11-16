@@ -578,6 +578,13 @@ test_canvas_placement_modes :: proc(t: ^testing.T) {
 	near(t, engine.rect_corners(root, xform)[0], {-20, -10, -10}, "camera-space bottom-left")
 	near(t, engine.rect_corners(root, xform)[2], {20, 10, -10}, "camera-space top-right")
 
+	// An orthographic camera sees 2 * orthographic_size at every distance.
+	cam.projection = .Orthographic
+	cam.orthographic_size = 3
+	root, xform, in_world = engine.canvas_placement(camc, viewport)
+	near(t, engine.rect_corners(root, xform)[0], {-6, -3, -10}, "orthographic bottom-left")
+	near(t, engine.rect_corners(root, xform)[2], {6, 3, -10}, "orthographic top-right")
+
 	// Without a camera the mode falls back to overlay.
 	ccv.render_camera.handle = {}
 	_, _, in_world = engine.canvas_placement(camc, viewport)

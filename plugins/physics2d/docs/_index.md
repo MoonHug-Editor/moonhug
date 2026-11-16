@@ -24,6 +24,7 @@ The physics2d plugin simulates 2D physics with box2d. Add a Rigidbody2D and coll
 
 - [Bodies](concepts/Bodies.md): how components become box2d bodies, the fixed step, and contact events.
 - [Collision layers](concepts/CollisionLayers.md): which colliders collide, with the matrix and per-object overrides.
+- [Queries](concepts/Queries.md): what a ray hits, with `raycast`.
 
 **Extends**
 
@@ -57,7 +58,8 @@ Edit, Project Settings, Physics 2D. Saved in `ProjectSettings/physics_2d.json`, 
 The plugin declares no attributes and has no registries.
 
 - Game code reads contacts and triggers from `@(fixed_update)` procs ordered after the physics step ([Bodies](concepts/Bodies.md), "Contact events").
-- `body_of(handle)` returns an object's live box2d body, and `world()` the box2d world, so forces, joints, raycasts and the rest of box2d work from game code.
+- `raycast` asks what a ray hits ([Queries](concepts/Queries.md)).
+- `body_of(handle)` returns an object's live box2d body, and `world()` the box2d world, so forces, joints, shape casts and the rest of box2d work from game code.
 
 ## Limits
 

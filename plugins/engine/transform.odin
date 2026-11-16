@@ -249,6 +249,19 @@ transform_active_in_hierarchy :: proc(tH: Transform_Handle) -> bool {
     return true
 }
 
+// Whether `tH` is `ancestor` or an object under it.
+transform_is_under :: proc(tH, ancestor: Transform_Handle) -> bool {
+    w := ctx_world()
+    h := tH
+    for _ in 0 ..< 4096 {
+        if h == ancestor do return true
+        t := pool_get(&w.transforms, Handle(h))
+        if t == nil || t.parent.handle == {} do return false
+        h = Transform_Handle(t.parent.handle)
+    }
+    return false
+}
+
 Transform_World :: struct {
     position: [3]f32,
     rotation: [4]f32,

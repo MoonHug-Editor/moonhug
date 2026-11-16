@@ -35,7 +35,7 @@ raycast :: proc(origin, direction: [3]f32, max_distance: f32, layers := ~u32(0),
 	if !_state.world_ready || max_distance <= 0 do return
 	dir := linalg.normalize0(direction)
 	if dir == {} do return
-	q := _Ray_Query{world = engine.ctx_world(), ignore = ignore, fraction = 2}
+	q := _Ray_Query{ctx = context, ignore = ignore, fraction = 2}
 	// The query is on every layer, so a collider's own mask never hides it:
 	// `layers` alone says what it hits.
 	filter := b3.QueryFilter{categoryBits = ~u64(0), maskBits = u64(layers)}
@@ -47,7 +47,7 @@ raycast :: proc(origin, direction: [3]f32, max_distance: f32, layers := ~u32(0),
 // The closest hit so far of one raycast.
 @(private = "file")
 _Ray_Query :: struct {
-	world:    ^engine.World,
+	ctx:      runtime.Context, // the caller's, for the callback
 	ignore:   engine.Transform_Handle,
 	fraction: f32, // above 1: nothing hit yet
 	object:   engine.Transform_Handle,
@@ -60,12 +60,12 @@ _Ray_Query :: struct {
 // only closer hits come after.
 @(private = "file")
 _ray_hit_fcn :: proc "c" (shape: b3.ShapeId, point: b3.Pos, normal: b3.Vec3, fraction: f32, material: u64, triangle: c.int, child: c.int, ctx: rawptr) -> f32 {
-	context = runtime.default_context()
 	q := cast(^_Ray_Query)ctx
+	context = q.ctx
 	if b3.Shape_IsSensor(shape) do return -1
-	object, known := _owner_of_shape(q.world, shape)
+	object, known := _owner_of_shape(engine.ctx_world(), shape)
 	if !known do return -1
-	if q.ignore != {} && _is_under(q.world, object, q.ignore) do return -1
+	if q.ignore != {} && engine.transform_is_under(object, q.ignore) do return -1
 	if fraction < q.fraction {
 		q.fraction = fraction
 		q.object = object
@@ -73,17 +73,4 @@ _ray_hit_fcn :: proc "c" (shape: b3.ShapeId, point: b3.Pos, normal: b3.Vec3, fra
 		q.normal = normal
 	}
 	return fraction
-}
-
-// Whether `tH` is `ancestor` or an object under it.
-@(private = "file")
-_is_under :: proc(w: ^engine.World, tH, ancestor: engine.Transform_Handle) -> bool {
-	at := tH
-	for _ in 0 ..< 4096 {
-		if at == ancestor do return true
-		t := engine.pool_get(&w.transforms, engine.Handle(at))
-		if t == nil || t.parent.handle == {} do return false
-		at = engine.Transform_Handle(t.parent.handle)
-	}
-	return false
 }

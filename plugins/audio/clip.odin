@@ -5,6 +5,7 @@ package audio
 // never from the source file. Missing artifact: import on demand.
 
 import "base:runtime"
+import "core:encoding/uuid"
 import "core:fmt"
 import "core:strings"
 import sdl "vendor:sdl3"
@@ -17,6 +18,7 @@ Audio_Clip :: struct {
 	frames:      i64,
 	channels:    i32,
 	sample_rate: i32,
+	streamed:    bool, // read from the file while it plays (AudioSettings.stream)
 }
 
 clip_cache: map[engine.Asset_GUID]Audio_Clip
@@ -36,14 +38,37 @@ clip_load :: proc(guid: engine.Asset_GUID) -> (^Audio_Clip, bool) {
 	path, path_ok := engine.artifact_file(guid)
 	if !path_ok do return nil, false
 
+	stream := _clip_streams(guid)
 	cpath := strings.clone_to_cstring(path, context.temp_allocator)
-	audio := mix.LoadAudio(_audio_state.mixer, cpath, predecode = true)
+	audio := mix.LoadAudio(_audio_state.mixer, cpath, predecode = !stream)
 	if audio == nil {
 		engine.artifact_fail(guid, 0, fmt.tprintf("%s does not load as audio (%s)", path, sdl.GetError()))
 		return nil, false
 	}
 
-	return _clip_store(guid, audio)
+	return _clip_store(guid, audio, stream)
+}
+
+// Whether the clip's import settings say to stream it. Read on the main
+// thread: the settings lookup goes through the asset database. In a built
+// game the settings come from the catalog.
+@(private = "file")
+_clip_streams :: proc(guid: engine.Asset_GUID) -> bool {
+	path, ok := engine.asset_db_get_path(transmute(uuid.Identifier)guid)
+	if !ok do return false
+	settings, sok := engine.asset_pipeline_get_settings(path, context.temp_allocator)
+	if !sok do return false
+	s, is_audio := settings.(AudioSettings)
+	return is_audio && s.stream
+}
+
+// What a load job takes to its worker and brings back. On the default
+// allocator, freed by the job's finish.
+@(private = "file")
+_Clip_Job_Data :: struct {
+	mixer:  ^mix.Mixer,
+	stream: bool,
+	audio:  ^mix.Audio,
 }
 
 // Starts loading the clip on a worker thread (engine/asset_jobs.odin): the
@@ -52,36 +77,39 @@ clip_load_start :: proc(guid: engine.Asset_GUID) {
 	if guid == {} || guid in clip_cache || !_mixer_ensure() do return
 	path, ok := engine.artifact_file(guid)
 	if !ok do return
-	engine.asset_job_start(engine.PPtr{guid = guid}, path, _clip_job_finish, _clip_job_work, read = false, user = _audio_state.mixer)
+	data := new(_Clip_Job_Data, runtime.default_allocator())
+	data^ = {mixer = _audio_state.mixer, stream = _clip_streams(guid)}
+	engine.asset_job_start(engine.PPtr{guid = guid}, path, _clip_job_finish, _clip_job_work, read = false, user = data)
 }
 
-// SDL_mixer reads and decodes the file itself, from any thread.
+// SDL_mixer reads, and decodes unless the clip streams, from any thread.
 @(private = "file")
 _clip_job_work :: proc(job: ^engine.Asset_Job) {
+	data := cast(^_Clip_Job_Data)job.user
 	cpath := strings.clone_to_cstring(job.path, context.temp_allocator)
-	audio := mix.LoadAudio(cast(^mix.Mixer)job.user, cpath, predecode = true)
-	job.user = audio
-	job.failed = audio == nil
+	data.audio = mix.LoadAudio(data.mixer, cpath, predecode = !data.stream)
+	job.failed = data.audio == nil
 }
 
 @(private = "file")
 _clip_job_finish :: proc(job: ^engine.Asset_Job) {
+	data := cast(^_Clip_Job_Data)job.user
+	defer free(data, runtime.default_allocator())
 	guid := job.ref.guid
 	if job.failed {
 		if !job.discard do engine.artifact_fail(guid, 0, fmt.tprintf("%s does not load as audio", job.path))
 		return
 	}
-	audio := cast(^mix.Audio)job.user
 	// Discarded, or loaded another way while the job ran.
 	if job.discard || guid in clip_cache {
-		mix.DestroyAudio(audio)
+		mix.DestroyAudio(data.audio)
 		return
 	}
-	_clip_store(guid, audio)
+	_clip_store(guid, data.audio, data.stream)
 }
 
 @(private = "file")
-_clip_store :: proc(guid: engine.Asset_GUID, audio: ^mix.Audio) -> (^Audio_Clip, bool) {
+_clip_store :: proc(guid: engine.Asset_GUID, audio: ^mix.Audio, streamed: bool) -> (^Audio_Clip, bool) {
 	spec: sdl.AudioSpec
 	_ = mix.GetAudioFormat(audio, &spec)
 
@@ -94,6 +122,7 @@ _clip_store :: proc(guid: engine.Asset_GUID, audio: ^mix.Audio) -> (^Audio_Clip,
 		frames      = i64(mix.GetAudioDuration(audio)),
 		channels    = i32(spec.channels),
 		sample_rate = i32(spec.freq),
+		streamed    = streamed,
 	}
 	return &clip_cache[guid], true
 }

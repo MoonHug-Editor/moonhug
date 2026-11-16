@@ -49,7 +49,7 @@ The plugin declares no attributes and has no registries. Code uses it through it
 
 ## Limits
 
-- Clips decode whole into memory when they load. There is no streaming.
+- A clip decodes whole into memory when it loads, unless its import settings say `stream`. Either way its file is decoded PCM, not compressed.
 - No mixer groups and no effects.
 - One listener: the first enabled one. No Doppler and no reverb zones.
 

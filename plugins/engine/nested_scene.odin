@@ -1138,20 +1138,6 @@ _nested_scene_find_outer_non_nested :: proc(s: ^Scene, id: Local_ID) -> (Transfo
 }
 
 @(private = "file")
-_transform_is_descendant_or_self :: proc(tH, ancestorH: Transform_Handle) -> bool {
-	w := ctx_world()
-	h := tH
-	for _ in 0 ..< 4096 {
-		if h == ancestorH do return true
-		t := pool_get(&w.transforms, Handle(h))
-		if t == nil do return false
-		if t.parent.handle == {} do return false
-		h = Transform_Handle(t.parent.handle)
-	}
-	return false
-}
-
-@(private = "file")
 _nested_scene_scan_hosts_for_lid :: proc(s: ^Scene, ns: ^NestedScene, lid: Local_ID) -> (Transform_Handle, int) {
 	if s == nil || ns == nil || lid == 0 do return {}, 0
 	if ns.host_breadcrumb_id != 0 {
@@ -1223,7 +1209,7 @@ nested_scene_hosts_transform :: proc(s: ^Scene, ns: ^NestedScene, host_tH: Trans
 	t := pool_get(&ctx_world().transforms, Handle(host_tH))
 	if t == nil || t.scene != s do return false
 	if ns.expand_parent != {} {
-		if !_transform_is_descendant_or_self(host_tH, ns.expand_parent) {
+		if !transform_is_under(host_tH, ns.expand_parent) {
 			return false
 		}
 	}

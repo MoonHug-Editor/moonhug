@@ -117,8 +117,8 @@ camera_active :: proc() -> ^Camera {
 }
 
 // View from the camera transform's world rotation (forward = -Z column,
-// up = +Y column); projection honors the component's fov/near/far — near and
-// far were previously ignored (raylib hardcoded them).
+// up = +Y column). The projection is the component's: perspective from fov,
+// or orthographic from orthographic_size, both between near_clip and far_clip.
 camera_render_view :: proc(cam: ^Camera, width, height: f32) -> Render_View {
 	tw := transform_world(Transform_Handle(cam.owner))
 	rot := quat_to_matrix3(tw.rotation)
@@ -126,7 +126,15 @@ camera_render_view :: proc(cam: ^Camera, width, height: f32) -> Render_View {
 	up := [3]f32{rot[0, 1], rot[1, 1], rot[2, 1]}
 	view := linalg.matrix4_look_at_f32(tw.position, tw.position + forward, up)
 	aspect := width / max(height, 1)
-	proj := gfx.matrix4_perspective_z01(math.to_radians(cam.fov), aspect, cam.near_clip, cam.far_clip)
+	proj: matrix[4, 4]f32
+	switch cam.projection {
+	case .Perspective:
+		proj = gfx.matrix4_perspective_z01(math.to_radians(cam.fov), aspect, cam.near_clip, cam.far_clip)
+	case .Orthographic:
+		hh := cam.orthographic_size
+		hw := hh * aspect
+		proj = gfx.matrix4_ortho_z01(-hw, hw, -hh, hh, cam.near_clip, cam.far_clip)
+	}
 	rv := render_view_make(view, proj, width, height, cam.render_layer_mask)
 	rv.camera = Transform_Handle(cam.owner)
 	rv.cull = true

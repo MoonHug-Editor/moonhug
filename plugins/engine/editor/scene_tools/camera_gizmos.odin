@@ -1,12 +1,12 @@
 package scene_tools
 
-// Camera frustum gizmo (Unity's): the selected camera draws its view frustum
-// as a wire frustum (near rect, far rect, connecting edges). Aspect comes from
-// the Game window's render target so the wires show exactly what the Game window
-// sees. Runs through the @(comp_on_draw_gizmos) hook for cameras in the selection, drawn with
-// libs/gizmos. Every camera also gets a scene icon.
+// Camera frustum gizmo: the selected camera draws its view frustum as a wire
+// frustum (near rect, far rect, connecting edges), a box for an orthographic
+// camera. Aspect comes from the Game window's render target so the wires show
+// exactly what the Game window sees. Runs through @(comp_on_draw_gizmos) for
+// cameras in the selection, drawn with libs/gizmos. Every camera also gets a
+// scene icon.
 
-import "core:math"
 import "moonhug:packages/engine"
 import "moonhug:libs/gizmos"
 import "moonhug:editor/handles"
@@ -33,10 +33,9 @@ comp_on_draw_gizmos_Camera :: proc(cam: ^engine.Camera, ctx: handles.Gizmo_Conte
 
 	aspect := f32(16.0 / 9.0)
 	if a, ok := session.game_aspect(); ok do aspect = a
-	tan_half := math.tan(math.to_radians(cam.fov) * 0.5)
 
-	rect :: proc(origin: [3]f32, right, up, forward: [3]f32, d, tan_half, aspect: f32) -> [4][3]f32 {
-		hh := d * tan_half
+	rect :: proc(cam: ^engine.Camera, origin: [3]f32, right, up, forward: [3]f32, d, aspect: f32) -> [4][3]f32 {
+		hh := engine.camera_half_height_at(cam, d)
 		hw := hh * aspect
 		c := origin + forward * d
 		return {
@@ -46,8 +45,8 @@ comp_on_draw_gizmos_Camera :: proc(cam: ^engine.Camera, ctx: handles.Gizmo_Conte
 			c - right * hw + up * hh,
 		}
 	}
-	near := rect(tw.position, right, up, forward, max(cam.near_clip, 0.01), tan_half, aspect)
-	far := rect(tw.position, right, up, forward, max(cam.far_clip, cam.near_clip), tan_half, aspect)
+	near := rect(cam, tw.position, right, up, forward, max(cam.near_clip, 0.01), aspect)
+	far := rect(cam, tw.position, right, up, forward, max(cam.far_clip, cam.near_clip), aspect)
 
 	gizmos.with_color(CAMERA_GIZMO_COLOR)
 	gizmos.wire_frustum(near, far)

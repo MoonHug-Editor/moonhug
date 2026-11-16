@@ -226,7 +226,7 @@ canvas_placement :: proc(canvas_tH: Transform_Handle, screen: [2]f32) -> (root: 
 		rot := quat_to_matrix3(tw.rotation)
 		forward := [3]f32{-rot[0, 2], -rot[1, 2], -rot[2, 2]}
 		d := max(canvas.plane_distance, cam.near_clip)
-		height := 2 * d * math.tan(math.to_radians(cam.fov) * 0.5)
+		height := 2 * camera_half_height_at(cam, d)
 		k := height / max(root.size.y, 1)
 		center := tw.position + forward * d
 		xform = trs_matrix(center, tw.rotation, {k, k, k}) * linalg.matrix4_translate_f32({-root.size.x * 0.5, -root.size.y * 0.5, 0})

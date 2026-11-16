@@ -15,6 +15,7 @@ Shown in the Project Inspector when the file is selected, applied with Apply.
 |---|---|---|
 | `volume` | 1 | The mastering gain, baked into the samples. Per-object volume is AudioSource's `volume`. |
 | `normalize` | off | Scales the sound so its peak reaches 1, before `volume` applies. |
+| `stream` | off | Reads the clip from its file while it plays, instead of decoding all of it into memory when it loads. For long music: memory holds a small buffer, and playback reads the disk. |
 
 ## Artifact
 
