@@ -50,11 +50,12 @@ Graph_Property :: struct {
 // blackboard entry for Property and Sample Texture nodes. `values` holds the
 // literal of each input port while nothing is linked into it.
 Graph_Node :: struct {
-	id:       i32,
-	kind:     string,
-	position: [2]f32,
-	property: string,
-	values:   [dynamic][4]f32,
+	id:        i32,
+	kind:      string,
+	position:  [2]f32,
+	property:  string,
+	values:    [dynamic][4]f32,
+	collapsed: bool, // drawn as its header alone in the Shader Graph window
 }
 
 // An edge from an output port to an input port, by node id and port index.

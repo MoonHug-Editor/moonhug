@@ -12,12 +12,24 @@ package node_canvas
 //
 // Editing: a row with `out` carries an output port the user drags from. The
 // pending link follows the cursor and, released over an input port of
-// another node, lands in `Node_Canvas.edit` with both ends. A link drawn with
-// an index is clickable (`sel_link`), and a right-click on empty canvas asks
+// another node, lands in `Node_Canvas.edit` with both ends. Released on
+// empty canvas it lands as `link_dropped`, with where it came from and where
+// it ended, for the client to offer nodes to connect. A link drawn with an
+// index is clickable (`sel_link`), and a right-click on empty canvas asks
 // for a context menu. The canvas only reports: the client reads `edit` after
 // canvas_end and changes its own document (and records its own undo).
 // A read-only client sets no `out` rows and no link indices, so nothing of
 // this reaches it.
+//
+// Selection: a click selects one node (`sel`). With `box_select` on, a
+// left-drag on empty canvas draws a box that selects every node it touches,
+// Shift (or Ctrl, Cmd) adds to the selection, and a drag on a selected node
+// moves them all (`edit.moved`). Left-drag then no longer pans: right- and
+// middle-drag do, and a right-click that does not move opens the menu.
+//
+// Collapse: a node drawn with `collapsed` has a fold arrow in its header.
+// Collapsed it is its header alone, its links meeting the header's edges
+// (the port helpers take the same flag), and a fold reports `edit.folded`.
 //
 // Coordinates: nodes live in CANVAS units (zoom-independent). screen =
 // origin + (p + pan) * zoom. Client code converts through canvas_to_screen
@@ -28,6 +40,7 @@ package node_canvas
 // port, so an edge lands on the row it feeds rather than at some fraction of
 // the node's height — that is what makes a mixer with six inputs readable.
 
+import "base:runtime"
 import "core:fmt"
 import "core:math"
 import im "moonhug:external/odin-imgui"
@@ -69,9 +82,14 @@ Canvas_Edit :: struct {
 	link_from_row:  int,
 	link_to_node:   int,
 	link_to_row:    int,
+	// A drag from an output port ended on empty canvas: link_from_node and
+	// link_from_row say where it came from, context_pos where it ended.
+	link_dropped:   bool,
 	context_menu:   bool,    // right-click on empty canvas
 	context_pos:    im.Vec2, // where, in canvas units
 	link_clicked:   int,     // index of the clicked link (canvas_link `index`), -1 = none
+	moved:          bool,    // a drag moved the selected nodes (box_select): their positions changed
+	folded:         bool,    // a node's fold arrow was clicked: its `collapsed` changed
 }
 
 Node_Canvas :: struct {
@@ -105,6 +123,31 @@ Node_Canvas :: struct {
 	// A middle-button pan that started on the canvas. It goes on while the
 	// button is held, wherever the mouse goes.
 	middle_pan: bool,
+	// A right press on the canvas: a drag pans, a release that did not move
+	// opens the menu.
+	right_down:   bool,
+	right_panned: bool,
+	right_from:   im.Vec2,
+
+	// Box select, for clients that set `box_select`: every selected node id
+	// (`sel` among them, the one clicked last), on the default allocator,
+	// freed by canvas_destroy.
+	box_select: bool,
+	selected:   [dynamic]int,
+	// The box being drawn, from where the press was (screen), and whether
+	// it adds to the selection.
+	boxing:     bool,
+	box_from:   im.Vec2,
+	box_add:    bool,
+	// A drag of the selection is under way: canvas_end moves every selected
+	// node. `press_kept`: the press was on a node of the selection, so a
+	// release with no drag selects that node alone.
+	moving:     bool,
+	press_kept: bool,
+	dragged:    bool,
+	// This frame's nodes: their rects (screen), for the box, and the
+	// positions of the movable ones. Temp allocator.
+	node_rects: [dynamic]_Node_Rect,
 
 	// The mini-map: the client's saved settings (nil: no mini-map) and the
 	// drag in progress. The nodes drawn this frame are its content.
@@ -113,11 +156,70 @@ Node_Canvas :: struct {
 	map_items:     [dynamic]widgets.Minimap_Item, // this frame's nodes, temp allocator
 }
 
+@(private = "file")
+_Node_Rect :: struct {
+	id:       int,
+	min, max: im.Vec2,
+	pos:      ^im.Vec2, // nil when the node does not move
+}
+
 canvas_init :: proc(cv: ^Node_Canvas) {
 	cv.zoom = 1
 	cv.sel = -1
 	cv.sel_link = -1
 	cv.link_hover = -1
+}
+
+// Frees what a canvas holds: the selection list.
+canvas_destroy :: proc(cv: ^Node_Canvas) {
+	delete(cv.selected)
+	cv.selected = nil
+}
+
+// Whether node `id` is selected.
+canvas_is_selected :: proc(cv: ^Node_Canvas, id: int) -> bool {
+	if id == cv.sel do return id >= 0
+	if !cv.box_select do return false
+	for s in cv.selected do if s == id do return true
+	return false
+}
+
+// Every selected node id, `sel` first. Temp-allocated.
+canvas_selection :: proc(cv: ^Node_Canvas) -> []int {
+	out := make([dynamic]int, context.temp_allocator)
+	if cv.sel >= 0 do append(&out, cv.sel)
+	if cv.box_select do for s in cv.selected do if s != cv.sel do append(&out, s)
+	return out[:]
+}
+
+// Selects node `id` alone, -1 for none.
+canvas_select :: proc(cv: ^Node_Canvas, id: int) {
+	cv.sel = id
+	clear(&cv.selected)
+	if cv.box_select && id >= 0 {
+		context.allocator = runtime.default_allocator()
+		append(&cv.selected, id)
+	}
+}
+
+// Adds node `id` to the selection, or takes it out when it is in it.
+@(private = "file")
+_toggle :: proc(cv: ^Node_Canvas, id: int) {
+	context.allocator = runtime.default_allocator()
+	for s, i in cv.selected do if s == id {
+		ordered_remove(&cv.selected, i)
+		if cv.sel == id do cv.sel = len(cv.selected) > 0 ? cv.selected[len(cv.selected) - 1] : -1
+		return
+	}
+	if cv.sel >= 0 && !_in_list(cv, cv.sel) do append(&cv.selected, cv.sel)
+	append(&cv.selected, id)
+	cv.sel = id
+}
+
+@(private = "file")
+_in_list :: proc(cv: ^Node_Canvas, id: int) -> bool {
+	for s in cv.selected do if s == id do return true
+	return false
 }
 
 // Screen pixels around a port or a link that still count as on it.
@@ -138,14 +240,18 @@ _row_y :: proc(i: int) -> f32 {
 	return CANVAS_HEADER_H + CANVAS_PAD + f32(i) * CANVAS_ROW_H + CANVAS_ROW_H * 0.5
 }
 
-// Input port of row `row`, on the node's left edge (screen coords).
-canvas_port_in :: proc(cv: ^Node_Canvas, pos: im.Vec2, row: int) -> im.Vec2 {
-	return canvas_to_screen(cv, im.Vec2{pos.x, pos.y + _row_y(row)})
+// Input port of row `row`, on the node's left edge (screen coords). On a
+// collapsed node every input meets the header's left edge.
+canvas_port_in :: proc(cv: ^Node_Canvas, pos: im.Vec2, row: int, collapsed := false) -> im.Vec2 {
+	y := collapsed ? CANVAS_HEADER_H * 0.5 : _row_y(row)
+	return canvas_to_screen(cv, im.Vec2{pos.x, pos.y + y})
 }
 
-// The output port on the node's right edge, on row `row` (screen coords).
-canvas_port_out :: proc(cv: ^Node_Canvas, pos: im.Vec2, row: int = 0) -> im.Vec2 {
-	return canvas_to_screen(cv, im.Vec2{pos.x + CANVAS_NODE_W, pos.y + _row_y(row)})
+// The output port on the node's right edge, on row `row` (screen coords). On
+// a collapsed node every output meets the header's right edge.
+canvas_port_out :: proc(cv: ^Node_Canvas, pos: im.Vec2, row: int = 0, collapsed := false) -> im.Vec2 {
+	y := collapsed ? CANVAS_HEADER_H * 0.5 : _row_y(row)
+	return canvas_to_screen(cv, im.Vec2{pos.x + CANVAS_NODE_W, pos.y + y})
 }
 
 // Child region + grid. Draw edges, then nodes, then canvas_end. The
@@ -160,6 +266,7 @@ canvas_begin :: proc(cv: ^Node_Canvas, id: cstring) -> bool {
 	cv.link_hit = -1
 	cv.link_hit_d = max(f32)
 	cv.map_items = make([dynamic]widgets.Minimap_Item, context.temp_allocator)
+	cv.node_rects = make([dynamic]_Node_Rect, context.temp_allocator)
 	// No window padding: the canvas IS the child's whole rect. With the default
 	// padding the content region is inset, so the surface and the grid stop
 	// short of the border and the panel colour shows through as a frame.
@@ -202,33 +309,101 @@ canvas_begin :: proc(cv: ^Node_Canvas, id: cstring) -> bool {
 	return true
 }
 
-// Background interaction (left/middle-drag pans, wheel zooms around the
-// cursor, click on empty space deselects), the mini-map when the client gave
-// one, then the child closes.
+// Background interaction (left-drag pans or, with box_select, draws the
+// selection box, right- and middle-drag pan, wheel zooms around the cursor,
+// a click on empty space deselects, a right-click opens the menu), the
+// selection's move, the mini-map when the client gave one, then the child
+// closes.
 canvas_end :: proc(cv: ^Node_Canvas) {
 	if cv.size.x >= 1 && cv.size.y >= 1 {
+		io := im.GetIO()
+		mp := im.GetMousePos()
+		// The mouse over the mini-map belongs to it: no pan, box or zoom
+		// starts there.
+		over_map := false
+		if cv.minimap != nil {
+			if mpos, msize, shown := widgets.minimap_rect(cv.minimap, cv.size); shown {
+				over_map = im.IsMouseHoveringRect(cv.origin + mpos, cv.origin + mpos + msize)
+			}
+		}
 		im.SetCursorScreenPos(cv.origin)
 		im.InvisibleButton("##canvas_bg", cv.size)
-		if im.IsItemActive() && im.IsMouseDragging(.Left, 0) {
-			cv.pan += im.GetIO().MouseDelta / cv.zoom
+		if im.IsItemActive() && im.IsMouseDragging(.Left, 0) && !cv.box_select {
+			cv.pan += io.MouseDelta / cv.zoom
 		}
 		bg_hovered := im.IsItemHovered()
-		if im.IsItemClicked(.Left) {
+		if im.IsItemClicked(.Left) && !over_map {
 			// A click that no node took: on a link it selects the link,
-			// anywhere else it clears both selections.
-			cv.sel = -1
+			// anywhere else it clears both selections. With box_select it
+			// also starts a box, which adds to the selection with Shift.
+			additive := cv.box_select && (io.KeyShift || io.KeyCtrl || io.KeySuper)
+			if !additive do canvas_select(cv, -1)
 			cv.sel_link = cv.link_hit
 			cv.edit.link_clicked = cv.link_hit
+			if cv.box_select {
+				cv.boxing = true
+				cv.box_from = mp
+				cv.box_add = additive
+			}
 		}
+		if cv.boxing {
+			lo := im.Vec2{min(cv.box_from.x, mp.x), min(cv.box_from.y, mp.y)}
+			hi := im.Vec2{max(cv.box_from.x, mp.x), max(cv.box_from.y, mp.y)}
+			if im.IsMouseDown(.Left) {
+				dl := im.GetWindowDrawList()
+				im.DrawList_AddRectFilled(dl, lo, hi, im.GetColorU32(.Text, 0.08))
+				im.DrawList_AddRect(dl, lo, hi, im.GetColorU32(.Text, 0.45))
+			} else {
+				cv.boxing = false
+				// A box too small to see is a click: it selected nothing more.
+				if hi.x - lo.x > 3 || hi.y - lo.y > 3 {
+					if !cv.box_add do canvas_select(cv, -1)
+					for r in cv.node_rects {
+						touches := r.min.x <= hi.x && r.max.x >= lo.x && r.min.y <= hi.y && r.max.y >= lo.y
+						if touches && !canvas_is_selected(cv, r.id) do _toggle(cv, r.id)
+					}
+				}
+			}
+		}
+
+		// The selection follows a drag on one of its nodes, every node by the
+		// same amount.
+		if cv.moving {
+			if im.IsMouseDown(.Left) {
+				d := io.MouseDelta / cv.zoom
+				if d != {} {
+					for r in cv.node_rects do if r.pos != nil && canvas_is_selected(cv, r.id) do r.pos^ += d
+					cv.edit.moved = true
+				}
+			} else {
+				cv.moving = false
+			}
+		}
+
+		// Right button: a drag pans, a release that did not move opens the
+		// menu where the press was.
 		if bg_hovered && im.IsMouseClicked(.Right) {
-			cv.edit.context_menu = true
-			cv.edit.context_pos = (im.GetMousePos() - cv.origin) / cv.zoom - cv.pan
+			cv.right_down = true
+			cv.right_panned = false
+			cv.right_from = mp
+		}
+		if cv.right_down {
+			if im.IsMouseDown(.Right) {
+				if im.IsMouseDragging(.Right) do cv.right_panned = true
+				if cv.right_panned do cv.pan += io.MouseDelta / cv.zoom
+			} else {
+				if !cv.right_panned {
+					cv.edit.context_menu = true
+					cv.edit.context_pos = (cv.right_from - cv.origin) / cv.zoom - cv.pan
+				}
+				cv.right_down = false
+			}
 		}
 		cv.link_hover = bg_hovered && !cv.drag_link ? cv.link_hit : -1
 
 		if cv.drag_link {
 			// Drawn last, over the nodes, ending on the drop port when there is one.
-			to := cv.drop_node >= 0 ? cv.drop_at : im.GetMousePos()
+			to := cv.drop_node >= 0 ? cv.drop_at : mp
 			c := cv.drag_col
 			if c.w == 0 do c = PORT_POSE
 			canvas_link(cv, cv.drag_from, to, im.GetColorU32ImVec4(c), 2)
@@ -239,18 +414,18 @@ canvas_end :: proc(cv: ^Node_Canvas) {
 					cv.edit.link_from_row = cv.drag_row
 					cv.edit.link_to_node = cv.drop_node
 					cv.edit.link_to_row = cv.drop_row
+				} else if _over_empty(cv, mp) {
+					cv.edit.link_dropped = true
+					cv.edit.link_from_node = cv.drag_node
+					cv.edit.link_from_row = cv.drag_row
+					cv.edit.context_pos = (mp - cv.origin) / cv.zoom - cv.pan
 				}
 				cv.drag_link = false
 			}
 		}
 
-		// The mini-map, over everything else on the canvas. The mouse over it
-		// belongs to it: no pan starts there and the wheel does not zoom.
-		over_map := false
+		// The mini-map, over everything else on the canvas.
 		if cv.minimap != nil {
-			if mpos, msize, shown := widgets.minimap_rect(cv.minimap, cv.size); shown {
-				over_map = im.IsMouseHoveringRect(cv.origin + mpos, cv.origin + mpos + msize)
-			}
 			view_min := -cv.pan
 			view_max := view_min + cv.size / cv.zoom
 			centre, go, _ := widgets.minimap("##canvas_minimap", cv.minimap, &cv.minimap_state, cv.origin, cv.size, cv.map_items[:], view_min, view_max)
@@ -280,7 +455,8 @@ canvas_end :: proc(cv: ^Node_Canvas) {
 // One node: a header tinted by `color` with the title centred in it, `rows` in
 // the body, an input dot on every row that asks for one, and one output dot on
 // `out_row`. Draggable (writes `pos` back in canvas units), click selects.
-// Draw after the edges.
+// `collapsed` non-nil gives the header a fold arrow that flips it: collapsed,
+// the node is its header alone. Draw after the edges.
 canvas_node :: proc(
 	cv: ^Node_Canvas,
 	id: int,
@@ -292,25 +468,27 @@ canvas_node :: proc(
 	out_row: int = 0,
 	movable := true, // false: a drag on the node pans the canvas, for clients that lay nodes out themselves
 	dimmed := false, // drawn at half opacity: a node that will not run
+	collapsed: ^bool = nil,
 ) {
 	if dimmed do im.PushStyleVar(.Alpha, im.GetStyle().Alpha * 0.45)
 	defer if dimmed do im.PopStyleVar()
 	dl := im.GetWindowDrawList()
-	sz := canvas_node_size(len(rows))
+	folded := collapsed != nil && collapsed^
+	sz := folded ? im.Vec2{CANVAS_NODE_W, CANVAS_HEADER_H} : canvas_node_size(len(rows))
 	rmin := canvas_to_screen(cv, pos^)
 	rmax := rmin + sz * cv.zoom
 	rounding := 5 * cv.zoom
 	font := im.GetFont()
 	font_sz := max(im.GetFontSize() * cv.zoom, 7)
-	selected := cv.sel == id
 	hit := max(_HIT_R, CANVAS_PORT_R * cv.zoom * 1.6)
+	header_h := CANVAS_HEADER_H * cv.zoom
 
 	// Output ports first: overlapping items go to the first submitted, so a
 	// port wins over the node button under it and a press starts a link
 	// instead of a node drag.
 	for row, i in rows {
 		if !row.out do continue
-		at := canvas_port_out(cv, pos^, i)
+		at := canvas_port_out(cv, pos^, i, folded)
 		im.SetCursorScreenPos(at - im.Vec2{hit, hit})
 		im.InvisibleButton(fmt.ctprintf("##canvas_out_%d_%d", id, i), im.Vec2{hit, hit} * 2)
 		if im.IsItemActivated() {
@@ -323,8 +501,19 @@ canvas_node :: proc(
 	}
 
 	// The drop target of a pending link: an input port of another node, or
-	// the left half of its row, so the drop does not need pixel aim.
-	if cv.drag_link && cv.drag_node != id {
+	// the left half of its row, so the drop does not need pixel aim. A
+	// collapsed node takes it anywhere on its bar, on its first input.
+	if cv.drag_link && cv.drag_node != id && folded {
+		mp := im.GetMousePos()
+		if mp.x >= rmin.x - hit && mp.x <= rmax.x && mp.y >= rmin.y && mp.y <= rmax.y {
+			for row, i in rows do if row.port {
+				cv.drop_node = id
+				cv.drop_row = i
+				cv.drop_at = canvas_port_in(cv, pos^, i, true)
+				break
+			}
+		}
+	} else if cv.drag_link && cv.drag_node != id {
 		mp := im.GetMousePos()
 		half := CANVAS_ROW_H * 0.5 * cv.zoom
 		for row, i in rows {
@@ -340,27 +529,58 @@ canvas_node :: proc(
 		}
 	}
 
+	// The fold arrow, before the node's button so it wins its clicks.
+	if collapsed != nil {
+		im.SetCursorScreenPos(rmin)
+		im.InvisibleButton(fmt.ctprintf("##canvas_fold_%d", id), im.Vec2{header_h, header_h})
+		if im.IsItemClicked() {
+			collapsed^ = !collapsed^
+			cv.edit.folded = true
+		}
+	}
+
 	// Interaction first: the button claims hover over the background pan
 	// surface, the visuals draw over both.
 	im.SetCursorScreenPos(rmin)
 	im.InvisibleButton(fmt.ctprintf("##canvas_node_%d", id), rmax - rmin)
 	if im.IsItemActivated() {
-		cv.sel = id
+		io := im.GetIO()
+		switch {
+		case cv.box_select && (io.KeyShift || io.KeyCtrl || io.KeySuper):
+			_toggle(cv, id)
+		case cv.box_select && canvas_is_selected(cv, id):
+			// A press on a node of the selection keeps the selection, for a
+			// drag of them all. A release with no drag selects it alone.
+			cv.sel = id
+			cv.press_kept = true
+		case:
+			canvas_select(cv, id)
+		}
 		cv.sel_link = -1
+		cv.dragged = false
 	}
 	if im.IsItemActive() && im.IsMouseDragging(.Left, 0) {
-		if movable do pos^ += im.GetIO().MouseDelta / cv.zoom
-		else do cv.pan += im.GetIO().MouseDelta / cv.zoom
+		cv.dragged = true
+		switch {
+		case !movable:      cv.pan += im.GetIO().MouseDelta / cv.zoom
+		case cv.box_select: cv.moving = true // canvas_end moves the selection
+		case:               pos^ += im.GetIO().MouseDelta / cv.zoom
+		}
 	}
+	if im.IsItemDeactivated() && cv.press_kept {
+		if !cv.dragged do canvas_select(cv, id)
+		cv.press_kept = false
+	}
+	selected := canvas_is_selected(cv, id)
+	append(&cv.node_rects, _Node_Rect{id = id, min = rmin, max = rmax, pos = movable ? pos : nil})
 	append(&cv.map_items, widgets.Minimap_Item{rect = {pos.x, pos.y, sz.x, sz.y}, highlight = selected, color = color})
 
 	// Body far darker than the header, so the header carries the type colour
 	// and the body stays a surface the text reads on.
 	body := _scale(im.GetStyleColorVec4(.WindowBg)^, 0.9, 0.96)
 	im.DrawList_AddRectFilled(dl, rmin, rmax, im.GetColorU32ImVec4(body), rounding)
-	header_h := CANVAS_HEADER_H * cv.zoom
 	im.DrawList_AddRectFilled(dl, rmin, im.Vec2{rmax.x, rmin.y + header_h},
-		im.GetColorU32ImVec4(_scale(color, 0.78, 1)), rounding, im.DrawFlags_RoundCornersTop)
+		im.GetColorU32ImVec4(_scale(color, 0.78, 1)), rounding, folded ? im.DrawFlags_RoundCornersAll : im.DrawFlags_RoundCornersTop)
 
 	// The border is a BRIGHT tint of the same hue rather than neutral grey:
 	// it is what makes a node read as its type from across the canvas, where
@@ -383,11 +603,23 @@ canvas_node :: proc(
 	im.DrawList_AddTextImFontPtr(dl, font, font_sz,
 		im.Vec2{rmin.x + (rmax.x - rmin.x - tw) * 0.5, rmin.y + (header_h - font_sz) * 0.5},
 		im.GetColorU32ImVec4(im.Vec4{0.95, 0.95, 0.95, 1}), title)
+	if collapsed != nil {
+		// The fold arrow: down while open, right while collapsed.
+		c := rmin + im.Vec2{header_h, header_h} * 0.5
+		a := header_h * 0.18
+		arrow := im.GetColorU32ImVec4(im.Vec4{0.95, 0.95, 0.95, 0.8})
+		if folded {
+			im.DrawList_AddTriangleFilled(dl, c + {-a * 0.6, -a}, c + {a, 0}, c + {-a * 0.6, a}, arrow)
+		} else {
+			im.DrawList_AddTriangleFilled(dl, c + {-a, -a * 0.6}, c + {a, -a * 0.6}, c + {0, a}, arrow)
+		}
+	}
 
 	label_col := im.GetColorU32(.Text, 0.62)
 	value_col := im.GetColorU32(.Text)
 	pad := CANVAS_PAD * cv.zoom
 	for row, i in rows {
+		if folded do break
 		y := rmin.y + (_row_y(i) * cv.zoom) - font_sz * 0.5
 		if row.label != nil {
 			im.DrawList_AddTextImFontPtr(dl, font, font_sz, im.Vec2{rmin.x + pad, y}, label_col, row.label)
@@ -402,15 +634,15 @@ canvas_node :: proc(
 
 	for row, i in rows {
 		if row.port {
-			at := canvas_port_in(cv, pos^, i)
+			at := canvas_port_in(cv, pos^, i, folded)
 			_port(dl, cv, at, row.col)
 			if cv.drag_link && cv.drop_node == id && cv.drop_row == i {
 				im.DrawList_AddCircle(dl, at, CANVAS_PORT_R * cv.zoom + 3, im.GetColorU32(.Text), 0, 1.5)
 			}
 		}
-		if row.out do _port(dl, cv, canvas_port_out(cv, pos^, i), row.out_col)
+		if row.out do _port(dl, cv, canvas_port_out(cv, pos^, i, folded), row.out_col)
 	}
-	if has_out do _port(dl, cv, canvas_port_out(cv, pos^, out_row), PORT_POSE)
+	if has_out do _port(dl, cv, canvas_port_out(cv, pos^, out_row, folded), PORT_POSE)
 }
 
 // A port dot with a dark ring, so it stays visible against both the node body
@@ -500,6 +732,14 @@ BEAD_SPEED :: f32(0.75)
 
 // Polyline segments a link's hit test walks.
 LINK_HIT_SEGMENTS :: 24
+
+// Whether screen point `p` is on the canvas and on no node of this frame.
+@(private = "file")
+_over_empty :: proc(cv: ^Node_Canvas, p: im.Vec2) -> bool {
+	if p.x < cv.origin.x || p.y < cv.origin.y || p.x >= cv.origin.x + cv.size.x || p.y >= cv.origin.y + cv.size.y do return false
+	for r in cv.node_rects do if p.x >= r.min.x && p.x <= r.max.x && p.y >= r.min.y && p.y <= r.max.y do return false
+	return true
+}
 
 @(private = "file")
 _len_sq :: proc(v: im.Vec2) -> f32 {

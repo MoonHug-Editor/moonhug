@@ -55,6 +55,10 @@ _SG_State :: struct {
 	name_buf: [128]u8,
 	menu_pos:  [2]f32, // canvas position of the add-node popup
 	open_menu: bool,   // the canvas asked for the add-node popup this frame
+	// The output a link dropped on empty canvas came from: the add-node
+	// popup lists nodes with an input, and links the new one. 0 = none.
+	drop_from_node: i32,
+	drop_from_port: i32,
 
 	notice:       string, // a literal shown in the toolbar until notice_until
 	notice_until: f64,
@@ -114,6 +118,7 @@ _sg_instance :: proc(w: ^wnd.Window) -> ^_SG_State {
 		st^ = {guid = w.asset, rename = -1}
 		st.cv.sel = -1
 		st.cv.sel_link = -1
+		st.cv.box_select = true
 		w.data = st
 	}
 	return (^_SG_State)(w.data)
@@ -130,6 +135,7 @@ shader_graph_window_closed :: proc(w: ^wnd.Window) {
 	for e in st.errors do delete(e)
 	delete(st.errors)
 	delete(st.error_nodes)
+	nc.canvas_destroy(&st.cv)
 	if _sg == st do _sg = nil
 	free(st)
 	w.data = nil
@@ -161,7 +167,9 @@ _sg_fetch :: proc() -> bool {
 		_sg.touched = false
 		_sg.rename = -1
 		_sg.cv.sel_link = -1
-		if sg.graph_find_node(_sg.graph, i32(_sg.cv.sel)) == nil do _sg.cv.sel = -1
+		// Another instance: the clicked node stays selected when it is
+		// still there, the rest of the selection goes.
+		nc.canvas_select(&_sg.cv, sg.graph_find_node(_sg.graph, i32(_sg.cv.sel)) != nil ? _sg.cv.sel : -1)
 		_sg_regen()
 	}
 	return true
@@ -246,6 +254,9 @@ shader_graph_window_draw :: proc(w: ^wnd.Window) {
 	if im.BeginPopup("##sg_add_node") {
 		_sg_add_node_menu()
 		im.EndPopup()
+	} else {
+		// Closed with no pick: the dropped link goes.
+		_sg.drop_from_node = 0
 	}
 
 	// The keys are the "Shader Graph" keymap's commands (the end of this
@@ -386,7 +397,7 @@ _sg_blackboard :: proc() {
 		name := strings.clone(g.properties[remove].name, context.temp_allocator)
 		sg.graph_remove_property(g, name)
 		_sg.cv.sel_link = -1
-		if sg.graph_find_node(g, i32(_sg.cv.sel)) == nil do _sg.cv.sel = -1
+		if sg.graph_find_node(g, i32(_sg.cv.sel)) == nil do nc.canvas_select(&_sg.cv, -1)
 		_sg_touch("Remove Property")
 	}
 }
@@ -470,26 +481,42 @@ _sg_canvas :: proc() {
 			to := sg.graph_find_node(g, l.to_node)
 			if from == nil || to == nil do continue
 			fdef, _ := sg.node_def(from.kind)
-			p0 := nc.canvas_port_out(cv, from.position, len(fdef.inputs) + int(l.from_port))
-			p1 := nc.canvas_port_in(cv, to.position, int(l.to_port))
+			p0 := nc.canvas_port_out(cv, from.position, len(fdef.inputs) + int(l.from_port), from.collapsed)
+			p1 := nc.canvas_port_in(cv, to.position, int(l.to_port), to.collapsed)
 			col := _SG_PORT_COLS[_sg_out_type(from, int(l.from_port))]
 			nc.canvas_link(cv, p0, p1, im.GetColorU32ImVec4(col), index = li)
 		}
 		for &n in g.nodes {
 			rows := _sg_node_rows(&n)
-			before := n.position
-			nc.canvas_node(cv, int(n.id), &n.position, _sg_node_title(&n), _sg_node_color(&n), rows, false)
-			if n.position != before do _sg_touch("Move Node")
+			nc.canvas_node(cv, int(n.id), &n.position, _sg_node_title(&n), _sg_node_color(&n), rows, false, collapsed = &n.collapsed)
 		}
 	}
 	nc.canvas_end(cv)
 
 	edit := cv.edit
+	if edit.moved do _sg_touch("Move Nodes")
+	if edit.folded do _sg_touch("Collapse Node")
 	if edit.link_made do _sg_link(edit)
 	if edit.context_menu {
 		_sg.menu_pos = edit.context_pos
+		_sg.drop_from_node = 0
 		_sg.open_menu = true // opened by the window, outside this child
 	}
+	if edit.link_dropped do _sg_link_dropped(edit)
+}
+
+// A link dropped on empty canvas: the add-node popup opens there, offering
+// the nodes it can feed. The output is a row past the node's inputs.
+@(private = "file")
+_sg_link_dropped :: proc(edit: nc.Canvas_Edit) {
+	from := sg.graph_find_node(_sg.graph, i32(edit.link_from_node))
+	if from == nil do return
+	fdef, ok := sg.node_def(from.kind)
+	if !ok || edit.link_from_row < len(fdef.inputs) do return
+	_sg.drop_from_node = from.id
+	_sg.drop_from_port = i32(edit.link_from_row - len(fdef.inputs))
+	_sg.menu_pos = edit.context_pos
+	_sg.open_menu = true
 }
 
 // A finished link drag: rows map back to ports (inputs first, then outputs).
@@ -509,42 +536,84 @@ _sg_link :: proc(edit: nc.Canvas_Edit) {
 	}
 }
 
+// The add-node popup: every kind by category, then the blackboard's
+// properties. Opened by a dropped link, it lists only what has an input to
+// take it.
 @(private = "file")
 _sg_add_node_menu :: proc() {
 	g := _sg.graph
 	has_surface := false
 	for n in g.nodes do if n.kind == sg.SURFACE_KIND do has_surface = true
+	linking := _sg.drop_from_node != 0
+	takes :: proc(kind: string) -> bool {
+		d, ok := sg.node_def(kind)
+		return ok && len(d.inputs) > 0
+	}
 
 	for cat in sg.node_categories() {
+		if linking {
+			any := false
+			for d in sg.NODE_DEFS do if d.category == cat && !sg.kind_reads_property(d.kind) && len(d.inputs) > 0 && !(d.kind == sg.SURFACE_KIND && has_surface) do any = true
+			if !any do continue
+		}
 		if !im.BeginMenu(fmt.ctprintf("%s", cat)) do continue
 		for d in sg.NODE_DEFS {
 			if d.category != cat do continue
 			if sg.kind_reads_property(d.kind) do continue
 			if d.kind == sg.SURFACE_KIND && has_surface do continue
+			if linking && len(d.inputs) == 0 do continue
 			if im.MenuItem(fmt.ctprintf("%s", d.kind)) do _sg_add_node(d.kind, "")
 		}
 		im.EndMenu()
 	}
-	if len(g.properties) > 0 do im.Separator()
+	if len(g.properties) > 0 && (!linking || takes(sg.SAMPLE_TEXTURE_KIND)) do im.Separator()
 	for p in g.properties {
 		if p.kind == .Texture {
-			if im.MenuItem(fmt.ctprintf("Sample Texture: %s", p.name)) do _sg_add_node(sg.SAMPLE_TEXTURE_KIND, p.name)
-			if im.MenuItem(fmt.ctprintf("Normal Map: %s", p.name)) do _sg_add_node(sg.NORMAL_MAP_KIND, p.name)
-		} else {
+			if (!linking || takes(sg.SAMPLE_TEXTURE_KIND)) && im.MenuItem(fmt.ctprintf("Sample Texture: %s", p.name)) do _sg_add_node(sg.SAMPLE_TEXTURE_KIND, p.name)
+			if (!linking || takes(sg.NORMAL_MAP_KIND)) && im.MenuItem(fmt.ctprintf("Normal Map: %s", p.name)) do _sg_add_node(sg.NORMAL_MAP_KIND, p.name)
+		} else if !linking || takes(sg.PROPERTY_KIND) {
 			if im.MenuItem(fmt.ctprintf("Property: %s", p.name)) do _sg_add_node(sg.PROPERTY_KIND, p.name)
 		}
 	}
 }
 
+// Adds a node at the popup's place and selects it. After a dropped link it
+// takes the link, on its first input of the output's type (or the first
+// input), placed so that input sits where the link was dropped.
 @(private = "file")
 _sg_add_node :: proc(kind, property: string) {
-	id := sg.graph_add_node(_sg.graph, kind, _sg.menu_pos, property)
+	g := _sg.graph
+	pos := _sg.menu_pos
+	input := 0
+	// By id: adding the node can move the others in memory.
+	linking := sg.graph_find_node(g, _sg.drop_from_node) != nil
+	if linking {
+		input = _sg_first_input_of(kind, _sg_out_type(sg.graph_find_node(g, _sg.drop_from_node), int(_sg.drop_from_port)))
+		pos.y -= nc.CANVAS_HEADER_H + nc.CANVAS_PAD + nc.CANVAS_ROW_H * (f32(input) + 0.5)
+	}
+	id := sg.graph_add_node(g, kind, pos, property)
 	if id == 0 do return
-	_sg.cv.sel = int(id)
+	if linking {
+		sg.graph_link(g, _sg.drop_from_node, _sg.drop_from_port, id, i32(input))
+		_sg.drop_from_node = 0
+	}
+	nc.canvas_select(&_sg.cv, int(id))
 	_sg.cv.sel_link = -1
-	_sg_touch("Add Node")
+	_sg_touch(linking ? "Add Linked Node" : "Add Node")
 }
 
+// The input of a `kind` node a link carrying `t` goes to: the first of the
+// same type, or of any type (Dyn), else the first.
+@(private = "file")
+_sg_first_input_of :: proc(kind: string, t: sg.Port_Type) -> int {
+	d, ok := sg.node_def(kind)
+	if !ok do return 0
+	for in_port, i in d.inputs do if in_port.type == t do return i
+	for in_port, i in d.inputs do if in_port.type == .Dyn do return i
+	return 0
+}
+
+// Deletes the selected link, or else every selected node but the surface.
 @(private = "file")
 _sg_delete_selection :: proc() {
 	g := _sg.graph
@@ -555,11 +624,16 @@ _sg_delete_selection :: proc() {
 		_sg_touch("Delete Link")
 		return
 	}
-	n := sg.graph_find_node(g, i32(cv.sel))
-	if n == nil || n.kind == sg.SURFACE_KIND do return
-	sg.graph_remove_node(g, n.id)
-	cv.sel = -1
-	_sg_touch("Delete Node")
+	removed := 0
+	for id in nc.canvas_selection(cv) {
+		n := sg.graph_find_node(g, i32(id))
+		if n == nil || n.kind == sg.SURFACE_KIND do continue
+		sg.graph_remove_node(g, n.id)
+		removed += 1
+	}
+	if removed == 0 do return
+	nc.canvas_select(cv, -1)
+	_sg_touch(removed == 1 ? "Delete Node" : "Delete Nodes")
 }
 
 @(private = "file")
@@ -727,9 +801,9 @@ _sg_keys_target :: proc() -> bool {
 	return _sg_fetch()
 }
 
-// Delete removes the selected link, else the selected node. The surface node
-// stays.
-@(command={name="Shader Graph/Delete Selection", enabled=shader_graph_can_delete, help="Deletes the selected link, or else the selected node"})
+// Delete removes the selected link, else the selected nodes. The surface
+// node stays.
+@(command={name="Shader Graph/Delete Selection", enabled=shader_graph_can_delete, help="Deletes the selected link, or else the selected nodes"})
 shader_graph_delete_selection :: proc() {
 	if !_sg_keys_target() do return
 	context.allocator = inspector.doc_alloc()
@@ -739,9 +813,12 @@ shader_graph_delete_selection :: proc() {
 shader_graph_can_delete :: proc() -> bool {
 	if !_sg_keys_target() do return keymap.disabled("No shader graph is open")
 	if _sg.cv.sel_link >= 0 && _sg.cv.sel_link < len(_sg.graph.links) do return true
-	n := sg.graph_find_node(_sg.graph, i32(_sg.cv.sel))
-	if n == nil do return keymap.disabled("Nothing is selected")
-	return n.kind != sg.SURFACE_KIND || keymap.disabled("The surface node stays")
+	ids := nc.canvas_selection(&_sg.cv)
+	if len(ids) == 0 do return keymap.disabled("Nothing is selected")
+	for id in ids {
+		if n := sg.graph_find_node(_sg.graph, i32(id)); n != nil && n.kind != sg.SURFACE_KIND do return true
+	}
+	return keymap.disabled("The surface node stays")
 }
 
 @(keymap={name="Shader Graph", window="shader_graph"})

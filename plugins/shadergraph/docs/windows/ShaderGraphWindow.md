@@ -18,9 +18,13 @@ Edits a [shader graph](../assets/ShaderGraph.md). Double-click a `.shadergraph` 
 
 ## Editing
 
-- Drag a node to move it. Drag from an output port to another node's input port to link them, replacing the input's old link. A link that would close a cycle is refused. Click a link to select it.
-- Right-click empty canvas for the add menu: the palette by category, without Surface while the graph has one, then one entry per property, `Property: <name>`, or `Sample Texture: <name>` and `Normal Map: <name>` for a texture. The node lands where the click was.
-- Delete or Backspace removes the selected link, else the selected node. The Surface node is never removed.
+- Click a node to select it. Drag a box on empty canvas to select every node it touches, and hold Shift (or Ctrl, Cmd) to add to the selection or take a node out of it. Drag a selected node to move the whole selection.
+- Right-drag or middle-drag pans, the wheel zooms.
+- Drag from an output port to another node's input port to link them, replacing the input's old link. A link that would close a cycle is refused. Click a link to select it.
+- Drop a link on empty canvas for the add menu, showing only the nodes with an input. The picked node lands with its input where the link was dropped, linked: to its first input of the output's type, or else its first input.
+- Right-click empty canvas, without moving, for the add menu: the palette by category, without Surface while the graph has one, then one entry per property, `Property: <name>`, or `Sample Texture: <name>` and `Normal Map: <name>` for a texture. The node lands where the click was.
+- The arrow at the left of a node's header collapses it to its header, its links meeting the header's edges. The graph saves it.
+- Delete or Backspace removes the selected link, else the selected nodes. The Surface node is never removed.
 
 ## Saving and undo
 

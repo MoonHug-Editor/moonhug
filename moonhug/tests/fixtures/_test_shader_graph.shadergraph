@@ -26,7 +26,8 @@
         [0.0, 0.0, 0.0, 0.0],
         [0.5, 0.0, 0.0, 0.0],
         [1.0, 0.0, 0.0, 0.0]
-      ]
+      ],
+      "collapsed": false
     },
     {
       "id": 2,
@@ -35,7 +36,8 @@
       "property": "rim_color",
       "values": [
 
-      ]
+      ],
+      "collapsed": false
     },
     {
       "id": 3,
@@ -44,7 +46,8 @@
       "property": "rim_power",
       "values": [
 
-      ]
+      ],
+      "collapsed": false
     },
     {
       "id": 4,
@@ -53,7 +56,8 @@
       "property": "",
       "values": [
 
-      ]
+      ],
+      "collapsed": false
     },
     {
       "id": 5,
@@ -62,7 +66,8 @@
       "property": "",
       "values": [
 
-      ]
+      ],
+      "collapsed": false
     },
     {
       "id": 6,
@@ -73,7 +78,8 @@
         [0.0, 0.0, 1.0, 0.0],
         [0.0, 0.0, 1.0, 0.0],
         [3.0, 0.0, 0.0, 0.0]
-      ]
+      ],
+      "collapsed": false
     },
     {
       "id": 7,
@@ -82,7 +88,8 @@
       "property": "",
       "values": [
         [0.0, 0.0, 0.0, 0.0]
-      ]
+      ],
+      "collapsed": false
     },
     {
       "id": 8,
@@ -92,7 +99,8 @@
       "values": [
         [1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0]
-      ]
+      ],
+      "collapsed": false
     },
     {
       "id": 9,
@@ -102,7 +110,8 @@
       "values": [
         [1.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 1.0]
-      ]
+      ],
+      "collapsed": false
     }
   ],
   "links": [

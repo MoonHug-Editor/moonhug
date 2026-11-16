@@ -35,6 +35,7 @@ Shows the [playable graph](../concepts/PlayableGraph.md) that poses the selected
 - Pan and zoom the canvas. Nodes can be dragged, and keep their place until the graph's structure changes, when the layout is computed again.
 - Ports are drawn but take no input: the window edits nothing.
 - The canvas is the editor's shared node canvas (`moonhug/editor/node_canvas`): a pan and zoom grid, node chrome with ports, edges, dragging and selection, a mini-map, and a tree layout. It is presentation and interaction only. Each window that draws on it supplies its own node types, port rules and what an edit does, so a shader graph, a playable graph and a tween tree share the canvas and nothing else.
+- What a window that edits can ask of the canvas: `box_select` for box selection and moving the selection together (`edit.moved`), a `collapsed` flag per node for the fold arrow (`edit.folded`), and `edit.link_dropped` for a link released on empty canvas. The Shader Graph window uses all three ([Shader Graph window](/plugins/shadergraph/docs/windows/ShaderGraphWindow.md)).
 
 ## See also
 
