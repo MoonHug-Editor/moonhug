@@ -72,7 +72,7 @@ slots.write(m.hp, f32(4), slots.scope_of(m.owner))  // through a slot
 - `get` returns the value a reader on the object gets, and false when nothing has the entry or it holds another type.
 - `set` reaches the nearest Blackboard on the object or above it, and returns false when there is none.
 - Code names the entry, and the name finds the entry a reader on the object would get. A name no entry has is an entry of its own, keyed by the name.
-- The value goes on top of the authored entry. It is not saved, and it lasts as long as the component.
+- The value goes on top of the authored entry. It is not saved, and it lasts as long as the component, or until the entry's type is changed: a written value of the old type is dropped.
 - `set` writes on the nearest Blackboard, so it changes the entry for the objects under that Blackboard only. A write through a slot (`slots.write`) goes to the Blackboard that holds the entry, so every reader of the entry gets it: a medic writes the squad's `hp` and the squad's health bar reads it. Under a Blackboard with an override of the entry, the write goes to the override.
 - `blackboard.entry_add(b, name)` makes an entry with a new id, and `blackboard.entry_override(b, from)` one that stands in for an entry above.
 - A reader needs nothing from this package: `slots.get(slot, inline, slots.scope_of(owner))`.

@@ -226,13 +226,9 @@ _type_key_of_guid :: proc(guid: uuid.Identifier) -> TypeKey {
 }
 
 get_guid_by_typeid :: proc(T: typeid) -> uuid.Identifier {
-    if key, ok := typeid_to_type_key_map[T]; ok {
-        return type_key_to_guid_arr[key]
-    }
-    if guid, ok := typeid_to_guid[T]; ok {
-        return guid
-    }
-    panic(fmt.tprintf("Unknown GUID for T: %v", T))
+    guid, ok := get_guid_by_typeid_ok(T)
+    if !ok do panic(fmt.tprintf("Unknown GUID for T: %v", T))
+    return guid
 }
 
 // The guid of `T`, false for a type without @(typ_guid).

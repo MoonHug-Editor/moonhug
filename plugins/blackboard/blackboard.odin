@@ -133,26 +133,22 @@ entry_override :: proc(b: ^Blackboard, from: ^Blackboard_Entry) -> ^Blackboard_E
 	return &b.entries[len(b.entries) - 1]
 }
 
-// The entries of the Blackboards above `b`'s object that `b` has no entry
-// for, nearest first: what entry_override can stand in for. Temp-allocated.
+// The entries of the Blackboards looked in after `b` (next) that `b` has no
+// entry for, nearest first: what entry_override can stand in for. Temp-allocated.
 entries_above :: proc(b: ^Blackboard) -> []^Blackboard_Entry {
 	out := make([dynamic]^Blackboard_Entry, context.temp_allocator)
 	w := engine.ctx_world()
 	if w == nil do return out[:]
-	t := engine.pool_get(&w.transforms, engine.Handle(b.owner))
-	if t == nil do return out[:]
-	up := nearest(engine.Transform_Handle(t.parent.handle))
+	up := next(b)
 	for depth := 0; up != nil && depth < 256; depth += 1 {
-		next: for &e in up.entries {
+		entries: for &e in up.entries {
 			if e.name == "" do continue
 			key := entry_key(&e)
-			for &mine in b.entries do if entry_key(&mine) == key do continue next
-			for have in out do if entry_key(have) == key do continue next
+			for &mine in b.entries do if entry_key(&mine) == key do continue entries
+			for have in out do if entry_key(have) == key do continue entries
 			append(&out, &e)
 		}
-		ut := engine.pool_get(&w.transforms, engine.Handle(up.owner))
-		if ut == nil do break
-		up = nearest(engine.Transform_Handle(ut.parent.handle))
+		up = next(up)
 	}
 	return out[:]
 }
@@ -161,13 +157,10 @@ entries_above :: proc(b: ^Blackboard) -> []^Blackboard_Entry {
 // would get: the nearest Blackboard's entry of that name, else the name
 // itself, an entry code fills.
 key_of :: proc(object: engine.Transform_Handle, name: string) -> slots.Slot {
-	w := engine.ctx_world()
 	b := nearest(object)
-	for depth := 0; w != nil && b != nil && depth < 256; depth += 1 {
+	for depth := 0; b != nil && depth < 256; depth += 1 {
 		for &e in b.entries do if e.name == name do return entry_key(&e)
-		t := engine.pool_get(&w.transforms, engine.Handle(b.owner))
-		if t == nil do break
-		b = nearest(engine.Transform_Handle(t.parent.handle))
+		b = next(b)
 	}
 	return slots.entry(name)
 }
@@ -200,7 +193,18 @@ unset :: proc(object: engine.Transform_Handle, name: string) -> bool {
 	return true
 }
 
-// The nearest Blackboard on `object` or above it, nil for none.
+// The Blackboard looked in after `b`: the one on the nearest object above
+// `b`'s that has one. Nil for none.
+next :: proc(b: ^Blackboard) -> ^Blackboard {
+	w := engine.ctx_world()
+	if w == nil do return nil
+	t := engine.pool_get(&w.transforms, engine.Handle(b.owner))
+	if t == nil do return nil
+	return nearest(engine.Transform_Handle(t.parent.handle))
+}
+
+// The Blackboard on `object`, else the one on the nearest object above it
+// that has one. Nil for none. An object has one component of a type.
 nearest :: proc(object: engine.Transform_Handle) -> ^Blackboard {
 	w := engine.ctx_world()
 	if w == nil do return nil
@@ -298,18 +302,22 @@ _dict :: proc(b: ^Blackboard) -> ^slots.Dict {
 			if key == slots.INLINE || key in st.authored.entries do continue
 			slots.put_raw(&st.authored, key, value_typeid(&e), &e.value)
 		}
+		// A value written over an entry whose type changed since is of the
+		// old type. It would hide the entry from readers of the new type and
+		// refuse their writes, so it goes.
+		stale := make([dynamic]slots.Slot, context.temp_allocator)
+		for key, written in st.written.entries {
+			if authored, has := st.authored.entries[key]; has && authored.type != written.type do append(&stale, key)
+		}
+		for key in stale do delete_key(&st.written.entries, key)
 	}
 	st.written.parent = &st.authored
 	// A write through a slot to an authored entry stays over it, and a change
 	// of the entries, which rebuilds `authored`, keeps it.
 	st.authored.writes = &st.written
-	// The next Blackboard up, or the game-wide dictionary.
+	// The Blackboard looked in next, or the game-wide dictionary.
 	st.authored.parent = slots.global()
-	if w := engine.ctx_world(); w != nil {
-		if t := engine.pool_get(&w.transforms, engine.Handle(b.owner)); t != nil {
-			if up := nearest(engine.Transform_Handle(t.parent.handle)); up != nil do st.authored.parent = _dict(up)
-		}
-	}
+	if after := next(b); after != nil do st.authored.parent = _dict(after)
 	return &st.written
 }
 
@@ -330,14 +338,14 @@ _entries_of :: proc(owner: core.Transform_Handle, T: typeid) -> []slots.Scope_En
 	for depth := 0; b != nil && depth < 256; depth += 1 {
 		t := engine.pool_get(&w.transforms, engine.Handle(b.owner))
 		if t == nil do break
-		next: for &e in b.entries {
+		entries: for &e in b.entries {
 			if e.name == "" || value_typeid(&e) != T do continue
 			key := entry_key(&e)
 			// A nearer Blackboard's entry of the key is the one a slot gets.
-			for have in out do if have.slot == key do continue next
+			for have in out do if have.slot == key do continue entries
 			append(&out, slots.Scope_Entry{slot = key, name = e.name, from = t.name})
 		}
-		b = nearest(engine.Transform_Handle(t.parent.handle))
+		b = next(b)
 	}
 	return out[:]
 }
@@ -350,7 +358,7 @@ _origin_of :: proc(owner: core.Transform_Handle, slot: slots.Slot) -> (slots.Ori
 		t := engine.pool_get(&w.transforms, engine.Handle(b.owner))
 		if t == nil do break
 		for &e in b.entries do if entry_key(&e) == slot do return {name = e.name, from = t.name, holder = b.owner}, true
-		b = nearest(engine.Transform_Handle(t.parent.handle))
+		b = next(b)
 	}
 	return {}, false
 }

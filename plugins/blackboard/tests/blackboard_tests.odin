@@ -211,6 +211,28 @@ test_blackboard_offers_entries_by_type :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(slots.scope_entries(enemy, [3]f32)), 0)
 }
 
+// A value written over an entry does not outlive a change of the entry's
+// type: readers of the new type get the authored value, and can write it.
+@(test)
+test_blackboard_written_value_goes_when_the_type_changes :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	enemy := engine.transform_new("Enemy")
+	b := _board(t, enemy)
+	hp := _number(b, "hp", 10)
+	testing.expect(t, slots.write(hp, f32(4), slots.scope_of(enemy)), "a number is written")
+	testing.expect_value(t, slots.get(hp, f32(0), slots.scope_of(enemy)), 4)
+
+	b.entries[0].value = i32(7) // the designer makes it an Integer
+	testing.expect_value(t, slots.get(hp, i32(0), slots.scope_of(enemy)), 7)
+	testing.expect(t, slots.write(hp, i32(5), slots.scope_of(enemy)), "an integer is written")
+	testing.expect_value(t, slots.get(hp, i32(0), slots.scope_of(enemy)), 5)
+}
+
 // A child of `parent` named `name`, {} for none.
 @(private = "file")
 _child :: proc(parent: engine.Transform_Handle, name: string) -> engine.Transform_Handle {

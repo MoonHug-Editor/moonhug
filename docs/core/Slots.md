@@ -50,8 +50,8 @@ slots.write(h.hp, f32(4), slots.scope_of(h.owner))
 
 - It writes in the first dictionary of the chain that has the entry, so a reader anywhere in that dictionary's reach gets the value.
 - A dictionary can send writes to another one with its `writes` field. A Blackboard's authored entries send them to a layer read before them, so the authored values stay as they are and an edit of them keeps the write.
-- An entry no dictionary has is made in the last dictionary of the chain, the game-wide one for a chain from `scope_of`.
-- Nothing is written, and it returns false, for a slot that is not connected, since the value is then the caller's own field, for an entry of another type, reported once, and for a computed entry, whose value is code's.
+- A write makes no entry. Nothing is written, and it returns false, for an entry no dictionary in the chain has: one made in the game-wide dictionary during a run would outlive the run. Whoever owns the entry makes it first, with `slots.set` or an authored entry.
+- It also returns false for a slot that is not connected, since the value is then the caller's own field, for an entry of another type, reported once, and for a computed entry, whose value is code's.
 
 ## Dictionaries
 
@@ -98,6 +98,8 @@ A slot and its inline field are one row under the slot's name:
 - When the value cannot be read, the row shows only where it would come from, marked `(not set)` when nothing holds the entry.
 - The link button at the end of the label column lists what the slot can take its value from: the inline value, the entries of the type the scope offers the object, such as those of the Blackboards above it, and every declared entry of the type. Picking one is one undo step, applied to every selected object.
 - A connection to an entry nothing offers, such as one of a Blackboard that was removed, is listed as not offered, so it can be seen and replaced.
+- On a prefab instance the row is marked as overridden when the instance changes the inline value or the connection. While the slot is not connected the row's right-click menu is the inline value's, and the link button's is the connection's: Revert of a changed connection is there.
+- `inspect:"-"` on the slot field hides the row, connected or not.
 
 ## Example
 

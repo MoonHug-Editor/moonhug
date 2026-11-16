@@ -1099,24 +1099,28 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
         // A slot (moonhug/libs/slots) and its inline field, `_name`, are one
         // row under the slot's name (slot_row.odin). While the slot is not
         // connected the row is the inline field's, drawn as any field is,
-        // so `i` is that field. Its `inspect:"-"` hides only a row of its own.
+        // so `i` is that field.
         i := fi
         slot: Slot_Row
         if types[fi].id == typeid_of(slots.Slot) {
             slot = slot_row_of(ptr, tid, fi, path_prefix)
             if slot.inline_index >= 0 && slot.ptr^ == slots.INLINE do i = slot.inline_index
         }
-        field_info := reflect.struct_field_at(tid, i)
-        if i == fi {
-            inspect_val, has_inspect := tag_value(field_info.tag, TAG_INSPECT)
+        // What hides the row are the tags of the field the row is for: the
+        // slot's on a slot's row, not its inline field's, whose `inspect:"-"`
+        // only keeps it from a row of its own.
+        {
+            own := reflect.struct_field_at(tid, fi)
+            inspect_val, has_inspect := tag_value(own.tag, TAG_INSPECT)
             if has_inspect && inspect_val == "-" {
                 continue
             }
-            json_val, has_json := tag_value(field_info.tag, TAG_JSON)
+            json_val, has_json := tag_value(own.tag, TAG_JSON)
             if !has_inspect && has_json && json_val == "-" {
                 continue
             }
         }
+        field_info := reflect.struct_field_at(tid, i)
 
         field_name := names[i]
         // What the row is called: the slot's name on a slot's row.
@@ -1133,6 +1137,11 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
         is_field_overridden := false
         if nested_lid != 0 && host_tH != {} {
             is_field_overridden = override_is_overridden(host_tH, nested_lid, full_path)
+            // A slot's row shows its inline field while the slot is not
+            // connected. The instance may override the slot itself (it was
+            // connected in the prefab): the row is marked for that too, and
+            // the link button reverts it (slot_row_link).
+            if i != fi && !is_field_overridden do is_field_overridden = override_is_overridden(host_tH, nested_lid, slot.path)
         }
 
 		ctx := DrawContext{is_visible = true, is_pre = true, field_ptr = field_ptr, field_type = field_type.id, field_label = c_field_name, owner_ptr = ptr, owner_type = tid}

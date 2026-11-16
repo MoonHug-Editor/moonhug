@@ -177,25 +177,15 @@ global :: proc() -> ^Dict {
 
 // Sets entry `name` of `d` to `value`.
 set :: proc(d: ^Dict, name: string, value: $T) {
-	#assert(size_of(T) <= MAX_VALUE_SIZE, "a slot value holds MAX_VALUE_SIZE bytes at most")
-	if name == "" do return
-	_ensure(d)
-	e := Entry{type = T}
-	v := value
-	runtime.mem_copy(&e.data[0], &v, size_of(T))
-	d.entries[entry(name)] = e
+	put(d, entry(name), value)
 }
 
 // Sets the entry `slot` connects to. What `set` does, for a caller that holds
 // the slot and not the name.
 put :: proc(d: ^Dict, slot: Slot, value: $T) {
 	#assert(size_of(T) <= MAX_VALUE_SIZE, "a slot value holds MAX_VALUE_SIZE bytes at most")
-	if slot == INLINE do return
-	_ensure(d)
-	e := Entry{type = T}
 	v := value
-	runtime.mem_copy(&e.data[0], &v, size_of(T))
-	d.entries[slot] = e
+	put_raw(d, slot, T, &v)
 }
 
 // Sets the entry `slot` connects to, to the `T` at `value`, for a caller that
@@ -244,21 +234,8 @@ get :: proc(slot: Slot, inline: $T, d: ^Dict) -> T {
 // no dictionary in the chain has, and for one of another type, which is
 // reported once.
 lookup :: proc(slot: Slot, $T: typeid, d: ^Dict) -> (value: T, ok: bool) {
-	if slot == INLINE do return
-	for at := d; at != nil; at = at.parent {
-		e, has := &at.entries[slot]
-		if !has do continue
-		if e.type != T {
-			_report_type(slot, e.type, T)
-			return
-		}
-		if e.read != nil {
-			e.read(&value, e.user)
-		} else {
-			runtime.mem_copy(&value, &e.data[0], size_of(T))
-		}
-		return value, true
-	}
+	#assert(size_of(T) <= MAX_VALUE_SIZE, "a slot value holds MAX_VALUE_SIZE bytes at most")
+	ok = lookup_raw(slot, T, d, &value)
 	return
 }
 
@@ -273,18 +250,18 @@ has :: proc(slot: Slot, d: ^Dict) -> bool {
 
 // Writes `value` to the entry `slot` is connected to, for every reader of
 // it: in the first dictionary of `d`'s chain that has the entry, or where
-// that dictionary sends writes (`Dict.writes`). An entry no dictionary has
-// goes to the last one in the chain, the game-wide dictionary for a chain
-// from `scope_of`.
-// False, and nothing written, for INLINE, where the value is the caller's own
-// field, for an entry of another type than `T`, which is reported once, and
-// for a computed entry (`set_proc`), whose value is code's.
+// that dictionary sends writes (`Dict.writes`).
+// False, and nothing written:
+// - for INLINE, where the value is the caller's own field,
+// - for an entry no dictionary in the chain has. A write makes no entry:
+//   one made in the game-wide dictionary during a run would outlive the run.
+//   Whoever owns the entry makes it first, with `set` or an authored entry.
+// - for an entry of another type than `T`, which is reported once,
+// - for a computed entry (`set_proc`), whose value is code's.
 write :: proc(slot: Slot, value: $T, d: ^Dict) -> bool {
 	#assert(size_of(T) <= MAX_VALUE_SIZE, "a slot value holds MAX_VALUE_SIZE bytes at most")
-	if slot == INLINE || d == nil do return false
-	last := d
+	if slot == INLINE do return false
 	for at := d; at != nil; at = at.parent {
-		last = at
 		e, has := &at.entries[slot]
 		if !has do continue
 		if e.type != T {
@@ -295,8 +272,7 @@ write :: proc(slot: Slot, value: $T, d: ^Dict) -> bool {
 		put(at.writes != nil ? at.writes : at, slot, value)
 		return true
 	}
-	put(last, slot, value)
-	return true
+	return false
 }
 
 @(private)

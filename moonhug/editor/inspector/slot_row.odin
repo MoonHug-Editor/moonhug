@@ -118,6 +118,10 @@ slot_row_link :: proc(row: ^Slot_Row, offset: uintptr) {
 	finished := field_edit_row(row.ptr, typeid_of(slots.Slot), offset, row.name, _draw_link, "##slot_link")
 	field_edit_set_path(prev_path)
 	record_nested_override(row.ptr, typeid_of(slots.Slot), row.path, finished)
+	// While the slot is not connected the row and its menu are the inline
+	// field's. The slot's own menu is on the button then: Revert, when a
+	// prefab instance overrides the connection, is here.
+	if row.ptr^ == slots.INLINE do draw_field_context_menu(row.ptr, typeid_of(slots.Slot), row.path)
 }
 
 @(private = "file")

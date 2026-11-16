@@ -91,10 +91,10 @@ test_slot_write_lands_where_the_entry_is :: proc(t: ^testing.T) {
 	testing.expect_value(t, slots.get(hp, f32(0), &game), 4)
 	game.writes = nil
 
-	// An entry nothing has goes to the end of the chain.
+	// A write makes no entry: one nothing has is refused and stays absent.
 	fresh := slots.entry("test_slot_w_fresh")
-	testing.expect(t, slots.write(fresh, i32(5), &run), "a write to an entry nothing has")
-	testing.expect_value(t, slots.get(fresh, i32(0), &game), 5)
+	testing.expect(t, !slots.write(fresh, i32(5), &run), "a write to an entry nothing has")
+	testing.expect(t, !slots.has(fresh, &run), "the write made no entry")
 
 	// Nothing is written for these.
 	testing.expect(t, !slots.write(slots.INLINE, f32(1), &run), "INLINE is the caller's own field")
