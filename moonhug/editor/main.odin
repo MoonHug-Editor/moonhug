@@ -284,6 +284,7 @@ main :: proc() {
         // imgui reads the queue (mcp_input.odin).
         mcp_bridge_input_feed()
         im.NewFrame()
+        mcp_bridge_frame_began() // the bake of ordinary text, for item_rect (mcp_input.odin)
         // An open dialog owns the keyboard, before anything reads a key
         // (widgets/dialog.odin).
         widgets.dialog_frame_begin()

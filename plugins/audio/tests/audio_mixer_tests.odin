@@ -9,10 +9,12 @@ import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:math"
 import "core:os"
+import "core:strings"
 import "core:testing"
 import sdl "vendor:sdl3"
 import mix "vendor:sdl3/mixer"
 import asset_pipeline "moonhug:editor/assets"
+import "moonhug:libs/catalog"
 import "moonhug:registration"
 import "moonhug:packages/engine"
 import audio "moonhug:packages/audio"
@@ -288,4 +290,39 @@ test_audio_source_loops_through_its_output_and_filters :: proc(t: ^testing.T) {
 	testing.expect(t, audio.audio_play(src), "played again without loop")
 	_render(0.5)
 	testing.expect(t, !audio.audio_is_playing(src), "and it stops at the clip's end")
+}
+
+// A game's export ships a mixer a source's `output` names (a group's id in
+// it), and the game reads it from the export.
+@(test)
+test_audio_mixer_ships_when_a_scene_names_a_group :: proc(t: ^testing.T) {
+	src_dir :: "moonhug/tests/fixtures/_audio_mixer_export_tmp"
+	mixer :: src_dir + "/Main.mixer"
+	scene :: src_dir + "/boot.scene"
+	data_dir :: src_dir + "_data"
+	os.make_directory(src_dir)
+	defer {
+		_remove_tree(src_dir)
+		_remove_tree(data_dir)
+		_remove_tree(engine.library_dir())
+	}
+	testing.expect(t, os.write_entire_file(mixer, transmute([]byte)string(`{"__type_guid": "cf6fc86b-7790-48e0-b534-e4508d1cf3bd", "groups": [{"id": 1, "parent": 0, "name": "Master"}, {"id": 2, "parent": 1, "name": "Music"}], "next_id": 3}`)) == nil)
+	testing.expect(t, os.write_entire_file(scene, transmute([]byte)string("{}")) == nil)
+	asset_pipeline.asset_pipeline_init()
+	engine.asset_db_init(src_dir)
+	raw, ok := engine.asset_db_get_guid(mixer)
+	if !testing.expect(t, ok, "the scan knows the mixer") do return
+	guid := uuid.to_string(raw, context.temp_allocator)
+	// The source's output, as a scene file writes it: the group by id.
+	testing.expect(t, os.write_entire_file(scene, transmute([]byte)strings.concatenate({`{"output": {"pptr": {"local_id": 2, "guid": "`, guid, `"}}}`}, context.temp_allocator)) == nil)
+	testing.expect(t, catalog.build_to_file("", {src_dir}, engine.library_dir(), engine.asset_catalog_path()), "the catalog builds")
+	engine.asset_db_shutdown()
+	testing.expect(t, catalog.export_from(engine.asset_catalog_path(), data_dir, boot_scene = scene), "the export succeeds")
+
+	_remove_tree(src_dir)
+	testing.expect(t, engine.asset_db_init_from_catalog(data_dir + "/catalog.json"), "the game reads the export")
+	defer engine.asset_db_shutdown()
+	m, loaded := engine.asset_load_as(engine.Asset_GUID(raw), audio.AudioMixer)
+	defer audio.type_cleanup_AudioMixer(&m)
+	testing.expect(t, loaded && len(m.groups) == 2 && m.groups[1].name == "Music", "the shipped mixer loads with its groups")
 }

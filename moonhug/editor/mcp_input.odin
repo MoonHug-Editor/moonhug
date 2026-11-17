@@ -28,6 +28,7 @@ import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
 import "core:math"
+import "core:slice"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import mcp "moonhug:editor/mcp"
@@ -426,8 +427,16 @@ _mcp_item_rects_poll :: proc() {
 			case:                owned = _owned_by(run.owner, probe.window)
 			}
 			if !owned do continue
-			if !strings.contains(strings.to_lower(run.text, context.temp_allocator), q) do continue
-			append(&matches, _Item_Match{"text", run.text, run.min.x - vp.Pos.x, run.min.y - vp.Pos.y, run.max.x - run.min.x, run.max.y - run.min.y})
+			lower := strings.to_lower(run.text, context.temp_allocator)
+			at := strings.index(lower, q)
+			if at < 0 do continue
+			// The matched text's own span, when the lowercase text lines up
+			// byte for byte with the run's.
+			x0, x1 := run.min.x, run.max.x
+			if len(lower) == len(run.lefts) && len(q) > 0 {
+				x0, x1 = run.lefts[at], run.rights[at + len(q) - 1]
+			}
+			append(&matches, _Item_Match{"text", run.text, x0 - vp.Pos.x, run.min.y - vp.Pos.y, x1 - x0, run.max.y - run.min.y})
 		}
 		if len(matches) == 0 {
 			_mcp_respond_error(probe.id, "not_found", fmt.tprintf("no row or text %q drawn in %q this frame", probe.label, title))
@@ -461,27 +470,72 @@ _Text_Run :: struct {
 	owner:    string, // the imgui window whose draw list drew it
 	text:     string,
 	min, max: [2]f32, // screen coordinates
+	// The left and right edge of each byte of `text`: a match inside the
+	// run gets its own rectangle, so "Remove" in "Add Group  Remove" is the
+	// button on the right.
+	lefts:    []f32,
+	rights:   []f32,
 }
 
-// Every visible glyph of every font, at the size each font was last drawn
-// at, keyed by its rectangle in the atlas texture. Temp allocated.
+// Every visible glyph of every font at the sizes its text is drawn at, keyed
+// by its rectangle in the atlas texture. Temp allocated.
+//
+// A font is baked once per size it is drawn at. A font's LastBaked is the
+// size it was drawn at last, which is not always the size most of its text
+// has: the Project window's grid draws labels at a size of their own. So the
+// bake ordinary text is drawn with, noted as the frame began, is read too.
+// Nothing is asked of the atlas here: a bake made or a glyph loaded now
+// could repack it, and the frame being decoded would no longer match.
 @(private = "file")
 _glyph_table :: proc(atlas: ^im.FontAtlas) -> []_Glyph_Ref {
 	out := make([dynamic]_Glyph_Ref, context.temp_allocator)
+	base_read := false
 	for font in ([^]^im.Font)(atlas.Fonts.Data)[:atlas.Fonts.Size] {
 		if font == nil || font.LastBaked == nil do continue
-		baked := font.LastBaked
-		space := baked.Size * 0.25
-		if g := im.FontBaked_FindGlyphNoFallback(baked, ' '); g != nil do space = g.AdvanceX
-		for g in ([^]im.FontGlyph)(baked.Glyphs.Data)[:baked.Glyphs.Size] {
-			if g.Visible == 0 do continue
-			append(&out, _Glyph_Ref{
-				uv0 = {g.U0, g.V0}, uv1 = {g.U1, g.V1}, codepoint = rune(g.Codepoint),
-				x0 = g.X0, y0 = g.Y0, advance = g.AdvanceX, size = baked.Size, space = space,
-			})
+		_glyph_table_add(&out, font.LastBaked)
+		if font.LastBaked == _base_bake do base_read = true
+	}
+	if _base_bake != nil && !base_read do _glyph_table_add(&out, _base_bake)
+	return out[:]
+}
+
+// The bake of ordinary text: the default font at the base size, as the frame
+// began (mcp_bridge_frame_began).
+@(private = "file")
+_base_bake: ^im.FontBaked
+
+// How far into an ImGuiWindow its draw list is, measured once on imgui's
+// fallback window: what ties a drawn list to its window (_text_runs).
+@(private = "file")
+_draw_list_offset: uintptr
+
+// Right after im.NewFrame, when imgui's current window is its fallback
+// window: notes the bake ordinary text is drawn with, which a font's
+// LastBaked may no longer be when the frame is decoded, and measures where a
+// window keeps its draw list.
+mcp_bridge_frame_began :: proc() {
+	_base_bake = im.GetFontBaked()
+	if _draw_list_offset == 0 {
+		if w := im.GetCurrentWindow(); w != nil {
+			if dl := im.GetWindowDrawList(); uintptr(dl) > uintptr(w) do _draw_list_offset = uintptr(dl) - uintptr(w)
 		}
 	}
-	return out[:]
+}
+
+@(private = "file")
+_glyph_table_add :: proc(out: ^[dynamic]_Glyph_Ref, baked: ^im.FontBaked) {
+	// The space's advance from the advance table, which loads nothing.
+	space := baked.Size * 0.25
+	if int(baked.IndexAdvanceX.Size) > int(' ') {
+		if adv := ([^]f32)(baked.IndexAdvanceX.Data)[' ']; adv > 0 do space = adv
+	}
+	for g in ([^]im.FontGlyph)(baked.Glyphs.Data)[:baked.Glyphs.Size] {
+		if g.Visible == 0 do continue
+		append(out, _Glyph_Ref{
+			uv0 = {g.U0, g.V0}, uv1 = {g.U1, g.V1}, codepoint = rune(g.Codepoint),
+			x0 = g.X0, y0 = g.Y0, advance = g.AdvanceX, size = baked.Size, space = space,
+		})
+	}
 }
 
 // The glyph a quad with texture rectangle uv0..uv1 was drawn from. A glyph
@@ -514,12 +568,41 @@ _text_runs :: proc() -> []_Text_Run {
 	run: _Text_Run
 	open := false
 	pen_end, line_top: f32
-	flush := proc(out: ^[dynamic]_Text_Run, run: ^_Text_Run, b: ^strings.Builder, open: ^bool) {
+	lefts := make([dynamic]f32, context.temp_allocator)
+	rights := make([dynamic]f32, context.temp_allocator)
+	flush := proc(out: ^[dynamic]_Text_Run, run: ^_Text_Run, b: ^strings.Builder, open: ^bool, lefts, rights: ^[dynamic]f32) {
 		if !open^ do return
 		run.text = strings.clone(strings.to_string(b^), context.temp_allocator)
+		run.lefts = slice.clone(lefts[:], context.temp_allocator)
+		run.rights = slice.clone(rights[:], context.temp_allocator)
 		append(out, run^)
 		strings.builder_reset(b)
+		clear(lefts)
+		clear(rights)
 		open^ = false
+	}
+
+	// Each draw list's window, by the window's name now. A draw list's own
+	// _OwnerName points at the name the window had when it was made: after
+	// a title change (" *" on an edited document) it is freed memory. A
+	// window's draw list is a field of the window, at the same offset in
+	// every window (measured by mcp_bridge_frame_began), so a drawn list at
+	// that offset from a window is that window's. Only window addresses and
+	// names are read: the binding's ImGuiWindow does not match imgui's
+	// layout as far as its draw list fields.
+	owners := make(map[^im.DrawList]string, context.temp_allocator)
+	if ctx := im.GetCurrentContext(); ctx != nil && _draw_list_offset > 0 {
+		by_list := make(map[uintptr]^im.Window, int(ctx.Windows.Size), context.temp_allocator)
+		for w in ([^]^im.Window)(ctx.Windows.Data)[:ctx.Windows.Size] do if w != nil {
+			by_list[uintptr(w) + _draw_list_offset] = w
+		}
+		pio := im.GetPlatformIO()
+		for vp in ([^]^im.Viewport)(pio.Viewports.Data)[:pio.Viewports.Size] {
+			if vp == nil || vp.DrawData_ == nil || !vp.DrawData_.Valid do continue
+			for list in ([^]^im.DrawList)(vp.DrawData_.CmdLists.Data)[:vp.DrawData_.CmdLists.Size] {
+				if w, ok := by_list[uintptr(list)]; ok do owners[list] = string(w.Name)
+			}
+		}
 	}
 
 	// Every viewport's draw data: a popup that reaches past the editor's
@@ -529,8 +612,12 @@ _text_runs :: proc() -> []_Text_Run {
 		if vp == nil || vp.DrawData_ == nil || !vp.DrawData_.Valid do continue
 		dd = vp.DrawData_
 		for list in ([^]^im.DrawList)(dd.CmdLists.Data)[:dd.CmdLists.Size] {
-			if list == nil || list._OwnerName == nil do continue
-			owner := string(list._OwnerName)
+			if list == nil do continue
+			owner, known := owners[list]
+			if !known {
+				if list._OwnerName == nil do continue
+				owner = string(list._OwnerName)
+			}
 			verts := ([^]im.DrawVert)(list.VtxBuffer.Data)
 			idx := ([^]im.DrawIdx)(list.IdxBuffer.Data)
 			for &cmd in ([^]im.DrawCmd)(list.CmdBuffer.Data)[:list.CmdBuffer.Size] {
@@ -552,20 +639,28 @@ _text_runs :: proc() -> []_Text_Run {
 					top := v0.pos.y - g.y0
 					same := open && run.owner == owner && math.abs(top - line_top) < 0.75 && pen >= pen_end - 0.75 && pen - pen_end < g.size * 1.5
 					if !same {
-						flush(&out, &run, &b, &open)
+						flush(&out, &run, &b, &open, &lefts, &rights)
 						run = {owner = owner, min = v0.pos, max = v2.pos}
 						open = true
 					} else if gap := pen - pen_end; gap > g.space * 0.5 {
-						for _ in 0 ..< max(int(math.round(gap / g.space)), 1) do strings.write_byte(&b, ' ')
+						for _ in 0 ..< max(int(math.round(gap / g.space)), 1) {
+							strings.write_byte(&b, ' ')
+							append(&lefts, pen_end)
+							append(&rights, pen)
+						}
 					}
-					strings.write_rune(&b, g.codepoint)
+					n, _ := strings.write_rune(&b, g.codepoint)
+					for _ in 0 ..< n {
+						append(&lefts, v0.pos.x)
+						append(&rights, v2.pos.x)
+					}
 					run.min = {min(run.min.x, v0.pos.x), min(run.min.y, v0.pos.y)}
 					run.max = {max(run.max.x, v2.pos.x), max(run.max.y, v2.pos.y)}
 					pen_end = pen + g.advance
 					line_top = top
 				}
 			}
-			flush(&out, &run, &b, &open)
+			flush(&out, &run, &b, &open, &lefts, &rights)
 		}
 	}
 	return out[:]

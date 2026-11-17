@@ -1,8 +1,9 @@
 package scenarios
 
 // The Audio Mixer in the Inspector (plugins/audio/editor/mixer_editor.odin):
-// a selected mixer file shows its groups as a tree, Add Group puts a group
-// under the selected one, Remove takes it away, each as an edit of the file.
+// a selected mixer file shows its groups as a tree, a group dragged onto
+// another moves under it, Add Group puts a group under the selected one,
+// Remove takes it away, each as an edit of the file that Undo takes back.
 
 import "core:encoding/json"
 import "core:fmt"
@@ -40,15 +41,25 @@ audio_mixer_groups_edit_in_the_inspector :: proc(t: ^testing.T) {
 	frames(r, 2)
 	music, shown := item_rect(r, "Project Inspector", "Music")
 	if !testing.expectf(t, shown, "the Inspector shows the mixer's groups") do return
-	_, dialogue_shown := item_rect(r, "Project Inspector", "Dialogue")
-	testing.expect(t, dialogue_shown, "every one of them")
+	dialogue, dialogue_shown := item_rect(r, "Project Inspector", "Dialogue")
+	if !testing.expect(t, dialogue_shown, "every one of them") do return
+
+	// Dialogue dragged onto Music moves under it, and Undo takes it back.
+	drag_mouse(r, dialogue.x + 10, dialogue.y + dialogue[3] / 2, music.x + 10, music.y + music[3] / 2)
+	frames(r, 2)
+	parent_of :: proc(groups: json.Array, id: i64) -> i64 {
+		for g in groups do if as_int(at(g, "id")) == id do return as_int(at(g, "parent"))
+		return -1
+	}
+	testing.expectf(t, parent_of(_groups(r), 3) == 2, "the drag moves Dialogue under Music: %v", _groups(r))
+	call(r, "invoke_menu", `{"path":"Edit/Undo"}`)
+	frames(r, 2)
+	testing.expectf(t, parent_of(_groups(r), 3) == 1, "Undo moves it back: %v", _groups(r))
 
 	// Music selected, Add Group: a group under Music.
 	click(r, music.x + 10, music.y + music[3] / 2)
 	add, has_add := item_rect(r, "Project Inspector", "Add Group")
 	if !testing.expect(t, has_add, "the Add Group button") do return
-	remove, has_remove := item_rect(r, "Project Inspector", "Remove")
-	if !testing.expect(t, has_remove, "the Remove button") do return
 	click(r, add.x + 10, add.y + add[3] / 2)
 	frames(r, 2)
 	groups := _groups(r)
@@ -64,11 +75,19 @@ audio_mixer_groups_edit_in_the_inspector :: proc(t: ^testing.T) {
 	saved, _ := at(project_json(r, _PATH), "groups").(json.Array)
 	testing.expectf(t, len(saved) == 4, "Save writes the new group: %v", len(saved))
 
-	// It is selected now: Remove takes it away. The new tree row moved the
-	// button one row (19 points) down. (Read before the add: item_rect reads
-	// text from each font's last baked size only, and the Inspector draws a
-	// second size once a group is added.)
-	click(r, remove.x + remove[2] - 10, remove.y + 19 + remove[3] / 2)
+	// Undo takes the new group away, Redo brings it back.
+	call(r, "invoke_menu", `{"path":"Edit/Undo"}`)
+	frames(r, 2)
+	testing.expectf(t, len(_groups(r)) == 3, "Undo takes the added group away: %v", len(_groups(r)))
+	call(r, "invoke_menu", `{"path":"Edit/Redo"}`)
+	frames(r, 2)
+	testing.expectf(t, len(_groups(r)) == 4, "Redo brings it back: %v", len(_groups(r)))
+
+	// Selected, Remove takes it away.
+	click(r, music.x + 30, music.y + music[3] / 2 + 19) // the new group's row, under Music
+	remove, has_remove := item_rect(r, "Project Inspector", "Remove")
+	if !testing.expect(t, has_remove, "the Remove button") do return
+	click(r, remove.x + remove[2] / 2, remove.y + remove[3] / 2)
 	frames(r, 2)
 	testing.expectf(t, len(_groups(r)) == 3, "Remove takes the new group away: %v", len(_groups(r)))
 
