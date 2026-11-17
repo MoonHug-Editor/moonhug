@@ -335,13 +335,19 @@ _project_go_up :: proc() {
 }
 
 // JSON asset files the project inspector opens directly (serialized
-// __type_guid instances): generic .asset plus typed extensions (.mat).
+// __type_guid instances): generic .asset, .mat, and the file of every
+// @(asset) type no importer reads (.noise, .renderpipeline, .mixer).
 //
 // A .anim is NOT here: it is importer-backed, so it routes to the import
 // settings panel below and its wrap, frame rate, cycle offset and trim are
 // edited there — in the .meta, which survives re-extracting the model.
 _is_inspector_asset :: proc(path: string) -> bool {
-    return strings.has_suffix(path, ".asset") || strings.has_suffix(path, ".mat") || strings.has_suffix(path, ".noise")
+    if strings.has_suffix(path, ".asset") || strings.has_suffix(path, ".mat") do return true
+    // The file of an @(asset) type no importer reads: its document.
+    kind := strings.trim_prefix(strings.to_lower(filepath.ext(path), context.temp_allocator), ".")
+    if kind == "" do return false
+    for c in subassets.creatables() do if c.kind == kind do return subassets.can_live_inside(kind)
+    return false
 }
 
 // Brings every Project Inspector instance in line with what it should show

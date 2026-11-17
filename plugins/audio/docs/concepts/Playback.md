@@ -5,7 +5,7 @@ weight: 10
 tags: ["audio", "concepts"]
 ---
 
-How the plugin plays sound. The code is `playback.odin`, `clip.odin` and `spatial.odin`.
+How the plugin plays sound. The code is `playback.odin`, `clip.odin`, `spatial.odin`, `mixer_runtime.odin`, `filters.odin` and `dsp.odin`.
 
 ## The mixer and its tracks
 
@@ -13,6 +13,14 @@ How the plugin plays sound. The code is `playback.odin`, `clip.odin` and `spatia
 - `clip_load(guid)` loads a clip's artifact once and caches it by guid, the way the engine caches textures. A missing artifact is imported on demand.
 - Every frame (`@(update)`) the plugin finds the listener, starts `play_on_awake` sources, applies each playing source's volume, pitch, mute, fade and pan, and returns finished one-shots to the pool. It runs in play mode in the editor and always in a game.
 - Leaving play mode stops every source and clears every one-shot.
+- A track starts with its loop count in `PlayTrack`'s options: SDL3_mixer ignores `SetTrackLoops` on a stopped track.
+
+## Mixer groups and filters
+
+- A track plays through the [Audio Mixer](../assets/AudioMixer.md) group its source's `output` names (`mixer_route`). The group's SDL3_mixer group runs the group's volume and effects and each parent's on the mixed tracks.
+- A source's own track runs its object's filters in a callback of its own: [AudioHighPassFilter](../components/AudioHighPassFilter.md), [AudioLowPassFilter](../components/AudioLowPassFilter.md), then the occlusion's low pass (`Source_Occlusion`, set each frame by [AudioOcclusion](../extends/physics3d/components/AudioOcclusion.md)).
+- The callbacks run on the audio thread inside the mixer's lock. The main thread changes what they read only under `mix.LockMixer`, once per frame and only when a value changed.
+- SDL3_mixer's binding declares its callback types without the C calling convention, so the callbacks are `proc "c"`, transmuted to the binding's type.
 
 ## Headless runs
 
@@ -22,8 +30,10 @@ Tests and tools have no audio device. The mixer then falls back to one with no d
 
 Sounds with no component to own them:
 
-- `play_clip(guid, volume := 1)` plays in 2D.
-- `play_clip_at_point(guid, position, volume := 1)` plays fully spatial at a world position, with distances 1 and 500, and keeps panning as the listener moves.
+- `play_clip(guid, volume := 1, output := {})` plays in 2D.
+- `play_clip_at_point(guid, position, volume := 1, output := {})` plays fully spatial at a world position, with distances 1 and 500, and keeps panning as the listener moves.
+
+`output` is the mixer group a one-shot plays through, none by default.
 
 At most `MAX_ONE_SHOTS` (64) play at once. One past that takes the place of the quietest at the listener, its volume times its spatial gain. A one-shot that ends gives its track back to a pool, and the next one-shot plays on it instead of making a track.
 
@@ -39,4 +49,4 @@ The [AudioListener](../components/AudioListener.md) is the ear. A source with `s
 
 ## Timeline voices
 
-The sequencer's [TrackAudio](../extends/sequencer/components/TrackAudio.md) plays each clip on a voice of its own with `voice_start`, and writes the source's settings onto it with `source_apply_gains` and the clip's weight. That is the same proc a source's own track goes through, so a timeline voice sounds like the source it names.
+The sequencer's [TrackAudio](../extends/sequencer/components/TrackAudio.md) plays each clip on a voice of its own with `voice_start`, through the source's `output` group, and writes the source's settings onto it with `source_apply_gains` and the clip's weight. That is the same proc a source's own track goes through, so a timeline voice sounds like the source it names. The source's filter components do not filter its voices.

@@ -142,7 +142,7 @@ _audio_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 			}
 			_voice_drop(st, c.node)
 			speed := c.speed if c.speed > 0 else 1
-			voice = audio.voice_start(engine.asset_key(asset), (ctx.time - c.start) * speed)
+			voice = audio.voice_start(engine.asset_key(asset), (ctx.time - c.start) * speed, src.output)
 			if voice == nil do continue
 			st.voices[c.node] = voice
 		}

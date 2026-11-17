@@ -20,6 +20,7 @@ Torch           AudioSource: clip fire_loop.ogg, loop on, spatial_blend 1, max_d
 | Field | Default | What it does |
 |---|---|---|
 | `clip` | none | The audio file to play: `.mp3`, `.wav` or `.ogg`. |
+| `output` | none | The [Audio Mixer](../assets/AudioMixer.md) group it plays through. None plays straight to the output. |
 | `volume` | 1 | This source's volume, on top of the gain baked into the clip. |
 | `pitch` | 1 | The playback speed ratio. 2 plays an octave up and twice as fast. |
 | `mute` | off | Silences the source without stopping it. |
@@ -33,6 +34,8 @@ Torch           AudioSource: clip fire_loop.ogg, loop on, spatial_blend 1, max_d
 
 - Each playing source has its own track in the mixer, made the first time it plays and freed with the component.
 - Volume, pitch, mute and the spatial fade and pan apply every frame, so inspector edits are audible live.
+- Its sound goes through its `output` group, that group's parents and their effects. A changed `output` is heard at once.
+- An [AudioLowPassFilter](AudioLowPassFilter.md) or [AudioHighPassFilter](AudioHighPassFilter.md) on its object filters it, and an [AudioOcclusion](../extends/physics3d/components/AudioOcclusion.md) muffles it behind walls.
 - Disabling a source stops it. Enabling it again replays it when `play_on_awake` is on.
 - Sources play in play mode in the editor and always in a game. Leaving play mode stops them all.
 - A reimport of the clip, after its settings change, restarts a `play_on_awake` source with the new sound.
@@ -55,7 +58,7 @@ if audio.audio_is_playing(src) do audio.audio_stop(src, fade_out_ms = 500)
 
 ## Limits
 
-- No priority, no Doppler and no output group.
+- No priority and no Doppler.
 
 ## See also
 

@@ -96,15 +96,17 @@ audio_play :: proc(src: ^AudioSource, fade_in_ms: i64 = 0) -> bool {
 		src.track = mix.CreateTrack(_audio_state.mixer)
 		if src.track == nil do return false
 	}
+	_source_route(src)
 	if !mix.SetTrackAudio(src.track, clip.audio) do return false
 	_ = mix.SetTrackGain(src.track, src.volume)
-	_ = mix.SetTrackLoops(src.track, src.loop ? -1 : 0)
-	props: sdl.PropertiesID
+	// Starting a track sets its loop count from the options: SetTrackLoops
+	// on a stopped track does nothing.
+	props := sdl.CreateProperties()
+	defer sdl.DestroyProperties(props)
+	_ = sdl.SetNumberProperty(props, mix.PROP_PLAY_LOOPS_NUMBER, src.loop ? -1 : 0)
 	if fade_in_ms > 0 {
-		props = sdl.CreateProperties()
 		_ = sdl.SetNumberProperty(props, mix.PROP_PLAY_FADE_IN_MILLISECONDS_NUMBER, sdl.Sint64(fade_in_ms))
 	}
-	defer if props != 0 do sdl.DestroyProperties(props)
 	return mix.PlayTrack(src.track, props)
 }
 
@@ -144,23 +146,30 @@ _free_one_shot_tracks: [dynamic]^mix.Track
 // The last known listener (refreshed by audio_update) — lets a one-shot
 // spatialize on its very first frame.
 _listener: struct {
-	pos: [3]f32,
-	rot: [4]f32,
-	ok:  bool,
+	pos:   [3]f32,
+	rot:   [4]f32,
+	owner: engine.Transform_Handle,
+	ok:    bool,
 }
 
-// 2D one-shot at plain volume.
-play_clip :: proc(guid: engine.Asset_GUID, volume: f32 = 1) -> bool {
-	return _one_shot_start(guid, {}, volume, spatial = false)
+// The ear this frame: the first enabled AudioListener's world position and
+// rotation, and its object. ok is false with none.
+audio_listener :: proc() -> (pos: [3]f32, rot: [4]f32, owner: engine.Transform_Handle, ok: bool) {
+	return _listener.pos, _listener.rot, _listener.owner, _listener.ok
+}
+
+// 2D one-shot at plain volume, through the mixer group `output` names.
+play_clip :: proc(guid: engine.Asset_GUID, volume: f32 = 1, output := engine.PPtr{}) -> bool {
+	return _one_shot_start(guid, {}, volume, spatial = false, output = output)
 }
 
 // A one-shot spatialized at a world position
 // (full blend, default 1/500 distances).
-play_clip_at_point :: proc(guid: engine.Asset_GUID, position: [3]f32, volume: f32 = 1) -> bool {
-	return _one_shot_start(guid, position, volume, spatial = true)
+play_clip_at_point :: proc(guid: engine.Asset_GUID, position: [3]f32, volume: f32 = 1, output := engine.PPtr{}) -> bool {
+	return _one_shot_start(guid, position, volume, spatial = true, output = output)
 }
 
-_one_shot_start :: proc(guid: engine.Asset_GUID, position: [3]f32, volume: f32, spatial: bool) -> bool {
+_one_shot_start :: proc(guid: engine.Asset_GUID, position: [3]f32, volume: f32, spatial: bool, output: engine.PPtr) -> bool {
 	clip, ok := clip_load(guid)
 	if !ok do return false
 	// Ended voices first, so a full list is full of sounds still playing.
@@ -175,6 +184,8 @@ _one_shot_start :: proc(guid: engine.Asset_GUID, position: [3]f32, volume: f32, 
 	}
 	track := pop(&_free_one_shot_tracks) if len(_free_one_shot_tracks) > 0 else mix.CreateTrack(_audio_state.mixer)
 	if track == nil do return false
+	// A pooled track keeps the group of the shot before.
+	mixer_route(track, output)
 	if !mix.SetTrackAudio(track, clip.audio) || !mix.PlayTrack(track, 0) {
 		_one_shot_release(track)
 		return false
@@ -293,11 +304,13 @@ preview_seek :: proc(frames: i64) {
 @(late_update)
 audio_update :: proc(dt: f32) {
 	context.allocator = runtime.default_allocator()
+	_audio_frame += 1
 	w := engine.ctx_world()
 	if w == nil do return
 
 	// The ear: the first enabled AudioListener with a live transform.
 	_listener.ok = false
+	_listener.owner = {}
 	_listener.rot = engine.QUAT_IDENTITY
 	if lpool := audio_listeners(w); lpool != nil {
 		lit := engine.pool_iterator(lpool)
@@ -306,6 +319,7 @@ audio_update :: proc(dt: f32) {
 			lw := engine.transform_world(l.owner)
 			_listener.pos = lw.position
 			_listener.rot = lw.rotation
+			_listener.owner = l.owner
 			_listener.ok = true
 			break
 		}
@@ -337,8 +351,18 @@ audio_update :: proc(dt: f32) {
 		if src.track == nil do continue
 
 		// Live controls apply every frame — inspector edits are audible.
+		if src.routed != src.output || src.routed_gen != _route_gen do _source_route(src)
+		_source_filters_apply(src)
 		source_apply_gains(src.track, src, 1)
 	}
+}
+
+// Routes the source's own track to its output.
+@(private)
+_source_route :: proc(src: ^AudioSource) {
+	mixer_route(src.track, src.output)
+	src.routed = src.output
+	src.routed_gen = _route_gen
 }
 
 // Writes a source's live controls onto ONE mixer track: volume × `weight` ×
@@ -354,20 +378,26 @@ source_apply_gains :: proc(track: ^mix.Track, src: ^AudioSource, weight: f32) {
 			src.min_distance, src.max_distance, src.spatial_blend)
 	}
 	gain := src.mute ? 0 : src.volume * weight * sp.gain
+	if _occluded(src) {
+		_, occluded_volume := occlusion_at(src.occlusion)
+		gain *= occluded_volume
+	}
 	_ = mix.SetTrackGain(track, gain)
 	stereo := mix.StereoGains{sp.left, sp.right}
 	_ = mix.SetTrackStereo(track, &stereo)
 	_ = mix.SetTrackFrequencyRatio(track, max(src.pitch, 0.01))
 }
 
-// A fresh mixer track playing `guid` from `seconds` in, or nil. The
-// timeline's clip voices are made here; the caller owns the track.
-voice_start :: proc(guid: engine.Asset_GUID, seconds: f32) -> ^mix.Track {
+// A fresh mixer track playing `guid` from `seconds` in, through the mixer
+// group `output` names, or nil. The timeline's clip voices are made here; the
+// caller owns the track.
+voice_start :: proc(guid: engine.Asset_GUID, seconds: f32, output := engine.PPtr{}) -> ^mix.Track {
 	clip, ok := clip_load(guid)
 	if !ok do return nil
 	if !_mixer_ensure() do return nil
 	track := mix.CreateTrack(_audio_state.mixer)
 	if track == nil do return nil
+	mixer_route(track, output)
 	if !mix.SetTrackAudio(track, clip.audio) || !mix.PlayTrack(track, 0) {
 		mix.DestroyTrack(track)
 		return nil

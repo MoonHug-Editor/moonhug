@@ -12,10 +12,12 @@ The audio plugin plays sound. An audio file is imported into a clip with its gai
 
 - [AudioSource](components/AudioSource.md) plays a clip on its object, 2D or spatial.
 - [AudioListener](components/AudioListener.md) is the ear, usually on the camera.
+- [AudioLowPassFilter](components/AudioLowPassFilter.md) and [AudioHighPassFilter](components/AudioHighPassFilter.md) filter the source on their object.
 
 **Assets**
 
 - [Audio clip](assets/AudioClip.md): a `.wav`, `.mp3` or `.ogg` file, with its import settings and a waveform preview.
+- [Audio Mixer](assets/AudioMixer.md): a tree of groups that sounds play through, with volumes and effects.
 
 **Concepts**
 
@@ -25,6 +27,7 @@ The audio plugin plays sound. An audio file is imported into a clip with its gai
 
 - sequencer: [TrackAudio](extends/sequencer/components/TrackAudio.md) and [ClipAudio](extends/sequencer/components/ClipAudio.md) play clips on a timeline.
 - tween: [Audio tweens](extends/tween/scripts/AudioTweens.md), one-line volume and pitch tweens.
+- physics3d: [AudioOcclusion](extends/physics3d/components/AudioOcclusion.md) muffles a source behind walls.
 
 [Roadmap](Roadmap.md): what is not built yet.
 
@@ -34,6 +37,7 @@ The audio plugin plays sound. An audio file is imported into a clip with its gai
 - SDL3_mixer, the `vendor:sdl3/mixer` library: `brew install sdl3_mixer` on macOS.
 - Optional, the sequencer plugin. It adds TrackAudio and ClipAudio, which play clips on a timeline. They live in the plugin's `sequencer` subpackage, which builds only when the sequencer plugin is enabled ([Plugins](/docs/core/Plugins.md)).
 - Optional, the tween plugin. It adds the one-line volume and pitch tweens. They live in the plugin's `tween` subpackage (`moonhug:packages/audio/tween`), which builds only when the tween plugin is enabled.
+- Optional, the physics3d plugin. It adds AudioOcclusion, in the plugin's `physics3d` subpackage, which builds only when the physics3d plugin is enabled.
 
 ## Quick start
 
@@ -45,12 +49,12 @@ To hear it without play mode, press the source's Play button in the inspector, o
 
 ## Extending
 
-The plugin declares no attributes and has no registries. Code uses it through its procs: `audio_play`, `audio_stop` and `play_clip_at_point` among them ([AudioSource](components/AudioSource.md), [Playback](concepts/Playback.md)).
+The plugin declares no attributes and has no registries. Code uses it through its procs: `audio_play`, `audio_stop`, `play_clip_at_point` and `mixer_set_volume` among them ([AudioSource](components/AudioSource.md), [Playback](concepts/Playback.md)).
 
 ## Limits
 
 - A clip decodes whole into memory when it loads, unless its import settings say `stream`. Either way its file is decoded PCM, not compressed.
-- No mixer groups and no effects.
+- Mixer effects are low pass, high pass and duck: no reverb, echo or snapshots.
 - One listener: the first enabled one. No Doppler and no reverb zones.
 
 ## Reference
