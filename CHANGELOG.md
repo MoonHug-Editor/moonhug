@@ -1,3 +1,19 @@
+## [0.168.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.167.0...v0.168.0) (2026-11-17)
+
+### Features
+
+* assets dragged into the Scene window or the Hierarchy become objects, @(asset_on_drop) ([8048db8](https://github.com/MoonHug-Editor/moonhug/commit/8048db86563c08f1d00900a736a2a057788d16da))
+* bloom spreads through a chain of ever smaller images, scatter sets how far ([4c3bd0a](https://github.com/MoonHug-Editor/moonhug/commit/4c3bd0a2e8f8a024ff952fa592313c2be34be037))
+* drag and drop is one payload and @(drop) rules per place, objects dropped on a Project folder become prefabs ([fc44c34](https://github.com/MoonHug-Editor/moonhug/commit/fc44c3483a0d5203c01a7d552cb02c1c7e45760f))
+* GameObject > Create Prefab, the selected objects become prefab files and their instances take their place ([9c8b3be](https://github.com/MoonHug-Editor/moonhug/commit/9c8b3becb7249000e107047a6e7f2db3e186b3d3))
+* hinge, distance and fixed joints for physics2d and physics3d ([7a0a619](https://github.com/MoonHug-Editor/moonhug/commit/7a0a619ee11dc503778b08164967d88c85fd998b))
+* node canvas box select, collapsed nodes, and a link dropped on empty canvas offers nodes to connect ([3f9f6eb](https://github.com/MoonHug-Editor/moonhug/commit/3f9f6eb02f1b85d9a712f4d00503afe52711fcd5))
+* the Hierarchy's open rows and the Scene camera are kept per scene, searches ignore underscores, hyphens and spaces ([6323fa4](https://github.com/MoonHug-Editor/moonhug/commit/6323fa416c9004c2d01eb2ec078ae30ad5090c56))
+
+### Bug Fixes
+
+* no lid collision warning when a redone prefab instance meets ids its undone content left behind ([34d70fa](https://github.com/MoonHug-Editor/moonhug/commit/34d70fa392efe92480c7a3c8f3da568207421708))
+
 ## [0.167.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.166.0...v0.167.0) (2026-11-16)
 
 ### Features
