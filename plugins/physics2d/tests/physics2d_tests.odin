@@ -283,11 +283,12 @@ physics2d_layer_overrides_filter_contacts :: proc(t: ^testing.T) {
 	testing.expect(t, ay < -3, "A falls through the floor")
 	testing.expect(t, by > -1.6, "B rests on the floor")
 
-	// The layers and the computed mask reach box2d as the shape filter.
+	// The layers and the computed mask reach box2d as the shape filter, the
+	// mask with the bit character controllers ask for.
 	circle := _layer_circle(tc, a)
 	f := b2.Shape_GetFilter(circle.shape)
 	testing.expect_value(t, f.categoryBits, u64(1 << 3))
-	testing.expect_value(t, f.maskBits, u64(~u32(0) &~ 1))
+	testing.expect_value(t, f.maskBits, u64(~u32(0) &~ 1) | physics2d.MOVER_QUERY_BIT)
 }
 
 // An edit of the layer overrides on a live collider reaches its shape on the
@@ -310,13 +311,13 @@ physics2d_layer_overrides_edit_applies_live :: proc(t: ^testing.T) {
 	ball := _layer_ball(tc, "Ball", 0, layer = 1, exclude = ~u32(0))
 	physics2d.physics_step(1.0 / 60.0)
 	circle := _layer_circle(tc, ball)
-	testing.expect_value(t, b2.Shape_GetFilter(circle.shape).maskBits, u64(0))
+	testing.expect_value(t, b2.Shape_GetFilter(circle.shape).maskBits, physics2d.MOVER_QUERY_BIT)
 
 	circle.exclude = 0
 	for _ in 0 ..< 200 {
 		physics2d.physics_step(1.0 / 60.0)
 	}
-	testing.expect_value(t, b2.Shape_GetFilter(circle.shape).maskBits, u64(~u32(0)))
+	testing.expect_value(t, b2.Shape_GetFilter(circle.shape).maskBits, u64(~u32(0)) | physics2d.MOVER_QUERY_BIT)
 	y := engine.pool_get(&tc.world.transforms, engine.Handle(ball)).position.y
 	testing.expect(t, y > -1.6, "the ball lands once it stops excluding the floor's layer")
 }

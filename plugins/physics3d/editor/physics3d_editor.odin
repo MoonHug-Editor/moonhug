@@ -35,6 +35,12 @@ comp_on_draw_gizmos_CapsuleCollider :: proc(c: ^physics3d.CapsuleCollider, ctx: 
 	physics3d.draw_capsule_collider_wires(c, physics3d.COLLIDER_GIZMO_COLOR)
 }
 
+@(comp_on_draw_gizmos={component=CharacterController})
+comp_on_draw_gizmos_CharacterController :: proc(cc: ^physics3d.CharacterController, ctx: handles.Gizmo_Context) {
+	if .In_Selection not_in ctx.state do return
+	physics3d.draw_character_controller_wires(cc, physics3d.COLLIDER_GIZMO_COLOR)
+}
+
 @(comp_on_draw_gizmos={component=MeshCollider})
 comp_on_draw_gizmos_MeshCollider :: proc(c: ^physics3d.MeshCollider, ctx: handles.Gizmo_Context) {
 	if .In_Selection not_in ctx.state do return

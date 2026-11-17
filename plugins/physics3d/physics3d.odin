@@ -13,6 +13,8 @@ package physics3d
 //   contact + sensor events; read them from a @(fixed_update) subscriber
 //   ordered AFTER this step (order > 1000), or next tick at any order.
 // - Queries: raycast (queries.odin) for what a ray hits.
+// - A CharacterController (character_controller.odin) moves an object by code
+//   without going through colliders.
 // - Joints (joints.odin) connect a body to another or to the world.
 // - Escape hatch: body_of(tH) returns the live b3.BodyId — use vendor:box3d
 //   directly for forces, mass overrides, shape casts, runtime mutation.
@@ -101,6 +103,7 @@ physics_step :: proc(fixed_dt: f32) {
 	_ensure_world()
 	w := engine.ctx_world()
 	_sync_bodies(w, fixed_dt)
+	_sync_controllers(w, fixed_dt)
 	_state.hulls_pending = false
 	_sync_colliders(w)
 	// A MeshCollider whose decomposition the editor still computes holds the

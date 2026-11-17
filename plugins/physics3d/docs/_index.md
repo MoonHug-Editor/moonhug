@@ -11,6 +11,7 @@ The physics3d plugin simulates 3D physics with box3d. Add a Rigidbody and collid
 **Components**
 
 - [Rigidbody](components/Rigidbody.md) makes an object a dynamic or kinematic body.
+- [CharacterController](components/CharacterController.md) moves an object by code without going through colliders: walls, slopes, steps, ground.
 - [BoxCollider](components/BoxCollider.md), [SphereCollider](components/SphereCollider.md) and [CapsuleCollider](components/CapsuleCollider.md): primitive shapes.
 - [MeshCollider](components/MeshCollider.md): a mesh's own shape, as one convex hull, a convex decomposition, or its triangles.
 - [HingeJoint](components/HingeJoint.md), [DistanceJoint](components/DistanceJoint.md) and [FixedJoint](components/FixedJoint.md): joints between two bodies or a body and the world.

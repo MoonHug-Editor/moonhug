@@ -11,6 +11,7 @@ The physics2d plugin simulates 2D physics with box2d. Add a Rigidbody2D and coll
 **Components**
 
 - [Rigidbody2D](components/Rigidbody2D.md) makes an object a simulated body.
+- [CharacterController2D](components/CharacterController2D.md) moves an object by code without going through colliders: walls, slopes, steps, ground.
 - [BoxCollider2D](components/BoxCollider2D.md), [CircleCollider2D](components/CircleCollider2D.md) and [CapsuleCollider2D](components/CapsuleCollider2D.md): primitive shapes.
 - [PolygonCollider2D](components/PolygonCollider2D.md): any simple polygon, concave included, taken from a sprite's outline when it has one.
 - [EdgeCollider2D](components/EdgeCollider2D.md): an open line, for ground.

@@ -147,4 +147,8 @@ debug_draw :: proc() {
 	for c, _ in engine.pool_next(&it4) {
 		if c.enabled do draw_mesh_collider_wires(c, COLLIDER_GIZMO_COLOR)
 	}
+	it5 := engine.pool_iterator(character_controllers(w))
+	for cc, _ in engine.pool_next(&it5) {
+		if cc.enabled do draw_character_controller_wires(cc, COLLIDER_GIZMO_COLOR)
+	}
 }

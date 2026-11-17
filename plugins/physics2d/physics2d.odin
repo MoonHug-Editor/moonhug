@@ -13,6 +13,8 @@ package physics2d
 //   contact + sensor events; read them from a @(fixed_update) subscriber
 //   ordered AFTER this step (order > 1000), or next tick at any order.
 // - Joints (joints.odin) connect a body to another or to the world.
+// - A CharacterController2D (character_controller_2d.odin) moves an object
+//   by code without going through colliders.
 // - Escape hatch: body_of(tH) returns the live b2.BodyId — use vendor:box2d
 //   directly for forces, filter groups, shape casts and runtime mutation.
 //
@@ -96,6 +98,7 @@ physics_step :: proc(fixed_dt: f32) {
 	_ensure_world()
 	w := engine.ctx_world()
 	_sync_bodies(w, fixed_dt)
+	_sync_controllers(w, fixed_dt)
 	_sync_colliders(w)
 	_sync_mass(w)
 	_sync_joints(w)
@@ -347,7 +350,8 @@ _push_materials :: proc(w: ^engine.World) {
 _shape_def :: proc(density: f32, material: engine.Asset_GUID, is_trigger: bool, layer, mask: u32) -> b2.ShapeDef {
 	def := b2.DefaultShapeDef()
 	def.filter.categoryBits = u64(layer)
-	def.filter.maskBits = u64(mask)
+	// A solid collider stops character controllers (MOVER_QUERY_BIT).
+	def.filter.maskBits = u64(mask) | (is_trigger ? 0 : MOVER_QUERY_BIT)
 	def.density = density
 	material_apply(&def.material, material_of(material))
 	def.isSensor = is_trigger
@@ -356,14 +360,17 @@ _shape_def :: proc(density: f32, material: engine.Asset_GUID, is_trigger: bool, 
 	return def
 }
 
-// Writes a collider's layers and computed mask into its live shape. A filter change
+// Writes a collider's layers and computed mask into its live shape, with
+// MOVER_QUERY_BIT when the shape is solid and `stops_movers`. A filter change
 // costs box2d about as much as a new shape, so the call happens only when the
 // bits differ. The group index stays as the shape has it.
-_sync_filter :: proc(shape: b2.ShapeId, layer, mask: u32) {
+_sync_filter :: proc(shape: b2.ShapeId, layer, mask: u32, stops_movers := true) {
+	want := u64(mask)
+	if stops_movers && !b2.Shape_IsSensor(shape) do want |= MOVER_QUERY_BIT
 	f := b2.Shape_GetFilter(shape)
-	if f.categoryBits == u64(layer) && f.maskBits == u64(mask) do return
+	if f.categoryBits == u64(layer) && f.maskBits == want do return
 	f.categoryBits = u64(layer)
-	f.maskBits = u64(mask)
+	f.maskBits = want
 	b2.Shape_SetFilter(shape, f)
 }
 

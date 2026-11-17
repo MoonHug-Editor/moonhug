@@ -33,6 +33,12 @@ comp_on_draw_gizmos_CapsuleCollider2D :: proc(c: ^physics2d.CapsuleCollider2D, c
 	physics2d.draw_capsule_collider_wires(c, physics2d.COLLIDER_GIZMO_COLOR)
 }
 
+@(comp_on_draw_gizmos={component=CharacterController2D})
+comp_on_draw_gizmos_CharacterController2D :: proc(cc: ^physics2d.CharacterController2D, ctx: handles.Gizmo_Context) {
+	if .In_Selection not_in ctx.state do return
+	physics2d.draw_character_controller_2d_wires(cc, physics2d.COLLIDER_GIZMO_COLOR)
+}
+
 @(comp_on_draw_gizmos={component=PolygonCollider2D})
 comp_on_draw_gizmos_PolygonCollider2D :: proc(c: ^physics2d.PolygonCollider2D, ctx: handles.Gizmo_Context) {
 	if .In_Selection not_in ctx.state do return
