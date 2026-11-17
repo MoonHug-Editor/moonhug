@@ -9,6 +9,7 @@ import "core:math"
 import "core:math/linalg"
 import "inspector"
 import core "moonhug:libs/core"
+import assets "moonhug:libs/assets"
 import "moonhug:editor/drag"
 import "moonhug:libs/gizmos"
 import "moonhug:editor/viewport"
@@ -17,6 +18,7 @@ import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/keymap"
+import "moonhug:editor/session"
 
 SCENE :: "Scene"
 
@@ -72,6 +74,9 @@ Scene_Window :: struct {
 	pre_2d_pitch: f32,
 	pre_2d_ortho: bool,
 	pending_2d:   bool, // settings asked for 2D before the camera existed
+	// The scene this copy's camera belongs to: another active scene brings
+	// its own saved camera (scene_cameras).
+	cam_scene:    core.Asset_GUID,
 
 	// Click-to-pick state: a click is press+release under a small drag
 	// threshold (so orbit/pan drags never select).
@@ -590,6 +595,7 @@ scene_window_draw :: proc(w: ^wnd.Window) {
 			_sv.pending_2d = false
 			scene_set_2d(true)
 		}
+		_scene_camera_follow_scene()
 
 		// Docked toolbar strips take their space first; the image gets what
 		// is left, so a strip sits beside the render instead of over it.
@@ -638,6 +644,58 @@ scene_window_draw :: proc(w: ^wnd.Window) {
 		_draw_pick_menu()
 		_draw_scene_context_menu()
 	}
+}
+
+// --- The camera per scene ----------------------------------------------------------
+// Where the Scene window looked at each scene, by the scene's guid, kept per
+// developer while the scene exists (core.Per_Asset). Every copy takes the
+// saved camera when the active scene changes, and the copy last used keeps
+// it saved. A scene never saved has no guid and keeps nothing.
+
+Scene_Camera :: struct {
+	pos:          [3]f32,
+	yaw:          f32,
+	pitch:        f32,
+	dist:         f32,
+	ortho:        bool,
+	mode_2d:      bool,
+	pre_2d_yaw:   f32,
+	pre_2d_pitch: f32,
+	pre_2d_ortho: bool,
+}
+
+@(user_settings={name="Scene Cameras"})
+scene_cameras: core.Per_Asset(Scene_Camera)
+
+// The active scene's guid, {} with none or one never saved.
+@(private = "file")
+_active_scene_guid :: proc() -> core.Asset_GUID {
+	path, ok := session.document_active_path()
+	if !ok do return {}
+	guid, known := assets.asset_db_get_guid(path)
+	return known ? core.Asset_GUID(guid) : {}
+}
+
+@(private = "file")
+_scene_camera_follow_scene :: proc() {
+	guid := _active_scene_guid()
+	if guid != _sv.cam_scene {
+		_sv.cam_scene = guid
+		if c := core.per_asset_get(&scene_cameras, guid); c != nil {
+			_sv.cam_pos, _sv.cam_yaw, _sv.cam_pitch, _sv.cam_dist = c.pos, c.yaw, c.pitch, c.dist
+			_sv.cam_ortho, _sv.mode_2d = c.ortho, c.mode_2d
+			_sv.pre_2d_yaw, _sv.pre_2d_pitch, _sv.pre_2d_ortho = c.pre_2d_yaw, c.pre_2d_pitch, c.pre_2d_ortho
+			update_scene_camera()
+		}
+		return
+	}
+	if guid == {} || _sv != _scene_active() do return
+	now := Scene_Camera{
+		pos = _sv.cam_pos, yaw = _sv.cam_yaw, pitch = _sv.cam_pitch, dist = _sv.cam_dist,
+		ortho = _sv.cam_ortho, mode_2d = _sv.mode_2d,
+		pre_2d_yaw = _sv.pre_2d_yaw, pre_2d_pitch = _sv.pre_2d_pitch, pre_2d_ortho = _sv.pre_2d_ortho,
+	}
+	if saved := core.per_asset_entry(&scene_cameras, guid); saved^ != now do saved^ = now
 }
 
 // --- Drop ------------------------------------------------------------------------------

@@ -213,7 +213,7 @@ The rendered rect is centered in the area under the toolbar. When the zoom makes
 
 ## Search fields
 
-The Hierarchy's Filter and the Project window's Search take the same kind of query: words separated by spaces, and an item must match every word. Case does not matter. The command palette's Scene Objects mode (`@`) takes the Hierarchy's words and its Assets mode (`#`) the Project window's ([Keymaps](Keymaps.md)): each pair asks one finder, so a word added to it works in both.
+The Hierarchy's Filter and the Project window's Search take the same kind of query: words separated by spaces, and an item must match every word. Case does not matter, and neither do underscores, hyphens and spaces in a name: `playercontroller` finds Player_Controller and Player Controller, `player_con` finds PlayerController. The command palette's Scene Objects mode (`@`) takes the Hierarchy's words and its Assets mode (`#`) the Project window's ([Keymaps](Keymaps.md)): each pair asks one finder, so a word added to it works in both.
 
 | Word | Hierarchy | Project window |
 |---|---|---|
@@ -227,7 +227,7 @@ The Hierarchy's Filter and the Project window's Search take the same kind of que
 - Every sub-asset is a result of its own, by name and by `t:`, shown after the files with its file in brackets: a scene file's materials and noise maps (`t:mat`, `t:noise`), a model's parts, clips and convex decompositions (`t:mesh`, `t:anim`, `t:hulls`) and a texture's sprites (`t:sprite`) ([Sub-assets and Embedded Assets](SubAssets.md)).
 - A search reads no file. Every answer comes from the asset database, so its cost does not grow with file sizes.
 - A plain word with a slash matches the path in the Project window and the palette: `ui/` lists a folder's assets.
-- The finders: `asset_search` (`moonhug/editor/asset_search.odin`) for assets and `scene_object_has_components` (`plugins/engine/editor/scene_windows/window_hierarchy.odin`) for objects. The caller gives the test for plain words: a search field matches parts of a name, the palette ranks by its own word matching. The words are parsed by `widgets.search_terms`, `widgets.search_split`, `widgets.search_tag` and `widgets.search_tag_match`. A new search field that takes tagged words uses them.
+- The finders: `asset_search` (`moonhug/editor/asset_search.odin`) for assets and `scene_object_has_components` (`plugins/engine/editor/scene_windows/window_hierarchy.odin`) for objects. The caller gives the test for plain words: a search field matches parts of a name, the palette ranks by its own word matching. The words are parsed by `widgets.search_terms`, `widgets.search_split`, `widgets.search_tag` and `widgets.search_tag_match`. A new search field that takes tagged words uses them. `widgets.search_fold` is the text as every search compares it: lowercase, without spaces, underscores and hyphens.
 
 ## Project window keys
 

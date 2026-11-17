@@ -73,8 +73,8 @@ asset_search :: proc(query: string, name_match: Asset_Name_Match, hits: ^[dynami
         guid := core.Asset_GUID(raw_guid)
         is_dir := assets.asset_db_is_dir(path)
         in_path := true
-        lower_path := strings.to_lower(path, context.temp_allocator) if len(paths) > 0 else ""
-        for term in paths do if !strings.contains(lower_path, term) {
+        folded_path := widgets.search_fold(path) if len(paths) > 0 else ""
+        for term in paths do if !strings.contains(folded_path, term) {
             in_path = false
             break
         }

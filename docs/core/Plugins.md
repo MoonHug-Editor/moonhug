@@ -374,6 +374,22 @@ A setting about the person instead of the project is one of two more levels, dec
 - A settings struct with `decor:` tags is imported by the inspector's generated decorators, so its package cannot import the inspector: a `@(property_drawer)` for one of its types goes in another package. `keymap.quick_help_settings`, the Quick Help tab, has its tool list's drawer in `editor/quick_help`.
 - Declarations land in `editor/user_settings_generated.odin` (user_settings_gen), one load and one save proc per level.
 
+A user setting kept for each asset is a `core.Per_Asset(T)` (`libs/core/per_asset.odin`): an entry per asset, by its guid, saved as an object of the setting's file. The Hierarchy's open rows per scene and the Scene window's camera per scene are two.
+
+```odin
+@(user_settings={name="Scene Cameras"})
+scene_cameras: core.Per_Asset(Scene_Camera)
+
+if saved := core.per_asset_get(&scene_cameras, scene_guid); saved != nil {
+    // the camera kept for this scene
+}
+core.per_asset_entry(&scene_cameras, scene_guid)^ = now
+```
+
+- An entry lives while its asset does. When an asset leaves the project the editor drops its entries from every `Per_Asset`, and at exit, before the save, it drops those of assets that went while it was closed.
+- `T` is a plain value or a dynamic array of plain values. Entries are on the default allocator.
+- `per_asset_get` answers nil for an asset with no entry, `per_asset_entry` makes a zero one. An asset with no guid (a scene never saved) gets no entry.
+
 ## Assets
 
 The asset db walks `assets/` plus `packages/<name>/assets` per package.

@@ -8,6 +8,8 @@ path: engine/windows
 
 The loaded scenes and their objects, each scene a section with its objects as a tree. Several Hierarchy windows can be open, each with its own folds and filter.
 
+A scene's rows open as they were left: after another scene, and after a restart. The open rows are kept per scene, per developer, in `UserSettings/hierarchy_folds.json`, until the scene leaves the project. A scene that has never been saved keeps none. A window opened later shows a scene's rows as last left in any window.
+
 ## Selecting
 
 - A click selects one object, Cmd-click adds or removes one, and Shift-click selects the range of visible rows between ([Multiselection](/docs/core/Multiselection.md)).

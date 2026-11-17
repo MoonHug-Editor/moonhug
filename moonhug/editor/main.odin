@@ -524,6 +524,9 @@ editor_shutdown :: proc() {
     join_play_thread()
     shutdown_game_window()
     shutdown_scene_window()
+    // Before the database goes: per-asset user settings of assets the
+    // project no longer has are dropped, then saved below.
+    core.per_asset_prune(assets.asset_db_knows)
     assets.asset_db_shutdown()
     inspector.shutdown_registries()
     session.scene_windows_shutdown()

@@ -3,24 +3,42 @@ package widgets
 // The one text search every filter and picker in the editor uses. A query is
 // words separated by spaces, and a candidate matches when every word appears
 // in it, case-insensitively: "track aud" finds "Sequencer/Tracks/TrackAudio".
-// Split the query once per frame with search_terms, then ask search_match
-// per candidate.
+// Spaces, underscores and hyphens split words differently from name to name,
+// so both sides are compared without them (search_fold): "playercontroller"
+// finds "Player_Controller" and "Player Controller", "player_con" finds
+// "PlayerController". Split the query once per frame with search_terms, then
+// ask search_match per candidate.
 
 import "core:strings"
+import "core:unicode"
 
-// The query's words, lowercased. Temp-allocated. Empty for an empty query,
-// which matches everything.
+// The query's words, folded (search_fold). Temp-allocated. Empty for an
+// empty query, which matches everything.
 search_terms :: proc(query: string) -> []string {
 	words := strings.fields(query, context.temp_allocator)
-	for &w in words do w = strings.to_lower(w, context.temp_allocator)
+	for &w in words do w = search_fold(w)
 	return words
 }
 
 search_match :: proc(text: string, terms: []string) -> bool {
 	if len(terms) == 0 do return true
-	lower := strings.to_lower(text, context.temp_allocator)
-	for t in terms do if !strings.contains(lower, t) do return false
+	folded := search_fold(text)
+	for t in terms do if !strings.contains(folded, t) do return false
 	return true
+}
+
+// Text as a search compares it: lowercase, without spaces, underscores and
+// hyphens. Temp-allocated.
+search_fold :: proc(text: string) -> string {
+	b := strings.builder_make(0, len(text), context.temp_allocator)
+	for r in text {
+		switch r {
+		case ' ', '_', '-':
+		case:
+			strings.write_rune(&b, unicode.to_lower(r))
+		}
+	}
+	return strings.to_string(b)
 }
 
 // A filter word with a tag: "c:sprite" under the tag "c:" is the word
@@ -36,10 +54,10 @@ search_tag :: proc(term, tag: string) -> (word: string, exact: bool, ok: bool) {
 }
 
 // Whether `name` matches a tagged word: the whole name when `exact`, else any
-// part of it. Case-insensitive, `word` is lowercase.
+// part of it. Folded as search_match is, `word` already folded.
 search_tag_match :: proc(name, word: string, exact: bool) -> bool {
-	lower := strings.to_lower(name, context.temp_allocator)
-	return exact ? lower == word : strings.contains(lower, word)
+	folded := search_fold(name)
+	return exact ? folded == word : strings.contains(folded, word)
 }
 
 // The query's terms in two lists: the tagged ones ("c:light", "t:mat$": one

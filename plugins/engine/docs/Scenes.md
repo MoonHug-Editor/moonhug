@@ -219,3 +219,5 @@ The editor renders the active scene into an offscreen `RenderTexture2D` and disp
 | Scroll wheel | Zoom |
 
 Camera state is stored as `(yaw, pitch, dist, target)` and converted to a `Camera3D` each frame via `update_scene_camera`.
+
+The camera is kept per scene, per developer, in `UserSettings/scene_cameras.json`, until the scene leaves the project: a scene opens where the Scene window last looked at it, after another scene and after a restart, in 2D or 3D as it was left. A scene seen for the first time keeps the view as it is. With several Scene windows, each takes the saved camera when the active scene changes, and the last one used keeps it saved.

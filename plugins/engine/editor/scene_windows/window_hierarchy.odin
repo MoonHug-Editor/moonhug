@@ -11,6 +11,7 @@ import "core:encoding/uuid"
 import "core:time"
 import im "moonhug:external/odin-imgui"
 import engine "moonhug:packages/engine"
+import core "moonhug:libs/core"
 import "moonhug:editor/menu"
 import undo "moonhug:packages/engine/editor/undo"
 import "moonhug:editor/drag"
@@ -661,7 +662,10 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		flags += {.Leaf, .NoTreePushOnOpen}
 	}
 
+	// The whole handle: an object made where a destroyed one was (a reload
+	// reuses pool slots) is a new row, with no open state left from the old.
 	im.PushIDInt(c.int(engine.Handle(tH).index))
+	im.PushIDInt(c.int(engine.Handle(tH).generation))
 
 	// This node occupies one table row: the tree node lives in the name column,
 	// the ">" button in the right actions column.
@@ -672,18 +676,32 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		im.PushStyleColorImVec4(im.Col.Text, _hierarchy_dimmed_color)
 	}
 
+	set_open := false
 	if _hv.force_open == tH {
 		im.SetNextItemOpen(true)
 		_hv.force_open = _HANDLE_NONE
+		set_open = true
 	} else if v, ok := _hv.alt_open_pending[tH]; ok {
 		im.SetNextItemOpen(v)
 		delete_key(&_hv.alt_open_pending, tH)
+		set_open = true
+	} else if has_children && sc != nil {
+		// The first time a row shows, it opens as it was left.
+		if folds := core.per_asset_get(&hierarchy_folds, sc.asset_guid); folds != nil {
+			im.SetNextItemOpen(_fold_is_open(folds, t.local_id), .Once)
+		}
 	}
 	// Cursor x BEFORE the node is the indented content start within the name
 	// column. SpanAllColumns moves the node's ItemRect min to the table's left
 	// edge, so we can't derive the label/arrow x from it — capture it here.
 	content_x := im.GetCursorScreenPos().x
 	node_open := im.TreeNodeEx("##n", flags)
+	// Only what changed a row is kept: a click, a key, a reveal. A copy of the
+	// window that just shows a row another copy folded keeps it as it shows.
+	// A scene with no entry yet starts one from the rows it shows open.
+	if has_children && sc != nil && (set_open || im.IsItemToggledOpen() || core.per_asset_get(&hierarchy_folds, sc.asset_guid) == nil) {
+		_fold_record(sc.asset_guid, t.local_id, node_open)
+	}
 
 	if is_selected && _hv.scroll_to_sel {
 		im.SetScrollHereY()
@@ -928,6 +946,41 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	}
 
 	im.PopID()
+	im.PopID()
+}
+
+// The rows of each scene left open in the Hierarchy, by the scene's guid: a
+// row is its object's local id, stable in the scene's file. Kept per
+// developer while the scene exists (core.Per_Asset). A scene never saved has
+// no guid and keeps nothing.
+@(user_settings={name="Hierarchy Folds"})
+hierarchy_folds: core.Per_Asset([dynamic]engine.Local_ID)
+
+@(private = "file")
+_fold_is_open :: proc(folds: ^[dynamic]engine.Local_ID, lid: engine.Local_ID) -> bool {
+	for f in folds do if f == lid do return true
+	return false
+}
+
+// Keeps the open state of the row of `lid` in its scene's entry.
+@(private = "file")
+_fold_record :: proc(scene_guid: engine.Asset_GUID, lid: engine.Local_ID, open: bool) {
+	if scene_guid == {} do return
+	folds := core.per_asset_get(&hierarchy_folds, scene_guid)
+	if folds == nil {
+		if !open do return
+		folds = core.per_asset_entry(&hierarchy_folds, scene_guid)
+	}
+	if open == _fold_is_open(folds, lid) do return
+	context.allocator = runtime.default_allocator()
+	if open {
+		append(folds, lid)
+	} else {
+		for f, i in folds do if f == lid {
+			unordered_remove(folds, i)
+			break
+		}
+	}
 }
 
 // Handle-based equivalents of the row draw's is_root / is_nested guards, for

@@ -30,6 +30,8 @@ package core
 // (editor/window.odin): one struct, one file, hand-copied fields. That is
 // older than this and not worth churning — but nothing new needs to go there.
 
+import "base:intrinsics"
+import "base:runtime"
 import "core:encoding/json"
 import "core:os"
 import "core:strings"
@@ -74,12 +76,20 @@ user_settings_file :: proc(name: string) -> string {
 // Reads the file into the settings struct. A missing or unreadable file leaves
 // the struct as-is — its var initializer is the default — so a fresh checkout,
 // a deleted UserSettings/ and a first run all behave the same.
+//
+// A var of type Per_Asset(T) keeps an entry per asset (per_asset.odin).
 @(extension_point={attribute="user_settings", target="var", fields="name tab"})
 user_settings_load :: proc(name: string, v: ^$T) -> bool {
     if v == nil do return false
+    allocator := context.allocator
+    when intrinsics.type_is_specialization_of(T, Per_Asset) {
+        per_asset_register(v)
+        // Its entries are freed there when their asset goes.
+        allocator = runtime.default_allocator()
+    }
     data, read_err := os.read_entire_file(user_settings_file(name), context.temp_allocator)
     if read_err != nil do return false
-    return json.unmarshal(data, v) == nil
+    return json.unmarshal(data, v, allocator = allocator) == nil
 }
 
 // Writes the settings struct when its file does not exist yet, so every
