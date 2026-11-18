@@ -253,3 +253,42 @@ test_transform_get_sibling_index :: proc(t: ^testing.T) {
     testing.expect_value(t, engine.transform_get_sibling_index(c1), 1)
     testing.expect_value(t, engine.transform_get_sibling_index(c2), 2)
 }
+
+// transform_find walks a path of direct children, transform_find_in_children
+// looks for a name at any depth.
+@(test)
+test_transform_find_by_path_and_name :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc, "")
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+
+	body := engine.transform_new("Body", engine.Transform_Handle(tc.scene.root.handle))
+	arm := engine.transform_new("Arm", body)
+	hand := engine.transform_new("Hand", arm)
+	leg := engine.transform_new("Leg", body)
+	foot := engine.transform_new("Hand", leg) // the same name, another branch
+
+	got, ok := engine.transform_find(body, "Arm/Hand")
+	testing.expect(t, ok && got == hand, "a path of direct children")
+	got, ok = engine.transform_find(body, "Leg/Hand")
+	testing.expect(t, ok && got == foot, "the path decides between two of one name")
+	got, ok = engine.transform_find(body, "Arm")
+	testing.expect(t, ok && got == arm, "one name is a direct child")
+	got, ok = engine.transform_find(body, "")
+	testing.expect(t, ok && got == body, "an empty path is the parent")
+	_, ok = engine.transform_find(body, "Hand")
+	testing.expect(t, !ok, "a path does not look past direct children")
+	_, ok = engine.transform_find(body, "Arm/Finger")
+	testing.expect(t, !ok, "a missing name")
+	_, ok = engine.transform_find({}, "Arm")
+	testing.expect(t, !ok, "no parent")
+
+	got, ok = engine.transform_find_in_children(body, "Hand")
+	testing.expect(t, ok && got == hand, "the first of that name at any depth, children in order")
+	got, ok = engine.transform_find_in_children(body, "Body")
+	testing.expect(t, ok && got == body, "the root counts")
+	_, ok = engine.transform_find_in_children(body, "Finger")
+	testing.expect(t, !ok, "a missing name at any depth")
+}

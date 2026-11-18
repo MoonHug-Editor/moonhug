@@ -20,7 +20,7 @@ moonhug/                    ← the editor's project
   external/                 ← third-party code. MoonHug's own packages are in libs/
   library/                  ← derived-data cache (see Library below). Safe to delete, rebuilt on the next run
   ProjectSettings/          ← settings about the PROJECT, committed: mcp.json and one <slug>.json per @(project_settings) tab
-  UserSettings/             ← per-developer editor state, never committed (relative to the project directory, found from the working directory at startup or named with `--project=<dir>`, so another project keeps its own): window layout, open scenes, the selection and the window locks at quit. Safe to delete, the editor writes defaults on the next run
+  UserSettings/             ← per-developer editor state, never committed (relative to the project directory, found from the working directory at startup or named with `--project=<dir>`, so another project keeps its own): window layout, open scenes, the selection and the window locks, saved every few seconds while the editor runs and at quit. Safe to delete, the editor writes defaults on the next run
 
 The editor also keeps settings outside the repo, the same for every project on the machine: `MoonHug/` in the OS config folder, `~/Library/Application Support/MoonHug/` on macOS. It holds `shortcuts.json`, the shortcut overrides, and one `<slug>.json` per `@(system_settings)`.
 

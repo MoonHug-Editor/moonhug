@@ -213,11 +213,13 @@ cmd_test_asan :: proc(args: []string) -> int {
 }
 
 // The editor scenarios (moonhug/scenarios, docs/core/Scenarios.md): tests that
-// start the built editor, so the editor builds first. They run one at a time,
+// start the built editor, so the editor builds first. It is the debug build:
+// its tracking allocator stops the editor on a free through the wrong
+// allocator, which a scenario then reports as a crash. They run one at a time,
 // as the tests do. `--name=<test>` runs one (the package name is added when
 // it is left out), `--show` puts the editor's window on screen.
 cmd_scenarios :: proc(args: []string) -> int {
-	if !build_editor(false) do return 1
+	if !build_editor(true) do return 1
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, "odin", "test", "moonhug/scenarios", IGNORE_ATTRS, COLLECTION, VET, "-define:ODIN_TEST_THREADS=1")
 	if name := flag_value(args, "--name"); name != "" {

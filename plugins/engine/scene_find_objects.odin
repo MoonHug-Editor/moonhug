@@ -28,6 +28,49 @@ transform_hierarchy_path :: proc(tH: Transform_Handle, allocator := context.temp
 	return strings.clone(joined, allocator)
 }
 
+// The object at `path` under `parent`: names joined with "/", each a direct
+// child of the one before it, like "Arm/Hand". The first match in child
+// order wins where two children share a name. An empty path is `parent`.
+transform_find :: proc(parent: Transform_Handle, path: string) -> (Transform_Handle, bool) {
+	w := ctx_world()
+	cur := parent
+	rest := path
+	for len(rest) > 0 {
+		name := rest
+		if i := strings.index_byte(rest, '/'); i >= 0 {
+			name, rest = rest[:i], rest[i + 1:]
+		} else {
+			rest = ""
+		}
+		t := pool_get(&w.transforms, Handle(cur))
+		if t == nil do return {}, false
+		found := false
+		for ch in t.children {
+			ct := pool_get(&w.transforms, ch.handle)
+			if ct != nil && ct.name == name {
+				cur = Transform_Handle(ch.handle)
+				found = true
+				break
+			}
+		}
+		if !found do return {}, false
+	}
+	return cur, pool_valid(&w.transforms, Handle(cur))
+}
+
+// The first object named `name` under `root`, at any depth, `root` itself
+// included: depth first, children in order.
+transform_find_in_children :: proc(root: Transform_Handle, name: string) -> (Transform_Handle, bool) {
+	w := ctx_world()
+	t := pool_get(&w.transforms, Handle(root))
+	if t == nil do return {}, false
+	if t.name == name do return root, true
+	for ch in t.children {
+		if got, ok := transform_find_in_children(Transform_Handle(ch.handle), name); ok do return got, true
+	}
+	return {}, false
+}
+
 // Editor-facing equivalent of FindObjectsOfType, scoped to currently loaded scenes.
 // If `root_scene` is non-nil, only objects belonging to that root scene are returned.
 // For .Transform, walks the transform tree; for component type_keys, walks every

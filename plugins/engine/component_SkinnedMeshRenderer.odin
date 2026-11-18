@@ -110,19 +110,6 @@ skinned_mesh_rebind :: proc(smr: ^SkinnedMeshRenderer) {
     smr.bound_ready = false
 }
 
-// Depth-first search for a transform by name.
-@(private = "file")
-_bone_by_name :: proc(h: Transform_Handle, name: string) -> (Transform_Handle, bool) {
-    w := ctx_world()
-    t := pool_get(&w.transforms, Handle(h))
-    if t == nil do return {}, false
-    if t.name == name do return h, true
-    for ch in t.children {
-        if got, ok := _bone_by_name(Transform_Handle(ch.handle), name); ok do return got, true
-    }
-    return {}, false
-}
-
 // The subtree joint names are looked up in: the explicit root bone, else the
 // renderer's parent (mesh and armature usually sit side by side), else the
 // renderer itself.
@@ -162,7 +149,7 @@ _skin_bind :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh, guid: Asset_GUID, par
     missing := 0
     if smr.joints == nil do smr.joints = make([dynamic]Transform_Handle)
     for name in mesh.joint_names {
-        h, ok := _bone_by_name(root, name)
+        h, ok := transform_find_in_children(root, name)
         if !ok do missing += 1
         append(&smr.joints, h)
     }

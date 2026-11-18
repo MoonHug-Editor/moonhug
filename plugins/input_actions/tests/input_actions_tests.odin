@@ -224,3 +224,37 @@ test_key_name_undo_write :: proc(t: ^testing.T) {
 	testing.expect(t, undo.write_json_value(&km.modifier, typeid_of(actions.Modifier), transmute([]u8)string(`3`), {}), "an enum cell writes back")
 	testing.expect_value(t, km.modifier, actions.Modifier.Up)
 }
+
+// The mouse's side buttons are buttons like the rest, and a key name each.
+@(test)
+test_mouse_side_buttons :: proc(t: ^testing.T) {
+	input.set_app_focused(true)
+	defer input.set_app_focused(false)
+	input.frame_reset()
+	e: sdl.Event
+	e.type = .MOUSE_BUTTON_DOWN
+	e.button.button = 4
+	e.button.down = true
+	input.apply_event(&e)
+	testing.expect(t, input.mouse_pressed(.Back) && input.mouse_down(.Back) && !input.mouse_down(.Forward), "button 4 is Back")
+	e.type = .MOUSE_BUTTON_UP
+	e.button.down = false
+	input.apply_event(&e)
+	e.type = .MOUSE_BUTTON_DOWN
+	e.button.button = 5
+	e.button.down = true
+	input.apply_event(&e)
+	testing.expect(t, input.mouse_down(.Forward) && !input.mouse_down(.Back), "button 5 is Forward")
+	e.type = .MOUSE_BUTTON_UP
+	e.button.down = false
+	input.apply_event(&e)
+	input.frame_reset()
+
+	names := actions.key_names(context.temp_allocator)
+	back, forward: bool
+	for n in names {
+		if n == "mouse:Back" do back = true
+		if n == "mouse:Forward" do forward = true
+	}
+	testing.expect(t, back && forward, "both are offered as action keys")
+}

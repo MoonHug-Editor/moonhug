@@ -401,6 +401,7 @@ main :: proc() {
         progress_overlay_frame_scope(false)
         frames_presented += 1
 
+        editor_settings_autosave()
         free_all(context.temp_allocator)
     }
     delete(_pending_scene_loads)

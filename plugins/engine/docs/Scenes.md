@@ -199,6 +199,14 @@ scene_unload()    → finds scene in manager, calls scene_destroy, clears slot
 
 Generation is used as a validity sentinel — a zeroed generation means the scene has been destroyed.
 
+## Finding objects from code
+
+- `transform_find(parent, "Arm/Hand")` returns the object at a path of names under `parent`. Each name is a direct child of the one before it. An empty path is `parent` itself.
+- `transform_find_in_children(root, "Hand")` returns the first object of that name under `root` at any depth, `root` included, depth first with children in order.
+- Both return the handle and whether it was found. Two children of one name: the first in child order wins.
+- `transform_hierarchy_path(object)` gives the path the other way, from the scene root down to the object.
+- `sm_find_objects_of_type(key)` lists every object or component of a type in the loaded scenes.
+
 ## UX
 
 - scene files can be selected in Project window

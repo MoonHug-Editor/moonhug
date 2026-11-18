@@ -254,6 +254,14 @@ console_window_draw :: proc(w: ^wnd.Window) {
 		if len(entry.items) > 0 && im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
 			_console_select(entry.items[0])
 		}
+		// Right click: the row's menu. It opens on the row it was clicked on.
+		if im.BeginPopupContextItem(fmt.ctprintf("##crow_menu_%d", entry.id)) {
+			_cv.selected_id = entry.id
+			if im.MenuItem("Copy") do im.SetClipboardText(console_entry_text(entry, false))
+			if im.MenuItem("Copy With Source") do im.SetClipboardText(console_entry_text(entry, true))
+			if im.MenuItem("Copy All Shown") do im.SetClipboardText(console_shown_text(_cv, filter_terms))
+			im.EndPopup()
+		}
 		// One item needs no badge: the row's click and double click
 		// cover it.
 		if len(entry.items) > 1 {
@@ -367,6 +375,24 @@ console_clear_on_play :: proc() {
 _console_count_label :: proc(icon: cstring, n: int) -> cstring {
 	if n > 999 do return fmt.ctprintf("%s 999+###%s", icon, icon)
 	return fmt.ctprintf("%s %d###%s", icon, n, icon)
+}
+
+// An entry as the row menu copies it: "[hh:mm:ss] message", and with
+// `source` the line under it, "procedure (at file:line)". Temp.
+console_entry_text :: proc(entry: log.Entry, source: bool) -> cstring {
+	if !source do return fmt.ctprintf("%s  %s", _console_time_str(entry.time), entry.message)
+	return fmt.ctprintf("%s  %s\n%s", _console_time_str(entry.time), entry.message, _console_loc_line(entry))
+}
+
+// Every entry the window's level toggles and filter show, one per line,
+// oldest first. Temp.
+console_shown_text :: proc(cv: ^_Console_Window, filter_terms: []string) -> cstring {
+	b := strings.builder_make(context.temp_allocator)
+	for entry in log.entries {
+		if !_console_entry_shown(cv, entry, filter_terms) do continue
+		fmt.sbprintf(&b, "%s  %s\n", _console_time_str(entry.time), entry.message)
+	}
+	return strings.clone_to_cstring(strings.to_string(b), context.temp_allocator)
 }
 
 // Whether the copy's level toggles and text filter show the entry.

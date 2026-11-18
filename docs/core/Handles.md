@@ -127,7 +127,7 @@ Other users, each one undo step per drag:
 
 The transform tool's parts, for any code that edits a point, a rotation or a scale in the scene. Each edits the value passed by pointer while one of its parts drags, and returns one `Drag`:
 
-- `position_handle(id, &pos, rotation, size, prio)` — three arrows along the axes `rotation` gives, and three squares that move `pos` in a plane. The squares sit in the quadrant turned to the camera and keep it for the whole drag. They win over an arrow they overlap.
+- `position_handle(id, &pos, rotation, size, prio)` — three arrows along the axes `rotation` gives, and three squares that move `pos` in a plane. The squares sit in the quadrant turned to the camera and keep it for the whole drag. They win over an arrow they overlap. While it moves, a dashed line runs back to where the drag started, with a mark there and the distance moved at its middle.
 - `rotation_handle(id, &rot, pos, size, local, prio)` — three rings around `pos` that turn `rot`. With `local` the rings follow `rot`, else they sit on the space's axes. The turn is the signed angle on the ring's plane between the grab and the pointer, around the grab-time axis.
 - `scale_handle(id, &scale, pos, rotation, size, prio)` — three arrows with cube tips that scale one component of `scale`, and a center cube that scales all three (drag right or up to grow). The factor never goes below 0.01.
 

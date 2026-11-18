@@ -20,7 +20,7 @@ Keys are named `device:name`:
 | Device | Keys |
 |---|---|
 | `key:` | SDL scancode names, physical positions: `key:W`, `key:SPACE`, `key:LEFT_SHIFT`. |
-| `mouse:` | `mouse:Left`, `mouse:Right`, `mouse:Middle`, `mouse:Delta`, an Axis2D in pixels this frame, and `mouse:Wheel`, an Axis1D. |
+| `mouse:` | `mouse:Left`, `mouse:Right`, `mouse:Middle`, `mouse:Back` and `mouse:Forward` (the side buttons), `mouse:Delta`, an Axis2D in pixels this frame, and `mouse:Wheel`, an Axis1D. |
 | `pad:` | SDL gamepad button names: `pad:SOUTH`, `pad:NORTH`, `pad:DPAD_UP`, `pad:LEFT_SHOULDER`. `pad:LEFT_STICK` and `pad:RIGHT_STICK` are Axis2D, up positive. `pad:LEFTX`, `pad:RIGHTY`, `pad:LEFT_TRIGGER` and `pad:RIGHT_TRIGGER` are Axis1D. |
 
 ## In the editor

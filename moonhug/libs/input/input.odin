@@ -18,6 +18,8 @@ Mouse_Button :: enum u8 {
 	Left,
 	Right,
 	Middle,
+	Back,    // the first side button
+	Forward, // the second side button
 }
 
 // The gamepad's buttons and axes in SDL's layout names (SOUTH is the bottom
@@ -280,6 +282,8 @@ apply_event :: proc(e: ^sdl.Event) {
 		case 1: btn = .Left
 		case 2: btn = .Middle
 		case 3: btn = .Right
+		case 4: btn = .Back
+		case 5: btn = .Forward
 		case:   return
 		}
 		_input.mouse_pos = _in_main_window(e.button.windowID, e.button.x, e.button.y)

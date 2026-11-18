@@ -16,7 +16,9 @@ package handles
 //   snapping works on the whole move and nothing drifts.
 // - During a move, the parts that are not moving draw faint.
 
+import "core:fmt"
 import "core:math"
+import "core:strings"
 import "core:math/linalg"
 import core "moonhug:libs/core"
 import "moonhug:libs/gizmos"
@@ -31,6 +33,8 @@ COLOR_AXES :: [3][4]f32{
 COLOR_CENTER :: [4]f32{0.8, 0.8, 0.8, 0.93}
 // The parts a move drag does not use.
 COLOR_DIM :: [4]f32{0.5, 0.5, 0.5, 0.2}
+// The line back to where a move started, and the distance on it.
+COLOR_MOVE_TRAIL :: [4]f32{1, 0.85, 0.2, 1}
 
 // The scale step while snapping is on.
 SNAP_SCALE_STEP :: f32(0.1)
@@ -156,6 +160,15 @@ position_handle :: proc(id: u64, pos: ^[3]f32, rotation := quaternion128(1), siz
 	axis_colors := COLOR_AXES
 	now := _to_world(s, pos^)
 	moving := active >= 0
+	// While it moves: a dashed line back to where the drag started, a mark
+	// there, and how far it went.
+	if moved := linalg.length(now - _grab.origin); moving && moved > 1e-4 {
+		gizmos.with_color(COLOR_MOVE_TRAIL)
+		gizmos.line_dashed(_grab.origin, now, world_per_pixels(now, 5))
+		gizmos.wire_circle(_grab.origin, linalg.normalize0(_frame.view.cam_pos - _grab.origin), world_per_pixels(_grab.origin, 4), 12)
+		text := strings.trim_suffix(strings.trim_right(fmt.tprintf("%.3f", moved), "0"), ".")
+		gizmos.label((_grab.origin + now) * 0.5, text, align = {0.5, 1}, offset_px = {0, -6})
+	}
 	draw_signs := _grab.signs if moving else signs
 	plane := active - 3 if active >= 3 else -1
 	for i in 0 ..< 3 {

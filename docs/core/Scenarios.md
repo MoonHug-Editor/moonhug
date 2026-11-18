@@ -14,7 +14,7 @@ make scenarios NAME=lock_comes_back_with_its_window   # one scenario
 make scenarios SHOW=1                             # with the editor's window on screen
 ```
 
-Scenarios are `@(test)` procs in the package `moonhug/scenarios`. `mh scenarios` builds the editor, then runs that package with `odin test`, so the output, the name filter and the memory tracking are the test suite's.
+Scenarios are `@(test)` procs in the package `moonhug/scenarios`. `mh scenarios` builds the editor in debug, then runs that package with `odin test`, so the output, the name filter and the memory tracking are the test suite's. The debug editor tracks its own allocations: a free through the wrong allocator stops it, and the scenario fails with the editor's crash. `builds/MoonHug` is the debug build after a run, and `mh build` or `mh run` makes the plain one again.
 
 ## How a run works
 

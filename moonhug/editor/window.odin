@@ -4,7 +4,10 @@ import gfx "moonhug:libs/gfx"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:fmt"
+import "base:runtime"
 import "core:os"
+import "core:slice"
+import "core:time"
 import "core:strings"
 import "menu"
 import wnd "window"
@@ -213,6 +216,38 @@ save_editor_settings :: proc() {
         sort_maps_by_key = true,
     }
     if data, err := json.marshal(editor_settings, opts, allocator = context.temp_allocator); err == nil {
-        _ = os.write_entire_file(EDITOR_SETTINGS_FILE, core.json_canonicalize_floats(data, context.temp_allocator))
+        text := core.json_canonicalize_floats(data, context.temp_allocator)
+        // Written only when it differs from what the file holds.
+        if string(text) == string(_settings_written) do return
+        if os.write_entire_file(EDITOR_SETTINGS_FILE, text) == nil {
+            // Freed where it was made: not the context's allocator.
+            delete(_settings_written, runtime.default_allocator())
+            _settings_written = slice.clone(text, runtime.default_allocator())
+        }
     }
+}
+
+// The settings file as last written, to skip a save that changes nothing.
+@(private = "file") _settings_written: []u8
+@(private = "file") _settings_saved_at: time.Tick
+
+// Seconds between saves of the editor's state while it runs.
+EDITOR_SETTINGS_SAVE_INTERVAL :: 5.0
+
+// Called every frame: saves the editor's state (open windows and scenes,
+// the selection, the window's place, each settings tab) now and then, so a
+// crash or a kill loses a few seconds of it, not the session's. The layout
+// in imgui.ini is saved on the same rhythm by imgui.
+editor_settings_autosave :: proc() {
+    // Not while the last session's scenes are still opening: the file would
+    // lose the ones not open yet.
+    if len(_pending_scene_loads) > 0 do return
+    if _settings_saved_at == {} {
+        _settings_saved_at = time.tick_now()
+        return
+    }
+    if time.duration_seconds(time.tick_since(_settings_saved_at)) < EDITOR_SETTINGS_SAVE_INTERVAL do return
+    _settings_saved_at = time.tick_now()
+    save_editor_settings()
+    settings_save_all()
 }
