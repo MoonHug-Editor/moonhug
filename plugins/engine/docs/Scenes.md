@@ -228,6 +228,32 @@ The editor renders the active scene into an offscreen `RenderTexture2D` and disp
 
 Camera state is stored as `(yaw, pitch, dist, target)` and converted to a `Camera3D` each frame via `update_scene_camera`.
 
+### Scene camera preferences
+
+The Camera overlay (the camera button) opens the Scene window's camera preferences: the perspective view's field of view, the fly speed and the look sensitivity, with Reset for the defaults. They hold for every Scene window and every scene, and are saved with the editor's settings.
+
+- The wheel changes the fly speed while flying. The new speed shows at the bottom of the view for a moment, and is the value the popup shows.
+
+### Creating at a point
+
+An object made from the Scene window's right-click menu lands where the menu was opened: on the surface under the pointer, or on the grid plane over empty space, as a dropped asset does. A child made that way is at that point too, under its parent. The same items in the menu bar and in the Hierarchy create at the origin of their parent.
+
+### Pick locks
+
+The lock at the right end of a Hierarchy row locks the object against picking: the Scene window passes it and everything under it over, for clicks and for box selection. A floor or a backdrop stops catching the clicks meant for what stands on it.
+
+- A locked row shows a lock, a row under a locked object a dim one, and the hovered row an open lock to click.
+- A locked object still selects from the Hierarchy, and its gizmo works as before.
+- The locks are a developer's own, kept per scene in the user settings. A scene never saved keeps none.
+- An object inside a prefab instance is locked by its prefab, so the lock shows on every instance of that prefab.
+
+### Scale link
+
+The link button on the Transform's Scale row keeps an object's proportions: with it on, a change to one axis scales the other two by the same ratio. It holds for every object and is saved with the user settings.
+
+- An axis that was 0 has no ratio, so the other two take the new value.
+- A value set on two or three axes at once (a paste, a reset) is left as it is.
+
 ### Measure tool
 
 The Measure tool (M, the ruler at the end of the Tools overlay) measures the distance between two points: drag from one to the other. The measurement stays until the next drag, a click or another tool.

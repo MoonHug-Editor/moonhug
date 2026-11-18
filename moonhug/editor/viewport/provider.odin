@@ -22,6 +22,8 @@ Viewport_Provider :: struct {
 	object_bounds:       proc(view: core.Render_View, tH: core.Transform_Handle) -> (center: [3]f32, radius: f32, ok: bool),
 	pick:                proc(view: core.Render_View, px, py: f32) -> (core.Transform_Handle, bool),
 	pick_all:            proc(view: core.Render_View, px, py: f32) -> []core.Transform_Handle, // temp-allocated, nearest first
+	// Where the pointer meets the nearest object's surface, false over empty space.
+	surface_point:       proc(view: core.Render_View, px, py: f32) -> ([3]f32, bool),
 	band_query:          proc(view: core.Render_View, vmin, vmax: [2]f32) -> []core.Transform_Handle, // temp-allocated
 	// The selection outline for `view`. Draw only: every Scene window copy records its own.
 	outline:             proc(view: core.Render_View),
@@ -74,6 +76,38 @@ render :: proc(target: ^gfx.Render_Target, view: core.Render_View, graph: string
 object_bounds :: proc(view: core.Render_View, tH: core.Transform_Handle) -> (center: [3]f32, radius: f32, ok: bool) {
 	if _provider.object_bounds == nil do return {}, 0, false
 	return _provider.object_bounds(view, tH)
+}
+
+surface_point :: proc(view: core.Render_View, px, py: f32) -> ([3]f32, bool) {
+	if _provider.surface_point == nil do return {}, false
+	return _provider.surface_point(view, px, py)
+}
+
+// --- Create place ---------------------------------------------------------------
+// The world point the next created object goes to: the Scene window sets it
+// while its context menu is open, so an object made from that menu lands
+// where the menu was opened. Whatever creates the object takes it, once.
+
+@(private) _create_place: [3]f32
+@(private) _create_place_frames: int
+
+// Offers `point` to the next create, for this frame and the next: a menu
+// item's proc may run a frame after the click that picked it.
+create_place_offer :: proc(point: [3]f32) {
+	_create_place = point
+	_create_place_frames = 2
+}
+
+// Once a frame: an offer nobody took runs out.
+create_place_tick :: proc() {
+	if _create_place_frames > 0 do _create_place_frames -= 1
+}
+
+// The offered point, and the offer is gone. False with none.
+create_place_take :: proc() -> ([3]f32, bool) {
+	if _create_place_frames <= 0 do return {}, false
+	_create_place_frames = 0
+	return _create_place, true
 }
 
 pick :: proc(view: core.Render_View, px, py: f32) -> (core.Transform_Handle, bool) {

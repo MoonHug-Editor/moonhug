@@ -6,6 +6,7 @@ package scene_undo
 
 import "core:encoding/json"
 import shell "moonhug:editor/undo"
+import "moonhug:editor/viewport"
 import ser "moonhug:libs/serialization"
 import engine "moonhug:packages/engine"
 import "moonhug:packages/engine/editor/undo_ops"
@@ -302,6 +303,10 @@ record_remove_component :: proc(owner_tH: engine.Transform_Handle, comp_handle: 
 record_create_child :: proc(name: string, parent: engine.Transform_Handle) -> engine.Transform_Handle {
 	tH := engine.transform_new(name, parent)
 	if tH != {} {
+		// Made from the Scene window's context menu: it goes where the menu
+		// was opened (viewport.create_place_offer). Before the record, so the
+		// position is part of the create.
+		if point, placed := viewport.create_place_take(); placed do engine.transform_set_world_position(tH, point)
 		record_create(tH, parent)
 	}
 	return tH

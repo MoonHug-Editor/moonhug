@@ -20,6 +20,8 @@ import "moonhug:editor/widgets"
 import "moonhug:editor/icons"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/keymap"
+import "moonhug:libs/log"
+import "moonhug:packages/engine/editor/scene_tools"
 
 _HANDLE_NONE :: engine.Transform_Handle{}
 
@@ -846,6 +848,43 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 						return
 					}
 				}
+			}
+		}
+	}
+
+	// The pick lock, at the row's right end, left of the ">" button's place:
+	// a lock on a locked row, a dim one under a locked parent, an open lock
+	// on the hovered row. Drawn straight into the draw list with its own hit
+	// test, so it takes no part in the row's layout. Its click is not the
+	// row's.
+	if !is_renaming {
+		lock_w := im.CalcTextSize(icons.ICON_MD_LOCK).x
+		chevron_w := im.CalcTextSize(icons.ICON_MD_CHEVRON_RIGHT).x + im.GetStyle().FramePadding.x * 2
+		lock_min := im.Vec2{node_rect_max.x - chevron_w - lock_w - im.GetStyle().ItemSpacing.x, node_rect_min.y}
+		lock_max := im.Vec2{lock_min.x + lock_w, node_rect_max.y}
+		// A left press makes the window itself active for that frame, which a
+		// plain hover test reads as covered.
+		over_lock := pointer_on_row && mp.x >= lock_min.x && mp.x <= lock_max.x && im.IsWindowHovered(im.HoveredFlags_ChildWindows | im.HoveredFlags_AllowWhenBlockedByActiveItem)
+		own := scene_tools.pick_lock_own(tH)
+		inherited := !own && scene_tools.pick_locked(tH)
+		if own || inherited || pointer_on_row {
+			col := im.GetStyleColorVec4(.Text)^
+			if !own do col.w *= 0.35
+			if over_lock && !inherited do col = im.GetStyleColorVec4(.ButtonActive)^
+			glyph := cstring(icons.ICON_MD_LOCK) if own || inherited else cstring(icons.ICON_MD_LOCK_OPEN)
+			im.DrawList_AddText(im.GetWindowDrawList(), {lock_min.x, node_rect_min.y + im.GetStyle().FramePadding.y}, im.GetColorU32ImVec4(col), glyph)
+		}
+		if over_lock {
+			switch {
+			case inherited: widgets.tooltip_unchecked("Locked by an object above it")
+			case own:       widgets.tooltip_unchecked("Locked: the Scene window does not pick it or what is under it. Click to unlock")
+			case:           widgets.tooltip_unchecked("Lock: the Scene window stops picking it and what is under it")
+			}
+			// Its own click test: the row's item does not reach into this
+			// column (see pointer_on_row above).
+			if im.IsMouseClicked(.Left) {
+				node_clicked = false
+				if !inherited && !scene_tools.pick_lock_set(tH, !own) do log.warning("Save the scene to keep pick locks: an unsaved scene holds none")
 			}
 		}
 	}

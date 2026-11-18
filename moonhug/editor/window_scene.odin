@@ -1,6 +1,8 @@
 package editor
 
 import "base:runtime"
+import "core:fmt"
+import "core:time"
 import gfx "moonhug:libs/gfx"
 import input "moonhug:libs/input"
 import im "moonhug:external/odin-imgui"
@@ -42,8 +44,8 @@ Scene_Window :: struct {
 	// Flythrough speed: wheel while flying rescales the base (kept for the
 	// whole session), holding movement keys ramps the current speed toward
 	// base*mult.
-	fly_speed:     f32,
 	fly_speed_cur: f32,
+	speed_shown_at: time.Tick, // when the wheel last changed the fly speed
 	// Flythrough smoothing: mouse look drives TARGET angles and the camera
 	// exponentially chases them, movement velocity chases the keyed direction
 	// the same way. Both use 1-exp(-dt/tau), so the lag feel is frame-rate
@@ -117,6 +119,7 @@ Scene_Window :: struct {
 	ctx_click_pending: bool,
 	ctx_click_pos:     [2]f32, // scene-image pixels at the press
 	ctx_click_travel:  f32,
+	ctx_menu_point:  [3]f32, // where the context menu was opened, in the world
 	ctx_menu_target:   core.Transform_Handle, // {} = empty space
 	pick_menu:         [dynamic]core.Transform_Handle,
 }
@@ -165,8 +168,7 @@ _scene_window :: proc(w: ^wnd.Window) -> ^Scene_Window {
 @(private = "file")
 _scene_window_init :: proc(sv: ^Scene_Window) {
 	sv.rt = gfx.rt_create(1, 1)
-	sv.fly_speed = FLYTHROUGH_BASE_SPEED
-	sv.fly_speed_cur = FLYTHROUGH_BASE_SPEED
+	sv.fly_speed_cur = scene_camera_prefs.fly_speed
 	prev := _sv
 	_sv = sv
 	scene_cam_look_at({7, 7, 7}, {0, 0, 0})
@@ -352,7 +354,7 @@ scene_frame_selected :: proc() {
 	_sv.tween_from_target = _sv.cam_target
 	_sv.tween_from_dist = _sv.cam_dist
 	_sv.tween_to_target = center
-	_sv.tween_to_dist = max(radius / math.tan(math.to_radians(SCENE_CAM_FOV_DEG) * 0.5) * 1.2, 1)
+	_sv.tween_to_dist = max(radius / math.tan(math.to_radians(scene_camera_prefs.fov) * 0.5) * 1.2, 1)
 	_sv.tween_t = 0
 	_sv.tween_active = true
 }
@@ -415,7 +417,7 @@ _draw_handle_label :: proc(dl: ^im.DrawList, p: im.Vec2, l: core.Gizmo_Label) {
 // Half the visible height at the anchor: what the perspective view shows at
 // _sv.cam_dist, and the orthographic view's half height.
 scene_cam_half_height :: proc() -> f32 {
-	return max(_sv.cam_dist, 0.05) * math.tan(math.to_radians(SCENE_CAM_FOV_DEG) * 0.5)
+	return max(_sv.cam_dist, 0.05) * math.tan(math.to_radians(scene_camera_prefs.fov) * 0.5)
 }
 
 // The Scene window's Render_View — also the basis for picking rays later.
@@ -430,7 +432,7 @@ scene_render_view :: proc(w, h: f32) -> core.Render_View {
 		// far behind it so an ortho view never clips what a zoom-in passes.
 		proj = gfx.matrix4_ortho_z01(-half_w, half_w, -half_h, half_h, -SCENE_CAM_FAR, SCENE_CAM_FAR)
 	} else {
-		proj = gfx.matrix4_perspective_z01(math.to_radians(SCENE_CAM_FOV_DEG), aspect, SCENE_CAM_NEAR, SCENE_CAM_FAR)
+		proj = gfx.matrix4_perspective_z01(math.to_radians(scene_camera_prefs.fov), aspect, SCENE_CAM_NEAR, SCENE_CAM_FAR)
 	}
 	rv := core.render_view_make(view, proj, w, h, ~u32(0), .SceneView) // editor sees all layers
 	rv.mode = _sv.view_mode
@@ -641,9 +643,71 @@ scene_window_draw :: proc(w: ^wnd.Window) {
 		if _sv.band_active {
 			_update_rubber_band()
 		}
+		_draw_fly_speed_readout()
 		_draw_pick_menu()
 		_draw_scene_context_menu()
 	}
+}
+
+// --- Scene camera preferences ------------------------------------------------------
+// How the Scene window's camera sees and flies, the same in every copy and
+// every scene: the Camera overlay's popup edits them, and they are saved with
+// the editor's settings.
+
+Scene_Camera_Prefs :: struct {
+	fov:       f32, // the perspective view's vertical field of view, degrees
+	fly_speed: f32, // units per second while flying, before the ramp and Shift
+	look:      f32, // how far a pixel of mouse travel turns the camera, 1 = the default
+}
+
+SCENE_CAMERA_DEFAULTS :: Scene_Camera_Prefs{fov = SCENE_CAM_FOV_DEG, fly_speed = FLYTHROUGH_BASE_SPEED, look = 1}
+
+scene_camera_prefs := SCENE_CAMERA_DEFAULTS
+
+FLY_SPEED_MIN :: f32(0.5)
+FLY_SPEED_MAX :: f32(100)
+
+// How long the fly speed shows after the wheel changed it, seconds.
+FLY_SPEED_READOUT_TIME :: 1.5
+
+// Camera overlay: a button that opens the camera's preferences.
+@(scene_overlay={id="Camera", order=300})
+draw_camera_overlay :: proc(vertical: bool) {
+	if overlay_tool_button(icons.ICON_MD_VIDEOCAM, "Scene camera: field of view, fly speed, look sensitivity", false) do im.OpenPopup("##scene_camera_prefs")
+	if im.BeginPopup("##scene_camera_prefs") {
+		p := &scene_camera_prefs
+		im.SeparatorText("Scene Camera")
+		im.SetNextItemWidth(110)
+		inspector.drag_float("Field of view", &p.fov, 0.5, 10, 120, "%.0f")
+		widgets.tooltip("The perspective view's vertical field of view, in degrees")
+		im.SetNextItemWidth(110)
+		inspector.drag_float("Fly speed", &p.fly_speed, 0.1, FLY_SPEED_MIN, FLY_SPEED_MAX, "%.1f")
+		widgets.tooltip("Units per second while flying (right mouse button and WASD). The wheel changes it while flying")
+		im.SetNextItemWidth(110)
+		inspector.drag_float("Look sensitivity", &p.look, 0.01, 0.1, 5, "%.2f")
+		widgets.tooltip("How far the mouse turns the camera, 1 is the default")
+		p.fov = clamp(p.fov, 10, 120)
+		p.fly_speed = clamp(p.fly_speed, FLY_SPEED_MIN, FLY_SPEED_MAX)
+		p.look = clamp(p.look, 0.1, 5)
+		if im.Button("Reset") do p^ = SCENE_CAMERA_DEFAULTS
+		im.EndPopup()
+	}
+}
+
+// The fly speed, at the bottom of the image for a moment after the wheel
+// changed it: the wheel gives no other sign of what it did.
+@(private = "file")
+_draw_fly_speed_readout :: proc() {
+	if _sv.speed_shown_at == {} || time.duration_seconds(time.tick_since(_sv.speed_shown_at)) > FLY_SPEED_READOUT_TIME do return
+	text := fmt.ctprintf("Fly speed %.1f", scene_camera_prefs.fly_speed)
+	size := im.CalcTextSize(text)
+	pad := im.GetStyle().FramePadding
+	center := im.Vec2{_sv.img_min.x + f32(_sv.rt.width) * 0.5, _sv.img_min.y + f32(_sv.rt.height) - size.y - pad.y * 2 - 12}
+	lo := im.Vec2{center.x - size.x * 0.5 - pad.x, center.y - pad.y}
+	hi := im.Vec2{center.x + size.x * 0.5 + pad.x, center.y + size.y + pad.y}
+	dl := im.GetWindowDrawList()
+	im.DrawList_AddRectFilled(dl, lo, hi, im.GetColorU32ImVec4({0, 0, 0, 0.6}), 4)
+	im.DrawList_AddText(dl, {center.x - size.x * 0.5, center.y}, im.GetColorU32ImVec4(im.GetStyleColorVec4(.Text)^), text)
 }
 
 // --- The camera per scene ----------------------------------------------------------
@@ -750,14 +814,23 @@ CONTEXT_CLICK_SLOP_PX :: f32(3)
 _scene_context_menu_open :: proc(view: core.Render_View, px, py: f32) {
 	tH, hit := viewport.pick(view, px, py)
 	_sv.ctx_menu_target = tH if hit else {}
+	// Where an object made from the menu goes: the surface under the
+	// pointer, else the grid plane, as a drop does.
+	if point, on_surface := viewport.surface_point(view, px, py); on_surface {
+		_sv.ctx_menu_point = point
+	} else {
+		_sv.ctx_menu_point = scene_drop_fallback(view, px, py)
+	}
 	if hit && !sel_scene_is(tH) do core.inspector_request_select(tH)
 	im.OpenPopup("##scene_context_menu")
 }
 
 @(private = "file")
 _draw_scene_context_menu :: proc() {
+	viewport.create_place_tick()
 	if !im.BeginPopup("##scene_context_menu") do return
 	defer im.EndPopup()
+	viewport.create_place_offer(_sv.ctx_menu_point)
 	if _, alive := inspector.object_owner_of(core.Handle(_sv.ctx_menu_target)); _sv.ctx_menu_target != {} && alive {
 		menu.draw_menu_sections({
 			menu.section("Edit", min_order = menu.EDIT_SECTION_SELECTION_MIN, max_order = menu.EDIT_SECTION_SELECTION_MAX),
@@ -1080,16 +1153,17 @@ handle_scene_input :: proc() {
 		// not a click for the context menu.
 		_sv.ctx_click_travel += abs(delta.x) + abs(delta.y)
 		if _sv.ctx_click_travel > CONTEXT_CLICK_SLOP_PX || input.wheel() != 0 do _sv.ctx_click_pending = false
-		_sv.fly_yaw_target += delta.x * LOOK_SENSITIVITY
-		_sv.fly_pitch_target = clamp(_sv.fly_pitch_target - delta.y * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
+		_sv.fly_yaw_target += delta.x * LOOK_SENSITIVITY * scene_camera_prefs.look
+		_sv.fly_pitch_target = clamp(_sv.fly_pitch_target - delta.y * LOOK_SENSITIVITY * scene_camera_prefs.look, -PITCH_LIMIT, PITCH_LIMIT)
 		look_k := 1 - math.exp(-dt / FLY_LOOK_SMOOTH_TAU)
 		_sv.cam_yaw += (_sv.fly_yaw_target - _sv.cam_yaw) * look_k
 		_sv.cam_pitch = clamp(_sv.cam_pitch + (_sv.fly_pitch_target - _sv.cam_pitch) * look_k, -PITCH_LIMIT, PITCH_LIMIT)
 
 		// Wheel during fly rescales the base speed for the session (Unity).
 		if wheel := input.wheel(); wheel != 0 {
-			_sv.fly_speed = clamp(_sv.fly_speed * math.pow(FLY_SPEED_WHEEL_BASE, wheel), 0.5, 100)
-			_sv.fly_speed_cur = min(_sv.fly_speed_cur, _sv.fly_speed * FLYTHROUGH_RAMP_MULT)
+			scene_camera_prefs.fly_speed = clamp(scene_camera_prefs.fly_speed * math.pow(FLY_SPEED_WHEEL_BASE, wheel), FLY_SPEED_MIN, FLY_SPEED_MAX)
+			_sv.speed_shown_at = time.tick_now()
+			_sv.fly_speed_cur = min(_sv.fly_speed_cur, scene_camera_prefs.fly_speed * FLYTHROUGH_RAMP_MULT)
 		}
 
 		// The movement keys came through the "Scene Flythrough" keymap
@@ -1108,14 +1182,14 @@ handle_scene_input :: proc() {
 			// Held movement ramps toward the cap, so short taps stay precise
 			// and long hauls get fast. Release resets to base.
 			_sv.fly_speed_cur = min(
-				_sv.fly_speed_cur + _sv.fly_speed * (FLYTHROUGH_RAMP_MULT - 1) / FLYTHROUGH_RAMP_TIME * dt,
-				_sv.fly_speed * FLYTHROUGH_RAMP_MULT,
+				_sv.fly_speed_cur + scene_camera_prefs.fly_speed * (FLYTHROUGH_RAMP_MULT - 1) / FLYTHROUGH_RAMP_TIME * dt,
+				scene_camera_prefs.fly_speed * FLYTHROUGH_RAMP_MULT,
 			)
 			speed := _sv.fly_speed_cur
 			if fast do speed *= FLYTHROUGH_SHIFT_MULT
 			target_vel = move / len * speed
 		} else {
-			_sv.fly_speed_cur = _sv.fly_speed
+			_sv.fly_speed_cur = scene_camera_prefs.fly_speed
 		}
 		step: [3]f32
 		_sv.fly_vel, step = scene_fly_move_step(_sv.fly_vel, target_vel, dt)
@@ -1124,7 +1198,7 @@ handle_scene_input :: proc() {
 		update_scene_camera()
 		return
 	}
-	_sv.fly_speed_cur = _sv.fly_speed
+	_sv.fly_speed_cur = scene_camera_prefs.fly_speed
 
 	// The tool keys and Escape are the "Scene Tools" keymap's commands
 	// (scene_tool_* and scene_clear_selection below).
@@ -1188,8 +1262,8 @@ handle_scene_input :: proc() {
 			_sv.cam_dist = max(linalg.length(_sv.cam_pos - _sv.orbit_pivot), 0.1)
 		}
 		delta := io.MouseDelta
-		_sv.cam_yaw += delta.x * LOOK_SENSITIVITY
-		_sv.cam_pitch = clamp(_sv.cam_pitch - delta.y * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
+		_sv.cam_yaw += delta.x * LOOK_SENSITIVITY * scene_camera_prefs.look
+		_sv.cam_pitch = clamp(_sv.cam_pitch - delta.y * LOOK_SENSITIVITY * scene_camera_prefs.look, -PITCH_LIMIT, PITCH_LIMIT)
 		fwd, _, _ := _scene_cam_basis()
 		_sv.cam_pos = _sv.orbit_pivot - fwd * _sv.cam_dist
 		update_scene_camera()

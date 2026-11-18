@@ -622,10 +622,73 @@ _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handl
 			_wrap_transform_field_override(tH, t, &t.position, "position", typeid_of([3]f32), drawer, typeid_of(^[3]f32), "Position")
 		}
 		_wrap_transform_rotation_override(tH, t, drawer)
-		_wrap_transform_field_override(tH, t, &t.scale, "scale", typeid_of([3]f32), drawer, typeid_of(^[3]f32), "Scale")
+		_draw_scale_link_toggle()
+		_scale_link_inner = drawer
+		_wrap_transform_field_override(tH, t, &t.scale, "scale", typeid_of([3]f32), _scale_link_drawer, typeid_of(^[3]f32), "Scale")
 	} else {
 		_inspector_transform_open = false
 	}
+}
+
+// --- Scale link ------------------------------------------------------------------------
+
+Transform_Inspector_Prefs :: struct {
+	// The Scale row's link: a change to one axis scales the other two by the
+	// same ratio, so the object keeps its proportions.
+	scale_linked: bool,
+}
+
+@(user_settings={name="Transform Inspector"})
+transform_inspector_prefs: Transform_Inspector_Prefs
+
+// The [3]f32 drawer the Scale row wraps.
+@(private = "file") _scale_link_inner: proc(ptr: rawptr, tid: typeid, label: cstring)
+
+// What a linked scale is after one axis changed from `before` to its value
+// in `after`: the other two axes times the same ratio. An axis that was 0
+// has no ratio, so the others take the new value. Two or three axes changed
+// at once (a paste, a reset) is left as it is.
+scale_linked :: proc(before, after: [3]f32) -> [3]f32 {
+	changed := -1
+	for i in 0 ..< 3 {
+		if after[i] == before[i] do continue
+		if changed >= 0 do return after
+		changed = i
+	}
+	if changed < 0 do return after
+	out := after
+	for i in 0 ..< 3 {
+		if i == changed do continue
+		out[i] = before[i] * (after[changed] / before[changed]) if before[changed] != 0 else after[changed]
+	}
+	return out
+}
+
+// The Scale row's drawer: the plain one, then the link. The row's undo
+// session and the prefab override see one change of the whole field.
+@(private = "file")
+_scale_link_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+	scale := cast(^[3]f32)ptr
+	before := scale^
+	_scale_link_inner(ptr, tid, label)
+	if transform_inspector_prefs.scale_linked do scale^ = scale_linked(before, scale^)
+}
+
+// The link button, at the right end of the Scale row's label. Drawn before
+// the row, so it takes its own click.
+@(private = "file")
+_draw_scale_link_toggle :: proc() {
+	size := im.GetFrameHeight()
+	row := im.GetCursorPos()
+	// The label column is measured from the panel's edge, whatever the row's indent.
+	im.SetCursorPosX(im.GetCursorStartPos().x + inspector.field_label_width() - size - im.GetStyle().ItemInnerSpacing.x)
+	on := transform_inspector_prefs.scale_linked // the click below flips the flag: the pop must match the push
+	if on do im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
+	else do im.PushStyleColorImVec4(.Button, {0, 0, 0, 0})
+	if im.Button(fmt.ctprintf("%s##scale_link", icons.ICON_MD_LINK), {size, size}) do transform_inspector_prefs.scale_linked = !on
+	im.PopStyleColor()
+	widgets.tooltip("Linked: changing one axis scales the other two by the same ratio")
+	im.SetCursorPos(row)
 }
 
 @(private)

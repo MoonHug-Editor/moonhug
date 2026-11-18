@@ -185,6 +185,7 @@ _pick_geometry :: proc(view: engine.Render_View, ray: engine.Ray) -> []Scene_Hit
 @(private = "file")
 _add_hit :: proc(out: ^[dynamic]Scene_Hit, h: Scene_Hit) {
 	for have in out do if have.tH == h.tH do return
+	if pick_locked(h.tH) do return // pick_lock.odin
 	append(out, h)
 }
 
@@ -273,6 +274,15 @@ scene_window_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) ->
 	// Package shapes (handles.pick_register).
 	for provider in handles.pick_providers() do provider.band(view, rmin, rmax, &out)
 
+	// Locked objects are passed over (pick_lock.odin).
+	if len(pick_locks.entries) > 0 {
+		n := 0
+		for h in out do if !pick_locked(h) {
+			out[n] = h
+			n += 1
+		}
+		resize(&out, n)
+	}
 	return out[:]
 }
 

@@ -59,6 +59,7 @@ EditorSettings :: struct {
     scene_overlays:           [dynamic]Overlay_Setting, // dockable overlay placement (dock.odin)
     grid:                     Grid_Settings,            // scene grid (window_scene.odin)
     snap:                     Snap_Settings,            // gizmo snapping (window_scene.odin)
+    scene_camera:             Scene_Camera_Prefs,       // the Scene window's camera preferences (window_scene.odin)
     run_config:               string,                   // Play button's selected run config (window_toolbar.odin), "pkg/name"
     sim_host:                 string,                   // Simulate's host package name (simulate.odin), e.g. "app"
     project_settings_tab:     string,                   // Project Settings window's selected section (project_settings.odin)
@@ -97,6 +98,10 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
             }
             if editor_settings.snap.angle > 0 {
                 snap_settings = editor_settings.snap
+            }
+            // Zero = a settings file with no camera preferences: the defaults stay.
+            if editor_settings.scene_camera.fov > 0 && editor_settings.scene_camera.fly_speed > 0 && editor_settings.scene_camera.look > 0 {
+                scene_camera_prefs = editor_settings.scene_camera
             }
             _sv_plain.cam_ortho = editor_settings.scene_ortho
             gizmos.scene_gizmos = !editor_settings.scene_gizmos_off
@@ -174,6 +179,7 @@ save_editor_settings :: proc() {
     overlays_capture_settings()
     editor_settings.grid = grid_settings
     editor_settings.snap = snap_settings
+    editor_settings.scene_camera = scene_camera_prefs
     editor_settings.scene_ortho = _sv_plain.pre_2d_ortho if _sv_plain.mode_2d else _sv_plain.cam_ortho
     editor_settings.scene_2d = _sv_plain.mode_2d
     editor_settings.scene_mode = _sv_plain.view_mode

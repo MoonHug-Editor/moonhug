@@ -15,6 +15,7 @@ install_viewport_provider :: proc() {
 		object_bounds       = _vp_object_bounds,
 		pick                = scene_window_pick,
 		pick_all            = _vp_pick_all,
+		surface_point       = scene_window_surface_point,
 		band_query          = scene_window_band_query,
 		outline             = scene_outline,
 		tools_frame         = scene_tools_frame,
