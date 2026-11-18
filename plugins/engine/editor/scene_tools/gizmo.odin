@@ -87,6 +87,8 @@ _Gizmo_Target :: struct {
 	// grab: a ring turns one angle (_gizmo_keep_driven_angles).
 	rot_driven:  undo.Driven_Lanes,
 	posed_eul:   [3]f32,
+	// World length of one canvas unit for a UI node, 0 for a world object (the nudge's step).
+	ui_unit:     f32,
 }
 _gizmo_targets: [dynamic]_Gizmo_Target
 
@@ -105,13 +107,14 @@ scene_tools_consume_mouse :: proc() -> bool {
 
 // True while a transform gizmo or handle drag is in progress.
 scene_tools_dragging :: proc() -> bool {
-	return handles.dragging()
+	return handles.dragging() || _nudge_open
 }
 
 // The transform tool's frame, from scene_tools_frame after the handle procs: the
 // gizmo on the active object in W E R, and the end of a drag whose gizmo went
 // away (Q or T pressed mid-drag, the selection emptied).
 gizmo_tool_frame :: proc() {
+	_nudge_frame()
 	sel := session.active()
 	if viewport.gizmo_mode != .Handles && sel != {} {
 		gizmo_draw_and_handle(sel)
@@ -209,13 +212,16 @@ _gizmo_rotation :: proc(tH: engine.Transform_Handle) -> quaternion128 {
 @(private = "file")
 _gizmo_begin :: proc(origin: [3]f32) {
 	gizmo_end_drag_if_any()
-	if !_gizmo_collect_targets() do return
+	nudge_end()
+	if !_gizmo_collect_targets(viewport.gizmo_mode, _gizmo_label()) do return
 	_gizmo_dragging = true
 	_gizmo_start_world = origin
 }
 
+// The selection's top-level objects as the targets of one `mode` edit, and
+// the undo session `label` names. False when nothing can take the edit.
 @(private)
-_gizmo_collect_targets :: proc() -> bool {
+_gizmo_collect_targets :: proc(mode: viewport.Gizmo_Mode, label: string) -> bool {
 	// Cross-frame state: never borrows the caller's allocator.
 	if _gizmo_targets == nil do _gizmo_targets = make([dynamic]_Gizmo_Target, runtime.default_allocator())
 	clear(&_gizmo_targets)
@@ -238,7 +244,7 @@ _gizmo_collect_targets :: proc() -> bool {
 		all := undo.Driven_Lanes{0, 1, 2}
 		locked: bool
 		rot_driven: undo.Driven_Lanes
-		#partial switch viewport.gizmo_mode {
+		#partial switch mode {
 		case .Translate:
 			locked = _gizmo_driven(h, offset_of(engine.Transform, position), typeid_of([3]f32)).lanes == all
 		case .Rotate:
@@ -259,7 +265,7 @@ _gizmo_collect_targets :: proc() -> bool {
 			rot_driven  = rot_driven,
 			posed_eul   = engine.quat_to_euler_xyz(t.rotation),
 		})
-		switch viewport.gizmo_mode {
+		switch mode {
 		case .Picker, .Handles, .Measure:
 		case .Translate:
 			append(&edits, undo.edit_target_transform(h, &t.position, typeid_of([3]f32)))
@@ -285,7 +291,7 @@ _gizmo_collect_targets :: proc() -> bool {
 
 	if len(_gizmo_targets) == 0 do return false
 	if len(edits) > 0 {
-		_gizmo_edit = undo.edit_session_begin(edits[:], _gizmo_label())
+		_gizmo_edit = undo.edit_session_begin(edits[:], label)
 	}
 	return true
 }
@@ -372,7 +378,64 @@ gizmo_end_drag_if_any :: proc() {
 }
 
 
+// --- Nudge ----------------------------------------------------------------------
+// A move by whole steps with no handle: the Scene window's arrow keys. One
+// key hold is one undo step. The caller calls nudge every frame the key is
+// down, with a zero move between steps, and the step closes on the first
+// frame without a call. It shares the move drag's targets and session, so
+// it records what a drag records, prefab overrides included.
+
+@(private = "file")
+_nudge_open: bool
+@(private = "file")
+_nudge_touched: bool
+// The moves so far, in steps along world axes.
+@(private = "file")
+_nudge_steps: [3]f32
+
+// Moves the selection by `steps` (a world direction times a step count). A
+// world object's step is `step` world units, a UI node's is one canvas unit.
+// Nothing while a handle is dragged.
+nudge :: proc(steps: [3]f32, step: f32) {
+	if !_nudge_open {
+		if handles.dragging() || _gizmo_dragging do return
+		if steps == {} do return
+		if !_gizmo_collect_targets(.Translate, "Nudge") do return
+		for &tgt in _gizmo_targets {
+			if f, ok := engine.rect_frame(tgt.tH); ok {
+				tgt.ui_unit = linalg.length(f.parent_xform[0].xyz)
+			}
+		}
+		_nudge_open = true
+		_nudge_steps = {}
+	}
+	_nudge_touched = true
+	if steps == {} do return
+	_nudge_steps += steps
+	for &tgt in _gizmo_targets {
+		unit := tgt.ui_unit if tgt.ui_unit > 0 else step
+		engine.transform_set_world_position(tgt.tH, tgt.start_pos + _nudge_steps * unit)
+	}
+	undo.edit_session_keep_driven(&_gizmo_edit)
+}
+
+// Closes the open nudge as one undo step. Nothing with none open.
+nudge_end :: proc() {
+	if !_nudge_open do return
+	_nudge_open = false
+	_nudge_touched = false
+	_gizmo_end_drag()
+}
+
+// Once a frame: a nudge nobody continued since the last frame is over.
+@(private = "file")
+_nudge_frame :: proc() {
+	if _nudge_open && !_nudge_touched do nudge_end()
+	_nudge_touched = false
+}
+
 gizmo_shutdown :: proc() {
+	nudge_end()
 	delete(_gizmo_targets)
 	_gizmo_targets = nil
 }

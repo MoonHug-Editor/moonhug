@@ -31,6 +31,11 @@ Viewport_Provider :: struct {
 	tools_frame:         proc(view: core.Render_View),
 	tools_consume_mouse: proc() -> bool,
 	tools_dragging:      proc() -> bool,
+	// Moves the selection by `steps` (a world direction times a step count) of
+	// `step` world units, one canvas unit for a UI node. Called every frame a
+	// nudge key is down, with zero steps between moves: the first frame
+	// without a call closes the undo step.
+	nudge:               proc(steps: [3]f32, step: f32),
 	tools_shutdown:      proc(),
 	marks_rebuild:       proc(),
 	// Every @(comp_on_draw_gizmos) proc for the current gizmo view and channel.
@@ -141,6 +146,10 @@ tools_consume_mouse :: proc() -> bool {
 tools_dragging :: proc() -> bool {
 	if _provider.tools_dragging == nil do return false
 	return _provider.tools_dragging()
+}
+
+nudge :: proc(steps: [3]f32, step: f32) {
+	if _provider.nudge != nil do _provider.nudge(steps, step)
 }
 
 tools_shutdown :: proc() {

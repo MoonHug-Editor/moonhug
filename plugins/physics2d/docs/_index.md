@@ -61,8 +61,8 @@ Edit, Project Settings, Physics 2D. Saved in `ProjectSettings/physics_2d.json`, 
 The plugin declares no attributes and has no registries.
 
 - Game code reads contacts and triggers from `@(fixed_update)` procs ordered after the physics step ([Bodies](concepts/Bodies.md), "Contact events").
-- `raycast` asks what a ray hits ([Queries](concepts/Queries.md)).
-- `body_of(handle)` returns an object's live box2d body, and `world()` the box2d world, so forces, shape casts and the rest of box2d work from game code.
+- `raycast` asks what a ray hits, `circle_cast`, `box_cast` and `capsule_cast` what a moving shape hits, and `overlap_circle`, `overlap_box` and `overlap_capsule` what a shape touches ([Queries](concepts/Queries.md)).
+- `body_of(handle)` returns an object's live box2d body, and `world()` the box2d world, so forces and the rest of box2d work from game code.
 
 ## Limits
 

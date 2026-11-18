@@ -254,6 +254,28 @@ The link button on the Transform's Scale row keeps an object's proportions: with
 - An axis that was 0 has no ratio, so the other two take the new value.
 - A value set on two or three axes at once (a paste, a reset) is left as it is.
 
+### Render layers to children
+
+After the Inspector's Render Layers row changes on an object with children, a dialog asks whether the children take the same layers.
+
+- Yes writes the object's layers to every object under it, at any depth. The writes are part of the undo step of the change, so one undo takes back both.
+- No leaves the children as they are.
+- The question comes when the row's list closes, once for all the changes made while it was open. It does not come when every object under it has those layers already.
+- With several objects selected, the question covers the children of each.
+- On a prefab instance each child written records an override.
+- From code, `scene_windows.render_layers_apply_to_children(parents)` does the same without the question.
+
+### Nudge
+
+In an orthographic Scene view (2D mode included), the arrow keys move the selection one step along the screen's axes: Left and Right along the view's right axis, Up and Down along its up axis. In a perspective view the keys move nothing.
+
+- A world object's step is the snap move step (the Snap popup's mode: a grid cell, a grid subdivision or a free value). The move is by that step, the object is not aligned to the grid.
+- A UI element's step is one canvas unit.
+- Shift moves ten steps.
+- A held key repeats, and one hold is one undo step. Every selected top-level object moves by the same offset.
+- On a prefab instance the move records a position override, as a drag of the move handle does.
+- The keys are the commands `Scene/Nudge Left`, `Right`, `Up` and `Down`, bound in the Scene window's keymap.
+
 ### Measure tool
 
 The Measure tool (M, the ruler at the end of the Tools overlay) measures the distance between two points: drag from one to the other. The measurement stays until the next drag, a click or another tool.

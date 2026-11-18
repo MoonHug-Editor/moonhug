@@ -62,6 +62,12 @@ Scene_Window :: struct {
 	// What the flythrough keymap's held commands asked for this frame
 	// (scene_fly_* below): the fly step reads and clears them.
 	fly_move: [3]f32,
+	// The arrow keys held this frame, as a screen direction (scene_nudge_*
+	// commands), the one before it, and the hold's clock for the key repeat.
+	nudge_dir:  [2]f32,
+	nudge_prev: [2]f32,
+	nudge_time: f32,
+	nudge_next: f32,
 	fly_fast: bool,
 
 	// Projection and the 2D view. Orthographic keeps the framing of the
@@ -632,6 +638,7 @@ scene_window_draw :: proc(w: ^wnd.Window) {
 			overlays_draw(_sv.img_min, _sv.img_min + avail, content_min, content_max)
 		}
 
+		_scene_nudge_frame()
 		_sv.hovered = im.IsWindowHovered({})
 		// Flythrough is hover-independent once latched: the captured cursor
 		// is pinned, so hover can't be trusted mid-flight.
@@ -1383,6 +1390,10 @@ scene_tools_keymap :: proc(km: ^keymap.Keymap) {
 scene_window_keymap :: proc(km: ^keymap.Keymap) {
 	keymap.bind(km, "F", "Edit/Frame Selected")
 	keymap.bind(km, "Escape", "Scene/Clear Selection")
+	keymap.bind(km, "Left", "Scene/Nudge Left", held = true)
+	keymap.bind(km, "Right", "Scene/Nudge Right", held = true)
+	keymap.bind(km, "Up", "Scene/Nudge Up", held = true)
+	keymap.bind(km, "Down", "Scene/Nudge Down", held = true)
 }
 
 // The flythrough's keys, held: each adds to the frame's movement, which the
@@ -1420,6 +1431,64 @@ scene_fly_up :: proc() { _scene_fly(.Up) }
 scene_fly_down :: proc() { _scene_fly(.Down) }
 @(command={name="Scene/Fly Fast", help="Makes the flying camera faster while held"})
 scene_fly_fast :: proc() { _scene_focused().fly_fast = true }
+
+// --- Nudge ----------------------------------------------------------------------
+// The arrow keys move the selection one step along the screen's axes, in an
+// orthographic view (2D mode included). A world object's step is the snap
+// move step, a UI node's is one canvas unit. Shift moves ten steps. A held
+// key repeats, and one hold is one undo step.
+
+NUDGE_SHIFT_STEPS :: 10
+
+@(command={name="Scene/Nudge Left", enabled=scene_can_nudge, help="Moves the selection one step left while held, ten with Shift"})
+scene_nudge_left :: proc() { _scene_focused().nudge_dir.x -= 1 }
+@(command={name="Scene/Nudge Right", enabled=scene_can_nudge, help="Moves the selection one step right while held, ten with Shift"})
+scene_nudge_right :: proc() { _scene_focused().nudge_dir.x += 1 }
+@(command={name="Scene/Nudge Up", enabled=scene_can_nudge, help="Moves the selection one step up while held, ten with Shift"})
+scene_nudge_up :: proc() { _scene_focused().nudge_dir.y += 1 }
+@(command={name="Scene/Nudge Down", enabled=scene_can_nudge, help="Moves the selection one step down while held, ten with Shift"})
+scene_nudge_down :: proc() { _scene_focused().nudge_dir.y -= 1 }
+
+scene_can_nudge :: proc() -> bool {
+	sv := _scene_focused()
+	if !sv.cam_ortho do return keymap.disabled("The view is in perspective")
+	if sv.flythrough_active || sv.band_active do return false
+	return sel_scene_count() > 0 || keymap.disabled("Nothing is selected")
+}
+
+// How many steps this frame of a hold makes: one when the direction starts
+// or changes, then one per repeat interval after the repeat delay.
+scene_nudge_repeat :: proc(dir, prev: [2]f32, hold_time, next: f32, dt, delay, rate: f32) -> (steps: int, new_time, new_next: f32) {
+	if dir == {} do return 0, 0, 0
+	if dir != prev do return 1, 0, delay
+	new_time, new_next = hold_time + dt, next
+	for new_time >= new_next {
+		steps += 1
+		new_next += max(rate, 0.001)
+	}
+	return
+}
+
+// The current Scene copy's nudge for this frame, from the keys its commands
+// collected. Every frame of a hold reaches the provider, a zero move between
+// steps: the first frame without one closes the undo step.
+@(private = "file")
+_scene_nudge_frame :: proc() {
+	dir := _sv.nudge_dir
+	_sv.nudge_dir = {}
+	defer _sv.nudge_prev = dir
+	io := im.GetIO()
+	steps: int
+	steps, _sv.nudge_time, _sv.nudge_next = scene_nudge_repeat(dir, _sv.nudge_prev, _sv.nudge_time, _sv.nudge_next, io.DeltaTime, io.KeyRepeatDelay, io.KeyRepeatRate)
+	if dir == {} do return
+	if io.KeyShift do steps *= NUDGE_SHIFT_STEPS
+	// The view's axes come from sines and cosines: in an axis view they are a
+	// world axis up to rounding, and the rounding stays out of the position.
+	_, right, up := _scene_cam_basis()
+	move := right * dir.x + up * dir.y
+	for &c in move do if abs(c) < 1e-5 do c = 0
+	viewport.nudge(move * f32(steps), snap_translate_step())
+}
 
 // A modal keymap: the flythrough pushes it when the camera starts flying
 // and pops it when it stops (handle_scene_input).

@@ -8,6 +8,7 @@ package scenarios
 import "core:encoding/json"
 import "core:fmt"
 import "core:testing"
+import "core:time"
 
 @(private = "file")
 _object :: proc(r: ^Run, name: string) -> (pos, scale: [3]f64, ok: bool) {
@@ -126,6 +127,149 @@ scene_editing_conveniences :: proc(t: ^testing.T) {
 		}
 		call(r, "input", `{"steps":[{"type":"key","name":"Escape"},{"type":"key","name":"Escape","down":false},{"type":"wait","frames":2}]}`)
 	}
+
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 3)
+	editor_quit(r)
+}
+
+// The arrow keys nudge the selection in a 2D view: a tap is one snap step
+// along the screen's axis, Shift makes it ten, a hold repeats and is one
+// undo step. In a perspective view the keys move nothing.
+@(test)
+scene_nudge :: proc(t: ^testing.T) {
+	r := begin(t)
+	project_write(r, "assets/Main.scene", `{"root": 1, "next_local_id": 2, "transforms": [{"local_id": 1, "name": "Main", "is_active": true, "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1, "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}}, "children": [], "components": []}], "nested_scenes": [], "breadcrumbs": [], "components": []}`)
+	editor_start(r)
+	call(r, "open_scene", `{"path":"assets/Main.scene"}`)
+	frames(r, 3)
+
+	undo_top :: proc(r: ^Run) -> i64 { return as_int(at(call(r, "undo_history"), "top")) }
+	tap :: proc(r: ^Run, key: string, shift := false) {
+		if shift do call(r, "input", `{"steps":[{"type":"key","name":"shift"},{"type":"wait","frames":1}]}`)
+		call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"key","name":%q}},{{"type":"wait","frames":1}},{{"type":"key","name":%q,"down":false}},{{"type":"wait","frames":3}}]}}`, key, key))
+		if shift do call(r, "input", `{"steps":[{"type":"key","name":"shift","down":false},{"type":"wait","frames":1}]}`)
+	}
+
+	// The Scene window takes the keys once it is focused: its 2D button does both.
+	two_d, has := item_rect(r, "Scene", "2D")
+	if !testing.expect(t, has, "the 2D button") do return
+	call(r, "select", `{"name":"Main"}`)
+
+	// In perspective the arrows move nothing. A click on the button and one
+	// back leaves the view in perspective, with the Scene window focused.
+	click(r, two_d.x + two_d[2] / 2, two_d.y + two_d[3] / 2)
+	frames(r, 3)
+	click(r, two_d.x + two_d[2] / 2, two_d.y + two_d[3] / 2)
+	frames(r, 3)
+	tap(r, "right")
+	pos, _, _ := _object(r, "Main")
+	testing.expectf(t, pos == {0, 0, 0}, "in a perspective view an arrow key moves nothing: %v", pos)
+
+	click(r, two_d.x + two_d[2] / 2, two_d.y + two_d[3] / 2)
+	frames(r, 3)
+	top := undo_top(r)
+	tap(r, "right")
+	pos, _, _ = _object(r, "Main")
+	step := pos.x
+	testing.expectf(t, step > 0 && pos.y == 0 && pos.z == 0, "Right moves one step along X: %v", pos)
+	testing.expect_value(t, undo_top(r), top + 1)
+
+	tap(r, "up", shift = true)
+	pos, _, _ = _object(r, "Main")
+	testing.expectf(t, abs(pos.y - step * 10) < 1e-4 && abs(pos.x - step) < 1e-6, "Shift+Up moves ten steps along Y: %v, step %v", pos, step)
+	testing.expect_value(t, undo_top(r), top + 2)
+
+	// A hold of over half a second repeats, and is one undo step.
+	call(r, "input", `{"steps":[{"type":"key","name":"left"},{"type":"wait","frames":2}]}`)
+	time.sleep(700 * time.Millisecond)
+	call(r, "input", `{"steps":[{"type":"key","name":"left","down":false},{"type":"wait","frames":3}]}`)
+	pos, _, _ = _object(r, "Main")
+	testing.expectf(t, pos.x < step - step * 2.5, "a held Left repeats: x %v, step %v", pos.x, step)
+	testing.expect_value(t, undo_top(r), top + 3)
+	call(r, "invoke_menu", `{"path":"Edit/Undo"}`)
+	frames(r, 3)
+	pos, _, _ = _object(r, "Main")
+	testing.expectf(t, abs(pos.x - step) < 1e-6, "one undo takes back the whole hold: x %v, step %v", pos.x, step)
+
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 3)
+	editor_quit(r)
+}
+
+// A change of an object's render layers asks whether its children take them
+// too. Yes changes every object under it, in the same undo step.
+@(test)
+render_layers_to_children :: proc(t: ^testing.T) {
+	r := begin(t)
+	project_write(r, "assets/Main.scene", `{"root": 1, "next_local_id": 4, "transforms": [
+		{"local_id": 1, "name": "Main", "is_active": true, "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1, "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}}, "children": [{"pptr": {"local_id": 2, "guid": "00000000-0000-0000-0000-000000000000"}}], "components": []},
+		{"local_id": 2, "name": "Child", "is_active": true, "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1, "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}}, "children": [{"pptr": {"local_id": 3, "guid": "00000000-0000-0000-0000-000000000000"}}], "components": []},
+		{"local_id": 3, "name": "Leaf", "is_active": true, "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1, "parent": {"pptr": {"local_id": 2, "guid": "00000000-0000-0000-0000-000000000000"}}, "children": [], "components": []}
+	], "nested_scenes": [], "breadcrumbs": [], "components": []}`)
+	editor_start(r)
+	call(r, "open_scene", `{"path":"assets/Main.scene"}`)
+	frames(r, 3)
+
+	layers :: proc(r: ^Run, name: string) -> i64 {
+		return as_int(at(call(r, "get_property", fmt.tprintf(`{{"name":%q,"path":"render_layer"}}`, name)), "value"))
+	}
+	undo_top :: proc(r: ^Run) -> i64 { return as_int(at(call(r, "undo_history"), "top")) }
+	// Opens the Render Layers list of the selected object and picks `item`.
+	pick :: proc(r: ^Run, t: ^testing.T, item: string) -> bool {
+		rows := _rects(r, "Inspector", "Render Layers")
+		if !testing.expect(t, len(rows) > 0, "the Inspector has the Render Layers row") do return false
+		// The rectangle is the row's label: its list is at the window's right.
+		row := rows[len(rows) - 1]
+		insp, _ := window_rect(r, "Inspector")
+		click(r, insp.x + insp[2] - 60, row.y + row[3] / 2)
+		frames(r, 3)
+		entry, has := item_rect(r, "popup", item)
+		if !testing.expectf(t, has, "the list has %q", item) do return false
+		click(r, entry.x + 10, entry.y + entry[3] / 2)
+		// The pick closes the list. Escape would answer the dialog, so no key here.
+		frames(r, 4)
+		return true
+	}
+
+	// The leaf has no children: its change asks nothing.
+	call(r, "select", `{"name":"Leaf"}`)
+	frames(r, 3)
+	if !pick(r, t, "Nothing") do return
+	testing.expect_value(t, layers(r, "Leaf"), 0)
+	testing.expectf(t, !as_bool(at(call(r, "dialog"), "open")), "an object without children asks nothing")
+
+	call(r, "select", `{"name":"Main"}`)
+	frames(r, 3)
+	top := undo_top(r)
+	if !pick(r, t, "Everything") do return
+	everything := layers(r, "Main")
+	testing.expectf(t, everything != 1, "the row changed the object's layers: %v", everything)
+	asked := call(r, "dialog")
+	testing.expectf(t, as_bool(at(asked, "open")) && as_string(at(asked, "title")) == "Change Render Layers", "the change asks about the children: %v", asked)
+	testing.expect_value(t, layers(r, "Child"), 1)
+	call(r, "dialog", `{"press":"Yes, change children"}`)
+	frames(r, 3)
+	testing.expect_value(t, layers(r, "Child"), everything)
+	testing.expect_value(t, layers(r, "Leaf"), everything)
+	testing.expect_value(t, undo_top(r), top + 1)
+
+	// One undo takes back the object's change and its children's.
+	call(r, "invoke_menu", `{"path":"Edit/Undo"}`)
+	frames(r, 3)
+	testing.expect_value(t, layers(r, "Main"), 1)
+	testing.expect_value(t, layers(r, "Child"), 1)
+	testing.expect_value(t, layers(r, "Leaf"), 0)
+
+	// No: the object alone changes.
+	if !pick(r, t, "Nothing") do return
+	testing.expectf(t, as_bool(at(call(r, "dialog"), "open")), "the next change asks again")
+	call(r, "dialog", `{"press":"No, this object only"}`)
+	frames(r, 3)
+	testing.expect_value(t, layers(r, "Main"), 0)
+	testing.expect_value(t, layers(r, "Child"), 1)
 
 	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
 	call(r, "invoke_menu", `{"path":"File/Save"}`)

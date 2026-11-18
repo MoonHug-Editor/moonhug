@@ -886,11 +886,31 @@ _draw_transform_layer_row :: proc(tH: engine.Transform_Handle, t: ^engine.Transf
 	if is_in_nested_ctx {
 		engine.inspector_set_nested_local_id(prev_nested_lid)
 	}
+	// The row changed the layers: once its list closes, the children may take
+	// them too (layer_children.odin). The list stays open over several
+	// changes, so the question comes once, after the last.
+	if _layer_row_changed {
+		_layer_row_changed = false
+		_layer_ask_for = tH
+	}
+	if _layer_ask_for != {} && _layer_ask_for != tH do _layer_ask_for = {}
+	if _layer_ask_for == tH && !im.IsPopupOpen("", im.PopupFlags_AnyPopup) {
+		_layer_ask_for = {}
+		sel := session.window_objects(_inspector_window)
+		render_layers_ask_children(sel if len(sel) > 1 else {tH})
+	}
 }
+
+// The Render Layers row changed its value this frame, and the object whose
+// children the question is about once the row's list closes.
+@(private = "file")
+_layer_row_changed: bool
+@(private = "file")
+_layer_ask_for: engine.Transform_Handle
 
 @(private)
 _render_layer_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
-	inspector.layer_mask_field(label, cast(^u32)ptr, "render")
+	if inspector.layer_mask_field(label, cast(^u32)ptr, "render") do _layer_row_changed = true
 }
 
 @(private)

@@ -81,3 +81,46 @@ test_created_object_takes_the_offered_place_once :: proc(t: ^testing.T) {
 	third := undo.record_create_child("Third", root)
 	testing.expect_value(t, engine.transform_world(third).position, [3]f32{0, 0, 0})
 }
+
+@(test)
+test_render_layers_go_to_children_in_the_same_undo_step :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+
+	layers :: proc(tH: engine.Transform_Handle) -> ^u32 {
+		return &engine.pool_get(&engine.ctx_world().transforms, engine.Handle(tH)).render_layer
+	}
+	parent := engine.transform_new("Parent")
+	child := engine.transform_new("Child", parent)
+	grandchild := engine.transform_new("Grandchild", child)
+	other := engine.transform_new("Other")
+	layers(parent)^, layers(child)^, layers(grandchild)^, layers(other)^ = 1, 1, 4, 1
+	testing.expect(t, scene_windows.render_layers_differ_below(parent), "the grandchild has other layers")
+	layers(grandchild)^ = 1
+	testing.expect(t, !scene_windows.render_layers_differ_below(parent), "all the same: nothing to ask")
+
+	// The row's own change, as one undo step.
+	steps := s.top
+	edit := undo.edit_transform_begin(parent, layers(parent), typeid_of(u32), "Render Layers")
+	layers(parent)^ = 2
+	undo.edit_end(&edit)
+	testing.expect_value(t, s.top, steps + 1)
+	testing.expect(t, scene_windows.render_layers_differ_below(parent), "the children still have the old layers")
+
+	scene_windows.render_layers_apply_to_children({parent})
+	testing.expect_value(t, layers(child)^, 2)
+	testing.expect_value(t, layers(grandchild)^, 2)
+	testing.expect_value(t, layers(other)^, 1)
+	testing.expect_value(t, s.top, steps + 1)
+
+	undo.apply_undo(s)
+	testing.expect_value(t, layers(parent)^, 1)
+	testing.expect_value(t, layers(child)^, 1)
+	testing.expect_value(t, layers(grandchild)^, 1)
+	undo.apply_redo(s)
+	testing.expect_value(t, layers(parent)^, 2)
+	testing.expect_value(t, layers(grandchild)^, 2)
+}

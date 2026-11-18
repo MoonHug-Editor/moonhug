@@ -21,6 +21,7 @@ install_viewport_provider :: proc() {
 		tools_frame         = scene_tools_frame,
 		tools_consume_mouse = scene_tools_consume_mouse,
 		tools_dragging      = scene_tools_dragging,
+		nudge               = nudge,
 		tools_shutdown      = gizmo_shutdown,
 		marks_rebuild       = gizmo_marks_rebuild,
 		draw_gizmos         = draw_gizmos,

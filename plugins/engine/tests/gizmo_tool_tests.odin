@@ -604,3 +604,111 @@ test_tool_switch_mid_drag_closes_the_step :: proc(t: ^testing.T) {
 	testing.expectf(t, _close(_pos(obj), {1, 0, 0}), "got %v", _pos(obj))
 	testing.expect_value(t, s.top, steps + 1)
 }
+
+// --- Nudge ----------------------------------------------------------------------------
+
+@(test)
+test_nudge_hold_is_one_undo_step :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+	saved := _tool_save()
+	defer _tool_restore(saved)
+
+	a := engine.transform_new("A")
+	b := engine.transform_new("B")
+	engine.transform_set_world_position(b, {5, 0, 0})
+	editor.sel_scene_only(a)
+	editor.sel_scene_add(b)
+	steps := s.top
+
+	// A hold: a step, frames with no move, three more steps, then a frame
+	// with no call at all, which closes it.
+	scene_tools.nudge({1, 0, 0}, 0.25)
+	scene_tools.gizmo_tool_frame()
+	scene_tools.nudge({}, 0.25)
+	scene_tools.gizmo_tool_frame()
+	testing.expect(t, scene_tools.scene_tools_dragging(), "the hold is open between steps")
+	scene_tools.nudge({3, 0, 0}, 0.25)
+	scene_tools.gizmo_tool_frame()
+	testing.expect_value(t, s.top, steps)
+	scene_tools.gizmo_tool_frame()
+
+	testing.expect(t, !scene_tools.scene_tools_dragging(), "the hold closed")
+	testing.expectf(t, _close(_pos(a), {1, 0, 0}, 1e-4), "four steps of 0.25, got %v", _pos(a))
+	testing.expectf(t, _close(_pos(b), {6, 0, 0}, 1e-4), "every selected object moves by the same offset, got %v", _pos(b))
+	testing.expect_value(t, s.top, steps + 1)
+	undo.apply_undo(s)
+	testing.expectf(t, _close(_pos(a), {0, 0, 0}, 1e-4), "undo puts A back, got %v", _pos(a))
+	testing.expectf(t, _close(_pos(b), {5, 0, 0}, 1e-4), "and B, got %v", _pos(b))
+
+	// A second hold is its own step, and a frame with nothing held records none.
+	scene_tools.nudge({0, -1, 0}, 2)
+	scene_tools.gizmo_tool_frame()
+	scene_tools.gizmo_tool_frame()
+	scene_tools.gizmo_tool_frame()
+	testing.expectf(t, _close(_pos(a), {0, -2, 0}, 1e-4), "got %v", _pos(a))
+	testing.expect_value(t, s.top, steps + 1)
+}
+
+@(test)
+test_nudge_needs_a_selection_and_no_drag :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+	saved := _tool_save()
+	defer _tool_restore(saved)
+
+	obj := engine.transform_new("Obj")
+	steps := s.top
+	scene_tools.nudge({1, 0, 0}, 1)
+	scene_tools.gizmo_tool_frame()
+	scene_tools.gizmo_tool_frame()
+	testing.expectf(t, _close(_pos(obj), {0, 0, 0}, 1e-4), "nothing selected, nothing moves: %v", _pos(obj))
+	testing.expect_value(t, s.top, steps)
+
+	// A move drag that starts during a hold closes the hold first: two steps.
+	editor.sel_scene_only(obj)
+	viewport.gizmo_mode = .Translate
+	v := handles_test_view()
+	scene_tools.nudge({0, 1, 0}, 1)
+	handles_step(v, {0.75, 1, 0}, _tool_body, nil)
+	scene_tools.nudge({}, 1)
+	handles_step(v, {0.75, 1, 0}, _tool_body, nil, down = true, clicked = true)
+	testing.expect_value(t, s.top, steps + 1)
+	scene_tools.nudge({1, 0, 0}, 1)
+	handles_step(v, {1.75, 1, 0}, _tool_body, nil, down = true)
+	handles_step(v, {1.75, 1, 0}, _tool_body, nil)
+	handles_frame(v, {1.75, 1, 0})
+	testing.expectf(t, _close(_pos(obj), {1, 1, 0}), "the drag moved it, the nudge during the drag did not: %v", _pos(obj))
+	testing.expect_value(t, s.top, steps + 2)
+}
+
+@(test)
+test_nudge_repeat_steps :: proc(t: ^testing.T) {
+	right, none := [2]f32{1, 0}, [2]f32{}
+	n, time, next := editor.scene_nudge_repeat(right, none, 0, 0, 0.016, 0.3, 0.05)
+	testing.expect_value(t, n, 1)
+	total := 0
+	// 0.29 s more of the hold: under the delay, no repeat.
+	for _ in 0 ..< 29 {
+		n, time, next = editor.scene_nudge_repeat(right, right, time, next, 0.01, 0.3, 0.05)
+		total += n
+	}
+	testing.expect_value(t, total, 0)
+	// The next 0.2 s: one at the delay, then one each 0.05 s.
+	for _ in 0 ..< 20 {
+		n, time, next = editor.scene_nudge_repeat(right, right, time, next, 0.01, 0.3, 0.05)
+		total += n
+	}
+	testing.expect(t, total >= 3 && total <= 5, "repeats after the delay")
+	// A second key joining the hold steps at once, and a release steps no more.
+	n, time, next = editor.scene_nudge_repeat({1, 1}, right, time, next, 0.01, 0.3, 0.05)
+	testing.expect_value(t, n, 1)
+	n, time, next = editor.scene_nudge_repeat(none, {1, 1}, time, next, 0.01, 0.3, 0.05)
+	testing.expect_value(t, n, 0)
+}

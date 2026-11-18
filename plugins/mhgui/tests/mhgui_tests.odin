@@ -815,6 +815,36 @@ test_move_tool_on_ui_undoes :: proc(t: ^testing.T) {
 	testing.expect_value(t, c.rt.anchored_position, before)
 }
 
+// A nudge moves a UI element by one canvas unit a step, whatever the world
+// step is, and one undo step puts it back.
+@(test)
+test_nudge_on_ui_moves_canvas_units :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	s := new(undo.Undo_Stack)
+	undo.init(s)
+	undo.install(s)
+	defer free(s)
+	defer undo.destroy(s)
+	defer editor.sel_scene_clear()
+
+	c := _ui_case()
+	editor.sel_scene_only(c.image)
+	before := c.rt.anchored_position
+	steps := s.top
+	scene_tools.nudge({3, 0, 0}, 0.25)
+	scene_tools.gizmo_tool_frame()
+	scene_tools.gizmo_tool_frame()
+	moved := c.rt.anchored_position - before
+	testing.expectf(t, abs(moved.x - 3) < 0.01 && abs(moved.y) < 0.01, "three steps are three canvas units, got %v", moved)
+	testing.expect_value(t, s.top, steps + 1)
+	undo.apply_undo(s)
+	testing.expect_value(t, c.rt.anchored_position, before)
+}
+
 // A UI node with an Image: 100 by 100 at `pos` from the canvas center.
 @(private = "file")
 _ui_image :: proc(name: string, parent: engine.Transform_Handle, pos: [2]f32 = {}) -> engine.Transform_Handle {
