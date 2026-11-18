@@ -31,4 +31,5 @@ The body mesh follows the armature's joints as the Animation component poses the
 ## Behavior
 
 - A compute pass skins the vertices on the GPU each frame the pose changes. An idle pose costs one palette build and compare, not an upload and a dispatch.
+- The renderers posed in a frame are sent to the GPU together, in one submit.
 - Culling and picking use the posed bounds, since a posed character has usually left its bind-pose box.

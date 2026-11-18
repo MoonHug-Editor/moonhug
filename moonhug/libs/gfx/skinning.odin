@@ -88,6 +88,8 @@ _skinning_init :: proc() -> bool {
 _skinning_shutdown :: proc() {
 	if _gfx.skin_pipeline != nil do sdl.ReleaseGPUComputePipeline(_gfx.device, _gfx.skin_pipeline)
 	_gfx.skin_pipeline = nil
+	delete(_skin_pending)
+	_skin_pending = nil
 }
 
 // Upload the bind pose and skin data. `skin` is parallel to `vertices`.
@@ -154,38 +156,77 @@ skinned_mesh_create :: proc(vertex_count, joint_count: int, ibuf: ^sdl.GPUBuffer
 	}
 }
 
-// Upload the palette and dispatch the skinning. `palette` is one matrix per
-// joint, joint world * inverse bind, so the result is in world space. The
-// palette and the posed buffer cycle, so a draw still reading the previous
-// pose is never overwritten.
+// One pose waiting for skinning_flush: the buffers of a Skinned_Mesh whose
+// palette is already in its transfer buffer.
+@(private)
+_Skin_Pending :: struct {
+	vbuf, palette: ^sdl.GPUBuffer,
+	transfer:      ^sdl.GPUTransferBuffer,
+	bind, skin:    ^sdl.GPUBuffer,
+	vertex_count:  u32,
+	joint_count:   u32,
+}
+
+@(private) _skin_pending: [dynamic]_Skin_Pending
+
+// Queue the skinning of one mesh. `palette` is one matrix per joint, joint
+// world * inverse bind, so the result is in world space. The palette is
+// copied here, the GPU work waits for skinning_flush, which sends every
+// queued mesh in one command buffer. A mesh posed twice before a flush is
+// skinned once, with the later palette.
 skinned_mesh_pose :: proc(m: ^Skinned_Mesh, src: Skin_Source, palette: []matrix[4, 4]f32) {
 	if m.vbuf == nil || src.bind == nil || _gfx.skin_pipeline == nil do return
 	n := min(u32(len(palette)), m.joint_count)
 	if n == 0 || src.vertex_count != m.vertex_count do return
-	psize := n * size_of(matrix[4, 4]f32)
 
 	mapped := sdl.MapGPUTransferBuffer(_gfx.device, m.transfer, true)
-	runtime.mem_copy_non_overlapping(mapped, raw_data(palette), int(psize))
+	runtime.mem_copy_non_overlapping(mapped, raw_data(palette), int(n * size_of(matrix[4, 4]f32)))
 	sdl.UnmapGPUTransferBuffer(_gfx.device, m.transfer)
+
+	entry := _Skin_Pending{m.vbuf, m.palette, m.transfer, src.bind, src.skin, m.vertex_count, n}
+	for &p in _skin_pending do if p.vbuf == m.vbuf {
+		p = entry
+		return
+	}
+	if _skin_pending == nil do _skin_pending = make([dynamic]_Skin_Pending, runtime.default_allocator())
+	append(&_skin_pending, entry)
+}
+
+// Upload every queued palette and run the skinning: one command buffer, one
+// copy pass for the palettes, then a compute pass per mesh (a compute pass
+// has one output buffer). The palette and the posed buffer cycle, so a draw
+// still reading the previous pose is never overwritten. Call it after the
+// poses and before the command buffer that draws them is submitted. Nothing
+// queued costs nothing.
+skinning_flush :: proc() {
+	if len(_skin_pending) == 0 do return
+	defer clear(&_skin_pending)
 
 	cmd := sdl.AcquireGPUCommandBuffer(_gfx.device)
 	copy_pass := sdl.BeginGPUCopyPass(cmd)
-	sdl.UploadToGPUBuffer(copy_pass, {transfer_buffer = m.transfer}, {buffer = m.palette, size = psize}, true)
+	for p in _skin_pending {
+		sdl.UploadToGPUBuffer(copy_pass, {transfer_buffer = p.transfer}, {buffer = p.palette, size = p.joint_count * size_of(matrix[4, 4]f32)}, true)
+	}
 	sdl.EndGPUCopyPass(copy_pass)
 
-	out := sdl.GPUStorageBufferReadWriteBinding{buffer = m.vbuf, cycle = true}
-	pass := sdl.BeginGPUComputePass(cmd, nil, 0, &out, 1)
-	sdl.BindGPUComputePipeline(pass, _gfx.skin_pipeline)
-	inputs := [3]^sdl.GPUBuffer{src.bind, src.skin, m.palette}
-	sdl.BindGPUComputeStorageBuffers(pass, 0, raw_data(inputs[:]), 3)
-	params := _Skin_Params{vertex_count = m.vertex_count, joint_count = n}
-	sdl.PushGPUComputeUniformData(cmd, 0, &params, size_of(params))
-	sdl.DispatchGPUCompute(pass, (m.vertex_count + _SKIN_THREADS - 1) / _SKIN_THREADS, 1, 1)
-	sdl.EndGPUComputePass(pass)
+	for p in _skin_pending {
+		out := sdl.GPUStorageBufferReadWriteBinding{buffer = p.vbuf, cycle = true}
+		pass := sdl.BeginGPUComputePass(cmd, nil, 0, &out, 1)
+		sdl.BindGPUComputePipeline(pass, _gfx.skin_pipeline)
+		inputs := [3]^sdl.GPUBuffer{p.bind, p.skin, p.palette}
+		sdl.BindGPUComputeStorageBuffers(pass, 0, raw_data(inputs[:]), 3)
+		params := _Skin_Params{vertex_count = p.vertex_count, joint_count = p.joint_count}
+		sdl.PushGPUComputeUniformData(cmd, 0, &params, size_of(params))
+		sdl.DispatchGPUCompute(pass, (p.vertex_count + _SKIN_THREADS - 1) / _SKIN_THREADS, 1, 1)
+		sdl.EndGPUComputePass(pass)
+	}
 	_ = sdl.SubmitGPUCommandBuffer(cmd)
 }
 
+// A queued pose of a mesh that is going away is dropped, not run on
+// released buffers.
 skinned_mesh_destroy :: proc(m: ^Skinned_Mesh) {
+	#reverse for p, i in _skin_pending do if p.vbuf == m.vbuf do unordered_remove(&_skin_pending, i)
 	if m.vbuf != nil do sdl.ReleaseGPUBuffer(_gfx.device, m.vbuf)
 	if m.palette != nil do sdl.ReleaseGPUBuffer(_gfx.device, m.palette)
 	if m.transfer != nil do sdl.ReleaseGPUTransferBuffer(_gfx.device, m.transfer)

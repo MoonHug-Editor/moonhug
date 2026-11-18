@@ -8,6 +8,8 @@ package engine
 // then drawn with the ordinary mesh pipeline: no vertex format change and no
 // shader variant in any graphics pass. The bind pose and the skin data are
 // the mesh's, uploaded once and shared by every renderer of it.
+// The renderers posed in a frame are skinned together, in one submit
+// (gfx.skinning_flush, called by render_collect_commands).
 //
 // JOINTS ARE SCENE TRANSFORMS, found by NAME, the same way animation channels
 // find theirs. So a skinned character animates through the existing clip and
@@ -184,7 +186,7 @@ _transform_name :: proc(h: Transform_Handle) -> string {
 }
 
 // Build the palette from the current joint world transforms and, when it
-// changed, upload it and run the skinning pass.
+// changed, queue it for the skinning pass (render_collect_commands runs it).
 @(private = "file")
 _skin_pose :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh) {
     w := ctx_world()
@@ -236,7 +238,7 @@ _skin_pose :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh) {
 // view but the skinning itself runs once per frame per renderer — the frame
 // stamp below. Skinning is a pure function of the bind pose and the current
 // joint transforms, so a second view in the same frame would upload the same
-// palette and dispatch the same pass again.
+// palette and queue the same pass again.
 @(render_collector)
 collect_skinned_meshes :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
     if view.quads_only do return

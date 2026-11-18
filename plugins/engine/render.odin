@@ -177,9 +177,11 @@ render_register_collector :: proc(c: Render_Collector) {
 }
 
 // Appends commands for every renderer visible to `view`, from every
-// registered collector.
+// registered collector. The skinned meshes the collectors posed are skinned
+// here, all in one submit, before anything draws them.
 render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
 	for c in _render_collectors do c(view, out)
+	gfx.skinning_flush()
 }
 
 // The mesh renderers: one Draw_Mesh per visible part.
