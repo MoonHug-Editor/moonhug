@@ -1,0 +1,7 @@
+{
+  "name": "rigging",
+  "guid": "640f7291-cd1a-40a9-9814-c9d9f4545def",
+  "description": "",
+  "dependencies": ["engine"],
+  "dependencies_custom": []
+}

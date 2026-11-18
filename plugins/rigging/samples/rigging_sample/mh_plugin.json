@@ -1,0 +1,7 @@
+{
+  "name": "rigging_sample",
+  "guid": "93a95c86-bd29-48e3-9e17-1a10b0df9a71",
+  "description": "",
+  "dependencies": ["animation", "engine", "essentials", "rigging"],
+  "dependencies_custom": []
+}
