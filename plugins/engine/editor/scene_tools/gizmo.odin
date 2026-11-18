@@ -98,9 +98,9 @@ _gizmo_edit: undo.Edit_Session
 
 // True while the gizmo or a handle owns the mouse (hot or dragging): the
 // Scene window then neither picks nor starts a box select, so grabs never
-// select through.
+// select through. The Measure tool owns the left button everywhere.
 scene_tools_consume_mouse :: proc() -> bool {
-	return handles.consumes_mouse()
+	return handles.consumes_mouse() || viewport.gizmo_mode == .Measure
 }
 
 // True while a transform gizmo or handle drag is in progress.
@@ -129,7 +129,7 @@ gizmo_draw_and_handle :: proc(tH: engine.Transform_Handle) {
 
 	d: handles.Drag
 	switch viewport.gizmo_mode {
-	case .Picker, .Handles:
+	case .Picker, .Handles, .Measure:
 		gizmo_end_drag_if_any()
 		return
 	case .Translate:
@@ -260,7 +260,7 @@ _gizmo_collect_targets :: proc() -> bool {
 			posed_eul   = engine.quat_to_euler_xyz(t.rotation),
 		})
 		switch viewport.gizmo_mode {
-		case .Picker, .Handles:
+		case .Picker, .Handles, .Measure:
 		case .Translate:
 			append(&edits, undo.edit_target_transform(h, &t.position, typeid_of([3]f32)))
 			// A UI node moves through its RectTransform (transform_set_world_position
@@ -330,7 +330,7 @@ _gizmo_keep_driven_angles :: proc(tgt: ^_Gizmo_Target) {
 @(private)
 _gizmo_label :: proc() -> string {
 	switch viewport.gizmo_mode {
-	case .Picker, .Handles: return "Gizmo"
+	case .Picker, .Handles, .Measure: return "Gizmo"
 	case .Translate: return "Gizmo Move"
 	case .Rotate:    return "Gizmo Rotate"
 	case .Scale:     return "Gizmo Scale"

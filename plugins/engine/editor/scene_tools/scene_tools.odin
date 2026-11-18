@@ -19,12 +19,14 @@ scene_outline :: proc(view: engine.Render_View) {
 }
 
 // The handles for this frame, into the gizmo channel the caller set (.Tools):
-// the selection's @(comp_on_scene_handles) procs, then the transform tool.
+// the selection's @(comp_on_scene_handles) procs, then the transform tool,
+// then the Measure tool.
 // They run once per frame, in one Scene window copy. The handles frame
 // (handles.frame_begin) must already be open with `view`.
 scene_tools_frame :: proc(view: engine.Render_View) {
 	__scene_handles()
 	gizmo_tool_frame()
+	measure_tool_frame()
 }
 
 // Every @(comp_on_draw_gizmos) proc once, into the gizmo channel and view the

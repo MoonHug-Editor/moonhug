@@ -37,6 +37,7 @@ handles_frame :: proc(v: engine.Render_View, at: [3]f32, down := false, clicked 
 		clicked    = clicked,
 		alt        = keys.alt,
 		shift      = keys.shift,
+		ground     = at,
 		snap       = keys.snap,
 		snap_angle = keys.snap_angle,
 	})

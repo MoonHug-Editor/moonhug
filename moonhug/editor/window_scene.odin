@@ -843,6 +843,7 @@ draw_tools_overlay :: proc(vertical: bool) {
 	mode_button(icons.ICON_MD_ROTATE_RIGHT, keymap.labelled("Rotate", "Scene/Rotate Tool"), .Rotate, vertical)
 	mode_button(icons.ICON_MD_OPEN_IN_FULL, keymap.labelled("Scale", "Scene/Scale Tool"), .Scale, vertical)
 	mode_button(icons.ICON_MD_CROP_FREE, keymap.labelled("Handles: the selection's own handles, like the rect tool", "Scene/Handles Tool"), .Handles, vertical)
+	mode_button(icons.ICON_MD_STRAIGHTEN, keymap.labelled("Measure: drag from one point to another, in pixels on a canvas", "Scene/Measure Tool"), .Measure, vertical)
 }
 
 // View overlay: Unity's 2D toggle.
@@ -1267,6 +1268,8 @@ scene_tool_rotate :: proc() { _scene_tool(.Rotate) }
 scene_tool_scale :: proc() { _scene_tool(.Scale) }
 @(command={name="Scene/Handles Tool", help="Shows the selected components' own handles in place of the gizmo"})
 scene_tool_handles :: proc() { _scene_tool(.Handles) }
+@(command={name="Scene/Measure Tool", help="Measures the distance between two points with a drag"})
+scene_tool_measure :: proc() { _scene_tool(.Measure) }
 
 // Escape drops the selection. During a band it cancels the band and restores
 // the pre-band selection instead. Not mid-drag: the drag teardown in
@@ -1299,6 +1302,7 @@ scene_tools_keymap :: proc(km: ^keymap.Keymap) {
 	keymap.bind(km, "E", "Scene/Rotate Tool")
 	keymap.bind(km, "R", "Scene/Scale Tool")
 	keymap.bind(km, "T", "Scene/Handles Tool")
+	keymap.bind(km, "M", "Scene/Measure Tool")
 }
 
 @(keymap={name="Scene Window", window="Scene"})

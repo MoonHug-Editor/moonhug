@@ -23,7 +23,8 @@ rect_transform_handles :: proc(rt: ^engine.RectTransform, ctx: handles.Gizmo_Con
 
 - It runs every frame in the Scene window, in every tool, for each object that is selected itself (not for the children of a selected parent). gizmos_gen emits the `__scene_handles` dispatcher.
 - What it records goes to the scene-only `.Tools` channel, drawn over every gizmo, so handles are never covered by another component's drawing and never show in the Game window.
-- `ctx.tool` says which tool is active. The Handles tool (T, after Q W E R) hides the transform gizmo, so the parts that only make sense without it go behind `ctx.tool == .Handles`.
+- `ctx.tool` says which tool is active. The Handles tool (T, after Q W E R) hides the transform gizmo, so the parts that only make sense without it go behind `ctx.tool == .Handles`. The Measure tool (M) hides the gizmo too and owns the left button for its drag ([Scenes](/plugins/engine/docs/Scenes.md#measure-tool)).
+- `handles.frame().input.ground` is where the pointer's ray meets the grid plane (XY in the 2D view), for a tool that places a point over empty space.
 - All of the selection's handles are live together: handle ids must be unique per handle, and priorities decide who gets the pointer where handles overlap. The transform gizmo's parts use `PRIO_TOOL`, below every other handle, so a component's own handle wins the click over it.
 - Drawing that is not interactive (an outline) belongs in `@(comp_on_draw_gizmos)` (docs/core/Gizmos.md).
 

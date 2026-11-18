@@ -220,4 +220,14 @@ The editor renders the active scene into an offscreen `RenderTexture2D` and disp
 
 Camera state is stored as `(yaw, pitch, dist, target)` and converted to a `Camera3D` each frame via `update_scene_camera`.
 
+### Measure tool
+
+The Measure tool (M, the ruler at the end of the Tools overlay) measures the distance between two points: drag from one to the other. The measurement stays until the next drag, a click or another tool.
+
+- An end lands where the pointer meets an object, on a UI canvas, or on the grid over empty space. While snapping is on (the Snap popup's toggle, flipped while the snap modifier is held, Ctrl or Cmd on macOS), an end off a canvas snaps to the move step.
+- The line between the ends shows the distance at its middle, in world units, and the part along each axis under it. Its legs along X, Y and Z are drawn in the axis colors.
+- With both ends on one UI canvas the distance is in the canvas's pixels, and the ends snap to whole pixels. An overlay canvas counts in the 2D view only: in 3D it is a rectangle hundreds of units wide at the origin. A world-space canvas, or one in front of a camera, counts in both.
+- While the tool is on, a left click or drag never selects. The camera moves as in every tool.
+- Code reads the shown measurement with `scene_tools.measure_result()` and its distance with `scene_tools.measure_distance(m)`.
+
 The camera is kept per scene, per developer, in `UserSettings/scene_cameras.json`, until the scene leaves the project: a scene opens where the Scene window last looked at it, after another scene and after a restart, in 2D or 3D as it was left. A scene seen for the first time keeps the view as it is. With several Scene windows, each takes the saved camera when the active scene changes, and the last one used keeps it saved.

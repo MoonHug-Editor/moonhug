@@ -28,7 +28,7 @@ import core "moonhug:libs/core"
 import "moonhug:libs/gizmos"
 import "moonhug:editor/keymap"
 
-// The Scene window's tool: Q W E R T. viewport.gizmo_mode holds it, and
+// The Scene window's tool: Q W E R T M. viewport.gizmo_mode holds it, and
 // gizmo and handles hooks read it from their context.
 Tool :: enum {
 	Picker,    // Q: selection only
@@ -36,6 +36,7 @@ Tool :: enum {
 	Rotate,    // E
 	Scale,     // R
 	Handles,   // T: the selection's own handles in place of the transform gizmo
+	Measure,   // M: a drag measures the distance between two points
 }
 
 Gizmo_State :: enum {
@@ -81,6 +82,9 @@ Input :: struct {
 	clicked: bool,   // the left button went down this frame
 	alt:     bool,
 	shift:   bool,
+	// Where the pointer's ray meets the plane the Scene window shows its grid
+	// in (XY in the 2D view): a tool's point over empty space.
+	ground:  [3]f32,
 	// While snapping is on (the Snap popup's toggle, flipped while the snap
 	// modifier is held, snap_held): the move step in world units and the
 	// rotate step in radians. Both are 0 while it is off.

@@ -88,6 +88,7 @@ scene_gizmos_record :: proc(view: core.Render_View) {
 				clicked    = im.IsMouseClicked(.Left),
 				alt        = io.KeyAlt,
 				shift      = io.KeyShift,
+				ground     = scene_drop_fallback(view, mp.x - _sv.img_min.x, mp.y - _sv.img_min.y),
 				snap       = snap_translate_step() if snapping else 0,
 				snap_angle = _gizmo_snap_angle() if snapping else 0,
 			})
