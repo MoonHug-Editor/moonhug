@@ -197,7 +197,14 @@ test_dead_zone :: proc(t: ^testing.T) {
 	input.apply_event(&e)
 	actions.actions_resolve_frame(0)
 	testing.expect_value(t, actions.value2(actions.action_id("M", "Look")), [2]f32{0, 0})
-	e.motion.xrel = 7
+	// Past the edge the value grows from zero: 0.75 is half way from the
+	// 0.5 edge to 1.
+	e.motion.xrel = 4.5
+	input.apply_event(&e)
+	actions.actions_resolve_frame(0)
+	half := actions.value2(actions.action_id("M", "Look"))
+	testing.expectf(t, abs(half.x - 0.5) < 0.001 && half.y == 0, "0.75 under a 0.5 dead zone reads 0.5: %v", half)
+	e.motion.xrel = 2.5
 	input.apply_event(&e)
 	actions.actions_resolve_frame(0)
 	testing.expect_value(t, actions.value2(actions.action_id("M", "Look")), [2]f32{1, 0})

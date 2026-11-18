@@ -1,6 +1,6 @@
 ---
 title: "Audio clip"
-description: "A .wav, .mp3 or .ogg file, imported to float PCM with its gain baked in, previewed with a waveform"
+description: "A .wav, .mp3 or .ogg file, imported with its gain baked in, previewed with a waveform"
 weight: 10
 tags: ["audio", "assets"]
 ---
@@ -20,6 +20,7 @@ Shown in the Project Inspector when the file is selected, applied with Apply.
 ## Artifact
 
 - The importer decodes the source to 32-bit float PCM at its own sample rate and channel count, applies `normalize` then `volume`, and writes a float WAV.
+- An `.mp3` or `.ogg` with `volume` 1 and `normalize` off has nothing to bake in, so the importer copies it as it is. The artifact stays the size of the source, about a tenth of the decoded sound, in the library and in an exported game. The clip is decoded when it loads, or while it plays with `stream` on.
 - Playback loads the artifact, never the source.
 - Changing a setting imports under a new artifact key. Changing it back finds the old artifact again, with no import.
 - A reimport drops the loaded clip, so the next play uses the new sound with no restart.

@@ -26,3 +26,26 @@ test_scene_manager_reuses_freed_slots :: proc(t: ^testing.T) {
 	engine.sm_scene_unload(last)
 	engine.sm_scene_set_active(tc.scene)
 }
+
+// Unloading the active scene makes another loaded scene the active one.
+@(test)
+test_unloading_the_active_scene_activates_another :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+
+	second := engine.scene_new()
+	engine.sm_scene_set_active(second)
+	testing.expect(t, engine.sm_scene_get_active() == second, "the new scene is active")
+	engine.sm_scene_unload(second)
+	testing.expect(t, engine.sm_scene_get_active() == tc.scene, "the scene still loaded is active")
+
+	// Unloading a scene that is not the active one changes nothing.
+	third := engine.scene_new()
+	engine.sm_scene_set_active(third)
+	engine.sm_scene_set_active(tc.scene)
+	engine.sm_scene_unload(third)
+	testing.expect(t, engine.sm_scene_get_active() == tc.scene, "the active scene stays")
+}

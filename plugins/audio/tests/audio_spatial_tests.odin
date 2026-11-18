@@ -67,3 +67,25 @@ test_audiosource_spatial_defaults :: proc(t: ^testing.T) {
 	testing.expect_value(t, src.min_distance, f32(1))
 	testing.expect_value(t, src.max_distance, f32(500))
 }
+
+// The rolloff modes: all full inside min_distance, Linear and Smooth_Cutoff
+// silent from max_distance on, Logarithmic never.
+@(test)
+test_rolloff_modes :: proc(t: ^testing.T) {
+	for mode in audio.Audio_Rolloff {
+		testing.expectf(t, _close(audio.rolloff_gain(mode, 0.5, 1, 10), 1), "%v is full inside min_distance", mode)
+		testing.expectf(t, _close(audio.rolloff_gain(mode, 1, 1, 10), 1), "%v is full at min_distance", mode)
+		near, far := audio.rolloff_gain(mode, 2, 1, 10), audio.rolloff_gain(mode, 8, 1, 10)
+		testing.expectf(t, near > far && far > 0 && near < 1, "%v falls with distance: %v then %v", mode, near, far)
+	}
+	testing.expect(t, _close(audio.rolloff_gain(.Logarithmic, 4, 1, 10), 0.25), "logarithmic is min / distance")
+	testing.expect(t, _close(audio.rolloff_gain(.Logarithmic, 900, 1, 10), 0.1), "logarithmic holds past max_distance")
+	testing.expect(t, _close(audio.rolloff_gain(.Linear, 5.5, 1, 10), 0.5), "linear is half way at the middle")
+	testing.expect(t, audio.rolloff_gain(.Linear, 10, 1, 10) == 0 && audio.rolloff_gain(.Linear, 900, 1, 10) == 0, "linear is silent from max_distance")
+	testing.expect(t, audio.rolloff_gain(.Smooth_Cutoff, 10, 1, 10) == 0 && audio.rolloff_gain(.Smooth_Cutoff, 900, 1, 10) == 0, "smooth cutoff is silent from max_distance")
+	testing.expect(t, abs(audio.rolloff_gain(.Smooth_Cutoff, 1.5, 1, 10) - audio.rolloff_gain(.Logarithmic, 1.5, 1, 10)) < 0.01, "smooth cutoff is close to logarithmic near the source")
+
+	// Through the spatial model: a linear source at max_distance is silent.
+	g := audio.spatial_gains({0, 0, 0}, engine.QUAT_IDENTITY, {0, 0, 10}, 1, 10, 1, .Linear)
+	testing.expect(t, g.gain == 0, "a linear source is silent at max_distance")
+}

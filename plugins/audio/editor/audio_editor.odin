@@ -119,7 +119,7 @@ _draw_audio_preview :: proc(path: string) {
 	im.TextUnformatted(fmt.ctprintf("%.2f / %.2f s", pos_s, f64(wf.frames) / f64(wf.rate)))
 
 	avail := im.GetContentRegionAvail()
-	if avail.y < 16 do return
+	if avail.x < 16 || avail.y < 16 do return // imgui refuses an item with no size
 	im.InvisibleButton("##waveform", avail)
 	r_min := im.GetItemRectMin()
 	r_max := im.GetItemRectMax()

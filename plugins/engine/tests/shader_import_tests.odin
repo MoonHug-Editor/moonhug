@@ -207,4 +207,14 @@ test_shader_artifact_parse_roundtrip :: proc(t: ^testing.T) {
 
 	_, _, _, _, _, bad := engine._shader_artifact_parse(blob[:len(blob) - 1], context.temp_allocator)
 	testing.expect(t, !bad, "truncated blob accepted")
+	// A damaged count is refused before it is allocated for: more records
+	// than the rest of the file could hold.
+	counts := (^engine.Shader_Artifact_Header)(raw_data(blob))
+	counts.property_count = max(u32)
+	_, _, _, _, _, bad = engine._shader_artifact_parse(blob[:], context.temp_allocator)
+	testing.expect(t, !bad, "a property count past the file's size accepted")
+	counts.property_count = 1
+	counts.texture_count = max(u32)
+	_, _, _, _, _, bad = engine._shader_artifact_parse(blob[:], context.temp_allocator)
+	testing.expect(t, !bad, "a texture count past the file's size accepted")
 }

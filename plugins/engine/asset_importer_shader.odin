@@ -99,30 +99,44 @@ _shader_artifact_parse :: proc(blob: []u8, allocator := context.allocator) -> (h
     spv = blob[size_of(Shader_Artifact_Header):][:header.spv_len]
     msl = blob[size_of(Shader_Artifact_Header) + int(header.spv_len):][:header.msl_len]
 
-    props := make([dynamic]Shader_Property, 0, header.property_count, allocator)
+    // The counts come from the file. A record is at least 12 bytes (property)
+    // or 8 (texture), so a count the rest of the blob cannot hold is a
+    // damaged artifact, refused before anything is allocated for it.
     cursor := blobs_end
+    if int(header.property_count) > (len(blob) - cursor) / 12 do return {}, nil, nil, nil, nil, false
+    props := make([dynamic]Shader_Property, 0, header.property_count, allocator)
+    texs: [dynamic]Shader_Texture
+    // A failure past this point gives back what was cloned so far.
+    defer if !ok {
+        for p in props do delete(p.name, allocator)
+        for t in texs do delete(t.name, allocator)
+        delete(props)
+        delete(texs)
+        header, spv, msl, properties, textures = {}, nil, nil, nil, nil
+    }
     for _ in 0 ..< header.property_count {
-        if cursor + 12 > len(blob) do return {}, nil, nil, nil, nil, false
+        if cursor + 12 > len(blob) do return
         offset := (^u32)(raw_data(blob[cursor:]))^
         size := (^u32)(raw_data(blob[cursor + 4:]))^
         name_len := int((^u32)(raw_data(blob[cursor + 8:]))^)
         cursor += 12
-        if cursor + name_len > len(blob) do return {}, nil, nil, nil, nil, false
+        if name_len > len(blob) - cursor do return
         name := strings.clone(string(blob[cursor:][:name_len]), allocator)
         cursor += name_len
         append(&props, Shader_Property{name = name, offset = offset, size = size})
     }
-    texs := make([dynamic]Shader_Texture, 0, header.texture_count, allocator)
+    if int(header.texture_count) > (len(blob) - cursor) / 8 do return
+    texs = make([dynamic]Shader_Texture, 0, header.texture_count, allocator)
     for _ in 0 ..< header.texture_count {
-        if cursor + 8 > len(blob) do return {}, nil, nil, nil, nil, false
+        if cursor + 8 > len(blob) do return
         binding := (^u32)(raw_data(blob[cursor:]))^
         name_len := int((^u32)(raw_data(blob[cursor + 4:]))^)
         cursor += 8
-        if cursor + name_len > len(blob) do return {}, nil, nil, nil, nil, false
+        if name_len > len(blob) - cursor do return
         name := strings.clone(string(blob[cursor:][:name_len]), allocator)
         cursor += name_len
         append(&texs, Shader_Texture{name = name, binding = binding})
     }
-    if cursor != len(blob) do return {}, nil, nil, nil, nil, false
+    if cursor != len(blob) do return
     return header, spv, msl, props[:], texs[:], true
 }

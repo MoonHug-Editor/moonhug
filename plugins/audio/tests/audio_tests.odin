@@ -15,6 +15,7 @@ import "moonhug:registration"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
 import audio "moonhug:packages/audio"
+import audio_editor "moonhug:packages/audio/editor"
 import common "moonhug:tests/common"
 _SAMPLE_RATE :: 22050
 _FRAMES :: 2205 // 0.1 s
@@ -205,4 +206,15 @@ test_audiosource_component :: proc(t: ^testing.T) {
 	testing.expect_value(t, src.play_on_awake, true)
 	testing.expect_value(t, src.loop, false)
 	testing.expect(t, src.clip == {}, "no clip by default")
+}
+
+// The importer copies a compressed source only when its settings change
+// nothing in it.
+@(test)
+test_import_copies_untouched_compressed_sources :: proc(t: ^testing.T) {
+	testing.expect(t, audio_editor.audio_import_copies("music/theme.mp3", 1, false), "an mp3 at volume 1 is copied")
+	testing.expect(t, audio_editor.audio_import_copies("music/Theme.OGG", 1, false), "the extension's case does not matter")
+	testing.expect(t, !audio_editor.audio_import_copies("music/theme.mp3", 0.5, false), "a volume is baked in, so it is decoded")
+	testing.expect(t, !audio_editor.audio_import_copies("music/theme.mp3", 1, true), "normalize is baked in, so it is decoded")
+	testing.expect(t, !audio_editor.audio_import_copies("sfx/hit.wav", 1, false), "a wav is decoded to the float format")
 }

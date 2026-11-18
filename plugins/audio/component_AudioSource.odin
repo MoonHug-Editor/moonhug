@@ -31,6 +31,7 @@ AudioSource :: struct {
 	spatial_blend: f32,
 	min_distance:  f32, // full volume inside this radius
 	max_distance:  f32, // attenuation stops falling past this radius
+	rolloff:       Audio_Rolloff, // how the volume falls between the two
 
 	track:      ^mix.Track `json:"-" inspect:"-"`,
 	started:    bool `json:"-" inspect:"-"`,

@@ -81,10 +81,22 @@ sm_scene_unload :: proc(scene: ^Scene) {
 
     for i in 0..<scene_manager.count {
         if scene_manager.loaded[i] == scene {
+            world := scene.world // read before the scene is freed
             scene_destroy(scene)
             scene_manager.loaded[i] = nil
             if scene_manager.active_scene == Scene_ID(i) {
-                scene_manager.active_scene = -1
+                // Another loaded scene takes over, one of the same world
+                // first: with scenes still loaded there is an active one.
+                next := Scene_ID(-1)
+                for other, k in scene_manager.loaded[:scene_manager.count] {
+                    if other == nil do continue
+                    if other.world == world {
+                        next = Scene_ID(k)
+                        break
+                    }
+                    if next < 0 do next = Scene_ID(k)
+                }
+                scene_manager.active_scene = next
             }
             break
         }

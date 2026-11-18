@@ -52,6 +52,7 @@ Action :: struct {
 	// action's controls.
 	consume_input: bool,
 	// Below it a value reads as zero: a stick's rest noise. Radial for Axis2D.
+	// Above it the value grows from zero, so there is no jump at the edge.
 	dead_zone: f32,
 	mappings: [dynamic]Key_Mapping,
 }
@@ -667,11 +668,11 @@ _resolve :: proc(fixed: bool) {
 				v.down = any_down
 				v.value = {any_down ? 1 : 0, 0}
 			case .Axis1D:
-				if math.abs(sum.x) < a.dead_zone do sum.x = 0
+				sum.x *= _dead_zone_scale(math.abs(sum.x), a.dead_zone)
 				v.value = {sum.x, 0}
 				v.down = sum.x != 0
 			case .Axis2D:
-				if math.sqrt(sum.x * sum.x + sum.y * sum.y) < a.dead_zone do sum = {}
+				sum *= _dead_zone_scale(math.sqrt(sum.x * sum.x + sum.y * sum.y), a.dead_zone)
 				v.value = sum
 				v.down = sum != {}
 			}
@@ -721,4 +722,16 @@ _control_read :: proc(c: Control, fixed: bool) -> (v: [2]f32, down: bool) {
 		down = math.abs(v.x) > 0.5 || math.abs(v.y) > 0.5
 	}
 	return
+}
+
+// What a value of size `size` is multiplied by under a dead zone: 0 inside
+// it, then the size from the zone's edge to 1 stretched over 0 to 1, so the
+// value starts at zero at the edge and still reaches 1. A size of 1 or more
+// (a key, a mouse delta) passes as it is.
+@(private)
+_dead_zone_scale :: proc(size, dead_zone: f32) -> f32 {
+	if dead_zone <= 0 do return 1
+	if size < dead_zone do return 0
+	if size >= 1 || dead_zone >= 1 do return 1
+	return (size - dead_zone) / (1 - dead_zone) / size
 }

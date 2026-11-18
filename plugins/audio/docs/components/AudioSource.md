@@ -28,7 +28,8 @@ Torch           AudioSource: clip fire_loop.ogg, loop on, spatial_blend 1, max_d
 | `play_on_awake` | on | Plays when the scene starts and when the source is enabled again. |
 | `spatial_blend` | 0 | 0 plays in 2D, centered at full volume. 1 fades and pans against the listener. Between, the two mix. |
 | `min_distance` | 1 | Full volume inside this radius. |
-| `max_distance` | 500 | The fade stops falling past this radius. |
+| `max_distance` | 500 | Where the fade ends. |
+| `rolloff` | Logarithmic | How the volume falls between the two distances. Logarithmic halves it each time the distance doubles and holds it past `max_distance`, never silent. Linear falls in a straight line to silent at `max_distance`. Smooth_Cutoff falls like Logarithmic near the source and fades to silent at `max_distance`. |
 
 ## Behavior
 

@@ -375,7 +375,7 @@ source_apply_gains :: proc(track: ^mix.Track, src: ^AudioSource, weight: f32) {
 	if _listener.ok && src.spatial_blend > 0 {
 		sw := engine.transform_world(src.owner)
 		sp = spatial_gains(_listener.pos, _listener.rot, sw.position,
-			src.min_distance, src.max_distance, src.spatial_blend)
+			src.min_distance, src.max_distance, src.spatial_blend, src.rolloff)
 	}
 	gain := src.mute ? 0 : src.volume * weight * sp.gain
 	if _occluded(src) {

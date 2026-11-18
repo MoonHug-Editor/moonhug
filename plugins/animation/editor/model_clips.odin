@@ -120,9 +120,10 @@ property_drawer_MeshSettings_clips :: proc(ctx: ^inspector.Ctx) {
 	if clip.orphan {
 		im.TextDisabled("Not in the model any more. Remap it and every reference follows.")
 		if im.BeginCombo("Remap to", "choose a clip") {
-			for &c in ms.clips {
+			for &c, k in ms.clips {
 				if c.orphan do continue
-				if im.Selectable(strings.clone_to_cstring(c.name, context.temp_allocator)) {
+				// The index keeps two clips of one name, or of none, apart.
+				if im.Selectable(fmt.ctprintf("%s##remap_%d", c.name, k)) {
 					// The orphan's id is the one scenes hold, so it moves to
 					// the chosen clip. That clip's own id, minted at import
 					// and referenced by nothing yet, goes. Reimports match

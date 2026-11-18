@@ -35,4 +35,4 @@ comp_fixed_update_Hero :: proc(dt: f32, h: ^Hero) {
 - `down`, `pressed`, `released`, `value` and `value2` are the frame's values, resolved before every `@(update)`.
 - The `_fixed` twins are the tick's values, resolved before every `@(fixed_update)` from the input library's fixed view, so a tap between two ticks still reads as one press.
 - `pressed` and `released` are edges of the action's own down state. A Digital action is down while any of its mappings is. An axis is down while its value is not zero.
-- An action's dead zone zeroes small values: an Axis1D below it in size, an Axis2D below it in length.
+- An action's dead zone zeroes small values: an Axis1D below it in size, an Axis2D below it in length. Above it the value grows from zero and still reaches 1, so a stick leaving the dead zone does not jump.

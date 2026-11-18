@@ -50,6 +50,9 @@ _watch_editor :: proc(_: ^thread.Thread) {
 				notify = true
 			}
 		}
+		// _connect reads the bridge file into this thread's temp allocator,
+		// every round while the editor is away.
+		free_all(context.temp_allocator)
 		if notify {
 			_out(`{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}`)
 		}
