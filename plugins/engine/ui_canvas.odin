@@ -37,6 +37,7 @@ RectTransform :: struct {
 	pivot:             [2]f32, // 0..1 inside the node's own rect
 	anchored_position: [3]f32, // pivot offset from the anchor reference point, canvas units; z is depth off the canvas plane (Unity's anchoredPosition3D)
 	size_delta:        [2]f32, // size added to the anchor span, canvas units
+	z_index:           i32,    // draw and hit order in the canvas: higher over lower, added to the parent's
 }
 
 type_reset_RectTransform :: proc(rt: ^RectTransform) {
@@ -303,8 +304,10 @@ canvas_world_corners :: proc(r: Rect) -> [4][3]f32 {
 
 // --- Rect walk ------------------------------------------------------------------------------
 
-// One resolved node, in draw order (parents before children, siblings in
-// hierarchy order — the canvas draw order). `rect` is the node's rect in its
+// One resolved node, in draw order: lower `z` first, and inside one `z`
+// parents before children and siblings in hierarchy order. `z` is the sum
+// of z_index down the node's RectTransform chain, so a raised parent takes
+// its children along. `rect` is the node's rect in its
 // PARENT's unrotated space; `xform` maps that space, and the space the
 // node's own children resolve in, to canvas space: the parent chain, then
 // this node's Transform rotation and scale around its pivot. Canvas space is
@@ -317,6 +320,7 @@ Node_Rect :: struct {
 	rect:   Rect,
 	xform:  matrix[4, 4]f32,
 	driven: bool, // the rect came from a layout provider, not the node's own anchors and size
+	z:      i32,  // the node's z_index plus its ancestors'
 }
 
 // The transform that lifts a node `depth` off the canvas plane and rotates
@@ -369,7 +373,8 @@ canvas_layout_register :: proc(p: Canvas_Layout_Provider) {
 }
 
 // Resolves the rect of the canvas node (always `root`, the canvas drives it)
-// and of every active node under it, appended to `out` in draw order. A node
+// and of every active node under it, appended to `out` in draw order
+// (Node_Rect). A node
 // without a RectTransform passes its parent's rect through, so plain grouping
 // nodes cost nothing. A node a layout provider claims places its RectTransform
 // children itself. Inactive nodes and their subtrees are skipped.
@@ -381,7 +386,10 @@ canvas_resolve_rects :: proc(canvas_tH: Transform_Handle, root: Rect, out: ^[dyn
 		xform:  matrix[4, 4]f32, // the parent's space -> canvas space
 		forced: Rect, // the rect a layout assigned
 		laid:   bool, // forced is set
+		z:      i32,  // the parent's z
 	}
+	first := len(out)
+	raised := false
 	stack := make([dynamic]Entry, context.temp_allocator)
 	append(&stack, Entry{tH = canvas_tH, parent = root, xform = linalg.MATRIX4F32_IDENTITY})
 	children := make([dynamic]Transform_Handle, context.temp_allocator)
@@ -407,7 +415,10 @@ canvas_resolve_rects :: proc(canvas_tH: Transform_Handle, root: Rect, out: ^[dyn
 				xform = e.xform * rect_affine(rect.pos + rect.size * rt.pivot, rt.anchored_position.z, rot, t.scale)
 			}
 		}
-		append(out, Node_Rect{e.tH, rect, xform, e.laid})
+		z := e.z
+		if rt != nil do z += rt.z_index
+		if z != 0 do raised = true
+		append(out, Node_Rect{e.tH, rect, xform, e.laid, z})
 
 		// A layout container arranges the active RectTransform children; the
 		// rest pass the rect through as usual.
@@ -434,7 +445,7 @@ canvas_resolve_rects :: proc(canvas_tH: Transform_Handle, root: Rect, out: ^[dyn
 		slot := len(children) - 1
 		#reverse for child in t.children {
 			ch := Transform_Handle(child.handle)
-			entry := Entry{tH = ch, parent = rect, xform = xform}
+			entry := Entry{tH = ch, parent = rect, xform = xform, z = z}
 			if slot >= 0 && children[slot] == ch {
 				if has_layout {
 					entry.forced = laid[slot]
@@ -445,6 +456,8 @@ canvas_resolve_rects :: proc(canvas_tH: Transform_Handle, root: Rect, out: ^[dyn
 			append(&stack, entry)
 		}
 	}
+	// Stable: nodes of one z keep the hierarchy order.
+	if raised do slice.stable_sort_by(out[first:], proc(a, b: Node_Rect) -> bool { return a.z < b.z })
 }
 
 // --- Position through the Transform API -----------------------------------------------------
@@ -644,7 +657,7 @@ node_graphic :: proc(tH: Transform_Handle) -> (comp: rawptr, graphic: ^Graphic, 
 
 // The top of the transparent-sort range: every canvas draws after every
 // sprite and particle. Canvases order by sort_order inside it, nodes by
-// their index in the rect walk (hierarchy order).
+// their index in the rect walk (draw order: z_index, then hierarchy order).
 CANVAS_SORTING_LAYER :: i32(127)
 
 // The canvas collector (render_collect_commands): Game windows draw each
@@ -718,8 +731,10 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 // mouse (viewport coordinates, see libs/input) and raycasts the canvases
 // that carry a GraphicRaycaster: the topmost graphic with raycast_target under
 // the pointer is `hovered`. The left button's press remembers its target
-// (`pressed`, also `selected`, like Unity's EventSystem selecting on pointer
-// down), and a release over that same target is a `clicked`, for one frame.
+// (`pressed`, also `selected`: a press selects what it lands on), and a
+// release over that same target is a `clicked`, for one frame. Code selects
+// a node with ui_set_selected, which is where keyboard and gamepad
+// navigation starts from (the mhgui package's Button moves it).
 // Components read the state (ui_pointer) instead of receiving events; the
 // mhgui package's Button is the first reader. Nothing while the application
 // has no focus.
@@ -728,7 +743,7 @@ UI_Pointer :: struct {
 	position: [2]f32, // viewport pixels, y down
 	hovered:  Transform_Handle,
 	pressed:  Transform_Handle, // where the left button went down, until it comes up
-	selected: Transform_Handle, // the last node pressed on; pressing on nothing clears it
+	selected: Transform_Handle, // the last node pressed on or given to ui_set_selected; pressing on nothing clears it
 	clicked:  Transform_Handle, // released this frame over the node it was pressed on
 }
 
@@ -736,6 +751,15 @@ UI_Pointer :: struct {
 
 ui_pointer :: proc() -> UI_Pointer {
 	return _ui_pointer
+}
+
+// Selects `node`, {} for none: the node keyboard and gamepad input acts on.
+ui_set_selected :: proc(node: Transform_Handle) {
+	_ui_pointer.selected = node
+}
+
+ui_selected :: proc() -> Transform_Handle {
+	return _ui_pointer.selected
 }
 
 canvas_pointer_update :: proc() {
@@ -759,8 +783,8 @@ canvas_pointer_update :: proc() {
 
 // The topmost raycast-target graphic under a viewport point (pixels, y
 // down), across the canvases with an enabled GraphicRaycaster, in draw
-// order: higher sort_order over lower, later nodes over earlier. {} when
-// nothing is hit.
+// order: higher sort_order over lower, higher z_index over lower, later
+// nodes over earlier. {} when nothing is hit.
 canvas_raycast :: proc(point: [2]f32, viewport: [2]f32) -> Transform_Handle {
 	w := ctx_world()
 	if w == nil || len(_canvas_graphics) == 0 do return {}

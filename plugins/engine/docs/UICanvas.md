@@ -30,12 +30,15 @@ UI has two halves. The canvas tree is engine vocabulary, in `plugins/engine/ui_c
 
 ## Drawing
 
-The engine's canvas collector runs for Game windows and the Scene window. For each enabled canvas it resolves every active node's rect in hierarchy order, parents before children, and for each node with an enabled CanvasRenderer and a registered graphic emits one quad per quad the graphic returns, in the graphic's colour and material.
+The engine's canvas collector runs for Game windows and the Scene window. For each enabled canvas it resolves every active node's rect in draw order, and for each node with an enabled CanvasRenderer and a registered graphic emits one quad per quad the graphic returns, in the graphic's colour and material.
 
+- **Draw order.** Nodes draw in hierarchy order, parents before children. A RectTransform's `z_index` changes that: a higher one draws over a lower one, whatever the hierarchy order. A node's `z_index` adds to its parent's, so a raised parent takes its children along. The pointer and the Scene window's picking follow the same order.
 - **Game windows.** Quads sit on a plane just inside the camera's near plane, with the rect's pixel corners projected back through the camera, so they land on exactly those pixels for any camera and nothing in the scene draws in front of them.
 - **Scene window.** The canvas is a world rect with its bottom-left at the origin in the XY plane, one world unit per canvas unit, sized like the last Game window, 1920 by 1080 before one has drawn.
-- Sort keys use layer 127, the top of the transparent range, then the canvas's `sort_order`, then the node's place in the walk.
+- Sort keys use layer 127, the top of the transparent range, then the canvas's `sort_order`, then the node's place in the draw order.
 
 ## The pointer
 
 Every frame, before any game update, `canvas_pointer_update` reads the mouse in viewport coordinates and raycasts the canvases with a GraphicRaycaster. The topmost graphic with `raycast_target` under the pointer is hovered. Pressing the left button remembers its node, as pressed and selected, and a release over the same node is a click for one frame. Nothing happens while the application has no focus. Components read `engine.ui_pointer()` instead of receiving events.
+
+The selected node is the one keyboard and gamepad input acts on. A press selects the node it lands on, a press on nothing clears the selection, and `engine.ui_set_selected(node)` selects one from code. `engine.ui_selected()` reads it. The mhgui plugin's [Button](/plugins/mhgui/docs/components/Button.md) moves the selection with the arrow keys and the gamepad.

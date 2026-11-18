@@ -6,6 +6,8 @@ import "core:math/linalg"
 import "core:testing"
 import "moonhug:packages/engine"
 import "moonhug:libs/gizmos"
+import "moonhug:libs/input"
+import sdl "vendor:sdl3"
 import editor "moonhug:editor"
 import "moonhug:editor/handles"
 import "moonhug:editor/undo"
@@ -811,4 +813,166 @@ test_move_tool_on_ui_undoes :: proc(t: ^testing.T) {
 	testing.expect_value(t, s.top, steps + 1)
 	undo.apply_undo(s)
 	testing.expect_value(t, c.rt.anchored_position, before)
+}
+
+// A UI node with an Image: 100 by 100 at `pos` from the canvas center.
+@(private = "file")
+_ui_image :: proc(name: string, parent: engine.Transform_Handle, pos: [2]f32 = {}) -> engine.Transform_Handle {
+	node := engine.transform_new(name, parent)
+	rt := cast(^engine.RectTransform)_add(node, .RectTransform)
+	engine.type_reset_RectTransform(rt)
+	rt.anchored_position = {pos.x, pos.y, 0}
+	_add(node, .CanvasRenderer)
+	img := cast(^mhgui.Image)_add(node, .Image)
+	mhgui.type_reset_Image(img)
+	return node
+}
+
+@(private = "file")
+_ui_button :: proc(name: string, parent: engine.Transform_Handle, pos: [2]f32) -> (engine.Transform_Handle, ^mhgui.Button) {
+	node := _ui_image(name, parent, pos)
+	b := cast(^mhgui.Button)_add(node, .Button)
+	mhgui.type_reset_Button(b)
+	return node, b
+}
+
+// z_index raises a node over later ones, for drawing and for the pointer,
+// and takes the node's children along.
+@(test)
+test_z_index_orders_draw_and_hits :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	canvas := engine.transform_new("Canvas")
+	_add(canvas, .Canvas)
+	rc := cast(^engine.GraphicRaycaster)_add(canvas, .GraphicRaycaster)
+	engine.type_reset_GraphicRaycaster(rc)
+	viewport := [2]f32{200, 100}
+	a := _ui_image("A", canvas)
+	a_child := _ui_image("A child", a)
+	b := _ui_image("B", canvas)
+
+	order :: proc(canvas: engine.Transform_Handle) -> [dynamic]engine.Transform_Handle {
+		nodes := make([dynamic]engine.Node_Rect, context.temp_allocator)
+		engine.canvas_resolve_rects(canvas, engine.Rect{{0, 0}, {200, 100}}, &nodes)
+		out := make([dynamic]engine.Transform_Handle, context.temp_allocator)
+		for n in nodes do append(&out, n.tH)
+		return out
+	}
+	o := order(canvas)
+	testing.expectf(t, o[1] == a && o[2] == a_child && o[3] == b, "hierarchy order with no z_index: %v", o)
+	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), b)
+
+	_, art := engine.transform_get_comp(a, engine.RectTransform)
+	art.z_index = 1
+	o = order(canvas)
+	testing.expectf(t, o[0] == canvas && o[1] == b && o[2] == a && o[3] == a_child, "A and its child draw after B: %v", o)
+	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), a_child)
+
+	// A child lowered by as much as its parent is raised is level with B again,
+	// and B comes later in the hierarchy.
+	_, crt := engine.transform_get_comp(a_child, engine.RectTransform)
+	crt.z_index = -1
+	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), a)
+	art.z_index = 0
+	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), b)
+	o = order(canvas)
+	testing.expectf(t, o[0] == a_child, "below zero draws under the canvas's own graphic: %v", o)
+}
+
+@(private = "file")
+_ui_key :: proc(k: input.Key, down: bool) {
+	e: sdl.Event
+	e.type = down ? .KEY_DOWN : .KEY_UP
+	e.key.scancode = k
+	input.apply_event(&e)
+}
+
+// One frame with `k` pressed, then the key let go.
+@(private = "file")
+_ui_tap :: proc(k: input.Key) {
+	input.frame_reset()
+	_ui_key(k, true)
+	mhgui.ui_tick(0)
+	_ui_key(k, false)
+	input.frame_reset()
+}
+
+// The arrow keys move the selection to the nearest usable Button that way,
+// Enter clicks it.
+@(test)
+test_button_keyboard_navigation :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	input.set_app_focused(true)
+	defer input.set_app_focused(false)
+	input.set_viewport({0, 0}, {800, 600})
+	defer engine.ui_set_selected({})
+
+	// Play  Options
+	// Quit  (off)    Far
+	canvas := engine.transform_new("Canvas")
+	_add(canvas, .Canvas)
+	play, play_b := _ui_button("Play", canvas, {-100, 100})
+	options, options_b := _ui_button("Options", canvas, {100, 100})
+	quit, _ := _ui_button("Quit", canvas, {-100, -100})
+	_, off_b := _ui_button("Off", canvas, {100, -100})
+	off_b.interactable = false
+	far, _ := _ui_button("Far", canvas, {300, -100})
+
+	// Nothing selected: the keys do nothing.
+	_ui_tap(.RIGHT)
+	testing.expect_value(t, engine.ui_selected(), engine.Transform_Handle{})
+	_ui_tap(.RETURN)
+	testing.expect(t, !play_b.clicked && !options_b.clicked, "Enter clicks nothing with nothing selected")
+
+	engine.ui_set_selected(play)
+	_ui_tap(.RIGHT)
+	testing.expect_value(t, engine.ui_selected(), options)
+	_ui_tap(.UP)
+	testing.expect_value(t, engine.ui_selected(), options) // nothing above
+	_ui_tap(.RIGHT)
+	testing.expect_value(t, engine.ui_selected(), far) // the only button further right, a row down
+	_ui_tap(.LEFT)
+	testing.expect_value(t, engine.ui_selected(), quit) // past the button that is not interactable
+	_ui_tap(.UP)
+	testing.expect_value(t, engine.ui_selected(), play)
+	_ui_tap(.DOWN)
+	testing.expect_value(t, engine.ui_selected(), quit)
+	_ui_tap(.RIGHT)
+	testing.expect_value(t, engine.ui_selected(), far)
+	_ui_tap(.UP)
+	testing.expect_value(t, engine.ui_selected(), options)
+
+	// Enter clicks the selected button, for that frame.
+	input.frame_reset()
+	_ui_key(.RETURN, true)
+	mhgui.ui_tick(0)
+	testing.expect(t, options_b.clicked && !play_b.clicked, "Enter clicks the selected button")
+	testing.expect_value(t, options_b.state, mhgui.Selectable_State.Pressed)
+	input.frame_reset()
+	mhgui.ui_tick(0)
+	testing.expect(t, !options_b.clicked, "a held key clicks once")
+	_ui_key(.RETURN, false)
+	input.frame_reset()
+	mhgui.ui_tick(0)
+	testing.expect_value(t, options_b.state, mhgui.Selectable_State.Selected)
+
+	// Turned off, the keys reach the game only.
+	mhgui.ui_set_navigation(false)
+	defer mhgui.ui_set_navigation(true)
+	_ui_tap(.LEFT)
+	testing.expect_value(t, engine.ui_selected(), options)
+	input.frame_reset()
+	_ui_key(.SPACE, true)
+	mhgui.ui_tick(0)
+	testing.expect(t, !options_b.clicked, "no click while navigation is off")
+	_ui_key(.SPACE, false)
+	input.frame_reset()
 }

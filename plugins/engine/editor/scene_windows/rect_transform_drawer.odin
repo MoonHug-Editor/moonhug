@@ -69,6 +69,7 @@ property_drawer_RectTransform_inspector :: proc(ctx: ^inspector.Ctx) {
 	_rt_draw_anchor_presets_popup()
 	_rt_draw_anchors()
 	_rt_draw_pivot()
+	_rt_draw_z_index()
 	_rt_draw_transform_rows(rt.owner)
 }
 
@@ -108,6 +109,7 @@ _rt_session_begin :: proc(label: string) {
 		append(&targets, undo.edit_target_pooled(t.handle, &t.rt.pivot, typeid_of([2]f32)))
 		append(&targets, undo.edit_target_pooled(t.handle, &t.rt.anchored_position, typeid_of([3]f32)))
 		append(&targets, undo.edit_target_pooled(t.handle, &t.rt.size_delta, typeid_of([2]f32)))
+		append(&targets, undo.edit_target_pooled(t.handle, &t.rt.z_index, typeid_of(i32)))
 		t.start = t.rt^
 		append(&_rt_edit_targets, t)
 	}
@@ -126,6 +128,7 @@ _rt_session_end :: proc() {
 		_rt_record(t, &t.rt.pivot, typeid_of([2]f32), "pivot", t.rt.pivot != t.start.pivot)
 		_rt_record(t, &t.rt.anchored_position, typeid_of([3]f32), "anchored_position", t.rt.anchored_position != t.start.anchored_position)
 		_rt_record(t, &t.rt.size_delta, typeid_of([2]f32), "size_delta", t.rt.size_delta != t.start.size_delta)
+		_rt_record(t, &t.rt.z_index, typeid_of(i32), "z_index", t.rt.z_index != t.start.z_index)
 	}
 	clear(&_rt_edit_targets)
 }
@@ -402,6 +405,22 @@ _rt_draw_pivot :: proc() {
 		for i in 0 ..< 2 do if moved[i] do np[i] = pivot[i]
 		_rt_set_pivot(t, np, !handles.rect_raw_edit)
 	}
+	inspector.mark_inspector_changed()
+}
+
+@(private = "file")
+_rt_draw_z_index :: proc() {
+	z := _rt_targets[0].rt.z_index
+	inspector.multi_clear_mixed()
+	for t in _rt_targets[1:] do if t.rt.z_index != z do inspector.current_field_mixed = true
+	im.BeginGroup()
+	changed := inspector.drag_int(inspector.field_row("Z Index"), &z, 0.1)
+	im.EndGroup()
+	inspector.multi_clear_mixed()
+	_rt_gesture("Z Index")
+	if !changed do return
+	if !_rt_edit.active do _rt_session_begin("Z Index")
+	for t in _rt_targets do t.rt.z_index = z
 	inspector.mark_inspector_changed()
 }
 

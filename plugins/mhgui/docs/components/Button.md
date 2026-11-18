@@ -1,6 +1,6 @@
 ---
 title: "Button"
-description: "A clickable UI control: tints a graphic as the pointer hovers and presses it, and reports clicks for game code to poll"
+description: "A clickable UI control: tints a graphic as the pointer hovers and presses it, takes keyboard and gamepad input while selected, and reports clicks for game code to poll"
 weight: 20
 tags: ["mhgui", "components"]
 ---
@@ -38,8 +38,12 @@ The button tints its Image as the pointer hovers and presses it. Game code polls
 
 ## Behavior
 
-- The state comes from the engine's pointer: hovered, pressed, selected by the last press, or disabled.
+- The state comes from the engine's pointer: hovered, pressed, selected, or disabled. A press selects the button, and so does `engine.ui_set_selected`.
 - The state's colour, times `color_multiplier`, multiplies the target graphic's own colour as a runtime tint on its CanvasRenderer, faded over `fade_duration`. The tint is never saved.
+- Enter, Space and the gamepad's bottom face button click the selected button.
+- The arrow keys, the d-pad and the left stick move the selection to the nearest button in that direction that is enabled and interactable. Near and straight ahead wins over far or off to the side. Buttons on overlay canvases are compared on the screen, so the selection crosses from one overlay canvas to another. A canvas in the world or before a camera keeps the selection inside it.
+- With nothing selected the keys do nothing. A menu selects its first button when it opens, as in From code below.
+- `ui_set_navigation(false)` turns keyboard and gamepad input off, for a game that uses those keys while buttons are on screen.
 - `button_clicked` is true on the frame of a click. Poll it from an `@(update)` proc at order 0 or later, after the pointer pass at order -100.
 
 ## From code
@@ -52,4 +56,10 @@ menu_update :: proc(dt: f32) {
 	_, b := engine.transform_get_comp(play_row, mhgui.Button)
 	if mhgui.button_clicked(b) do load_level()
 }
+
+// When the menu opens: the keyboard and the gamepad start from Play.
+engine.ui_set_selected(play_row)
+
+// While the game plays with the HUD's buttons on screen.
+mhgui.ui_set_navigation(false)
 ```

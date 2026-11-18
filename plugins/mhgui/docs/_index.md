@@ -11,7 +11,7 @@ The mhgui plugin draws UI. It adds the Image graphic, the Button control and the
 **Components**
 
 - [Image](components/Image.md) draws a sprite or a solid colour in its rect, simple, 9-sliced or tiled.
-- [Button](components/Button.md) tints a graphic as the pointer hovers and presses it, and reports clicks.
+- [Button](components/Button.md) tints a graphic as the pointer hovers and presses it, takes keyboard and gamepad input while selected, and reports clicks.
 - [LayoutGroup](components/LayoutGroup.md) lays out its children in a row, a column or a grid.
 
 **Concepts**
@@ -43,7 +43,7 @@ The plugin declares no attributes. It uses the engine's: Image declares `@(canva
 
 - One control, Button, with a colour tint transition. No toggle, slider, scroll view, input field or dropdown ([Roadmap](Roadmap.md)).
 - No clipping and no masks.
-- Pointer only, no keyboard or gamepad navigation.
+- Keyboard and gamepad navigation picks the nearest button in a direction. A button cannot name its neighbours or stay out of navigation.
 
 ## Reference
 

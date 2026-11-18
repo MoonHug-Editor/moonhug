@@ -26,12 +26,14 @@ The title stays centered 60 units below the top edge. The bar stretches across t
 | `size_delta` | 100, 100 | Added to the anchors' span. Equal anchors give a fixed size, spread anchors stretch, and `size_delta` is then the margin. |
 | `pivot` | 0.5, 0.5 | The point the rect turns and scales around, 0 to 1 in each axis. |
 | `anchored_position` | 0, 0, 0 | Where the pivot sits from the anchors' reference point. The third component is depth off the canvas plane. |
+| `z_index` | 0 | Draw and hit order in the canvas. A higher one draws over a lower one. |
 
 ## Behavior
 
 - The node's Transform rotation and scale apply around the pivot and compose down the hierarchy. A rotation around X or Y tilts the rect out of the canvas plane, while anchors and layout still resolve in the parent's unrotated space.
 - `anchored_position` is the only stored position. `transform_set_local_position` and `transform_set_world_position` on the node convert into it ([UI canvas](../UICanvas.md), "Position").
 - A node without a RectTransform passes its parent's rect through.
+- Nodes draw in hierarchy order. `z_index` overrides it: a node with a higher one draws over every node with a lower one, and the pointer reaches it first. It adds to the parent's, so a panel raised to 10 takes its children to 10, and a child with -10 under it is level with the rest of the canvas again. Below zero draws under nodes left at 0.
 
 ## In the editor
 
@@ -40,6 +42,7 @@ For a single UI node the inspector hides the Transform section and draws the Rec
 - The anchor preset button opens a 4 by 4 grid: left, center, right and stretch by top, middle, bottom and stretch. Shift also sets the pivot, Alt also moves the rect onto the anchors.
 - Per axis the fields follow the anchors: Pos X and Width when the anchors coincide, Left and Right when they are apart, and the same for Y. Pos Z is the depth.
 - Anchor and pivot edits keep the rect where it is. The [R] toggle is raw edit mode: only the values change, and the rect moves.
+- Z Index is `z_index`.
 - Rotation and Scale are the Transform's rows.
 - Every gesture is one undo step. With several objects selected an edit writes the value into each through its own anchors, pivot and parent, recording each object's prefab override.
 - A rect a LayoutGroup lays out greys Pos X, Pos Y, Width and Height.
