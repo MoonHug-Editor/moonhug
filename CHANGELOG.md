@@ -1,3 +1,21 @@
+## [0.169.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.168.0...v0.169.0) (2026-11-18)
+
+### Features
+
+* Audio Mixer asset with groups, volumes and low pass, high pass and duck effects, per-source filter components, AudioOcclusion behind walls, looping sources loop ([e205ead](https://github.com/MoonHug-Editor/moonhug/commit/e205ead17fb948255e4b8ef63fe86d81739367d6))
+* CharacterController and CharacterController2D move objects by code along walls, up slopes and steps, and say when they stand on the ground ([d655fb9](https://github.com/MoonHug-Editor/moonhug/commit/d655fb9d62f4299d43b8ef2e0b9e50a6a24fa010))
+* Measure tool (M) in the Scene view measures between two points, in pixels on a UI canvas ([e63ec13](https://github.com/MoonHug-Editor/moonhug/commit/e63ec1311a8e3ecc6c32f69eb912f774308a4fe9))
+* RectTransform z_index sets draw and hit order in a canvas, Buttons take arrow keys, d-pad and stick to move the selection and Enter, Space and the gamepad to click ([ca3e8ce](https://github.com/MoonHug-Editor/moonhug/commit/ca3e8cec2506d87a14a56e537f989892413ee34d))
+* rigging plugin with TwoBoneIK, SpringBones and SpringBoneCollider, and a sample scene showing each next to the same setup without it ([4313b60](https://github.com/MoonHug-Editor/moonhug/commit/4313b60e89d44d5384c4bc251cd8430cda20cce7))
+
+### Bug Fixes
+
+* item_rect finds text in a window whose title changed and gives a match its own rectangle, checks that an exported game ships and loads its audio mixer ([902f0b4](https://github.com/MoonHug-Editor/moonhug/commit/902f0b45993a06a39c2cb2c00c7484bc4190f402))
+
+### Performance Improvements
+
+* skinned meshes posed in a frame are sent to the GPU in one submit ([87c82ff](https://github.com/MoonHug-Editor/moonhug/commit/87c82ffcc5e1f08a44ecba6d21874c6fcbf509fa))
+
 ## [0.168.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.167.0...v0.168.0) (2026-11-17)
 
 ### Features
