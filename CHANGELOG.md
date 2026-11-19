@@ -1,3 +1,15 @@
+## [0.170.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.169.0...v0.170.0) (2026-11-19)
+
+### Features
+
+* arrow keys nudge the selection in 2D and orthographic Scene views, overlap and shape cast queries in physics3d and physics2d, a change of render layers asks whether the children take them too ([0226dab](https://github.com/MoonHug-Editor/moonhug/commit/0226dab67216862bc0a45c52277aec7dc57c9131))
+* Console row menu copies entries, the move handle shows the distance moved, mouse side buttons, transform_find by path and by name, the editor's state is saved every few seconds while it runs. Scenarios drive the debug editor, so a free through the wrong allocator fails them ([5713a1e](https://github.com/MoonHug-Editor/moonhug/commit/5713a1e187141f3726171cb1a38bef6a1fe941f4))
+* Scale row link keeps proportions, objects made from the Scene view's menu land where it was opened, Hierarchy locks objects against picking, Scene camera preferences with saved fly speed ([407c009](https://github.com/MoonHug-Editor/moonhug/commit/407c0095d67e18f266aa94c0e1017e64b2f7a1fa))
+
+### Bug Fixes
+
+* damaged shader artifact counts are refused, unloading the active scene activates another, MCP shim watcher frees its memory, waveform and clip remap list edge cases. feat: AudioSource rolloff modes, mp3 and ogg kept compressed at import, input action dead zone ramps from zero ([c70e7c0](https://github.com/MoonHug-Editor/moonhug/commit/c70e7c033ae949c3e2d432a0e63dc624a1316b99))
+
 ## [0.169.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.168.0...v0.169.0) (2026-11-18)
 
 ### Features
