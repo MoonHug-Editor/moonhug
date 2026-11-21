@@ -67,6 +67,21 @@ Draw_Quad :: struct {
 	corners:  [4][3]f32, // world-space bl, br, tr, tl — shared with picking
 	uvs:      [4][2]f32, // per corner; QUAD_UVS_FULL for the whole texture, a sub-rect for slices
 	color:    [4]f32,
+	// Values for this draw alone, written over the material's by name
+	// (Draw_Property). Frame lifetime. Quads with equal values share a block,
+	// so they merge like quads of one material. Quads with different values
+	// are separate draws.
+	properties: []Draw_Property,
+}
+
+// One value of a custom shader's property block for a single draw: `name` is
+// the member's name in the shader's MaterialUBO, as on a material's property
+// row. A draw's values go over the material's own (material_pack_draw_properties).
+// The shape a component draws procedurally travels this way: its size, its
+// radii, its border.
+Draw_Property :: struct {
+	name:  string,
+	value: [4]f32,
 }
 
 Draw_Mesh :: struct {
@@ -558,6 +573,12 @@ _execute_quads :: proc(view: Render_View, commands: []Render_Command) {
 		extra:  []^gfx.Texture, // sampler bindings 1+ (binding 0 is the quad's own texture)
 	}
 	quad_mats := make(map[Asset_GUID]Quad_Mat, context.temp_allocator)
+	// The distinct per-quad property blocks packed so far (Draw_Quad.properties).
+	Own_Block :: struct {
+		material: Asset_GUID,
+		data:     []u8,
+	}
+	own_blocks := make([dynamic]Own_Block, context.temp_allocator)
 
 	for cmd in quads {
 		d := cmd.variant.(Draw_Quad)
@@ -569,6 +590,21 @@ _execute_quads :: proc(view: Render_View, commands: []Render_Command) {
 			shader, _, mcolor, mdata, mextra := _resolve_material(d.material) // material texture ignored: quads use their own
 			sm = Quad_Mat{shader = shader, color = mcolor, data = mdata, extra = mextra}
 			quad_mats[d.material] = sm
+		}
+		// A quad's own values make a block of its own. Quads whose blocks are
+		// equal share ONE slice, so neighbours that draw the same thing (a
+		// row of identical buttons) still merge in the gfx batch.
+		if len(d.properties) > 0 {
+			data := material_pack_draw_properties(d.material, sm.data, d.properties)
+			shared := false
+			for o in own_blocks {
+				if o.material == d.material && slice.equal(o.data, data) {
+					data, shared = o.data, true
+					break
+				}
+			}
+			if !shared do append(&own_blocks, Own_Block{d.material, data})
+			sm.data = data
 		}
 		// Quad facing for lighting shaders (quads are transform-
 		// oriented, not billboards).

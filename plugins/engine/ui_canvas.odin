@@ -598,6 +598,12 @@ Graphic_Quad :: struct {
 	skew:    [2]f32, // x shift of the bottom and the top edge (italic text); zero = a rect
 	uvs:     [4][2]f32, // bl, br, tr, tl
 	texture: Asset_GUID,
+	// The material the quad draws with when the graphic names none: a graphic
+	// that needs its own shader (a procedural shape) works with no setup.
+	material:   Asset_GUID,
+	// Values of that shader for this quad alone (Draw_Quad.properties). Frame
+	// lifetime: populate allocates them with the temp allocator.
+	properties: []Draw_Property,
 }
 
 // The quad's corners through the node's transform, skew applied.
@@ -715,10 +721,11 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 					owner   = n.tH,
 					variant = Draw_Quad{
 						texture  = q.texture,
-						material = asset_key(g.material),
+						material = asset_key(g.material) if !asset_guid_is_empty(asset_key(g.material)) else q.material,
 						corners  = corners,
 						uvs      = q.uvs,
 						color    = g.color * cr.tint if cr.tinted else g.color,
+						properties = q.properties,
 					},
 				})
 			}

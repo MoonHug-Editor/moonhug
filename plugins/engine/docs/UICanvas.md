@@ -20,6 +20,11 @@ UI has two halves. The canvas tree is engine vocabulary, in `plugins/engine/ui_c
 
 `Graphic` is not a component but the struct every drawable UI component embeds, as `using graphic: engine.Graphic` with the `inline:""` tag: `color`, `material` and `raycast_target`, saved under "graphic" and drawn flat in the inspector. A plugin declares a graphic type with `@(canvas_graphic)` on a `canvas_populate_<T>` proc, which takes the `^T` and returns the quads the component draws inside its rect. The generated registration records the component's type and where its Graphic sits, so the engine draws Image and Text through one path without knowing either type.
 
+A quad a graphic returns can carry two things of its own:
+
+- `material`, used when the graphic names none. A graphic that needs its own shader works with no setup this way.
+- `properties`, values of that material's shader for this quad alone, by the names the shader's property block declares. They go over the material's values for the one draw (`Draw_Quad.properties`, `material_pack_draw_properties`). Quads with equal values share a draw call when they are neighbours in draw order, and a quad whose values differ is a draw call of its own. The mhgui Shape sends its size, radii and shadows this way.
+
 ## Position
 
 `anchored_position` is the only stored value. The Transform API is a second door into it, so one call moves a bullet or a health bar:

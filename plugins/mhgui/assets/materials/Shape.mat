@@ -1,0 +1,94 @@
+{
+  "__type_guid": "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4",
+  "shader": 0,
+  "custom_shader": "a1eb41df-f8e6-4dca-91d2-40395ff9e685",
+  "color": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "properties": [
+    {
+      "name": "shape_size",
+      "value": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "shape_radii",
+      "value": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "shape_params",
+      "value": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "border_color",
+      "value": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "gradient_color",
+      "value": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "shadow_color",
+      "value": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "shadow_params",
+      "value": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "inner_shadow_color",
+      "value": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "inner_shadow_params",
+      "value": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ]
+}

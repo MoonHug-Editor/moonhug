@@ -2,6 +2,7 @@ package mhgui_tests
 
 // RectTransform math, the canvas rect walk and the collector's quad placement.
 
+import "core:math"
 import "core:math/linalg"
 import "core:testing"
 import "moonhug:packages/engine"
@@ -1005,4 +1006,95 @@ test_button_keyboard_navigation :: proc(t: ^testing.T) {
 	testing.expect(t, !options_b.clicked, "no click while navigation is off")
 	_ui_key(.SPACE, false)
 	input.frame_reset()
+}
+
+// --- Shape ----------------------------------------------------------------------------
+
+@(private = "file")
+_shape_prop :: proc(q: engine.Graphic_Quad, name: string) -> ([4]f32, bool) {
+	for p in q.properties do if p.name == name do return p.value, true
+	return {}, false
+}
+
+@(test)
+test_shape_is_one_quad_with_its_values :: proc(t: ^testing.T) {
+	s: mhgui.Shape
+	mhgui.type_reset_Shape(&s)
+	s.corner_radius = {40, 30, 20, 10}
+	s.border_width = 6
+	s.gradient = true
+	s.gradient_angle = 90
+	rect := engine.Rect{pos = {10, 20}, size = {320, 180}}
+	quads := make([dynamic]engine.Graphic_Quad, context.temp_allocator)
+	mhgui.canvas_populate_Shape(&s, rect, &quads)
+	testing.expect_value(t, len(quads), 1)
+	if len(quads) != 1 do return
+	q := quads[0]
+	// No shadow drawn (its color has no alpha): the quad is the rect.
+	testing.expect_value(t, q.pos, [2]f32{10, 20})
+	testing.expect_value(t, q.size, [2]f32{320, 180})
+	testing.expect_value(t, q.material, mhgui.shape_material_guid())
+	testing.expect(t, !engine.asset_guid_is_empty(q.material), "a shape names its own material")
+	testing.expect_value(t, q.texture, mhgui.white_texture_guid())
+	size, _ := _shape_prop(q, "shape_size")
+	testing.expect_value(t, size, [4]f32{320, 180, 320, 180})
+	radii, _ := _shape_prop(q, "shape_radii")
+	testing.expect_value(t, radii, [4]f32{40, 30, 20, 10})
+	params, has := _shape_prop(q, "shape_params")
+	testing.expect(t, has && params.x == 6 && params.z == 1 && abs(params.y - math.PI / 2) < 1e-5, "border width, gradient on, angle in radians")
+
+	// A rect with no area draws nothing.
+	clear(&quads)
+	mhgui.canvas_populate_Shape(&s, {pos = {0, 0}, size = {0, 50}}, &quads)
+	testing.expect_value(t, len(quads), 0)
+}
+
+@(test)
+test_shape_quad_grows_for_its_shadow :: proc(t: ^testing.T) {
+	s: mhgui.Shape
+	mhgui.type_reset_Shape(&s)
+	testing.expect_value(t, mhgui.shape_margin(&s), 0)
+	s.shadow = {color = {0, 0, 0, 0.5}, offset = {3, -10}, blur = 8, spread = 2}
+	// The longer offset, the blur, the spread and a pixel for the edge.
+	testing.expect_value(t, mhgui.shape_margin(&s), 21)
+	quads := make([dynamic]engine.Graphic_Quad, context.temp_allocator)
+	mhgui.canvas_populate_Shape(&s, {pos = {0, 0}, size = {100, 50}}, &quads)
+	if !testing.expect_value(t, len(quads), 1) do return
+	q := quads[0]
+	testing.expect_value(t, q.pos, [2]f32{-21, -21})
+	testing.expect_value(t, q.size, [2]f32{142, 92})
+	size, _ := _shape_prop(q, "shape_size")
+	testing.expect_value(t, size, [4]f32{100, 50, 142, 92})
+	// The inner shadow stays inside: no margin of its own.
+	s.shadow.color.a = 0
+	s.inner_shadow.color.a = 1
+	testing.expect_value(t, mhgui.shape_margin(&s), 0)
+}
+
+// A node's graphic material wins, and a quad's own is used when the graphic
+// names none, with the quad's values on the draw.
+@(test)
+test_shape_draws_with_its_material_and_values :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	canvas := engine.transform_new("Canvas")
+	_add(canvas, .Canvas)
+	node := engine.transform_new("Shape", canvas)
+	_add(node, .RectTransform)
+	_add(node, .CanvasRenderer)
+	shape := cast(^mhgui.Shape)_add(node, .Shape)
+	mhgui.type_reset_Shape(shape)
+	view := engine.render_view_make(linalg.MATRIX4F32_IDENTITY, linalg.MATRIX4F32_IDENTITY, 200, 100, 0xFFFFFFFF)
+	out := make([dynamic]engine.Render_Command)
+	defer delete(out)
+	engine.canvas_collect_graphics(view, &out)
+	if !testing.expect_value(t, len(out), 1) do return
+	q, is_quad := out[0].variant.(engine.Draw_Quad)
+	testing.expect(t, is_quad, "a Shape emits a Draw_Quad")
+	testing.expect_value(t, q.material, mhgui.shape_material_guid())
+	testing.expect_value(t, len(q.properties), 9)
 }

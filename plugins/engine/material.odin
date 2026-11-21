@@ -296,6 +296,32 @@ _material_pack_properties :: proc(mat: ^Material, sr: ^Shader_Runtime) -> []u8 {
 	return data
 }
 
+// The material's packed property block with a draw's own values written over
+// it (Draw_Property), temp-allocated. `base` is the block the material packs
+// (_resolve_material). Values the shader has no member for are dropped, and a
+// material with no custom shader has no block: `base` comes back. Color
+// properties go in as linear, as a material's do.
+material_pack_draw_properties :: proc(guid: Asset_GUID, base: []u8, properties: []Draw_Property) -> []u8 {
+	if guid == {} || len(properties) == 0 do return base
+	mat, ok := material_load(guid)
+	if !ok || mat.custom_shader == {} do return base
+	sr, sr_ok := shader_load(asset_key(mat.custom_shader))
+	if !sr_ok || sr.block_size == 0 do return base
+	data := make([]u8, sr.block_size, context.temp_allocator)
+	copy(data, base)
+	for p in properties {
+		for sp in sr.properties {
+			if sp.name != p.name do continue
+			value := p.value
+			if material_property_is_color(sp.name, sp.size) do value = gfx.srgb_to_linear(value)
+			value_bytes := (^[16]u8)(&value)
+			copy(data[sp.offset:], value_bytes[:min(sp.size, 16)])
+			break
+		}
+	}
+	return data
+}
+
 // Reconciles the material's property AND texture rows with the shader's
 // reflected members: missing rows are added (zero-valued/empty), rows whose
 // name isn't in the shader are REMOVED — including all of them when

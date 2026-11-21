@@ -1,0 +1,7 @@
+{
+  "name": "mhgui_sample",
+  "guid": "eeabeee2-3708-4e9d-8b36-f6e62182acb7",
+  "description": "",
+  "dependencies": ["engine", "mhgui", "text"],
+  "dependencies_custom": []
+}

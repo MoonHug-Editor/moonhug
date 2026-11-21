@@ -105,6 +105,25 @@ ui_menu_image :: proc() {
 	engine.inspector_request_select(tH)
 }
 
+// A Shape node (RectTransform + CanvasRenderer + Shape), placed like an Image.
+@(menu_item={path="GameObject/UI/Shape", order=51, help="Creates a UI shape drawn with no sprite: a rounded rectangle with a border, a gradient and shadows"})
+ui_menu_shape :: proc() {
+	g := undo.group_begin("Create Shape")
+	defer undo.group_end(&g)
+	parent := engine.inspector_active_selection()
+	if _canvas_of(parent) == _NONE {
+		parent = _create_canvas()
+		if parent == _NONE do return
+	}
+	tH := undo.record_create_child("Shape", parent)
+	if tH == _NONE do return
+	_add_comp(tH, .RectTransform)
+	_add_comp(tH, .CanvasRenderer)
+	_add_comp(tH, .Shape)
+	undo.group_commit(&g)
+	engine.inspector_request_select(tH)
+}
+
 // A Button node: an Image as the target graphic plus the Button. Like the
 // Image menu, under the selection when that sits in a canvas.
 @(menu_item={path="GameObject/UI/Button", order=52, help="Creates a UI button, in the selected canvas or a new one"})
