@@ -1137,10 +1137,6 @@ CANVAS_SORTING_LAYER :: i32(127)
 canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
 	if view.kind == .Preview || len(_canvas_graphics) == 0 do return
 	w := ctx_world()
-	nodes := make([dynamic]Node_Rect, context.temp_allocator)
-	quads := make([dynamic]Graphic_Quad, context.temp_allocator)
-	// With no UiMask in the world, no node looks for one.
-	any_mask := ui_masks(w).count > 0
 	stacks := make(map[Transform_Handle][]gfx.Clip_Mask, context.temp_allocator)
 
 	it := pool_iterator(canvases(w))
@@ -1157,67 +1153,46 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 		screen := [2]f32{view.width, view.height} if view.kind == .Game else _canvas_game_viewport
 		root, canvas_xform, in_world := canvas_placement(canvas.owner, screen)
 		scale := canvas_scale(canvas.owner, screen)
-		clear(&nodes)
-		canvas_resolve_rects(canvas.owner, root, &nodes)
+		// What the canvas draws, kept while nothing under it changes
+		// (ui_canvas_cache.odin). The rest of this places it in the view.
+		kept := _canvas_kept(canvas.owner, root, screen)
 		pixels := Canvas_Pixels{view = view, overlay = !in_world && view.kind == .Game, scale = scale, to_world = canvas_xform if in_world else 1}
 		clear(&stacks)
-		for n, i in nodes {
-			_, cr := transform_get_comp(n.tH, CanvasRenderer)
-			if cr == nil || !cr.enabled do continue
-			comp, g, desc, ok := node_graphic(n.tH)
-			if !ok do continue
-			// The mask the node is clipped to, when one is above it.
+		overlay := !in_world && view.kind == .Game
+		reserve(out, len(out) + len(kept.quads))
+		for n in kept.drawn {
 			// The masks above it. Nodes under the same nearest mask are under
 			// the same masks, and share one slice so their quads merge.
 			clip: []gfx.Clip_Mask
-			if any_mask {
-				if nearest := node_mask(n.tH); nearest != {} {
-					shared, known := stacks[nearest]
-					if !known {
-						shared = mask_stack(pixels, n.tH, nodes[:])
-						stacks[nearest] = shared
-					}
-					clip = shared
+			if n.mask != {} {
+				shared, known := stacks[n.mask]
+				if !known {
+					shared = mask_stack(pixels, n.tH, kept.nodes[:])
+					stacks[n.mask] = shared
 				}
+				clip = shared
 			}
-			clear(&quads)
-			desc.populate(comp, n.rect, &quads)
-			node_effects(n.tH, n.rect, &quads)
 			key: Sort_Key
-			key[0] = sort_key_word(CANVAS_SORTING_LAYER, canvas.sort_order, 0, u16(i))
-			checked_clip := false
-			// The CanvasGroups above it fade it. Fully faded, it draws nothing.
-			group_alpha := canvas_group_state(n.tH).alpha
-			if group_alpha <= 0 do continue
-			color := (g.color * cr.tint if cr.tinted else g.color) * {1, 1, 1, group_alpha}
-			for q in quads {
-				if asset_guid_is_empty(q.texture) do continue
-				material := asset_key(g.material) if !asset_guid_is_empty(asset_key(g.material)) else q.material
-				// Once a node, not once a quad: a Text is a quad a glyph.
-				if len(clip) > 0 && !checked_clip {
-					checked_clip = true
-					_warn_unclipped(material, n.tH)
-				}
-				corners: [4][3]f32
-				if in_world {
-					corners = graphic_quad_corners(q, canvas_xform * n.xform)
-				} else if view.kind == .Game {
-					corners = graphic_quad_corners(q, n.xform)
+			key[0] = sort_key_word(CANVAS_SORTING_LAYER, canvas.sort_order, 0, u16(n.index))
+			xform := canvas_xform * n.xform if in_world else n.xform
+			// Once a node, not once a quad: a Text is a quad a glyph.
+			if len(clip) > 0 do _warn_unclipped(kept.quads[n.first].material, n.tH)
+			for q in kept.quads[n.first:][:n.count] {
+				corners := graphic_quad_corners(q, xform)
+				if overlay {
 					px: [4][2]f32
 					for c, k in corners do px[k] = c.xy * scale
 					corners = canvas_view_corners(view, px)
-				} else {
-					corners = graphic_quad_corners(q, n.xform)
 				}
 				append(out, Render_Command{
 					key     = key,
 					owner   = n.tH,
 					variant = Draw_Quad{
 						texture  = q.texture,
-						material = material,
+						material = q.material,
 						corners  = corners,
 						uvs      = q.uvs,
-						color    = color if !q.absolute else {1, 1, 1, color.a},
+						color    = n.color if !q.absolute else {1, 1, 1, n.color.a},
 						colors   = q.colors,
 						colored  = q.colored,
 						properties = q.properties,

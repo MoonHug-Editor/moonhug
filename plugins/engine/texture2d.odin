@@ -239,6 +239,8 @@ _texture_load_noise :: proc(key: Asset_GUID) -> (^Texture2D, bool) {
         pixels_per_unit = PIXELS_PER_UNIT,
         gfx    = g,
     }
+    // A canvas that asked for it before it was there draws it now.
+    canvas_content_changed()
     return &texture_cache[key], true
 }
 
@@ -298,6 +300,8 @@ _alpha_map_drop :: proc(guid: Asset_GUID) {
 
 texture_unload :: proc(guid: Asset_GUID) {
 	_alpha_map_drop(guid)
+	// A canvas may draw from it: its sprite rects and its size.
+	canvas_content_changed()
     if tex, ok := &texture_cache[guid]; ok {
         _texture_sprites_free(tex)
         gfx.texture_destroy(tex.gfx)

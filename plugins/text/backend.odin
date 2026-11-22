@@ -53,6 +53,8 @@ backend_set :: proc(b: Backend) {
 
 layout_epoch_bump :: proc() {
 	_layout_epoch += 1
+	// The canvases that keep what their Texts drew collect afresh.
+	engine.canvas_content_changed()
 }
 
 backend :: proc() -> ^Backend {

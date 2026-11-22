@@ -59,6 +59,22 @@ The engine's canvas collector runs for Game windows and the Scene window. For ea
 - **Clipping.** A quad of a node under a [UiMask](components/UiMask.md) carries the masks above it (`Draw_Quad.clip`): for each, the map from a pixel of the target into the mask's own space, its half size, its radii and its softness. The quad's shader cuts it to them. Nodes under the same masks share one list, so their quads merge. No stencil is used.
 - Sort keys use layer 127, the top of the transparent range, then the canvas's `sort_order`, then the node's place in the draw order.
 
+## What a canvas keeps
+
+The collector runs for every view of every frame: the Scene window, the Game window, each camera. Most of its work for a canvas gives the same answer each time, so a canvas keeps it: every node's resolved rect, each graphic's quads, and the effects run over them. A collect with nothing changed only places the kept quads in its view.
+
+The kept answer is used while nothing it came from changed:
+
+- **A fingerprint of the canvas's subtree.** Every node's transform and whether it is active, and the contents of every component on it, strings and lists by what they hold. Setting a field from game code, an animation, the inspector or an undo changes it. There is no call to make and no setter to go through.
+- **The screen size** the canvas is laid out for.
+- **`engine.canvas_content_changed()`**, for what no component holds. The texture cache calls it when a texture loads or unloads, and the text plugin when a font does.
+
+A graphic whose quads depend on something outside its node's components, the time or a global, calls `engine.canvas_content_changed()` when that changes. A graphic that draws from its own fields needs nothing.
+
+- A canvas with something moving in it collects afresh each frame, as before. Put what changes every frame on a canvas of its own and the rest stays kept.
+- A component that counts time in one of its fields while it rests makes its canvas collect afresh every frame. The plugin's controls do not.
+- `engine.canvas_rebuilds` counts the fresh collects.
+
 ## The pointer
 
 Every frame, before any game update, `canvas_pointer_update` reads the mouse in viewport coordinates, finds the topmost node under it across the canvases with a GraphicRaycaster, and sends pointer events. Nothing happens while the application has no focus.

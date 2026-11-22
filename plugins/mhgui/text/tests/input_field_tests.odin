@@ -477,3 +477,29 @@ test_dropdown_opens_picks_and_closes :: proc(t: ^testing.T) {
 	testing.expect_value(t, d.value, i32(2))
 	engine.transform_destroy_pending()
 }
+
+// A canvas keeps what it drew until something under it changes. Text typed
+// into the same memory, at the same length, is a change too: the canvas's
+// fingerprint reads strings by what they hold.
+@(test)
+test_canvas_fingerprint_reads_strings :: proc(t: ^testing.T) {
+	fx: _Fixture
+	canvas := _begin(&fx)
+	context.user_ptr = &fx.tc.uc
+	defer _end(&fx)
+	_, tx := _text("Score", canvas, {200, 40})
+	buffer := make([]u8, 9)
+	defer delete(buffer)
+	copy(buffer, "Score: 10")
+	tx.text = string(buffer)
+	// The Text does not own the buffer: taken back before its cleanup.
+	defer tx.text = ""
+
+	before := engine.canvas_fingerprint(canvas)
+	testing.expect_value(t, engine.canvas_fingerprint(canvas), before)
+	buffer[8] = '1'
+	after := engine.canvas_fingerprint(canvas)
+	testing.expect(t, after != before, "the same memory with another character is another fingerprint")
+	buffer[8] = '0'
+	testing.expect_value(t, engine.canvas_fingerprint(canvas), before)
+}
