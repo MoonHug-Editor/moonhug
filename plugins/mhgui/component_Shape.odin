@@ -90,15 +90,21 @@ canvas_populate_Shape :: proc(s: ^Shape, rect: engine.Rect, out: ^[dynamic]engin
 	if rect.size.x <= 0 || rect.size.y <= 0 do return
 	m := shape_margin(s)
 	quad_size := rect.size + 2 * m
+	// The CanvasRenderer's tint (a Button's transition) reaches the fill
+	// through the quad's color. The shape's other colors take it here.
+	tint := [4]f32{1, 1, 1, 1}
+	if s.owner != {} {
+		if _, cr := engine.transform_get_comp(s.owner, engine.CanvasRenderer); cr != nil && cr.tinted do tint = cr.tint
+	}
 	props := make([]engine.Draw_Property, 9, context.temp_allocator)
 	props[0] = {"shape_size", {rect.size.x, rect.size.y, quad_size.x, quad_size.y}}
 	props[1] = {"shape_radii", s.corner_radius}
 	props[2] = {"shape_params", {max(s.border_width, 0), math.to_radians(s.gradient_angle), 1 if s.gradient else 0, 0}}
-	props[3] = {"border_color", s.border_color}
-	props[4] = {"gradient_color", s.gradient_color}
-	props[5] = {"shadow_color", s.shadow.color}
+	props[3] = {"border_color", s.border_color * tint}
+	props[4] = {"gradient_color", s.gradient_color * tint}
+	props[5] = {"shadow_color", s.shadow.color * {1, 1, 1, tint.a}}
 	props[6] = {"shadow_params", {s.shadow.offset.x, s.shadow.offset.y, max(s.shadow.blur, 0), s.shadow.spread}}
-	props[7] = {"inner_shadow_color", s.inner_shadow.color}
+	props[7] = {"inner_shadow_color", s.inner_shadow.color * {1, 1, 1, tint.a}}
 	props[8] = {"inner_shadow_params", {s.inner_shadow.offset.x, s.inner_shadow.offset.y, max(s.inner_shadow.blur, 0), s.inner_shadow.spread}}
 	append(out, engine.Graphic_Quad{
 		pos        = rect.pos - m,

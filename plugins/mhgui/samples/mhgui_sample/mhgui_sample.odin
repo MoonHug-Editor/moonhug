@@ -9,6 +9,10 @@ package mhgui_sample
 //   field with an inner shadow and a glow. Under them, a row of twelve
 //   chips with the same values, which share one draw call.
 //
+// - Pointer events, live while the game plays: a card that the UIDemoDrag
+//   script (ui_demo.odin) drags, taking its events with
+//   @(comp_on_pointer_ui), and a Button whose graphic is a Shape.
+//
 // The scene is generated (the moonhug-mhgui-demo-scene skill), not edited by
 // hand.
 

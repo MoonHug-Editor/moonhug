@@ -1,13 +1,14 @@
 package mhgui
 
-// Button: a clickable graphic with a selectable's colour transition. The pointer
-// pass (engine.canvas_pointer_update, run by ui_tick below before any game
-// update) says which node is hovered, pressed, selected and clicked; every
-// Button derives its state from that and tints its target graphic's
-// CanvasRenderer with the matching color, fading over fade_duration. A click
-// (press and release on the node) sets `clicked` for the rest of the frame;
-// game code polls button_clicked. The node needs a graphic with
-// raycast_target on (Image or Text) to be hit at all.
+// Button: a clickable graphic with a selectable's colour transition. It takes
+// the pointer events of its node (engine/ui_pointer.odin) like any other
+// component: it uses Down, so it owns the press, and Enter, Exit, Up, Cancel
+// and Click set its hover, press and click state. From that state it tints
+// its target graphic's CanvasRenderer with the matching color, fading over
+// fade_duration. A click sets `clicked` for the rest of the frame, and game
+// code polls button_clicked. The pointer must be able to hit the node or a
+// node under it: a graphic with raycast_target on (Image, Shape, Text) or a
+// HitArea. A parent that takes the drag (a scroll view) cancels the press.
 //
 // Keyboard and gamepad act on the selected node (engine.ui_selected: the
 // last one pressed on, or the one code gave engine.ui_set_selected):
@@ -57,7 +58,32 @@ Button :: struct {
 	colors:         Color_Block,
 	// Runtime state, never saved.
 	state:   Selectable_State `json:"-" inspect:"-"`,
-	clicked: bool             `json:"-" inspect:"-"`, // pressed and released on this node this frame
+	clicked: bool             `json:"-" inspect:"-"`, // clicked this frame, by the pointer or the submit key
+	hovered: bool             `json:"-" inspect:"-"`, // the pointer is over the node or a node under it
+	pressed: bool             `json:"-" inspect:"-"`, // the pointer's left button is down on it
+}
+
+// The Button's pointer events. It uses the left button's Down, which makes it
+// the press's owner: Up and Click come back to it, and Cancel when a parent
+// takes the drag.
+@(comp_on_pointer_ui={component=Button})
+comp_on_pointer_ui_Button :: proc(b: ^Button, ev: ^engine.UI_Pointer_Event) {
+	#partial switch ev.kind {
+	case .Enter: b.hovered = true
+	case .Exit:  b.hovered = false
+	case .Down:
+		if ev.button != .Left || !b.interactable do return
+		b.pressed = true
+		ev.used = true
+	case .Up:
+		if ev.button == .Left do b.pressed = false
+	case .Cancel:
+		b.pressed = false
+	case .Click:
+		if ev.button != .Left || !b.interactable do return
+		b.clicked = true
+		ev.used = true
+	}
 }
 
 type_reset_Button :: proc(b: ^Button) {
@@ -194,10 +220,17 @@ button_find_in_direction :: proc(from: engine.Transform_Handle, dir: [2]f32) -> 
 	return best
 }
 
-// The pointer pass, the keyboard and gamepad pass, then every Button's
-// state and tint. Before the game's updates so they see this frame's clicks.
+// The pointer pass, which sends this frame's pointer events, the keyboard and
+// gamepad pass, then every Button's state and tint. Before the game's updates
+// so they see this frame's clicks.
 @(update={order=-100})
 ui_tick :: proc(dt: f32) {
+	w := engine.ctx_world()
+	// Last frame's clicks are over before the pointer pass sets this frame's.
+	{
+		it := engine.pool_iterator(buttons(w))
+		for b, _ in engine.pool_next(&it) do b.clicked = false
+	}
 	engine.canvas_pointer_update()
 	submit, submit_down: bool
 	if _navigation && engine.application_is_focused() {
@@ -208,24 +241,24 @@ ui_tick :: proc(dt: f32) {
 		submit = _nav_submit_pressed()
 		submit_down = _nav_submit_down()
 	}
-	pointer := engine.ui_pointer()
-	w := engine.ctx_world()
+	selected := engine.ui_selected()
 	it := engine.pool_iterator(buttons(w))
 	for b, _ in engine.pool_next(&it) {
 		if !b.enabled || !engine.transform_active_in_hierarchy(b.owner) {
-			b.clicked = false
+			b.clicked, b.hovered, b.pressed = false, false, false
 			continue
 		}
-		node := b.owner
-		chosen := pointer.selected == node
-		b.clicked = b.interactable && (pointer.clicked == node || (submit && chosen))
+		chosen := selected == b.owner
+		// The submit key clicks the selected Button. It is no pointer event.
+		if b.interactable && submit && chosen do b.clicked = true
+		if !b.interactable do b.clicked = false
 		switch {
-		case !b.interactable:          b.state = .Disabled
-		case pointer.pressed == node:  b.state = .Pressed
-		case submit_down && chosen:    b.state = .Pressed
-		case pointer.hovered == node:  b.state = .Highlighted
-		case pointer.selected == node: b.state = .Selected
-		case:                          b.state = .Normal
+		case !b.interactable:       b.state = .Disabled
+		case b.pressed:             b.state = .Pressed
+		case submit_down && chosen: b.state = .Pressed
+		case b.hovered:             b.state = .Highlighted
+		case chosen:                b.state = .Selected
+		case:                       b.state = .Normal
 		}
 		// Real time: a menu responds while the game's time is slowed or held.
 		if b.transition == .Color_Tint do _button_tint(b, time.delta_time(.Unscaled))

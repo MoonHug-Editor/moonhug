@@ -13,7 +13,6 @@ import "base:runtime"
 import "core:math"
 import "core:math/linalg"
 import "core:slice"
-import "moonhug:libs/input"
 
 // A rectangle in canvas units: bottom-left origin, y up, the same
 // orientation as NDC.
@@ -108,6 +107,26 @@ CanvasRenderer :: struct {
 	// tint is set, so a loaded (zeroed) renderer draws untinted.
 	tint:   [4]f32 `json:"-" inspect:"-"`,
 	tinted: bool   `json:"-" inspect:"-"`,
+}
+
+// A node the pointer can hit that draws nothing: its rect takes pointer
+// events (ui_pointer.odin) as a graphic with raycast_target does. For an
+// invisible button over a picture, a drag surface, or a larger touch area
+// around a small icon. It needs no CanvasRenderer.
+@(component={menu="UI/HitArea"})
+@(typ_guid={guid = "1b81a833-e1e0-4857-bb17-eea53665ee29"})
+HitArea :: struct {
+	using base: CompData `inspect:"-"`,
+}
+
+// Whether the pointer can hit the node: an enabled HitArea, or a drawn
+// graphic with raycast_target on.
+node_takes_pointer :: proc(tH: Transform_Handle) -> bool {
+	if _, area := transform_get_comp(tH, HitArea); area != nil && area.enabled do return true
+	_, cr := transform_get_comp(tH, CanvasRenderer)
+	if cr == nil || !cr.enabled do return false
+	_, g, _, ok := node_graphic(tH)
+	return ok && g.raycast_target
 }
 
 canvas_renderer_set_tint :: proc(cr: ^CanvasRenderer, tint: [4]f32) {
@@ -754,7 +773,7 @@ UI_Pointer :: struct {
 	clicked:  Transform_Handle, // released this frame over the node it was pressed on
 }
 
-@(private = "file") _ui_pointer: UI_Pointer
+@(private) _ui_pointer: UI_Pointer
 
 ui_pointer :: proc() -> UI_Pointer {
 	return _ui_pointer
@@ -769,32 +788,13 @@ ui_selected :: proc() -> Transform_Handle {
 	return _ui_pointer.selected
 }
 
-canvas_pointer_update :: proc() {
-	p := &_ui_pointer
-	p.clicked = {}
-	if !application_is_focused() {
-		p.hovered = {}
-		return
-	}
-	p.position = input.mouse_position()
-	p.hovered = canvas_raycast(p.position, input.viewport_size())
-	if input.mouse_pressed(.Left) {
-		p.pressed = p.hovered
-		p.selected = p.hovered
-	}
-	if input.mouse_released(.Left) {
-		if p.pressed != {} && p.pressed == p.hovered do p.clicked = p.pressed
-		p.pressed = {}
-	}
-}
-
 // The topmost raycast-target graphic under a viewport point (pixels, y
 // down), across the canvases with an enabled GraphicRaycaster, in draw
 // order: higher sort_order over lower, higher z_index over lower, later
 // nodes over earlier. {} when nothing is hit.
 canvas_raycast :: proc(point: [2]f32, viewport: [2]f32) -> Transform_Handle {
 	w := ctx_world()
-	if w == nil || len(_canvas_graphics) == 0 do return {}
+	if w == nil do return {}
 
 	Hit_Canvas :: struct {
 		tH:         Transform_Handle,
@@ -824,43 +824,49 @@ canvas_raycast :: proc(point: [2]f32, viewport: [2]f32) -> Transform_Handle {
 	hit: Transform_Handle
 	nodes := make([dynamic]Node_Rect, context.temp_allocator)
 	for c in hit_canvases {
-		root, xform, in_world := canvas_placement(c.tH, viewport)
-		cp: [2]f32
-		if in_world {
-			// The pointer's camera ray against the canvas plane, in canvas units.
-			_, canvas := transform_get_comp(c.tH, Canvas)
-			cam := camera_active()
-			if canvas != nil && canvas.render_mode == .ScreenSpaceCamera {
-				if _, rc := transform_get_comp(Transform_Handle(canvas.render_camera.handle), Camera); rc != nil do cam = rc
-			}
-			if cam == nil do continue
-			ray := camera_screen_ray(cam, point, viewport)
-			origin := (xform * [4]f32{0, 0, 0, 1}).xyz
-			normal := linalg.normalize0((xform * [4]f32{0, 0, 1, 0}).xyz)
-			denom := linalg.dot(ray.direction, normal)
-			if math.abs(denom) < 1e-6 do continue
-			t := linalg.dot(origin - ray.origin, normal) / denom
-			if t < 0 do continue
-			local := linalg.inverse(xform) * [4]f32{ray.origin.x + ray.direction.x * t, ray.origin.y + ray.direction.y * t, ray.origin.z + ray.direction.z * t, 1}
-			cp = local.xy
-		} else {
-			scale := canvas_scale(c.tH, viewport)
-			// Viewport y is down, canvas y is up.
-			cp = {point.x / scale, (viewport.y - point.y) / scale}
-		}
+		root, _, _ := canvas_placement(c.tH, viewport)
+		cp, on_canvas := canvas_point_at(c.tH, point, viewport)
+		if !on_canvas do continue
 		clear(&nodes)
 		canvas_resolve_rects(c.tH, root, &nodes)
 		for n in nodes {
-			_, cr := transform_get_comp(n.tH, CanvasRenderer)
-			if cr == nil || !cr.enabled do continue
-			_, g, _, ok := node_graphic(n.tH)
-			if !ok || !g.raycast_target do continue
+			if !node_takes_pointer(n.tH) do continue
 			corners := rect_corners(n.rect, n.xform)
 			if c.ignore_reversed && _quad_reversed(corners) do continue
 			if _point_in_quad(cp, corners) do hit = n.tH
 		}
 	}
 	return hit
+}
+
+// The point of a canvas under a viewport point (pixels, y down), in canvas
+// units with y up, in any render mode: an overlay canvas maps through its
+// scale, a canvas in the world or before a camera through the camera's ray
+// against its plane. False when the ray misses the plane or there is no
+// camera.
+canvas_point_at :: proc(canvas_tH: Transform_Handle, point: [2]f32, viewport: [2]f32) -> (cp: [2]f32, ok: bool) {
+	_, xform, in_world := canvas_placement(canvas_tH, viewport)
+	if !in_world {
+		scale := canvas_scale(canvas_tH, viewport)
+		// Viewport y is down, canvas y is up.
+		return {point.x / scale, (viewport.y - point.y) / scale}, true
+	}
+	// The pointer's camera ray against the canvas plane, in canvas units.
+	_, canvas := transform_get_comp(canvas_tH, Canvas)
+	cam := camera_active()
+	if canvas != nil && canvas.render_mode == .ScreenSpaceCamera {
+		if _, rc := transform_get_comp(Transform_Handle(canvas.render_camera.handle), Camera); rc != nil do cam = rc
+	}
+	if cam == nil do return {}, false
+	ray := camera_screen_ray(cam, point, viewport)
+	origin := (xform * [4]f32{0, 0, 0, 1}).xyz
+	normal := linalg.normalize0((xform * [4]f32{0, 0, 1, 0}).xyz)
+	denom := linalg.dot(ray.direction, normal)
+	if math.abs(denom) < 1e-6 do return {}, false
+	t := linalg.dot(origin - ray.origin, normal) / denom
+	if t < 0 do return {}, false
+	local := linalg.inverse(xform) * [4]f32{ray.origin.x + ray.direction.x * t, ray.origin.y + ray.direction.y * t, ray.origin.z + ray.direction.z * t, 1}
+	return local.xy, true
 }
 
 // The quad's winding on the canvas plane: negative area means a transform

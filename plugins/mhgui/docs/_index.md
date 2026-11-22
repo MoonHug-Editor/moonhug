@@ -42,6 +42,7 @@ The plugin declares no attributes. It uses the engine's: Image and Shape declare
 
 ## Limits
 
+- Every component takes its node's pointer events with `@(comp_on_pointer_ui)`, the engine's attribute ([UI canvas](/plugins/engine/docs/UICanvas.md), "The pointer"). Button is written with it.
 - One control, Button, with a colour tint transition. No toggle, slider, scroll view, input field or dropdown ([Roadmap](Roadmap.md)).
 - No clipping and no masks.
 - Keyboard and gamepad navigation picks the nearest button in a direction. A button cannot name its neighbours or stay out of navigation.

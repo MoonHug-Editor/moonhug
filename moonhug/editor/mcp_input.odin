@@ -34,6 +34,8 @@ import im "moonhug:external/odin-imgui"
 import mcp "moonhug:editor/mcp"
 import gfx "moonhug:libs/gfx"
 import "moonhug:editor/inspector"
+import "moonhug:libs/input"
+import sdl "vendor:sdl3"
 
 _INPUT_MAX_STEPS :: 500
 _INPUT_MAX_WAIT :: 600
@@ -285,12 +287,15 @@ mcp_bridge_input_feed :: proc() {
 	_input.next += 1
 	switch step.kind {
 	case .Move:
+		_game_mouse_move(step.pos, _input.mouse if _input.has_mouse else step.pos)
 		_input.mouse = step.pos
 		_input.has_mouse = true
 		im.IO_AddMousePosEvent(io, vp.Pos.x + step.pos.x, vp.Pos.y + step.pos.y)
 	case .Down:
+		_game_mouse_button(step.button, true)
 		im.IO_AddMouseButtonEvent(io, step.button, true)
 	case .Up:
+		_game_mouse_button(step.button, false)
 		im.IO_AddMouseButtonEvent(io, step.button, false)
 	case .Key:
 		// The backend sends the modifier flag before the key itself.
@@ -299,12 +304,45 @@ mcp_bridge_input_feed :: proc() {
 	case .Text:
 		im.IO_AddInputCharactersUTF8(io, strings.clone_to_cstring(step.text, context.temp_allocator))
 	case .Wheel:
+		e: sdl.Event
+		e.type = .MOUSE_WHEEL
+		e.wheel.y = step.pos.y
+		input.apply_event(&e)
 		im.IO_AddMouseWheelEvent(io, step.pos.x, step.pos.y)
 	case .Wait:
 		// This frame is the first of them.
 		_input.wait = step.frames - 1
 	}
 	if _input.wait == 0 do _input.pending = true
+}
+
+// The mouse steps reach the game's own input too (libs/input, what a game in
+// Play reads), as the SDL events of a real mouse would: imgui alone gets the
+// editor's widgets, not the game. Positions are in the main window's points,
+// which is what the steps carry.
+@(private = "file")
+_game_mouse_move :: proc(pos, from: [2]f32) {
+	e: sdl.Event
+	e.type = .MOUSE_MOTION
+	e.motion.x, e.motion.y = pos.x, pos.y
+	e.motion.xrel, e.motion.yrel = pos.x - from.x, pos.y - from.y
+	input.apply_event(&e)
+}
+
+// imgui's buttons are 0 left, 1 right, 2 middle. SDL's are 1 left, 2 middle, 3 right.
+@(private = "file")
+_game_mouse_button :: proc(button: i32, down: bool) {
+	e: sdl.Event
+	e.type = .MOUSE_BUTTON_DOWN if down else .MOUSE_BUTTON_UP
+	switch button {
+	case 0: e.button.button = 1
+	case 1: e.button.button = 3
+	case 2: e.button.button = 2
+	case: return
+	}
+	e.button.down = down
+	e.button.x, e.button.y = _input.mouse.x, _input.mouse.y
+	input.apply_event(&e)
 }
 
 @(private = "file")
