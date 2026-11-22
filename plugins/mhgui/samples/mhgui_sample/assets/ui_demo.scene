@@ -282,31 +282,31 @@
     },
     {
      "pptr": {
-      "local_id": 1658,
+      "local_id": 1662,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     },
     {
      "pptr": {
-      "local_id": 1676,
+      "local_id": 1680,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     },
     {
      "pptr": {
-      "local_id": 1698,
+      "local_id": 1702,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     },
     {
      "pptr": {
-      "local_id": 1749,
+      "local_id": 1753,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     },
     {
      "pptr": {
-      "local_id": 1803,
+      "local_id": 1807,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     }
@@ -7668,6 +7668,12 @@
       "local_id": 1653,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
+    },
+    {
+     "pptr": {
+      "local_id": 1658,
+      "guid": "00000000-0000-0000-0000-000000000000"
+     }
     }
    ],
    "components": [
@@ -7847,6 +7853,46 @@
   },
   {
    "local_id": 1658,
+   "name": "Rich",
+   "is_active": true,
+   "position": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "render_layer": 1,
+   "parent": {
+    "pptr": {
+     "local_id": 1637,
+     "guid": "00000000-0000-0000-0000-000000000000"
+    }
+   },
+   "children": [],
+   "components": [
+    {
+     "local_id": 1659
+    },
+    {
+     "local_id": 1660
+    },
+    {
+     "local_id": 1661
+    }
+   ]
+  },
+  {
+   "local_id": 1662,
    "name": "Left Cell 4",
    "is_active": true,
    "position": [
@@ -7875,31 +7921,31 @@
    "children": [
     {
      "pptr": {
-      "local_id": 1660,
-      "guid": "00000000-0000-0000-0000-000000000000"
-     }
-    },
-    {
-     "pptr": {
       "local_id": 1664,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     },
     {
      "pptr": {
-      "local_id": 1670,
+      "local_id": 1668,
+      "guid": "00000000-0000-0000-0000-000000000000"
+     }
+    },
+    {
+     "pptr": {
+      "local_id": 1674,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     }
    ],
    "components": [
     {
-     "local_id": 1659
+     "local_id": 1663
     }
    ]
   },
   {
-   "local_id": 1660,
+   "local_id": 1664,
    "name": "Caption",
    "is_active": true,
    "position": [
@@ -7921,25 +7967,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1658,
+     "local_id": 1662,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1661
+     "local_id": 1665
     },
     {
-     "local_id": 1662
+     "local_id": 1666
     },
     {
-     "local_id": 1663
+     "local_id": 1667
     }
    ]
   },
   {
-   "local_id": 1664,
+   "local_id": 1668,
    "name": "Card",
    "is_active": true,
    "position": [
@@ -7961,31 +8007,31 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1658,
+     "local_id": 1662,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1665
-    },
-    {
-     "local_id": 1666
-    },
-    {
-     "local_id": 1667
-    },
-    {
-     "local_id": 1668
-    },
-    {
      "local_id": 1669
+    },
+    {
+     "local_id": 1670
+    },
+    {
+     "local_id": 1671
+    },
+    {
+     "local_id": 1672
+    },
+    {
+     "local_id": 1673
     }
    ]
   },
   {
-   "local_id": 1670,
+   "local_id": 1674,
    "name": "Star",
    "is_active": true,
    "position": [
@@ -8007,31 +8053,31 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1658,
+     "local_id": 1662,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1671
-    },
-    {
-     "local_id": 1672
-    },
-    {
-     "local_id": 1673
-    },
-    {
-     "local_id": 1674
-    },
-    {
      "local_id": 1675
+    },
+    {
+     "local_id": 1676
+    },
+    {
+     "local_id": 1677
+    },
+    {
+     "local_id": 1678
+    },
+    {
+     "local_id": 1679
     }
    ]
   },
   {
-   "local_id": 1676,
+   "local_id": 1680,
    "name": "Left Cell 5",
    "is_active": true,
    "position": [
@@ -8060,12 +8106,6 @@
    "children": [
     {
      "pptr": {
-      "local_id": 1678,
-      "guid": "00000000-0000-0000-0000-000000000000"
-     }
-    },
-    {
-     "pptr": {
       "local_id": 1682,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
@@ -8087,16 +8127,22 @@
       "local_id": 1694,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
+    },
+    {
+     "pptr": {
+      "local_id": 1698,
+      "guid": "00000000-0000-0000-0000-000000000000"
+     }
     }
    ],
    "components": [
     {
-     "local_id": 1677
+     "local_id": 1681
     }
    ]
   },
   {
-   "local_id": 1678,
+   "local_id": 1682,
    "name": "Caption",
    "is_active": true,
    "position": [
@@ -8118,47 +8164,7 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1676,
-     "guid": "00000000-0000-0000-0000-000000000000"
-    }
-   },
-   "children": [],
-   "components": [
-    {
-     "local_id": 1679
-    },
-    {
-     "local_id": 1680
-    },
-    {
-     "local_id": 1681
-    }
-   ]
-  },
-  {
-   "local_id": 1682,
-   "name": "Frame",
-   "is_active": true,
-   "position": [
-    0.0,
-    0.0,
-    0.0
-   ],
-   "rotation": [
-    0.0,
-    0.0,
-    0.0,
-    1.0
-   ],
-   "scale": [
-    1.0,
-    1.0,
-    1.0
-   ],
-   "render_layer": 1,
-   "parent": {
-    "pptr": {
-     "local_id": 1676,
+     "local_id": 1680,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
@@ -8177,46 +8183,6 @@
   },
   {
    "local_id": 1686,
-   "name": "Raw Image",
-   "is_active": true,
-   "position": [
-    0.0,
-    0.0,
-    0.0
-   ],
-   "rotation": [
-    0.0,
-    0.0,
-    0.0,
-    1.0
-   ],
-   "scale": [
-    1.0,
-    1.0,
-    1.0
-   ],
-   "render_layer": 1,
-   "parent": {
-    "pptr": {
-     "local_id": 1676,
-     "guid": "00000000-0000-0000-0000-000000000000"
-    }
-   },
-   "children": [],
-   "components": [
-    {
-     "local_id": 1687
-    },
-    {
-     "local_id": 1688
-    },
-    {
-     "local_id": 1689
-    }
-   ]
-  },
-  {
-   "local_id": 1690,
    "name": "Frame",
    "is_active": true,
    "position": [
@@ -8238,25 +8204,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1676,
+     "local_id": 1680,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1691
+     "local_id": 1687
     },
     {
-     "local_id": 1692
+     "local_id": 1688
     },
     {
-     "local_id": 1693
+     "local_id": 1689
     }
    ]
   },
   {
-   "local_id": 1694,
+   "local_id": 1690,
    "name": "Raw Image",
    "is_active": true,
    "position": [
@@ -8278,7 +8244,47 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1676,
+     "local_id": 1680,
+     "guid": "00000000-0000-0000-0000-000000000000"
+    }
+   },
+   "children": [],
+   "components": [
+    {
+     "local_id": 1691
+    },
+    {
+     "local_id": 1692
+    },
+    {
+     "local_id": 1693
+    }
+   ]
+  },
+  {
+   "local_id": 1694,
+   "name": "Frame",
+   "is_active": true,
+   "position": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "render_layer": 1,
+   "parent": {
+    "pptr": {
+     "local_id": 1680,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
@@ -8297,6 +8303,46 @@
   },
   {
    "local_id": 1698,
+   "name": "Raw Image",
+   "is_active": true,
+   "position": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "render_layer": 1,
+   "parent": {
+    "pptr": {
+     "local_id": 1680,
+     "guid": "00000000-0000-0000-0000-000000000000"
+    }
+   },
+   "children": [],
+   "components": [
+    {
+     "local_id": 1699
+    },
+    {
+     "local_id": 1700
+    },
+    {
+     "local_id": 1701
+    }
+   ]
+  },
+  {
+   "local_id": 1702,
    "name": "Side Cell 5",
    "is_active": true,
    "position": [
@@ -8325,25 +8371,25 @@
    "children": [
     {
      "pptr": {
-      "local_id": 1700,
+      "local_id": 1704,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     },
     {
      "pptr": {
-      "local_id": 1704,
+      "local_id": 1708,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     }
    ],
    "components": [
     {
-     "local_id": 1699
+     "local_id": 1703
     }
    ]
   },
   {
-   "local_id": 1700,
+   "local_id": 1704,
    "name": "Caption",
    "is_active": true,
    "position": [
@@ -8365,25 +8411,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1698,
+     "local_id": 1702,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1701
+     "local_id": 1705
     },
     {
-     "local_id": 1702
+     "local_id": 1706
     },
     {
-     "local_id": 1703
+     "local_id": 1707
     }
    ]
   },
   {
-   "local_id": 1704,
+   "local_id": 1708,
    "name": "Grid",
    "is_active": true,
    "position": [
@@ -8405,59 +8451,59 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1698,
+     "local_id": 1702,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [
     {
      "pptr": {
-      "local_id": 1709,
+      "local_id": 1713,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     },
     {
      "pptr": {
-      "local_id": 1717,
+      "local_id": 1721,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     },
     {
      "pptr": {
-      "local_id": 1725,
+      "local_id": 1729,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     },
     {
      "pptr": {
-      "local_id": 1733,
+      "local_id": 1737,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     },
     {
      "pptr": {
-      "local_id": 1741,
+      "local_id": 1745,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     }
    ],
    "components": [
     {
-     "local_id": 1705
+     "local_id": 1709
     },
     {
-     "local_id": 1706
+     "local_id": 1710
     },
     {
-     "local_id": 1707
+     "local_id": 1711
     },
     {
-     "local_id": 1708
+     "local_id": 1712
     }
    ]
   },
   {
-   "local_id": 1709,
+   "local_id": 1713,
    "name": "Cell 1",
    "is_active": true,
    "position": [
@@ -8479,32 +8525,32 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1704,
+     "local_id": 1708,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [
     {
      "pptr": {
-      "local_id": 1713,
+      "local_id": 1717,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     }
    ],
    "components": [
     {
-     "local_id": 1710
+     "local_id": 1714
     },
     {
-     "local_id": 1711
+     "local_id": 1715
     },
     {
-     "local_id": 1712
+     "local_id": 1716
     }
    ]
   },
   {
-   "local_id": 1713,
+   "local_id": 1717,
    "name": "Label",
    "is_active": true,
    "position": [
@@ -8526,25 +8572,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1709,
+     "local_id": 1713,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1714
+     "local_id": 1718
     },
     {
-     "local_id": 1715
+     "local_id": 1719
     },
     {
-     "local_id": 1716
+     "local_id": 1720
     }
    ]
   },
   {
-   "local_id": 1717,
+   "local_id": 1721,
    "name": "Cell 2",
    "is_active": true,
    "position": [
@@ -8566,32 +8612,32 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1704,
+     "local_id": 1708,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [
     {
      "pptr": {
-      "local_id": 1721,
+      "local_id": 1725,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     }
    ],
    "components": [
     {
-     "local_id": 1718
+     "local_id": 1722
     },
     {
-     "local_id": 1719
+     "local_id": 1723
     },
     {
-     "local_id": 1720
+     "local_id": 1724
     }
    ]
   },
   {
-   "local_id": 1721,
+   "local_id": 1725,
    "name": "Label",
    "is_active": true,
    "position": [
@@ -8613,25 +8659,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1717,
+     "local_id": 1721,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1722
+     "local_id": 1726
     },
     {
-     "local_id": 1723
+     "local_id": 1727
     },
     {
-     "local_id": 1724
+     "local_id": 1728
     }
    ]
   },
   {
-   "local_id": 1725,
+   "local_id": 1729,
    "name": "Cell 3",
    "is_active": true,
    "position": [
@@ -8653,32 +8699,32 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1704,
+     "local_id": 1708,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [
     {
      "pptr": {
-      "local_id": 1729,
+      "local_id": 1733,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     }
    ],
    "components": [
     {
-     "local_id": 1726
+     "local_id": 1730
     },
     {
-     "local_id": 1727
+     "local_id": 1731
     },
     {
-     "local_id": 1728
+     "local_id": 1732
     }
    ]
   },
   {
-   "local_id": 1729,
+   "local_id": 1733,
    "name": "Label",
    "is_active": true,
    "position": [
@@ -8700,25 +8746,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1725,
+     "local_id": 1729,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1730
+     "local_id": 1734
     },
     {
-     "local_id": 1731
+     "local_id": 1735
     },
     {
-     "local_id": 1732
+     "local_id": 1736
     }
    ]
   },
   {
-   "local_id": 1733,
+   "local_id": 1737,
    "name": "Cell 4",
    "is_active": true,
    "position": [
@@ -8740,32 +8786,32 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1704,
+     "local_id": 1708,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [
     {
      "pptr": {
-      "local_id": 1737,
+      "local_id": 1741,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     }
    ],
    "components": [
     {
-     "local_id": 1734
+     "local_id": 1738
     },
     {
-     "local_id": 1735
+     "local_id": 1739
     },
     {
-     "local_id": 1736
+     "local_id": 1740
     }
    ]
   },
   {
-   "local_id": 1737,
+   "local_id": 1741,
    "name": "Label",
    "is_active": true,
    "position": [
@@ -8787,25 +8833,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1733,
+     "local_id": 1737,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1738
+     "local_id": 1742
     },
     {
-     "local_id": 1739
+     "local_id": 1743
     },
     {
-     "local_id": 1740
+     "local_id": 1744
     }
    ]
   },
   {
-   "local_id": 1741,
+   "local_id": 1745,
    "name": "Cell 5",
    "is_active": true,
    "position": [
@@ -8827,32 +8873,32 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1704,
+     "local_id": 1708,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [
     {
      "pptr": {
-      "local_id": 1745,
+      "local_id": 1749,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     }
    ],
    "components": [
     {
-     "local_id": 1742
+     "local_id": 1746
     },
     {
-     "local_id": 1743
+     "local_id": 1747
     },
     {
-     "local_id": 1744
+     "local_id": 1748
     }
    ]
   },
   {
-   "local_id": 1745,
+   "local_id": 1749,
    "name": "Label",
    "is_active": true,
    "position": [
@@ -8874,25 +8920,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1741,
+     "local_id": 1745,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1746
+     "local_id": 1750
     },
     {
-     "local_id": 1747
+     "local_id": 1751
     },
     {
-     "local_id": 1748
+     "local_id": 1752
     }
    ]
   },
   {
-   "local_id": 1749,
+   "local_id": 1753,
    "name": "Chips",
    "is_active": true,
    "position": [
@@ -8919,12 +8965,6 @@
     }
    },
    "children": [
-    {
-     "pptr": {
-      "local_id": 1751,
-      "guid": "00000000-0000-0000-0000-000000000000"
-     }
-    },
     {
      "pptr": {
       "local_id": 1755,
@@ -8996,16 +9036,22 @@
       "local_id": 1799,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
+    },
+    {
+     "pptr": {
+      "local_id": 1803,
+      "guid": "00000000-0000-0000-0000-000000000000"
+     }
     }
    ],
    "components": [
     {
-     "local_id": 1750
+     "local_id": 1754
     }
    ]
   },
   {
-   "local_id": 1751,
+   "local_id": 1755,
    "name": "Chip 1",
    "is_active": true,
    "position": [
@@ -9027,25 +9073,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1749,
+     "local_id": 1753,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1752
+     "local_id": 1756
     },
     {
-     "local_id": 1753
+     "local_id": 1757
     },
     {
-     "local_id": 1754
+     "local_id": 1758
     }
    ]
   },
   {
-   "local_id": 1755,
+   "local_id": 1759,
    "name": "Chip 2",
    "is_active": true,
    "position": [
@@ -9067,25 +9113,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1749,
+     "local_id": 1753,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1756
+     "local_id": 1760
     },
     {
-     "local_id": 1757
+     "local_id": 1761
     },
     {
-     "local_id": 1758
+     "local_id": 1762
     }
    ]
   },
   {
-   "local_id": 1759,
+   "local_id": 1763,
    "name": "Chip 3",
    "is_active": true,
    "position": [
@@ -9107,25 +9153,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1749,
+     "local_id": 1753,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1760
+     "local_id": 1764
     },
     {
-     "local_id": 1761
+     "local_id": 1765
     },
     {
-     "local_id": 1762
+     "local_id": 1766
     }
    ]
   },
   {
-   "local_id": 1763,
+   "local_id": 1767,
    "name": "Chip 4",
    "is_active": true,
    "position": [
@@ -9147,25 +9193,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1749,
+     "local_id": 1753,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1764
+     "local_id": 1768
     },
     {
-     "local_id": 1765
+     "local_id": 1769
     },
     {
-     "local_id": 1766
+     "local_id": 1770
     }
    ]
   },
   {
-   "local_id": 1767,
+   "local_id": 1771,
    "name": "Chip 5",
    "is_active": true,
    "position": [
@@ -9187,25 +9233,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1749,
+     "local_id": 1753,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1768
+     "local_id": 1772
     },
     {
-     "local_id": 1769
+     "local_id": 1773
     },
     {
-     "local_id": 1770
+     "local_id": 1774
     }
    ]
   },
   {
-   "local_id": 1771,
+   "local_id": 1775,
    "name": "Chip 6",
    "is_active": true,
    "position": [
@@ -9227,25 +9273,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1749,
+     "local_id": 1753,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1772
+     "local_id": 1776
     },
     {
-     "local_id": 1773
+     "local_id": 1777
     },
     {
-     "local_id": 1774
+     "local_id": 1778
     }
    ]
   },
   {
-   "local_id": 1775,
+   "local_id": 1779,
    "name": "Chip 7",
    "is_active": true,
    "position": [
@@ -9267,25 +9313,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1749,
+     "local_id": 1753,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1776
+     "local_id": 1780
     },
     {
-     "local_id": 1777
+     "local_id": 1781
     },
     {
-     "local_id": 1778
+     "local_id": 1782
     }
    ]
   },
   {
-   "local_id": 1779,
+   "local_id": 1783,
    "name": "Chip 8",
    "is_active": true,
    "position": [
@@ -9307,25 +9353,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1749,
+     "local_id": 1753,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1780
+     "local_id": 1784
     },
     {
-     "local_id": 1781
+     "local_id": 1785
     },
     {
-     "local_id": 1782
+     "local_id": 1786
     }
    ]
   },
   {
-   "local_id": 1783,
+   "local_id": 1787,
    "name": "Chip 9",
    "is_active": true,
    "position": [
@@ -9347,25 +9393,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1749,
+     "local_id": 1753,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1784
+     "local_id": 1788
     },
     {
-     "local_id": 1785
+     "local_id": 1789
     },
     {
-     "local_id": 1786
+     "local_id": 1790
     }
    ]
   },
   {
-   "local_id": 1787,
+   "local_id": 1791,
    "name": "Chip 10",
    "is_active": true,
    "position": [
@@ -9387,25 +9433,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1749,
+     "local_id": 1753,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1788
+     "local_id": 1792
     },
     {
-     "local_id": 1789
+     "local_id": 1793
     },
     {
-     "local_id": 1790
+     "local_id": 1794
     }
    ]
   },
   {
-   "local_id": 1791,
+   "local_id": 1795,
    "name": "Chip 11",
    "is_active": true,
    "position": [
@@ -9427,25 +9473,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1749,
+     "local_id": 1753,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1792
+     "local_id": 1796
     },
     {
-     "local_id": 1793
+     "local_id": 1797
     },
     {
-     "local_id": 1794
+     "local_id": 1798
     }
    ]
   },
   {
-   "local_id": 1795,
+   "local_id": 1799,
    "name": "Chip 12",
    "is_active": true,
    "position": [
@@ -9467,25 +9513,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1749,
+     "local_id": 1753,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1796
+     "local_id": 1800
     },
     {
-     "local_id": 1797
+     "local_id": 1801
     },
     {
-     "local_id": 1798
+     "local_id": 1802
     }
    ]
   },
   {
-   "local_id": 1799,
+   "local_id": 1803,
    "name": "Caption",
    "is_active": true,
    "position": [
@@ -9507,25 +9553,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1749,
+     "local_id": 1753,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1800
+     "local_id": 1804
     },
     {
-     "local_id": 1801
+     "local_id": 1805
     },
     {
-     "local_id": 1802
+     "local_id": 1806
     }
    ]
   },
   {
-   "local_id": 1803,
+   "local_id": 1807,
    "name": "Pointer",
    "is_active": true,
    "position": [
@@ -9554,13 +9600,7 @@
    "children": [
     {
      "pptr": {
-      "local_id": 1805,
-      "guid": "00000000-0000-0000-0000-000000000000"
-     }
-    },
-    {
-     "pptr": {
-      "local_id": 1810,
+      "local_id": 1809,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     },
@@ -9572,19 +9612,25 @@
     },
     {
      "pptr": {
-      "local_id": 1823,
+      "local_id": 1818,
+      "guid": "00000000-0000-0000-0000-000000000000"
+     }
+    },
+    {
+     "pptr": {
+      "local_id": 1827,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     }
    ],
    "components": [
     {
-     "local_id": 1804
+     "local_id": 1808
     }
    ]
   },
   {
-   "local_id": 1805,
+   "local_id": 1809,
    "name": "Drag Card",
    "is_active": true,
    "position": [
@@ -9606,28 +9652,28 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1803,
+     "local_id": 1807,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1806
+     "local_id": 1810
     },
     {
-     "local_id": 1807
+     "local_id": 1811
     },
     {
-     "local_id": 1808
+     "local_id": 1812
     },
     {
-     "local_id": 1809
+     "local_id": 1813
     }
    ]
   },
   {
-   "local_id": 1810,
+   "local_id": 1814,
    "name": "Caption",
    "is_active": true,
    "position": [
@@ -9649,25 +9695,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1803,
+     "local_id": 1807,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1811
+     "local_id": 1815
     },
     {
-     "local_id": 1812
+     "local_id": 1816
     },
     {
-     "local_id": 1813
+     "local_id": 1817
     }
    ]
   },
   {
-   "local_id": 1814,
+   "local_id": 1818,
    "name": "Button",
    "is_active": true,
    "position": [
@@ -9689,35 +9735,35 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1803,
+     "local_id": 1807,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [
     {
      "pptr": {
-      "local_id": 1819,
+      "local_id": 1823,
       "guid": "00000000-0000-0000-0000-000000000000"
      }
     }
    ],
    "components": [
     {
-     "local_id": 1815
+     "local_id": 1819
     },
     {
-     "local_id": 1816
+     "local_id": 1820
     },
     {
-     "local_id": 1817
+     "local_id": 1821
     },
     {
-     "local_id": 1818
+     "local_id": 1822
     }
    ]
   },
   {
-   "local_id": 1819,
+   "local_id": 1823,
    "name": "Label",
    "is_active": true,
    "position": [
@@ -9739,25 +9785,25 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1814,
+     "local_id": 1818,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1820
+     "local_id": 1824
     },
     {
-     "local_id": 1821
+     "local_id": 1825
     },
     {
-     "local_id": 1822
+     "local_id": 1826
     }
    ]
   },
   {
-   "local_id": 1823,
+   "local_id": 1827,
    "name": "Caption",
    "is_active": true,
    "position": [
@@ -9779,20 +9825,20 @@
    "render_layer": 1,
    "parent": {
     "pptr": {
-     "local_id": 1803,
+     "local_id": 1807,
      "guid": "00000000-0000-0000-0000-000000000000"
     }
    },
    "children": [],
    "components": [
     {
-     "local_id": 1824
+     "local_id": 1828
     },
     {
-     "local_id": 1825
+     "local_id": 1829
     },
     {
-     "local_id": 1826
+     "local_id": 1830
     }
    ]
   }
@@ -24519,7 +24565,7 @@
    "overflow": 0,
    "paragraph_spacing": 0.0,
    "parse_escape_characters": false,
-   "text": "Effects on a Text",
+   "text": "Effects on a Text, and rich text tags",
    "vertical_alignment": 1,
    "word_spacing": 0.0,
    "wrap": true
@@ -24536,7 +24582,7 @@
    ],
    "anchored_position": [
     0,
-    66,
+    70,
     0.0
    ],
    "pivot": [
@@ -24633,7 +24679,7 @@
    ],
    "anchored_position": [
     0,
-    26,
+    30,
     0.0
    ],
    "pivot": [
@@ -24723,7 +24769,7 @@
    ],
    "anchored_position": [
     0,
-    -14,
+    -10,
     0.0
    ],
    "pivot": [
@@ -24815,6 +24861,83 @@
     0.5
    ],
    "anchored_position": [
+    0,
+    -42,
+    0.0
+   ],
+   "pivot": [
+    0.5,
+    0.5
+   ],
+   "size_delta": [
+    240,
+    30
+   ],
+   "z_index": 0,
+   "base": {
+    "enabled": true,
+    "local_id": 1659
+   }
+  },
+  {
+   "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
+   "base": {
+    "enabled": true,
+    "local_id": 1660
+   }
+  },
+  {
+   "__type": "32d4e528-8898-4fd3-9fc4-2ac0cc34609e",
+   "auto_size": false,
+   "auto_size_max": 72.0,
+   "auto_size_min": 18.0,
+   "base": {
+    "enabled": true,
+    "local_id": 1661
+   },
+   "character_spacing": 0.0,
+   "font": "22073e17-4d3a-44ab-a230-03bea296e8b7",
+   "font_size": 16,
+   "font_style": 0,
+   "graphic": {
+    "color": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "material": "57209af0-8443-465e-ab7b-cd1deec09ec6",
+    "raycast_target": false
+   },
+   "horizontal_alignment": 1,
+   "kerning": true,
+   "line_spacing": 0.0,
+   "margins": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "overflow": 0,
+   "paragraph_spacing": 0.0,
+   "parse_escape_characters": false,
+   "text": "<b>Bold</b>, <color=#ffcc33>colour</color>, <size=24>size</size> and <u>more</u>",
+   "vertical_alignment": 1,
+   "word_spacing": 0.0,
+   "wrap": true,
+   "rich_text": true
+  },
+  {
+   "__type": "36e133bb-7979-48ba-8b1b-57385558f37d",
+   "anchor_min": [
+    0.5,
+    0.5
+   ],
+   "anchor_max": [
+    0.5,
+    0.5
+   ],
+   "anchored_position": [
     -750,
     -210,
     0.0
@@ -24830,7 +24953,7 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1659
+    "local_id": 1663
    }
   },
   {
@@ -24859,14 +24982,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1661
+    "local_id": 1665
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1662
+    "local_id": 1666
    }
   },
   {
@@ -24876,7 +24999,7 @@
    "auto_size_min": 18.0,
    "base": {
     "enabled": true,
-    "local_id": 1663
+    "local_id": 1667
    },
    "character_spacing": 0.0,
    "font": "22073e17-4d3a-44ab-a230-03bea296e8b7",
@@ -24935,14 +25058,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1665
+    "local_id": 1669
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1666
+    "local_id": 1670
    }
   },
   {
@@ -24974,7 +25097,7 @@
    "fill_clockwise": true,
    "base": {
     "enabled": true,
-    "local_id": 1667
+    "local_id": 1671
    }
   },
   {
@@ -24995,7 +25118,7 @@
    ],
    "base": {
     "enabled": true,
-    "local_id": 1668
+    "local_id": 1672
    }
   },
   {
@@ -25012,7 +25135,7 @@
    ],
    "base": {
     "enabled": true,
-    "local_id": 1669
+    "local_id": 1673
    }
   },
   {
@@ -25041,14 +25164,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1671
+    "local_id": 1675
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1672
+    "local_id": 1676
    }
   },
   {
@@ -25120,7 +25243,7 @@
    "antialias": true,
    "base": {
     "enabled": true,
-    "local_id": 1673
+    "local_id": 1677
    }
   },
   {
@@ -25134,7 +25257,7 @@
    "width": 2,
    "base": {
     "enabled": true,
-    "local_id": 1674
+    "local_id": 1678
    }
   },
   {
@@ -25151,7 +25274,7 @@
    ],
    "base": {
     "enabled": true,
-    "local_id": 1675
+    "local_id": 1679
    }
   },
   {
@@ -25180,7 +25303,7 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1677
+    "local_id": 1681
    }
   },
   {
@@ -25209,14 +25332,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1679
+    "local_id": 1683
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1680
+    "local_id": 1684
    }
   },
   {
@@ -25226,7 +25349,7 @@
    "auto_size_min": 18.0,
    "base": {
     "enabled": true,
-    "local_id": 1681
+    "local_id": 1685
    },
    "character_spacing": 0.0,
    "font": "22073e17-4d3a-44ab-a230-03bea296e8b7",
@@ -25285,14 +25408,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1683
+    "local_id": 1687
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1684
+    "local_id": 1688
    }
   },
   {
@@ -25365,7 +25488,7 @@
    },
    "base": {
     "enabled": true,
-    "local_id": 1685
+    "local_id": 1689
    }
   },
   {
@@ -25394,14 +25517,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1687
+    "local_id": 1691
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1688
+    "local_id": 1692
    }
   },
   {
@@ -25431,7 +25554,7 @@
    ],
    "base": {
     "enabled": true,
-    "local_id": 1689
+    "local_id": 1693
    }
   },
   {
@@ -25460,14 +25583,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1691
+    "local_id": 1695
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1692
+    "local_id": 1696
    }
   },
   {
@@ -25540,7 +25663,7 @@
    },
    "base": {
     "enabled": true,
-    "local_id": 1693
+    "local_id": 1697
    }
   },
   {
@@ -25569,14 +25692,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1695
+    "local_id": 1699
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1696
+    "local_id": 1700
    }
   },
   {
@@ -25606,7 +25729,7 @@
    ],
    "base": {
     "enabled": true,
-    "local_id": 1697
+    "local_id": 1701
    }
   },
   {
@@ -25635,7 +25758,7 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1699
+    "local_id": 1703
    }
   },
   {
@@ -25664,14 +25787,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1701
+    "local_id": 1705
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1702
+    "local_id": 1706
    }
   },
   {
@@ -25681,7 +25804,7 @@
    "auto_size_min": 18.0,
    "base": {
     "enabled": true,
-    "local_id": 1703
+    "local_id": 1707
    },
    "character_spacing": 0.0,
    "font": "22073e17-4d3a-44ab-a230-03bea296e8b7",
@@ -25740,14 +25863,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1705
+    "local_id": 1709
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1706
+    "local_id": 1710
    }
   },
   {
@@ -25820,7 +25943,7 @@
    },
    "base": {
     "enabled": true,
-    "local_id": 1707
+    "local_id": 1711
    }
   },
   {
@@ -25849,7 +25972,7 @@
    "expand_height": false,
    "base": {
     "enabled": true,
-    "local_id": 1708
+    "local_id": 1712
    }
   },
   {
@@ -25878,14 +26001,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1710
+    "local_id": 1714
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1711
+    "local_id": 1715
    }
   },
   {
@@ -25958,7 +26081,7 @@
    },
    "base": {
     "enabled": true,
-    "local_id": 1712
+    "local_id": 1716
    }
   },
   {
@@ -25987,14 +26110,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1714
+    "local_id": 1718
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1715
+    "local_id": 1719
    }
   },
   {
@@ -26004,7 +26127,7 @@
    "auto_size_min": 18.0,
    "base": {
     "enabled": true,
-    "local_id": 1716
+    "local_id": 1720
    },
    "character_spacing": 0.0,
    "font": "22073e17-4d3a-44ab-a230-03bea296e8b7",
@@ -26063,14 +26186,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1718
+    "local_id": 1722
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1719
+    "local_id": 1723
    }
   },
   {
@@ -26143,7 +26266,7 @@
    },
    "base": {
     "enabled": true,
-    "local_id": 1720
+    "local_id": 1724
    }
   },
   {
@@ -26172,14 +26295,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1722
+    "local_id": 1726
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1723
+    "local_id": 1727
    }
   },
   {
@@ -26189,7 +26312,7 @@
    "auto_size_min": 18.0,
    "base": {
     "enabled": true,
-    "local_id": 1724
+    "local_id": 1728
    },
    "character_spacing": 0.0,
    "font": "22073e17-4d3a-44ab-a230-03bea296e8b7",
@@ -26248,14 +26371,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1726
+    "local_id": 1730
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1727
+    "local_id": 1731
    }
   },
   {
@@ -26328,7 +26451,7 @@
    },
    "base": {
     "enabled": true,
-    "local_id": 1728
+    "local_id": 1732
    }
   },
   {
@@ -26357,14 +26480,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1730
+    "local_id": 1734
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1731
+    "local_id": 1735
    }
   },
   {
@@ -26374,7 +26497,7 @@
    "auto_size_min": 18.0,
    "base": {
     "enabled": true,
-    "local_id": 1732
+    "local_id": 1736
    },
    "character_spacing": 0.0,
    "font": "22073e17-4d3a-44ab-a230-03bea296e8b7",
@@ -26433,14 +26556,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1734
+    "local_id": 1738
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1735
+    "local_id": 1739
    }
   },
   {
@@ -26513,7 +26636,7 @@
    },
    "base": {
     "enabled": true,
-    "local_id": 1736
+    "local_id": 1740
    }
   },
   {
@@ -26542,14 +26665,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1738
+    "local_id": 1742
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1739
+    "local_id": 1743
    }
   },
   {
@@ -26559,7 +26682,7 @@
    "auto_size_min": 18.0,
    "base": {
     "enabled": true,
-    "local_id": 1740
+    "local_id": 1744
    },
    "character_spacing": 0.0,
    "font": "22073e17-4d3a-44ab-a230-03bea296e8b7",
@@ -26618,14 +26741,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1742
+    "local_id": 1746
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1743
+    "local_id": 1747
    }
   },
   {
@@ -26698,7 +26821,7 @@
    },
    "base": {
     "enabled": true,
-    "local_id": 1744
+    "local_id": 1748
    }
   },
   {
@@ -26727,14 +26850,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1746
+    "local_id": 1750
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1747
+    "local_id": 1751
    }
   },
   {
@@ -26744,7 +26867,7 @@
    "auto_size_min": 18.0,
    "base": {
     "enabled": true,
-    "local_id": 1748
+    "local_id": 1752
    },
    "character_spacing": 0.0,
    "font": "22073e17-4d3a-44ab-a230-03bea296e8b7",
@@ -26803,115 +26926,6 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1750
-   }
-  },
-  {
-   "__type": "36e133bb-7979-48ba-8b1b-57385558f37d",
-   "anchor_min": [
-    0.5,
-    0.5
-   ],
-   "anchor_max": [
-    0.5,
-    0.5
-   ],
-   "anchored_position": [
-    -462.0,
-    8,
-    0.0
-   ],
-   "pivot": [
-    0.5,
-    0.5
-   ],
-   "size_delta": [
-    70,
-    30
-   ],
-   "z_index": 0,
-   "base": {
-    "enabled": true,
-    "local_id": 1752
-   }
-  },
-  {
-   "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
-   "base": {
-    "enabled": true,
-    "local_id": 1753
-   }
-  },
-  {
-   "__type": "4405f377-8e06-4b47-804a-f6ed73d030fd",
-   "graphic": {
-    "color": [
-     0.3,
-     0.34,
-     0.48,
-     1
-    ],
-    "material": {
-     "guid": "00000000-0000-0000-0000-000000000000",
-     "local_id": 0
-    },
-    "raycast_target": true
-   },
-   "kind": 0,
-   "sides": 5,
-   "star_inner": 0.5,
-   "point_rounding": 0,
-   "corner_radius": [
-    10,
-    10,
-    10,
-    10
-   ],
-   "border_width": 1,
-   "border_color": [
-    0.55,
-    0.62,
-    0.85,
-    1
-   ],
-   "gradient": false,
-   "gradient_color": [
-    1,
-    1,
-    1,
-    1
-   ],
-   "gradient_angle": 0,
-   "shadow": {
-    "color": [
-     0,
-     0,
-     0,
-     0
-    ],
-    "offset": [
-     0,
-     -4
-    ],
-    "blur": 8,
-    "spread": 0
-   },
-   "inner_shadow": {
-    "color": [
-     0,
-     0,
-     0,
-     0
-    ],
-    "offset": [
-     0,
-     -2
-    ],
-    "blur": 4,
-    "spread": 0
-   },
-   "base": {
-    "enabled": true,
     "local_id": 1754
    }
   },
@@ -26926,7 +26940,7 @@
     0.5
    ],
    "anchored_position": [
-    -378.0,
+    -462.0,
     8,
     0.0
    ],
@@ -27035,7 +27049,7 @@
     0.5
    ],
    "anchored_position": [
-    -294.0,
+    -378.0,
     8,
     0.0
    ],
@@ -27144,7 +27158,7 @@
     0.5
    ],
    "anchored_position": [
-    -210.0,
+    -294.0,
     8,
     0.0
    ],
@@ -27253,7 +27267,7 @@
     0.5
    ],
    "anchored_position": [
-    -126.0,
+    -210.0,
     8,
     0.0
    ],
@@ -27362,7 +27376,7 @@
     0.5
    ],
    "anchored_position": [
-    -42.0,
+    -126.0,
     8,
     0.0
    ],
@@ -27471,7 +27485,7 @@
     0.5
    ],
    "anchored_position": [
-    42.0,
+    -42.0,
     8,
     0.0
    ],
@@ -27580,7 +27594,7 @@
     0.5
    ],
    "anchored_position": [
-    126.0,
+    42.0,
     8,
     0.0
    ],
@@ -27689,7 +27703,7 @@
     0.5
    ],
    "anchored_position": [
-    210.0,
+    126.0,
     8,
     0.0
    ],
@@ -27798,7 +27812,7 @@
     0.5
    ],
    "anchored_position": [
-    294.0,
+    210.0,
     8,
     0.0
    ],
@@ -27907,7 +27921,7 @@
     0.5
    ],
    "anchored_position": [
-    378.0,
+    294.0,
     8,
     0.0
    ],
@@ -28016,7 +28030,7 @@
     0.5
    ],
    "anchored_position": [
-    462.0,
+    378.0,
     8,
     0.0
    ],
@@ -28125,8 +28139,8 @@
     0.5
    ],
    "anchored_position": [
-    0,
-    -26,
+    462.0,
+    8,
     0.0
    ],
    "pivot": [
@@ -28134,8 +28148,8 @@
     0.5
    ],
    "size_delta": [
-    900,
-    24
+    70,
+    30
    ],
    "z_index": 0,
    "base": {
@@ -28151,13 +28165,122 @@
    }
   },
   {
+   "__type": "4405f377-8e06-4b47-804a-f6ed73d030fd",
+   "graphic": {
+    "color": [
+     0.3,
+     0.34,
+     0.48,
+     1
+    ],
+    "material": {
+     "guid": "00000000-0000-0000-0000-000000000000",
+     "local_id": 0
+    },
+    "raycast_target": true
+   },
+   "kind": 0,
+   "sides": 5,
+   "star_inner": 0.5,
+   "point_rounding": 0,
+   "corner_radius": [
+    10,
+    10,
+    10,
+    10
+   ],
+   "border_width": 1,
+   "border_color": [
+    0.55,
+    0.62,
+    0.85,
+    1
+   ],
+   "gradient": false,
+   "gradient_color": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "gradient_angle": 0,
+   "shadow": {
+    "color": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "offset": [
+     0,
+     -4
+    ],
+    "blur": 8,
+    "spread": 0
+   },
+   "inner_shadow": {
+    "color": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "offset": [
+     0,
+     -2
+    ],
+    "blur": 4,
+    "spread": 0
+   },
+   "base": {
+    "enabled": true,
+    "local_id": 1802
+   }
+  },
+  {
+   "__type": "36e133bb-7979-48ba-8b1b-57385558f37d",
+   "anchor_min": [
+    0.5,
+    0.5
+   ],
+   "anchor_max": [
+    0.5,
+    0.5
+   ],
+   "anchored_position": [
+    0,
+    -26,
+    0.0
+   ],
+   "pivot": [
+    0.5,
+    0.5
+   ],
+   "size_delta": [
+    900,
+    24
+   ],
+   "z_index": 0,
+   "base": {
+    "enabled": true,
+    "local_id": 1804
+   }
+  },
+  {
+   "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
+   "base": {
+    "enabled": true,
+    "local_id": 1805
+   }
+  },
+  {
    "__type": "32d4e528-8898-4fd3-9fc4-2ac0cc34609e",
    "auto_size": false,
    "auto_size_max": 72.0,
    "auto_size_min": 18.0,
    "base": {
     "enabled": true,
-    "local_id": 1802
+    "local_id": 1806
    },
    "character_spacing": 0.0,
    "font": "22073e17-4d3a-44ab-a230-03bea296e8b7",
@@ -28216,7 +28339,7 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1804
+    "local_id": 1808
    }
   },
   {
@@ -28245,14 +28368,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1806
+    "local_id": 1810
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1807
+    "local_id": 1811
    }
   },
   {
@@ -28325,7 +28448,7 @@
    },
    "base": {
     "enabled": true,
-    "local_id": 1808
+    "local_id": 1812
    }
   },
   {
@@ -28344,7 +28467,7 @@
    ],
    "base": {
     "enabled": true,
-    "local_id": 1809
+    "local_id": 1813
    }
   },
   {
@@ -28373,14 +28496,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1811
+    "local_id": 1815
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1812
+    "local_id": 1816
    }
   },
   {
@@ -28390,7 +28513,7 @@
    "auto_size_min": 18.0,
    "base": {
     "enabled": true,
-    "local_id": 1813
+    "local_id": 1817
    },
    "character_spacing": 0.0,
    "font": "22073e17-4d3a-44ab-a230-03bea296e8b7",
@@ -28449,14 +28572,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1815
+    "local_id": 1819
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1816
+    "local_id": 1820
    }
   },
   {
@@ -28529,7 +28652,7 @@
    },
    "base": {
     "enabled": true,
-    "local_id": 1817
+    "local_id": 1821
    }
   },
   {
@@ -28577,7 +28700,7 @@
    },
    "base": {
     "enabled": true,
-    "local_id": 1818
+    "local_id": 1822
    }
   },
   {
@@ -28606,14 +28729,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1820
+    "local_id": 1824
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1821
+    "local_id": 1825
    }
   },
   {
@@ -28623,7 +28746,7 @@
    "auto_size_min": 18.0,
    "base": {
     "enabled": true,
-    "local_id": 1822
+    "local_id": 1826
    },
    "character_spacing": 0.0,
    "font": "22073e17-4d3a-44ab-a230-03bea296e8b7",
@@ -28682,14 +28805,14 @@
    "z_index": 0,
    "base": {
     "enabled": true,
-    "local_id": 1824
+    "local_id": 1828
    }
   },
   {
    "__type": "56334c3e-5a5d-4a74-981f-3682e7c9dc9a",
    "base": {
     "enabled": true,
-    "local_id": 1825
+    "local_id": 1829
    }
   },
   {
@@ -28699,7 +28822,7 @@
    "auto_size_min": 18.0,
    "base": {
     "enabled": true,
-    "local_id": 1826
+    "local_id": 1830
    },
    "character_spacing": 0.0,
    "font": "22073e17-4d3a-44ab-a230-03bea296e8b7",
@@ -28733,5 +28856,5 @@
    "wrap": true
   }
  ],
- "next_local_id": 1827
+ "next_local_id": 1831
 }

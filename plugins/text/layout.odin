@@ -4,7 +4,10 @@ package text
 // supplies advances and metrics, this turns a string and a rect into glyph
 // quads in canvas units. Pure, so the tests drive it with a fake backend.
 
+import "core:strconv"
+import "core:strings"
 import "core:unicode"
+import "core:unicode/utf8"
 import "moonhug:packages/engine"
 
 Horizontal_Alignment :: enum u8 {
@@ -59,6 +62,9 @@ Glyph_Quad :: struct {
 	skew:    [2]f32,
 	uvs:     [4][2]f32,
 	texture: engine.Asset_GUID,
+	// Rich text: the glyph has a colour of its own, from a <color> tag.
+	color:   [4]f32,
+	colored: bool,
 }
 
 // Everything layout_text needs besides the string and the rect. Spacings
@@ -76,6 +82,7 @@ Layout_Params :: struct {
 	line_spacing:      f32,
 	paragraph_spacing: f32,
 	kerning:           bool,
+	rich:              bool, // tags in the text set the style, the size and the colour of spans (rich_parse)
 }
 
 Layout_Result :: struct {
@@ -102,6 +109,8 @@ _Line :: struct {
 	spaces:      int,  // spaces inside the line, for justification
 	hard:        bool, // ends a paragraph: a '\n' or the end of the text
 	ellipsis:    bool, // draws "..." after its last glyph
+	// The line's own metrics: those of the largest size on it.
+	ascent, descent, height: f32,
 }
 
 // Lays `text` out inside `rect`, appending one Glyph_Quad per visible glyph
@@ -128,12 +137,22 @@ layout_text :: proc(b: ^Backend, p: Layout_Params, text: string, rect: engine.Re
 	if .Bold in p.style do char_gap += BOLD_SPACING * em
 	word_gap := p.word_spacing * em
 
-	// Runes after the case transform, with the size each one draws at.
+	// Runes after the case transform, with the size, the style and the
+	// colour each one draws with: the Text's own, or a span's under rich text.
 	runes := make([dynamic]rune, 0, len(text), context.temp_allocator)
 	sizes := make([dynamic]f32, 0, len(text), context.temp_allocator)
-	for r in text {
-		rr, sz := _styled_rune(r, p.style, p.size)
-		append(&runes, rr)
+	spans := make([dynamic]Rich_Span, 0, len(text), context.temp_allocator)
+	if p.rich {
+		rich_parse(text, p.style, p.size, &runes, &spans)
+	} else {
+		for r in text {
+			append(&runes, r)
+			append(&spans, Rich_Span{style = p.style, size = p.size})
+		}
+	}
+	for r, i in runes {
+		rr, sz := _styled_rune(r, spans[i].style, spans[i].size)
+		runes[i] = rr
 		append(&sizes, sz)
 	}
 	n := len(runes)
@@ -157,6 +176,8 @@ layout_text :: proc(b: ^Backend, p: Layout_Params, text: string, rect: engine.Re
 		g, gok := b.glyph(p.font, sizes[i], r)
 		if !gok do continue
 		adv[i] = g.advance + char_gap
+		// A bold span in a Text that is not bold has the bold spacing too.
+		if .Bold in spans[i].style && .Bold not_in p.style do adv[i] += BOLD_SPACING * spans[i].size * 0.01
 		if r == ' ' do adv[i] += word_gap
 		if p.kerning && i > 0 && runes[i - 1] != '\n' && b.kern != nil do kern[i] = b.kern(p.font, sizes[i], runes[i - 1], r)
 	}
@@ -200,12 +221,29 @@ layout_text :: proc(b: ^Backend, p: Layout_Params, text: string, rect: engine.Re
 	}
 	if len(lines) == 0 do return res
 
+	// Each line's metrics. Under rich text a line is as tall as the largest
+	// size on it needs.
+	for &l in lines {
+		lm := m
+		if p.rich {
+			size := f32(0)
+			for i in l.first ..< l.last do size = max(size, spans[i].size)
+			if size > 0 && size != p.size {
+				if own, own_ok := b.metrics(p.font, size); own_ok do lm = own
+			}
+		}
+		l.ascent, l.descent = lm.ascent, lm.descent
+		l.height = lm.ascent + lm.descent + lm.line_gap + p.line_spacing * em
+	}
 	// Block height with paragraph gaps after every hard line but the last.
+	// `line_h` over 0 says every line has that height.
 	block_height :: proc(lines: []_Line, line_h, para_gap: f32) -> f32 {
 		h := f32(len(lines)) * line_h
+		if line_h <= 0 do for l in lines do h += l.height
 		for l, i in lines do if l.hard && i + 1 < len(lines) do h += para_gap
 		return h
 	}
+	if p.rich do line_h = 0
 	for l in lines {
 		if l.width > rect.size.x + 0.01 do res.overflow = true
 		res.size.x = max(res.size.x, l.width)
@@ -253,9 +291,12 @@ layout_text :: proc(b: ^Backend, p: Layout_Params, text: string, rect: engine.Re
 	case .Capline:  top = center + m.ascent * (1 - CAP_HEIGHT)
 	}
 
+	// Where each rune starts and ends along its line, for the rules.
+	starts := make([]f32, n, context.temp_allocator)
+	ends := make([]f32, n, context.temp_allocator)
 	y_top := top
 	for line, line_index in lines {
-		baseline := y_top - m.ascent
+		baseline := y_top - line.ascent
 		pen := rect.pos.x
 		#partial switch p.horizontal {
 		case .Center: pen += (rect.size.x - line.width) * 0.5
@@ -274,22 +315,25 @@ layout_text :: proc(b: ^Backend, p: Layout_Params, text: string, rect: engine.Re
 			}
 		}
 		x0 := pen
-		line_bottom := y_top - (m.ascent + m.descent)
+		line_bottom := y_top - (line.ascent + line.descent)
+		line_tall := line.ascent + line.descent
 		for i in line.first ..< line.last {
 			r := runes[i]
-			if carets != nil do carets[caret_base + i] = Caret{{pen, line_bottom}, m.ascent + m.descent, line_index}
+			if carets != nil do carets[caret_base + i] = Caret{{pen, line_bottom}, line_tall, line_index}
+			starts[i] = pen
 			pen += kern[i]
 			if r != '\t' {
-				if g, gok := b.glyph(p.font, sizes[i], r); gok do _emit_glyph(out, g, pen, baseline, p.style, sizes[i])
+				if g, gok := b.glyph(p.font, sizes[i], r); gok do _emit_glyph(out, g, pen, baseline, spans[i], sizes[i])
 			}
 			pen += adv[i]
 			if r == ' ' do pen += per_space
 			if i + 1 < line.last do pen += per_gap
+			ends[i] = pen - char_gap
 		}
 		if line.ellipsis {
 			if dot, dok := b.glyph(p.font, p.size, '.'); dok {
 				for _ in 0 ..< 3 {
-					_emit_glyph(out, dot, pen, baseline, p.style, p.size)
+					_emit_glyph(out, dot, pen, baseline, Rich_Span{style = p.style, size = p.size}, p.size)
 					pen += dot.advance + char_gap
 				}
 			}
@@ -299,14 +343,28 @@ layout_text :: proc(b: ^Backend, p: Layout_Params, text: string, rect: engine.Re
 			// The line's end: after its last glyph, where the rune that
 			// broke it (a '\n', or the space it wrapped at) stands. Runes
 			// an overflow mode cut from the line stand there too.
-			line_end := Caret{{x1 if line.last > line.first else pen, line_bottom}, m.ascent + m.descent, line_index}
+			line_end := Caret{{x1 if line.last > line.first else pen, line_bottom}, line_tall, line_index}
 			next_first := lines[line_index + 1].first if line_index + 1 < len(lines) else n + 1
 			for i in line.last ..< min(next_first, n + 1) do carets[caret_base + i] = line_end
 			carets_set = min(next_first, n + 1)
 		}
-		if .Underline in p.style do _emit_rule(out, b, p, x0, x1, baseline, false, m)
-		if .Strikethrough in p.style do _emit_rule(out, b, p, x0, x1, baseline, true, m)
-		y_top -= line_h
+		// A rule under, or through, each run of runes that has one and shares
+		// a colour: the whole line when the Text's own style has it.
+		for flag in ([2]Font_Style_Flag{.Underline, .Strikethrough}) {
+			for i := line.first; i < line.last; {
+				if !(flag in spans[i].style) {
+					i += 1
+					continue
+				}
+				j := i
+				for j + 1 < line.last && (flag in spans[j + 1].style) && spans[j + 1].colored == spans[i].colored && spans[j + 1].color == spans[i].color do j += 1
+				from := x0 if i == line.first else starts[i]
+				to := x1 if j == line.last - 1 else ends[j]
+				_emit_rule(out, b, p, from, to, baseline, flag == .Strikethrough, line.ascent, spans[i])
+				i = j + 1
+			}
+		}
+		y_top -= line.height
 		if line.hard do y_top -= para_gap
 	}
 
@@ -344,9 +402,10 @@ _styled_rune :: proc(r: rune, style: Font_Style, size: f32) -> (rune, f32) {
 
 // One glyph at the pen; a second copy under Bold.
 @(private = "file")
-_emit_glyph :: proc(out: ^[dynamic]Glyph_Quad, g: Glyph, pen, baseline: f32, style: Font_Style, size: f32) {
+_emit_glyph :: proc(out: ^[dynamic]Glyph_Quad, g: Glyph, pen, baseline: f32, span: Rich_Span, size: f32) {
 	if g.size.x <= 0 || g.size.y <= 0 do return
-	q := Glyph_Quad{pos = {pen + g.offset.x, baseline + g.offset.y}, size = g.size, uvs = g.uvs, texture = g.texture}
+	style := span.style
+	q := Glyph_Quad{pos = {pen + g.offset.x, baseline + g.offset.y}, size = g.size, uvs = g.uvs, texture = g.texture, color = span.color, colored = span.colored}
 	if .Italic in style {
 		bottom := q.pos.y - baseline
 		q.skew = {bottom * ITALIC_SHEAR, (bottom + q.size.y) * ITALIC_SHEAR}
@@ -363,7 +422,7 @@ _emit_glyph :: proc(out: ^[dynamic]Glyph_Quad, g: Glyph, pen, baseline: f32, sty
 // Underline sits where the underscore sits; strikethrough is centered at
 // STRIKETHROUGH_HEIGHT of the ascent.
 @(private = "file")
-_emit_rule :: proc(out: ^[dynamic]Glyph_Quad, b: ^Backend, p: Layout_Params, x0, x1, baseline: f32, strike: bool, m: Line_Metrics) {
+_emit_rule :: proc(out: ^[dynamic]Glyph_Quad, b: ^Backend, p: Layout_Params, x0, x1, baseline: f32, strike: bool, ascent: f32, span: Rich_Span) {
 	if x1 <= x0 do return
 	g, ok := b.glyph(p.font, p.size, '_')
 	if !ok || g.size.y <= 0 do return
@@ -371,8 +430,8 @@ _emit_rule :: proc(out: ^[dynamic]Glyph_Quad, b: ^Backend, p: Layout_Params, x0,
 	uvs := g.uvs
 	for &uv in uvs do uv.x = u
 	y := baseline + g.offset.y
-	if strike do y = baseline + m.ascent * STRIKETHROUGH_HEIGHT - g.size.y * 0.5
-	append(out, Glyph_Quad{pos = {x0, y}, size = {x1 - x0, g.size.y}, uvs = uvs, texture = g.texture})
+	if strike do y = baseline + ascent * STRIKETHROUGH_HEIGHT - g.size.y * 0.5
+	append(out, Glyph_Quad{pos = {x0, y}, size = {x1 - x0, g.size.y}, uvs = uvs, texture = g.texture, color = span.color, colored = span.colored})
 }
 
 // Cuts the quad to the rect, moving its uvs along; false when nothing is
@@ -397,4 +456,176 @@ _clip_quad :: proc(q: ^Glyph_Quad, r: engine.Rect) -> bool {
 	q.pos = {x0, y0}
 	q.size = {x1 - x0, y1 - y0}
 	return true
+}
+
+// --- Rich text ---------------------------------------------------------------------
+
+// What one rune of a rich text draws with.
+Rich_Span :: struct {
+	style:   Font_Style,
+	size:    f32,
+	color:   [4]f32, // with `colored`: the rune's own colour, in place of the Text's
+	colored: bool,
+}
+
+// How deep <color> and <size> tags nest. A tag past it is ignored.
+RICH_DEPTH :: 8
+
+// The longest tag, in bytes between its brackets.
+RICH_TAG_MAX :: 40
+
+// Reads a string with tags into its runes and what each draws with. The
+// tags, case ignored:
+// - <b> <i> <u> <s>: bold, italic, underline, strikethrough, until </b> ...
+// - <color=#rgb>, <color=#rrggbb>, <color=#rrggbbaa> or <color=name>, until
+//   </color>. The names are in RICH_COLORS.
+// - <size=24> (canvas units), <size=150%> (of the Text's size) or <size=+4>
+//   and <size=-4> (added to the size around it), until </size>.
+// Tags nest, and a closing tag ends the nearest open one of its kind. What
+// is in brackets and is no tag stays in the text, brackets and all.
+rich_parse :: proc(text: string, style: Font_Style, size: f32, runes: ^[dynamic]rune, spans: ^[dynamic]Rich_Span) {
+	State :: struct {
+		open:   [Font_Style_Flag]int, // how many tags of each style are open
+		sizes:  [RICH_DEPTH]f32,
+		colors: [RICH_DEPTH][4]f32,
+		size_n, color_n: int,
+	}
+	st: State
+	tag :: proc(st: ^State, raw: string, base_size: f32) -> bool {
+		// A tag starts right after its bracket: "a < b > c" is a comparison.
+		if raw == "" || raw[0] == ' ' || raw[len(raw) - 1] == ' ' do return false
+		t := strings.to_lower(raw, context.temp_allocator)
+		flag :: proc(st: ^State, f: Font_Style_Flag, close: bool) -> bool {
+			if close {
+				if st.open[f] > 0 do st.open[f] -= 1
+			} else {
+				st.open[f] += 1
+			}
+			return true
+		}
+		switch t {
+		case "b":  return flag(st, .Bold, false)
+		case "/b": return flag(st, .Bold, true)
+		case "i":  return flag(st, .Italic, false)
+		case "/i": return flag(st, .Italic, true)
+		case "u":  return flag(st, .Underline, false)
+		case "/u": return flag(st, .Underline, true)
+		case "s":  return flag(st, .Strikethrough, false)
+		case "/s": return flag(st, .Strikethrough, true)
+		case "/color":
+			if st.color_n > 0 do st.color_n -= 1
+			return true
+		case "/size":
+			if st.size_n > 0 do st.size_n -= 1
+			return true
+		}
+		eq := strings.index_byte(t, '=')
+		if eq < 0 do return false
+		name := strings.trim_space(t[:eq])
+		value := strings.trim(strings.trim_space(t[eq + 1:]), "\"'")
+		switch name {
+		case "color":
+			c, ok := rich_color(value)
+			if !ok do return false
+			if st.color_n < RICH_DEPTH {
+				st.colors[st.color_n] = c
+				st.color_n += 1
+			}
+			return true
+		case "size":
+			if value == "" do return false
+			around := st.sizes[st.size_n - 1] if st.size_n > 0 else base_size
+			to: f32
+			if strings.has_suffix(value, "%") {
+				v, ok := strconv.parse_f32(value[:len(value) - 1])
+				if !ok do return false
+				to = base_size * v * 0.01
+			} else if value[0] == '+' || value[0] == '-' {
+				v, ok := strconv.parse_f32(value[1:])
+				if !ok do return false
+				to = around + (v if value[0] == '+' else -v)
+			} else {
+				v, ok := strconv.parse_f32(value)
+				if !ok do return false
+				to = v
+			}
+			if st.size_n < RICH_DEPTH {
+				st.sizes[st.size_n] = clamp(to, 1, 2000)
+				st.size_n += 1
+			}
+			return true
+		}
+		return false
+	}
+	for i := 0; i < len(text); {
+		if text[i] == '<' {
+			end := strings.index_byte(text[i:min(i + RICH_TAG_MAX + 2, len(text))], '>')
+			if end > 1 && tag(&st, text[i + 1:i + end], size) {
+				i += end + 1
+				continue
+			}
+		}
+		r, w := utf8.decode_rune_in_string(text[i:])
+		span := Rich_Span{style = style, size = st.sizes[st.size_n - 1] if st.size_n > 0 else size}
+		for f in Font_Style_Flag do if st.open[f] > 0 do span.style += {f}
+		if st.color_n > 0 {
+			span.color = st.colors[st.color_n - 1]
+			span.colored = true
+		}
+		append(runes, r)
+		append(spans, span)
+		i += w
+	}
+}
+
+// The colours a <color=name> tag knows.
+RICH_COLORS := [?]struct {
+	name:  string,
+	color: [4]f32,
+}{
+	{"white", {1, 1, 1, 1}}, {"black", {0, 0, 0, 1}}, {"red", {1, 0.2, 0.2, 1}}, {"green", {0.2, 0.8, 0.3, 1}},
+	{"blue", {0.25, 0.5, 1, 1}}, {"yellow", {1, 0.9, 0.2, 1}}, {"orange", {1, 0.6, 0.15, 1}}, {"purple", {0.65, 0.35, 0.95, 1}},
+	{"cyan", {0.2, 0.9, 0.95, 1}}, {"magenta", {1, 0.3, 0.85, 1}}, {"grey", {0.5, 0.5, 0.5, 1}}, {"gray", {0.5, 0.5, 0.5, 1}},
+}
+
+// A colour from a tag's value: #rgb, #rrggbb, #rrggbbaa or a name.
+rich_color :: proc(value: string) -> (c: [4]f32, ok: bool) {
+	if strings.has_prefix(value, "#") {
+		hex := value[1:]
+		digit :: proc(b: u8) -> (int, bool) {
+			switch b {
+			case '0' ..= '9': return int(b - '0'), true
+			case 'a' ..= 'f': return int(b - 'a') + 10, true
+			case 'A' ..= 'F': return int(b - 'A') + 10, true
+			}
+			return 0, false
+		}
+		c = {0, 0, 0, 1}
+		switch len(hex) {
+		case 3:
+			for k in 0 ..< 3 {
+				d := digit(hex[k]) or_return
+				c[k] = f32(d * 17) / 255
+			}
+			return c, true
+		case 6, 8:
+			for k in 0 ..< len(hex) / 2 {
+				hi := digit(hex[k * 2]) or_return
+				lo := digit(hex[k * 2 + 1]) or_return
+				c[k] = f32(hi * 16 + lo) / 255
+			}
+			return c, true
+		}
+		return {}, false
+	}
+	for entry in RICH_COLORS do if entry.name == value do return entry.color, true
+	return {}, false
+}
+
+// A rich text's string with its tags taken out: what shows. Temp-allocated.
+rich_plain :: proc(text: string, allocator := context.temp_allocator) -> string {
+	runes := make([dynamic]rune, context.temp_allocator)
+	spans := make([dynamic]Rich_Span, context.temp_allocator)
+	rich_parse(text, {}, 12, &runes, &spans)
+	return utf8.runes_to_string(runes[:], allocator)
 }

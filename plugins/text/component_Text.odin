@@ -39,6 +39,7 @@ Text :: struct {
 	margins:       [4]f32, // left, top, right, bottom: canvas units taken off the rect
 	kerning:       bool, // the font's pair adjustments
 	parse_escape_characters: bool, // "\n", "\t" and "\\" typed into the string become the characters
+	rich_text:     bool `decor:tooltip(desc="Tags in the text style parts of it: <b>, <i>, <u>, <s>, <color=#rrggbb> or <color=red>, <size=24> or <size=150%>, each until its closing tag.")`,
 }
 
 type_reset_Text :: proc(t: ^Text) {
@@ -72,6 +73,7 @@ text_layout_params :: proc(t: ^Text) -> Layout_Params {
 		line_spacing      = t.line_spacing,
 		paragraph_spacing = t.paragraph_spacing,
 		kerning           = t.kerning,
+		rich              = t.rich_text,
 	}
 }
 
@@ -172,7 +174,13 @@ canvas_populate_Text :: proc(tx: ^Text, rect: engine.Rect, out: ^[dynamic]engine
 	if kept.quads == nil do kept.quads = make([dynamic]engine.Graphic_Quad)
 	clear(&kept.quads)
 	for q in quads {
-		append(&kept.quads, engine.Graphic_Quad{pos = q.pos, size = q.size, skew = q.skew, uvs = q.uvs, texture = q.texture})
+		gq := engine.Graphic_Quad{pos = q.pos, size = q.size, skew = q.skew, uvs = q.uvs, texture = q.texture}
+		// A span's own colour stands in place of the Text's.
+		if q.colored {
+			gq.colored, gq.absolute = true, true
+			gq.colors = {q.color, q.color, q.color, q.color}
+		}
+		append(&kept.quads, gq)
 	}
 	_layouts[tx] = kept
 	append(out, ..kept.quads[:])

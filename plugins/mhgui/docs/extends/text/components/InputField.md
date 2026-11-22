@@ -54,7 +54,7 @@ Input Field       RectTransform, CanvasRenderer, UiShape, InputField
 - Enter ends the editing and sets `submitted`. Escape, a press outside the field, the selection moving to another control and the game losing the focus end it too. The text typed so far stays in every case.
 - A single line longer than the Text Area scrolls so the caret stays in view. The field moves the Text node sideways while it is edited and puts it back after.
 - A multi-line field wraps as its Text does (`wrap` on the Text) and does not scroll.
-- The Text's own settings are the look: font, size, colour and alignment. Give it `wrap` off for a single line and `parse_escape_characters` off.
+- The Text's own settings are the look: font, size, colour and alignment. Give it `wrap` off for a single line, and `parse_escape_characters` and `rich_text` off: the field edits the characters as typed.
 
 | Key | What it does |
 |---|---|

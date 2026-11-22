@@ -54,7 +54,7 @@ Status is one of: Done, In progress, Next, Open, Parked.
 | # | Item | What it is | Status |
 |---|---|---|---|
 | 21 | RawImage | A texture drawn whole or by a `uv_rect`, with no sprite. The engine has no render target asset yet, so a texture file is what it draws | Done |
-| 22 | Rich text tags | Bold, colour and size inside one Text | Open |
+| 22 | Rich text tags | `rich_text` on a Text: `<b>`, `<i>`, `<u>`, `<s>`, `<color>` and `<size>` style parts of one string | Done |
 | 23 | Grid layout extras | `start_corner` and `start_axis` on a Grid LayoutGroup | Done |
 | 24 | Navigation through input actions | The submit and move keys come from the input_actions plugin | Parked |
 | 39 | UiPolygon point handles | With the Handles tool the points of a UiPolygon are dragged in the Scene window, and a drag from an edge's middle adds one | Done |
