@@ -1,11 +1,11 @@
 ---
 title: "The pointer"
-description: "Pointer events for UI: what the pointer hits, touch, how a component takes the events, the rules and the polled record"
+description: "Pointer events for UI nodes and for objects in the world: what the pointer hits, touch, how a component takes the events, the rules and the polled record"
 weight: 20
 tags: ["mhgui", "pointer", "events", "touch", "concepts"]
 ---
 
-The mhgui plugin's pointer pass: every frame it finds the UI node under each pointer and sends pointer events to the components on it. The code is `plugins/mhgui/pointer.odin` and `plugins/mhgui/raycast.odin`.
+The mhgui plugin's pointer pass: every frame it finds the object under each pointer and sends pointer events to the components on it. The object is a UI node, or an object in the world with a collider. A component takes the events with one proc, the same for both. The code is `plugins/mhgui/pointer.odin` and `plugins/mhgui/raycast.odin`.
 
 Every frame, before any game update, `canvas_pointer_update` reads the mouse in viewport coordinates, finds the topmost node under it across the canvases with a GraphicRaycaster, and sends pointer events. Nothing happens while the application has no focus.
 
@@ -14,6 +14,23 @@ Every frame, before any game update, `canvas_pointer_update` reads the mouse in 
 - A node is hit inside its rect. A graphic may narrow that with `@(canvas_hit)` on a proc named `canvas_hit_<T>`, which takes the component, the node's rect and a point of it and says whether the point hits. Every component on the node that has one must agree.
 - The mhgui UiShape and UiPolygon are hit by their outlines, and an Image by its sprite's alpha when its `alpha_hit_threshold` is over 0.
 - A node under a [UiMask](../components/UiMask.md) is hit only where the mask shows it: inside its rect and corners, and where its sprite's alpha is at least 0.1.
+
+## Objects in the world
+
+`@(comp_on_pointer)` names the reaction. What finds the object under the pointer is a separate thing, a raycaster:
+
+| Raycaster | Goes on | Finds |
+|---|---|---|
+| [GraphicRaycaster](../components/GraphicRaycaster.md) | a Canvas | UI nodes |
+| [PhysicsRaycaster](/plugins/physics3d/docs/extends/mhgui/components/PhysicsRaycaster.md) | a Camera | 3D colliders, with the physics3d plugin |
+| [Physics2DRaycaster](/plugins/physics2d/docs/extends/mhgui/components/Physics2DRaycaster.md) | a Camera | 2D colliders, with the physics2d plugin |
+
+- A door with a collider and a component that has a `@(comp_on_pointer)` proc opens on `Click`, with a PhysicsRaycaster on the camera. The same component on a UI node would work unchanged.
+- The event goes to the object that was hit and then up its parents, so a collider on a child clicks its parent's component.
+- `ev.source` says what found the object: `UI`, `World_3D` or `World_2D`. `ev.world_position` and `ev.world_normal` are where the collider under the pointer is hit, and zero over UI.
+- UI comes first: a pointer over a canvas's graphic hits nothing in the world behind it. Among the world's raycasters the nearest hit wins.
+- A press on the world clears the UI selection, as a press on nothing does.
+- Another plugin adds its own way to find objects with `mhgui.pointer_raycaster_register(proc)`, from an `@(init)` proc.
 
 ## Touch
 
@@ -28,11 +45,11 @@ Each finger on a touch screen is a pointer of its own. The mouse is pointer 0 an
 
 ## Taking pointer events
 
-Any component on a UI node takes the pointer events of that node with one proc. A control of the engine, a control of a plugin and a script of a game all use this one way:
+Any component takes the pointer events of its object with one proc, on a UI node or on an object in the world. A control of the engine, a control of a plugin and a script of a game all use this one way:
 
 ```odin
-@(comp_on_pointer_ui={component=Chest})
-comp_on_pointer_ui_Chest :: proc(c: ^Chest, ev: ^mhgui.UI_Pointer_Event) {
+@(comp_on_pointer={component=Chest})
+comp_on_pointer_Chest :: proc(c: ^Chest, ev: ^mhgui.Pointer_Event) {
 	#partial switch ev.kind {
 	case .Click: chest_open(c)
 	case .Enter: c.glow = true
@@ -43,9 +60,9 @@ comp_on_pointer_ui_Chest :: proc(c: ^Chest, ev: ^mhgui.UI_Pointer_Event) {
 
 What it works on:
 
-- Components on a node inside a canvas that has a GraphicRaycaster.
+- Components on a node inside a canvas that has a GraphicRaycaster, and on an object with a collider when a camera has a physics raycaster ("Objects in the world").
 - An event starts at a node the pointer can hit: one with a drawn graphic whose `raycast_target` is on, or one with a `HitArea`, a component that takes the pointer and draws nothing. It then goes to that node's parents, which need no graphic of their own. That is how a container hears about its children.
-- It does not work on objects outside a canvas, such as a 3D object with a collider, nor on inactive nodes and disabled components.
+- It does not work on inactive objects and disabled components.
 - Keyboard and gamepad are not pointers and send none of these events.
 
 ## Events
@@ -80,7 +97,7 @@ The same for every component:
 
 ## Reading the pointer
 
-- `mhgui.ui_pointer_over_ui()` says whether the pointer is over UI or holds a press that began on it. Game code checks it so a click on a button is not also a shot in the world.
+- `mhgui.ui_pointer_over_ui()` says whether the pointer is over UI or holds a press that began on it. A collider under the pointer does not count. Game code checks it so a click on a button is not also a shot in the world.
 - `mhgui.ui_pointer()` is the polled record: the position, the hovered node, the press's owner, the selected node and the node clicked this frame with the left button.
 
 The selected node is the one keyboard and gamepad input acts on. A press selects the node it lands on, a press on nothing clears the selection, and `mhgui.ui_set_selected(node)` selects one from code. `mhgui.ui_selected()` reads it. The mhgui plugin's [Button](/plugins/mhgui/docs/components/Button.md) moves the selection with the arrow keys and the gamepad.

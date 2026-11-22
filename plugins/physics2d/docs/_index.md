@@ -32,6 +32,7 @@ The physics2d plugin simulates 2D physics with box2d. Add a Rigidbody2D and coll
 **Extends**
 
 - sprites: [Sprite outline](extends/sprites/concepts/SpriteOutline.md), a PolygonCollider2D on a sprite starts as its outline.
+- mhgui: [Physics2DRaycaster](extends/mhgui/components/Physics2DRaycaster.md) lets the pointer reach colliders, so an object is clicked like a UI node.
 
 [Roadmap](Roadmap.md): joints, effectors and what does not re-sync yet.
 

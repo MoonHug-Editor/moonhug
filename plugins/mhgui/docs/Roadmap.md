@@ -14,7 +14,7 @@ Status is one of: Done, In progress, Next, Open, Parked.
 | # | Item | What it is | Needs | Status |
 |---|---|---|---|---|
 | 1 | Procedural shape | A rounded rectangle drawn in the shader: a radius per corner, a border, a two-stop gradient, a drop shadow and an inner shadow. A shape setting, with Rect the first shape | per-draw shader values | Done |
-| 2 | Pointer events | Enter, exit, down, up, click, hold, drag, scroll and cancel, taken by any component with `@(comp_on_pointer_ui)`. A HitArea takes the pointer and draws nothing. Button is written with it | | Done |
+| 2 | Pointer events | Enter, exit, down, up, click, hold, drag, scroll and cancel, taken by any component with `@(comp_on_pointer)`. A HitArea takes the pointer and draws nothing. Button is written with it | | Done |
 | 3 | Mask, rectangle | `UiMask`: clips the nodes under it in the shader. Works turned and in a world-space canvas, adds no draw call. A clipped part takes no pointer | | Done |
 | 12 | Mask, rounded and nested | A radius per corner, a soft edge, a circle, and a node cut by every mask above it with each mask's own shape. A project setting says whether shaders get the clip by themselves | 1, 3 | Done |
 | 4 | ScrollRect and Scrollbar | Scrolling content by a drag, the wheel or a bar, with inertia and elastic or clamped ends. A list inside a list takes the drags along its own axis. GameObject, UI, Scroll View | 2, 3 | Done |
@@ -68,7 +68,7 @@ Status is one of: Done, In progress, Next, Open, Parked.
 | 30 | Touch | Each finger is a pointer of its own, with its own press and drag: `input.touches()` in the input library, pointers 1 and up in the events. Not run on a touch screen yet | touch in the input library | Done |
 | 31 | Drag threshold by screen density | The threshold is 8 viewport pixels on every screen now | | Open |
 | 32 | Watchers | A component sees events another one used, for sounds and analytics | 2 | Open |
-| 33 | Pointer events for world objects | The same events on a 3D or 2D object with a collider, as `comp_on_pointer_<kind>` beside `comp_on_pointer_ui` | 2 | Open |
+| 33 | Pointer events for world objects | The same events, through the same `@(comp_on_pointer)` proc, on a 3D or 2D object with a collider. A raycaster component on a camera finds it, one from each physics plugin | 2 | Done |
 
 ## Draw calls
 

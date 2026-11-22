@@ -72,8 +72,8 @@ _toggle_show :: proc(t: ^Toggle) {
 	if cr != nil do cr.enabled = t.is_on
 }
 
-@(comp_on_pointer_ui={component=Toggle})
-comp_on_pointer_ui_Toggle :: proc(t: ^Toggle, ev: ^UI_Pointer_Event) {
+@(comp_on_pointer={component=Toggle})
+comp_on_pointer_Toggle :: proc(t: ^Toggle, ev: ^Pointer_Event) {
 	selectable_pointer(&t.selectable, ev)
 	if ev.kind == .Click && ev.button == .Left && selectable_usable(&t.selectable, t.owner) {
 		toggle_set(t, !t.is_on)

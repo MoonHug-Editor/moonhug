@@ -103,8 +103,8 @@ _scrollbar_place :: proc(b: ^Scrollbar) {
 // The Scrollbar takes the press on its node or its handle and keeps the drag.
 // A press on the handle holds it where it was grabbed. A press on the track
 // brings the handle's middle there.
-@(comp_on_pointer_ui={component=Scrollbar})
-comp_on_pointer_ui_Scrollbar :: proc(b: ^Scrollbar, ev: ^UI_Pointer_Event) {
+@(comp_on_pointer={component=Scrollbar})
+comp_on_pointer_Scrollbar :: proc(b: ^Scrollbar, ev: ^Pointer_Event) {
 	#partial switch ev.kind {
 	case .Down:
 		if ev.button != .Left do return
@@ -133,7 +133,7 @@ comp_on_pointer_ui_Scrollbar :: proc(b: ^Scrollbar, ev: ^UI_Pointer_Event) {
 // Where the pointer is along the track, 0 to 1 from its start, and the
 // handle's share of it.
 @(private = "file")
-_pointer_along :: proc(b: ^Scrollbar, ev: ^UI_Pointer_Event) -> (at, share: f32, ok: bool) {
+_pointer_along :: proc(b: ^Scrollbar, ev: ^Pointer_Event) -> (at, share: f32, ok: bool) {
 	node, length, has := _track(b)
 	if !has || length <= 0 do return
 	p := ui_pointer_canvas_position(ev) or_return

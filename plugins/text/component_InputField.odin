@@ -401,8 +401,8 @@ _keys :: proc(f: ^InputField) {
 
 // --- Pointer -----------------------------------------------------------------------
 
-@(comp_on_pointer_ui={component=InputField})
-comp_on_pointer_ui_InputField :: proc(f: ^InputField, ev: ^mhgui.UI_Pointer_Event) {
+@(comp_on_pointer={component=InputField})
+comp_on_pointer_InputField :: proc(f: ^InputField, ev: ^mhgui.Pointer_Event) {
 	mhgui.selectable_pointer(&f.selectable, ev)
 	#partial switch ev.kind {
 	case .Down:
@@ -475,7 +475,7 @@ _carets :: proc(f: ^InputField) -> []Caret {
 // The caret index under the event's pointer: on the nearest line, the
 // nearest caret.
 @(private = "file")
-_index_at :: proc(f: ^InputField, ev: ^mhgui.UI_Pointer_Event) -> (at: int, ok: bool) {
+_index_at :: proc(f: ^InputField, ev: ^mhgui.Pointer_Event) -> (at: int, ok: bool) {
 	tx, text_tH, area_tH := _parts(f)
 	if tx == nil do return
 	text_node, _, found := _rects(f, text_tH, area_tH)

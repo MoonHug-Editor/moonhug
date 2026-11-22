@@ -32,6 +32,7 @@ The physics3d plugin simulates 3D physics with box3d. Add a Rigidbody and collid
 **Extends**
 
 - essentials: [Physics primitives](extends/essentials/concepts/PhysicsPrimitives.md), a cube, sphere or capsule with a Rigidbody and a matching collider.
+- mhgui: [PhysicsRaycaster](extends/mhgui/components/PhysicsRaycaster.md) lets the pointer reach colliders, so an object is clicked like a UI node.
 
 [Roadmap](Roadmap.md): joints, effectors, faster decompositions and what does not re-sync yet.
 

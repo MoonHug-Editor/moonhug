@@ -45,8 +45,8 @@ Button :: struct {
 // The Button's pointer events. It uses the left button's Down, which makes it
 // the press's owner: Up and Click come back to it, and Cancel when a parent
 // takes the drag.
-@(comp_on_pointer_ui={component=Button})
-comp_on_pointer_ui_Button :: proc(b: ^Button, ev: ^UI_Pointer_Event) {
+@(comp_on_pointer={component=Button})
+comp_on_pointer_Button :: proc(b: ^Button, ev: ^Pointer_Event) {
 	selectable_pointer(&b.selectable, ev)
 	if ev.kind == .Click && ev.button == .Left && selectable_usable(&b.selectable, b.owner) {
 		b.clicked = true

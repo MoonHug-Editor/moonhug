@@ -16,15 +16,15 @@ import common "moonhug:tests/common"
 
 @(private = "file")
 _Got :: struct {
-	kind: mhgui.UI_Pointer_Kind,
+	kind: mhgui.Pointer_Kind,
 	node: engine.Transform_Handle,
-	ev:   mhgui.UI_Pointer_Event,
+	ev:   mhgui.Pointer_Event,
 }
 
 @(private = "file")
 _Use :: struct {
 	node:     engine.Transform_Handle,
-	kind:     mhgui.UI_Pointer_Kind,
+	kind:     mhgui.Pointer_Kind,
 	own_drag: bool,
 }
 
@@ -35,7 +35,7 @@ _Use :: struct {
 @(private = "file") _mouse: [2]f32
 
 @(private = "file")
-_record :: proc(comp: rawptr, ev: ^mhgui.UI_Pointer_Event) {
+_record :: proc(comp: rawptr, ev: ^mhgui.Pointer_Event) {
 	if _got_n < len(_got) {
 		_got[_got_n] = {ev.kind, ev.node, ev^}
 		_got_n += 1
@@ -47,27 +47,27 @@ _record :: proc(comp: rawptr, ev: ^mhgui.UI_Pointer_Event) {
 }
 
 @(private = "file")
-_use :: proc(node: engine.Transform_Handle, kind: mhgui.UI_Pointer_Kind, own_drag := false) {
+_use :: proc(node: engine.Transform_Handle, kind: mhgui.Pointer_Kind, own_drag := false) {
 	_uses[_uses_n] = {node, kind, own_drag}
 	_uses_n += 1
 }
 
 // How many events of `kind` the node got since the last _forget.
 @(private = "file")
-_count :: proc(node: engine.Transform_Handle, kind: mhgui.UI_Pointer_Kind) -> (n: int) {
+_count :: proc(node: engine.Transform_Handle, kind: mhgui.Pointer_Kind) -> (n: int) {
 	for g in _got[:_got_n] do if g.node == node && g.kind == kind do n += 1
 	return
 }
 
 @(private = "file")
-_last :: proc(node: engine.Transform_Handle, kind: mhgui.UI_Pointer_Kind) -> mhgui.UI_Pointer_Event {
+_last :: proc(node: engine.Transform_Handle, kind: mhgui.Pointer_Kind) -> mhgui.Pointer_Event {
 	#reverse for g in _got[:_got_n] do if g.node == node && g.kind == kind do return g.ev
 	return {}
 }
 
 // The place of the first `kind` the node got, -1 for none.
 @(private = "file")
-_index :: proc(node: engine.Transform_Handle, kind: mhgui.UI_Pointer_Kind) -> int {
+_index :: proc(node: engine.Transform_Handle, kind: mhgui.Pointer_Kind) -> int {
 	for g, i in _got[:_got_n] do if g.node == node && g.kind == kind do return i
 	return -1
 }
@@ -80,7 +80,7 @@ _forget :: proc() {
 @(private = "file")
 _Pointer_Fixture :: struct {
 	tc:   ^common.TestCtx,
-	prev: mhgui.UI_Pointer_Proc,
+	prev: mhgui.Pointer_Proc,
 }
 
 @(private = "file")

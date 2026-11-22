@@ -23,8 +23,8 @@ type_reset_UIDemoDrag :: proc(d: ^UIDemoDrag) {
 	d.border_hover = {1, 0.85, 0.3, 1}
 }
 
-@(comp_on_pointer_ui={component=UIDemoDrag})
-comp_on_pointer_ui_UIDemoDrag :: proc(d: ^UIDemoDrag, ev: ^mhgui.UI_Pointer_Event) {
+@(comp_on_pointer={component=UIDemoDrag})
+comp_on_pointer_UIDemoDrag :: proc(d: ^UIDemoDrag, ev: ^mhgui.Pointer_Event) {
 	#partial switch ev.kind {
 	case .Enter, .Exit:
 		if _, shape := engine.transform_get_comp(d.owner, mhgui.UiShape); shape != nil {

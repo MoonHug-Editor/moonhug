@@ -22,7 +22,7 @@ package mhgui_sample
 //   and switches off.
 // - Pointer events, live while the game plays: a card that the UIDemoDrag
 //   script (ui_demo.odin) drags, taking its events with
-//   @(comp_on_pointer_ui), and a Button whose graphic is a UiShape.
+//   @(comp_on_pointer), and a Button whose graphic is a UiShape.
 //
 // The scene is generated (the moonhug-mhgui-demo-scene skill), not edited by
 // hand.

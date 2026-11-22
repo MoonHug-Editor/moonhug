@@ -54,7 +54,7 @@ Plain object and component creation: `transform_new`, then `transform_add_comp` 
 
 The plugin declares two attributes, both in [The pointer](concepts/Pointer.md):
 
-- `@(comp_on_pointer_ui={component=T})`: a component takes its node's pointer events.
+- `@(comp_on_pointer={component=T})`: a component takes its node's pointer events.
 - `@(canvas_hit)`: a graphic says whether a point of its rect hits it.
 
 It uses the engine's for drawing and layout: its graphics declare `@(canvas_graphic)`, its effects `@(canvas_effect)`, LayoutGroup `@(canvas_layout)` and the two fitters `@(canvas_rect)`, which is how another plugin adds a graphic or a container ([UI canvas](/plugins/engine/docs/UICanvas.md), "Graphics").

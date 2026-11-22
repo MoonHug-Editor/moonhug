@@ -229,8 +229,8 @@ scroll_rect_show :: proc(s: ^ScrollRect, node: engine.Transform_Handle) {
 	if g2, ok2 := scroll_rect_geometry(s); ok2 do _scroll_move(g2, scroll_rect_offset(s, g2))
 }
 
-@(comp_on_pointer_ui={component=ScrollRect})
-comp_on_pointer_ui_ScrollRect :: proc(s: ^ScrollRect, ev: ^UI_Pointer_Event) {
+@(comp_on_pointer={component=ScrollRect})
+comp_on_pointer_ScrollRect :: proc(s: ^ScrollRect, ev: ^Pointer_Event) {
 	#partial switch ev.kind {
 	case .Down:
 		// A press holds the content still. Not used: what is under the

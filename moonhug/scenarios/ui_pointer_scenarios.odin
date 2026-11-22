@@ -2,7 +2,7 @@ package scenarios
 
 // Pointer events in a real editor while the game plays: a card with the
 // mhgui sample's UIDemoDrag script, which takes its events with
-// @(comp_on_pointer_ui), follows a drag made with real mouse input in the
+// @(comp_on_pointer), follows a drag made with real mouse input in the
 // Game window.
 
 import "core:encoding/json"
