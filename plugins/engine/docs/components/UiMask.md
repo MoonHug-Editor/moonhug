@@ -1,6 +1,6 @@
 ---
 title: "UiMask"
-description: "Clips the UI nodes under it to its rect, with round corners and a soft edge: what lies outside is not drawn and takes no pointer"
+description: "Clips the UI nodes under it to its rect, with a radius per corner and a soft edge: what lies outside is not drawn and takes no pointer"
 weight: 150
 tags: ["engine", "ui", "components", "mask", "clipping"]
 path: engine/components
@@ -23,39 +23,69 @@ The rows show inside the viewport's 300 by 200 rect only. A row that is half out
 
 | Field | Default | What it does |
 |---|---|---|
-| `corner_radius` | 0 | The radius of the round corners, in canvas units. It is cut to half the shorter side, so a large one on a square makes a circle. |
-| `corners` | all four | Which corners are round: top left, top right, bottom right, bottom left. |
+| `corner_radius` | 0 each | A radius per corner, in canvas units: top left, top right, bottom right, bottom left. A radius is cut to half the shorter side, so a large one on a square makes a circle. |
 | `softness` | 0 | The width the edge fades over, inward, in canvas units. 0 is a crisp edge. |
 
 The rect it clips to is the node's own, from its RectTransform.
 
 ## Behavior
 
-- The clip follows the node: turned or scaled, and on a canvas in the world or before a camera, the nodes under it are cut along its own edges.
+- The clip follows the node: turned or scaled, and on a canvas in the world or before a camera seen at any angle, the nodes under it are cut along its own edges.
 - A crisp edge is one pixel soft, so a turned mask and a round corner have no stair steps.
-- The node's own graphic is not clipped. It is the picture behind the content. Give it the mask's radius, a UiShape with the same `corner_radius`, and the content follows the card's corners.
+- The node's own graphic is not clipped. It is the picture behind the content. Give it the mask's radii, a UiShape with the same `corner_radius`, and the content follows the card's corners.
 - The pointer follows the outline: a round corner's cut-away part takes no pointer.
-- Quads under a mask merge into draw calls as they do without one: the mask costs no draw call.
 - Disabling the component stops the clipping.
 
 ## A mask in a mask
 
-A node is cut by every mask above it.
+A node is cut by every mask above it, each with its own corners, its own soft edge and its own angle. A list in a panel with round corners is cut by the list's rect and by the panel's round corners.
 
-- The nearest mask cuts with its round corners and its soft edge.
-- The masks above it cut as plain rects, with square corners and a crisp edge, folded into one rect.
-- One of those further masks that is turned against the first of them is left out of the drawing. The pointer still follows every mask.
+- At most 8 masks cut one node. Past that, the nearest 8 do.
+- The pointer follows every mask above a node, with no such limit.
+
+## Draw calls
+
+A mask adds no draw call of its own. The nodes under the same masks draw together as they do with no mask. A run of quads ends where the masks change: where a node under a mask is followed in draw order by one outside it, or by one under another mask.
 
 ## Shaders
 
-The shader of a clipped quad does the clipping.
+The shader of a clipped quad does the clipping: it multiplies the alpha of its output by how much of the pixel is inside the masks.
 
-- The built-in unlit shader (a UI graphic with no material), the text plugin's shader and the mhgui UiShape's shader clip.
-- Another shader clips by declaring `frag_normal` (location 2), `frag_tangent` (location 4) and `frag_uv2` (location 5) and multiplying its alpha by `ui_clip(frag_tangent, frag_normal, frag_uv2)`, the function in `moonhug/libs/gfx/shaders/world.frag.glsl`. A shader without it draws its quads whole under a mask.
-- A clipped quad carries its clip where an unclipped one carries its normal, its tangent and its second texture coordinate, so a lit material on a quad under a mask shades wrong.
+- The built-in unlit shader, which a UI graphic with no material draws with, clips.
+- A shader of a material clips as the project's **UiMask** setting says (Edit, Project Settings, UiMask, `shader_clip`):
+
+| Option | What it does |
+|---|---|
+| Auto Inject (the default) | Every shader clips with nothing written in it. The importer adds the clip to each fragment shader it compiles, after the shader's own code, on the alpha of its output. |
+| Manual Include | A shader clips where it says so, and nothing is added to it. |
+
+The tab shows a description of the chosen option. A change compiles the project's shaders again.
+
+### Manual Include
+
+```glsl
+#include "ui_clip.glsl"
+
+void main() {
+    out_color = ...;
+    out_color.a *= ui_clip();
+}
+```
+
+- `ui_clip()` is 1 for a quad under no mask.
+- Place the call where the clip belongs: before a glow that should spill past the mask, after everything else to cut it all.
+- A material whose shader does not call it draws whole under a mask. The Console names the material once.
+- The same shader compiles on Auto Inject too: there `ui_clip()` is 1 and the importer's clip does the work, so the clip applies once.
+
+### Auto Inject
+
+- The importer renames the shader's `main()` and adds one after the shader's code that runs it and clips. The lines of the shader keep their numbers in compile errors.
+- It needs one `void main(` and an output declared as `layout(location = 0) out vec4 <name>;`. A shader without them fails to import with a message that says which is missing.
+- A shader used for a full-screen effect gets the clip too and is never under a mask, so nothing changes for it.
+- Surface shaders, the ones that write `surface()` and no `main()`, are not clipped in either setting. A lit material under a mask draws whole, and the Console names it once.
 
 ## Limits
 
-- One radius for the round corners. A corner is round with that radius or square.
-- A soft edge wider than the corner radius shows a faint crease running in from each round corner.
-- Only the nearest mask cuts with its shape (above).
+- At most 8 masks cut one node.
+- A soft edge wider than a corner's radius shows a faint crease running in from that corner.
+- Surface (lit) shaders are not clipped.

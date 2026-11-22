@@ -8,6 +8,7 @@ package scenarios
 
 import "core:encoding/json"
 import "core:fmt"
+import "core:strings"
 import "core:testing"
 
 @(test)
@@ -36,6 +37,36 @@ ui_demo_scene_opens_and_draws :: proc(t: ^testing.T) {
 	viewports, _ := at(call(r, "list_objects", `{"name":"Viewport"}`), "objects").(json.Array)
 	testing.expect_value(t, len(viewports), 5) // the masked viewports
 	call(r, "screenshot", `{"target":"game","max_size":900}`)
+
+	// The UiMask tab of the Project Settings: the setting's row and a box
+	// that describes the chosen option.
+	call(r, "invoke_menu", `{"path":"Edit/Project Settings..."}`)
+	frames(r, 5)
+	tab, has_tab := item_rect(r, "Project Settings", "UiMask")
+	if testing.expect(t, has_tab, "the Project Settings have a UiMask tab") {
+		click(r, tab.x + 20, tab.y + tab[3] / 2)
+		frames(r, 5)
+		call(r, "screenshot", `{"target":"window","window":"Project Settings","max_size":900}`)
+		// Manual Include: every shader of the project compiles again, and the
+		// shaders that call ui_clip() themselves still clip.
+		row, has_row := item_rect(r, "Project Settings", "shader_clip")
+		if testing.expect(t, has_row, "the tab has the shader_clip row") {
+			click(r, row.x + row[2] / 2, row.y + row[3] / 2)
+			frames(r, 3)
+			option, has_option := item_rect(r, "popup", "Manual_Include")
+			if testing.expect(t, has_option, "the row lists Manual_Include") {
+				click(r, option.x + 10, option.y + option[3] / 2)
+				frames(r, 30)
+				call(r, "screenshot", `{"target":"window","window":"Project Settings","max_size":900}`)
+				call(r, "screenshot", `{"target":"game","max_size":900}`)
+				entries, _ := call(r, "read_log", `{"max":500}`).(json.Array)
+				compiled := false
+				for e in entries do if strings.contains(as_string(at(e, "message")), "Shader clip is Manual_Include") do compiled = true
+				testing.expect(t, compiled, "the change compiled the shaders again")
+			}
+		}
+	}
+
 	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
 	editor_quit(r)
 }

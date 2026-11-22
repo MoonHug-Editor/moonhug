@@ -18,6 +18,9 @@ _SHADERGRAPH_EXTS := []string{".shadergraph"}
 
 @(importer)
 shadergraph_importer :: proc() -> asset_pipeline.Importer_Desc {
+	// A graph compiles through the shader importer's compile, so what
+	// reimports every shader reimports the graphs.
+	importers.shader_source_ext_add(_SHADERGRAPH_EXTS[0])
 	return {
 		name         = "shadergraph",
 		version      = importers.shader_importer_version(), // the template is an input here too

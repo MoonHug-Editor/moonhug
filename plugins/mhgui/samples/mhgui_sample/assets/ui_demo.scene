@@ -5757,9 +5757,13 @@
   },
   {
    "__type": "0907bcc0-c7db-4651-8e5d-826ae1bd8806",
-   "corner_radius": 24,
+   "corner_radius": [
+    24,
+    24,
+    24,
+    24
+   ],
    "softness": 0,
-   "corners": 15,
    "base": {
     "enabled": true,
     "local_id": 1105
@@ -6266,9 +6270,13 @@
   },
   {
    "__type": "0907bcc0-c7db-4651-8e5d-826ae1bd8806",
-   "corner_radius": 0,
+   "corner_radius": [
+    0,
+    0,
+    0,
+    0
+   ],
    "softness": 0,
-   "corners": 15,
    "base": {
     "enabled": true,
     "local_id": 1128
@@ -6775,9 +6783,13 @@
   },
   {
    "__type": "0907bcc0-c7db-4651-8e5d-826ae1bd8806",
-   "corner_radius": 999,
+   "corner_radius": [
+    999,
+    999,
+    999,
+    999
+   ],
    "softness": 0,
-   "corners": 15,
    "base": {
     "enabled": true,
     "local_id": 1151
@@ -7284,9 +7296,13 @@
   },
   {
    "__type": "0907bcc0-c7db-4651-8e5d-826ae1bd8806",
-   "corner_radius": 12,
+   "corner_radius": [
+    12,
+    12,
+    12,
+    12
+   ],
    "softness": 28,
-   "corners": 15,
    "base": {
     "enabled": true,
     "local_id": 1174
@@ -7680,7 +7696,7 @@
    "overflow": 0,
    "paragraph_spacing": 0.0,
    "parse_escape_characters": false,
-   "text": "A mask in a mask: cut by both",
+   "text": "A mask in a mask: cut by both shapes",
    "vertical_alignment": 1,
    "word_spacing": 0.0,
    "wrap": true
@@ -7738,10 +7754,10 @@
    },
    "kind": 0,
    "corner_radius": [
-    24,
-    24,
-    0,
-    0
+    8,
+    44,
+    8,
+    44
    ],
    "border_width": 1,
    "border_color": [
@@ -7793,9 +7809,13 @@
   },
   {
    "__type": "0907bcc0-c7db-4651-8e5d-826ae1bd8806",
-   "corner_radius": 24,
+   "corner_radius": [
+    8,
+    44,
+    8,
+    44
+   ],
    "softness": 0,
-   "corners": 3,
    "base": {
     "enabled": true,
     "local_id": 1197
@@ -7813,7 +7833,7 @@
    ],
    "anchored_position": [
     45,
-    -25,
+    25,
     0.0
    ],
    "pivot": [
@@ -7909,9 +7929,13 @@
   },
   {
    "__type": "0907bcc0-c7db-4651-8e5d-826ae1bd8806",
-   "corner_radius": 16,
+   "corner_radius": [
+    16,
+    16,
+    16,
+    16
+   ],
    "softness": 0,
-   "corners": 15,
    "base": {
     "enabled": true,
     "local_id": 1202

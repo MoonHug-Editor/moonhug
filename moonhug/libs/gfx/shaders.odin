@@ -23,6 +23,9 @@ import sdl "vendor:sdl3"
 // artifact as include files. The sources, so the importer needs no path
 // into this package.
 SURFACE_GLSL      := #load("shaders/surface.glsl", string)
+// The UI clip include (ui_clip.glsl): the shader importer puts it beside a
+// shader it compiles, as it does the surface template.
+UI_CLIP_GLSL      := #load("shaders/ui_clip.glsl", string)
 SURFACE_MAIN_GLSL := #load("shaders/surface_main.glsl", string)
 
 // num_* counts must match the shader's declared resources per SDL_GPU

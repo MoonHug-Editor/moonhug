@@ -42,7 +42,7 @@ The engine's canvas collector runs for Game windows and the Scene window. For ea
 - **Draw order.** Nodes draw in hierarchy order, parents before children. A RectTransform's `z_index` changes that: a higher one draws over a lower one, whatever the hierarchy order. A node's `z_index` adds to its parent's, so a raised parent takes its children along. The pointer and the Scene window's picking follow the same order.
 - **Game windows.** Quads sit on a plane just inside the camera's near plane, with the rect's pixel corners projected back through the camera, so they land on exactly those pixels for any camera and nothing in the scene draws in front of them.
 - **Scene window.** The canvas is a world rect with its bottom-left at the origin in the XY plane, one world unit per canvas unit, sized like the last Game window, 1920 by 1080 before one has drawn.
-- **Clipping.** A quad of a node under a [UiMask](components/UiMask.md) carries its clip (`Draw_Quad.clip`: its corners' places in the mask's rect, the mask's radius and softness, and the rect of the masks above it), and its shader cuts it there. No draw call is added and no stencil is used.
+- **Clipping.** A quad of a node under a [UiMask](components/UiMask.md) carries the masks above it (`Draw_Quad.clip`): for each, the map from a pixel of the target into the mask's own space, its half size, its radii and its softness. The quad's shader cuts it to them. Nodes under the same masks share one list, so their quads merge. No stencil is used.
 - Sort keys use layer 127, the top of the transparent range, then the canvas's `sort_order`, then the node's place in the draw order.
 
 ## The pointer

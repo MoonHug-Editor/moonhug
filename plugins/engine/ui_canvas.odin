@@ -13,6 +13,8 @@ import "base:runtime"
 import "core:math"
 import "core:math/linalg"
 import "core:slice"
+import "core:encoding/uuid"
+import "moonhug:libs/log"
 import gfx "moonhug:libs/gfx"
 
 // A rectangle in canvas units: bottom-left origin, y up, the same
@@ -124,34 +126,22 @@ HitArea :: struct {
 // takes no pointer. A scrolling list's viewport is one. The node's own
 // graphic is not clipped.
 //
-// - The clip follows the node: turned, scaled, or on a canvas in the world.
-// - The rect's corners can be round, and its edge can fade.
-// - Masks nest: a node is cut by every mask above it. The nearest one cuts
-//   with its round corners and soft edge. The ones above it cut as plain
-//   rects, and one of them that is turned against the first of them is left
-//   out of the drawing (not of the pointer).
-// - The shader of a clipped quad does the clipping. The built-in unlit
-//   shader, the text shader and the UiShape shader do. Another shader clips
-//   by multiplying its alpha by ui_clip, the function in those.
+// - The clip follows the node: turned, scaled, or on a canvas in the world
+//   seen at an angle.
+// - Each corner of the rect has its own radius, and the edge can fade.
+// - Masks nest: a node is cut by every mask above it, each with its own
+//   corners and edge, up to gfx.CLIP_MAX of them.
+// - The shader of a clipped quad does the clipping (libs/gfx/shaders/
+//   ui_clip.glsl). The built-in unlit shader does, and every shader the
+//   importer compiles does when the project's UiMask setting is Auto Inject
+//   (ui_mask_settings.odin).
 @(component={menu="UI/UiMask"})
 @(typ_guid={guid = "0907bcc0-c7db-4651-8e5d-826ae1bd8806"})
 UiMask :: struct {
 	using base:    CompData `inspect:"-"`,
-	corner_radius: f32 `decor:min(0) decor:tooltip(desc="The radius of the round corners, in canvas units. It is cut to half the shorter side, so a large one on a square makes a circle.")`,
-	corners:       UiMask_Corners `decor:tooltip(desc="Which corners are round.")`,
+	// Top left, top right, bottom right, bottom left.
+	corner_radius: [4]f32 `decor:min(0) decor:tooltip(desc="The radius of each corner, in canvas units: top left, top right, bottom right, bottom left. A radius is cut to half the shorter side, so a large one on a square makes a circle.")`,
 	softness:      f32 `decor:min(0) decor:tooltip(desc="The width the edge fades over, inward, in canvas units. 0 is a crisp edge.")`,
-}
-
-UiMask_Corner :: enum u8 {
-	Top_Left,
-	Top_Right,
-	Bottom_Right,
-	Bottom_Left,
-}
-UiMask_Corners :: bit_set[UiMask_Corner; u8]
-
-type_reset_UiMask :: proc(m: ^UiMask) {
-	m.corners = {.Top_Left, .Top_Right, .Bottom_Right, .Bottom_Left}
 }
 
 // The nearest enabled UiMask above the node, {} for none. The node's own
@@ -179,88 +169,17 @@ _mask_local :: proc(mask: Node_Rect, canvas_point: [3]f32) -> [2]f32 {
 // outline with its round corners: negative inside. The shaders' ui_clip
 // computes the same.
 mask_distance :: proc(m: ^UiMask, half: [2]f32, p: [2]f32) -> f32 {
-	corner: UiMask_Corner
-	switch {
-	case p.x > 0 && p.y > 0:  corner = .Top_Right
-	case p.x > 0:             corner = .Bottom_Right
-	case p.y > 0:             corner = .Top_Left
-	case:                     corner = .Bottom_Left
-	}
 	r: f32
-	if corner in m.corners do r = clamp(m.corner_radius, 0, min(half.x, half.y))
+	switch {
+	case p.x > 0 && p.y > 0:  r = m.corner_radius[1]
+	case p.x > 0:             r = m.corner_radius[2]
+	case p.y > 0:             r = m.corner_radius[0]
+	case:                     r = m.corner_radius[3]
+	}
+	r = clamp(r, 0, min(half.x, half.y))
 	q := [2]f32{abs(p.x) - half.x + r, abs(p.y) - half.y + r}
 	outside := [2]f32{max(q.x, 0), max(q.y, 0)}
 	return min(max(q.x, q.y), 0) + linalg.length(outside) - r
-}
-
-// What the masks above `tH` clip its quads to, false with none. `nodes` are
-// the canvas's resolved rects. The nearest mask clips with its corners and
-// softness. The masks above that one become one rect in the first of their
-// spaces: each is cut into it when it lies straight in that space, and left
-// out when it is turned against it.
-mask_clip :: proc(tH: Transform_Handle, nodes: []Node_Rect) -> (clip: Mask_Clip, ok: bool) {
-	find :: proc(nodes: []Node_Rect, tH: Transform_Handle) -> (Node_Rect, bool) {
-		for n in nodes do if n.tH == tH do return n, true
-		return {}, false
-	}
-	first := node_mask(tH)
-	if first == {} do return
-	clip.near = find(nodes, first) or_return
-	_, clip.mask = transform_get_comp(first, UiMask)
-	second := node_mask(first)
-	if second == {} do return clip, true
-	outer := find(nodes, second) or_return
-	lo, hi := outer.rect.pos, outer.rect.pos + outer.rect.size
-	for next := node_mask(second); next != {}; next = node_mask(next) {
-		m, found := find(nodes, next)
-		if !found do continue
-		// The further mask's rect in the outer one's space.
-		to_outer := linalg.inverse(outer.xform) * m.xform
-		c: [4][2]f32
-		for corner, k in rect_corners(m.rect, to_outer) do c[k] = corner.xy
-		// Straight in that space: its bottom edge runs along x or along y.
-		edge := c[1] - c[0]
-		if abs(edge.x) > 1e-3 && abs(edge.y) > 1e-3 do continue
-		mlo, mhi := c[0], c[0]
-		for p in c[1:] {
-			mlo = {min(mlo.x, p.x), min(mlo.y, p.y)}
-			mhi = {max(mhi.x, p.x), max(mhi.y, p.y)}
-		}
-		lo = {max(lo.x, mlo.x), max(lo.y, mlo.y)}
-		hi = {min(hi.x, mhi.x), min(hi.y, mhi.y)}
-	}
-	clip.outer = outer
-	clip.outer.rect = {pos = lo, size = {max(hi.x - lo.x, 0), max(hi.y - lo.y, 0)}}
-	clip.has_outer = true
-	return clip, true
-}
-
-// A node's clip: the nearest mask and its rect, and the rect of the masks
-// above it (mask_clip).
-Mask_Clip :: struct {
-	mask:      ^UiMask,
-	near:      Node_Rect,
-	outer:     Node_Rect, // its rect is the outer masks cut into one
-	has_outer: bool,
-}
-
-// The clip of a quad with these corners in canvas space, for gfx.draw_quad.
-mask_quad_clip :: proc(c: Mask_Clip, corners: [4][3]f32) -> (q: gfx.Quad_Clip) {
-	q.half = c.near.rect.size * 0.5
-	q.radius = c.mask.corner_radius
-	q.softness = c.mask.softness
-	q.corners = transmute(u8)c.mask.corners
-	for corner, k in corners do q.pos[k] = _mask_local(c.near, corner)
-	if c.has_outer {
-		q.has_outer = true
-		half := c.outer.rect.size * 0.5
-		for corner, k in corners {
-			// A mask with no area holds nothing.
-			q.outer[k] = {2, 2}
-			if half.x > 0 && half.y > 0 do q.outer[k] = _mask_local(c.outer, corner) / half
-		}
-	}
-	return
 }
 
 // Whether a canvas point is inside a mask's outline, round corners included.
@@ -270,6 +189,92 @@ mask_contains :: proc(mask_tH: Transform_Handle, node: Node_Rect, canvas_point: 
 	half := node.rect.size * 0.5
 	if half.x <= 0 || half.y <= 0 do return false
 	return mask_distance(mask, half, _mask_local(node, {canvas_point.x, canvas_point.y, 0})) <= 0
+}
+
+// Where a canvas's points land in a view's target, for the masks: the pixel
+// a quad's corner is drawn at.
+Canvas_Pixels :: struct {
+	view:      Render_View,
+	overlay:   bool,            // a Game view's overlay canvas: canvas units times `scale` are pixels
+	scale:     f32,
+	to_world:  matrix[4, 4]f32, // else: canvas space to world
+}
+
+// The target pixel (y down) a canvas point is drawn at. False behind the camera.
+canvas_point_pixel :: proc(c: Canvas_Pixels, canvas_point: [3]f32) -> (pixel: [2]f32, ok: bool) {
+	if c.overlay {
+		return {canvas_point.x * c.scale, c.view.height - canvas_point.y * c.scale}, true
+	}
+	clip := c.view.view_proj * (c.to_world * [4]f32{canvas_point.x, canvas_point.y, canvas_point.z, 1})
+	if clip.w <= 1e-6 do return {}, false
+	ndc := clip.xy / clip.w
+	return {(ndc.x * 0.5 + 0.5) * c.view.width, (0.5 - ndc.y * 0.5) * c.view.height}, true
+}
+
+// The mask as gfx clips to it: the map from a target pixel to the mask's own
+// space, found from where its rect's four corners are drawn, with its shape.
+// False when a corner is behind the camera or the rect has no area.
+mask_clip :: proc(c: Canvas_Pixels, mask_tH: Transform_Handle, node: Node_Rect) -> (clip: gfx.Clip_Mask, ok: bool) {
+	_, mask := transform_get_comp(mask_tH, UiMask)
+	if mask == nil do return
+	half := node.rect.size * 0.5
+	if half.x <= 0 || half.y <= 0 do return
+	// The rect's corners (bl, br, tr, tl): where they are drawn, and where
+	// they are in the mask's space.
+	local := [4][2]f32{{-half.x, -half.y}, {half.x, -half.y}, {half.x, half.y}, {-half.x, half.y}}
+	pixels: [4][2]f32
+	for corner, k in rect_corners(node.rect, node.xform) {
+		pixels[k] = canvas_point_pixel(c, corner) or_return
+	}
+	h := _homography(pixels, local) or_return
+	clip.to = {{h[0], h[1], h[2], 0}, {h[3], h[4], h[5], 0}, {h[6], h[7], 1, 0}}
+	clip.shape = {half.x, half.y, max(mask.softness, 0), 0}
+	clip.radii = mask.corner_radius
+	return clip, true
+}
+
+// The map that takes each `from` point to its `to` point, as (x, y) =
+// (h0 u + h1 v + h2, h3 u + h4 v + h5) / (h6 u + h7 v + 1): what a flat
+// rect seen in perspective needs. Solved in doubles. False when the points
+// do not span an area.
+@(private = "file")
+_homography :: proc(from, to: [4][2]f32) -> (h: [8]f32, ok: bool) {
+	a: [8][9]f64
+	for k in 0 ..< 4 {
+		u, v := f64(from[k].x), f64(from[k].y)
+		x, y := f64(to[k].x), f64(to[k].y)
+		a[k * 2] = {u, v, 1, 0, 0, 0, -u * x, -v * x, x}
+		a[k * 2 + 1] = {0, 0, 0, u, v, 1, -u * y, -v * y, y}
+	}
+	// Gauss-Jordan with the largest pivot of each column.
+	for col in 0 ..< 8 {
+		pivot := col
+		for row in col + 1 ..< 8 do if abs(a[row][col]) > abs(a[pivot][col]) do pivot = row
+		if abs(a[pivot][col]) < 1e-12 do return {}, false
+		a[col], a[pivot] = a[pivot], a[col]
+		for row in 0 ..< 8 {
+			if row == col do continue
+			f := a[row][col] / a[col][col]
+			if f == 0 do continue
+			for k in col ..< 9 do a[row][k] -= f * a[col][k]
+		}
+	}
+	for k in 0 ..< 8 do h[k] = f32(a[k][8] / a[k][k])
+	return h, true
+}
+
+// The masks a node's quads are clipped to, the nearest first, at most
+// gfx.CLIP_MAX. `nodes` are the canvas's resolved rects. Allocated with the
+// temp allocator. Empty with no mask above the node.
+mask_stack :: proc(c: Canvas_Pixels, tH: Transform_Handle, nodes: []Node_Rect) -> []gfx.Clip_Mask {
+	stack := make([dynamic]gfx.Clip_Mask, context.temp_allocator)
+	for mask_tH := node_mask(tH); mask_tH != {} && len(stack) < gfx.CLIP_MAX; mask_tH = node_mask(mask_tH) {
+		for m in nodes do if m.tH == mask_tH {
+			if clip, ok := mask_clip(c, mask_tH, m); ok do append(&stack, clip)
+			break
+		}
+	}
+	return stack[:]
 }
 
 // Whether the pointer can hit the node: an enabled HitArea, or a drawn
@@ -833,6 +838,25 @@ node_graphic :: proc(tH: Transform_Handle) -> (comp: rawptr, graphic: ^Graphic, 
 	return
 }
 
+// The materials already named as drawing whole under a mask.
+@(private = "file")
+_unclipped_named: map[Asset_GUID]bool
+
+// Says once, in the Console, that a material under a UiMask draws whole
+// because its shader has no UI clip: the project's UiMask setting on Manual
+// Include with a shader that never calls ui_clip(), or the built-in lit
+// shader.
+@(private = "file")
+_warn_unclipped :: proc(material: Asset_GUID, node: Transform_Handle) {
+	if material == {} || material in _unclipped_named || material_clips_ui(material) do return
+	context.allocator = runtime.default_allocator()
+	_unclipped_named[material] = true
+	path, _ := asset_db_get_path(uuid.Identifier(material))
+	name := "?"
+	if t := pool_get(&ctx_world().transforms, Handle(node)); t != nil do name = t.name
+	log.warningf("[UiMask] The material %s on '%s' is under a UiMask and draws whole: its shader has no UI clip. Add #include \"ui_clip.glsl\" and multiply the output's alpha by ui_clip(), or set Project Settings, UiMask to Auto Inject", path, name)
+}
+
 // The top of the transparent-sort range: every canvas draws after every
 // sprite and particle. Canvases order by sort_order inside it, nodes by
 // their index in the rect walk (draw order: z_index, then hierarchy order).
@@ -852,6 +876,7 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 	// With no UiMask in the world, no node looks for one.
 	mask_it := pool_iterator(ui_masks(w))
 	_, _, any_mask := pool_next(&mask_it)
+	stacks := make(map[Transform_Handle][]gfx.Clip_Mask, context.temp_allocator)
 
 	it := pool_iterator(canvases(w))
 	for canvas, _ in pool_next(&it) {
@@ -869,24 +894,36 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 		scale := canvas_scale(canvas.owner, screen)
 		clear(&nodes)
 		canvas_resolve_rects(canvas.owner, root, &nodes)
+		pixels := Canvas_Pixels{view = view, overlay = !in_world && view.kind == .Game, scale = scale, to_world = canvas_xform if in_world else 1}
+		clear(&stacks)
 		for n, i in nodes {
 			_, cr := transform_get_comp(n.tH, CanvasRenderer)
 			if cr == nil || !cr.enabled do continue
 			comp, g, desc, ok := node_graphic(n.tH)
 			if !ok do continue
 			// The mask the node is clipped to, when one is above it.
-			mask: Mask_Clip
-			masked := false
-			if any_mask do mask, masked = mask_clip(n.tH, nodes[:])
+			// The masks above it. Nodes under the same nearest mask are under
+			// the same masks, and share one slice so their quads merge.
+			clip: []gfx.Clip_Mask
+			if any_mask {
+				if nearest := node_mask(n.tH); nearest != {} {
+					shared, known := stacks[nearest]
+					if !known {
+						shared = mask_stack(pixels, n.tH, nodes[:])
+						stacks[nearest] = shared
+					}
+					clip = shared
+				}
+			}
 			clear(&quads)
 			desc.populate(comp, n.rect, &quads)
 			key: Sort_Key
 			key[0] = sort_key_word(CANVAS_SORTING_LAYER, canvas.sort_order, 0, u16(i))
 			for q in quads {
 				if asset_guid_is_empty(q.texture) do continue
+				material := asset_key(g.material) if !asset_guid_is_empty(asset_key(g.material)) else q.material
+				if len(clip) > 0 do _warn_unclipped(material, n.tH)
 				corners: [4][3]f32
-				clip: gfx.Quad_Clip
-				if masked do clip = mask_quad_clip(mask, graphic_quad_corners(q, n.xform))
 				if in_world {
 					corners = graphic_quad_corners(q, canvas_xform * n.xform)
 				} else if view.kind == .Game {
@@ -902,13 +939,12 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 					owner   = n.tH,
 					variant = Draw_Quad{
 						texture  = q.texture,
-						material = asset_key(g.material) if !asset_guid_is_empty(asset_key(g.material)) else q.material,
+						material = material,
 						corners  = corners,
 						uvs      = q.uvs,
 						color    = g.color * cr.tint if cr.tinted else g.color,
 						properties = q.properties,
 						clip     = clip,
-						clipped  = masked,
 					},
 				})
 			}

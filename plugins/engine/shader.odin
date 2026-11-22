@@ -18,6 +18,9 @@ Shader_Runtime :: struct {
 	name:         string, // registered gfx shader-set name (owned guid string)
 	block_size:   u32,    // material UBO byte size; 0 = no property block
 	num_samplers: u32,    // fragment sampler slots (max binding + 1)
+	// Fragment uniform slots (max binding + 1). A shader with the UI clip
+	// declares the per-draw block, slot gfx.DRAW_UNIFORM_SLOT.
+	num_uniform_buffers: u32,
 	properties:   []Shader_Property, // owned (names too)
 	textures:     []Shader_Texture,  // owned (names too); bindings 1+ are material rows
 }
@@ -103,6 +106,7 @@ shader_load :: proc(guid: Asset_GUID) -> (^Shader_Runtime, bool) {
 		name         = strings.clone(guid_str),
 		block_size   = header.block_size,
 		num_samplers = header.num_samplers,
+		num_uniform_buffers = header.num_uniform_buffers,
 		properties   = properties,
 		textures     = textures,
 	}

@@ -24,8 +24,6 @@
 layout(location = 0) in vec2 frag_uv;
 layout(location = 1) in vec4 frag_color;
 layout(location = 2) in vec3 frag_normal;
-layout(location = 4) in vec4 frag_tangent; // under a UiMask: the clip, see ui_clip
-layout(location = 5) in vec2 frag_uv2;     // the same
 
 layout(set = 2, binding = 0) uniform sampler2D tex;
 
@@ -43,35 +41,14 @@ layout(set = 3, binding = 1) uniform MaterialUBO {
 
 layout(location = 0) out vec4 out_color;
 
+#include "ui_clip.glsl"
+
 // Signed distance from p to a box of half size `half_size` centred on the
 // origin, with a radius per corner: negative inside. y is up.
 float sd_round_box(vec2 p, vec2 half_size, vec4 radii) {
     float r = p.x > 0.0 ? (p.y > 0.0 ? radii.y : radii.z) : (p.y > 0.0 ? radii.x : radii.w);
     vec2 q = abs(p) - half_size + r;
     return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
-}
-
-// The engine's UI clip, as in its built-in shaders (libs/gfx/shaders/world.frag.glsl).
-float ui_clip(vec4 t, vec3 n, vec2 outer) {
-    if (t.w < 1.5) return 1.0;
-    int mark = int(t.w + 0.5) - 2;
-    // The nearest mask: t.xy is the pixel's place from the mask's centre in
-    // the mask's own units, n.xy its half size, n.z its corner radius, t.z
-    // the width its edge fades over. The mark's low four bits say which
-    // corners are round: 1 top left, 2 top right, 4 bottom right, 8 bottom left.
-    vec2 p = t.xy;
-    int corner = p.x > 0.0 ? (p.y > 0.0 ? 2 : 4) : (p.y > 0.0 ? 1 : 8);
-    float r = (mark & corner) != 0 ? min(n.z, min(n.x, n.y)) : 0.0;
-    vec2 q = abs(p) - n.xy + r;
-    float d = min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
-    float px = max(fwidth(d), 1e-6);
-    float a = t.z > 0.0 ? clamp(-d / max(t.z, px), 0.0, 1.0) : clamp(0.5 - d / px, 0.0, 1.0);
-    // The masks above it, as one rect: `outer` runs from -1 to 1 inside it.
-    if ((mark & 16) != 0) {
-        vec2 e = (1.0 - abs(outer)) / max(fwidth(outer), vec2(1e-6));
-        a *= clamp(min(e.x, e.y) + 0.5, 0.0, 1.0);
-    }
-    return a;
 }
 
 // `top` drawn over `bottom`, both with straight alpha.
@@ -126,6 +103,8 @@ void main() {
         float s = 1.0 - smoothstep(-blur, blur, ds);
         result = over(result, vec4(shadow_color.rgb, shadow_color.a * s * frag_color.a));
     }
-    result.a *= ui_clip(frag_tangent, frag_normal, frag_uv2);
+    // Under a UiMask. With the project's UiMask setting on Auto Inject the
+    // importer applies the clip itself and this is 1.
+    result.a *= ui_clip();
     out_color = result;
 }

@@ -176,6 +176,8 @@ Damaged Helmet works out of the box). Conventions:
 - inputs: `frag_uv` (loc 0), `frag_color` (loc 1), `frag_normal` (loc 2),
   `frag_world_pos` (loc 3, world-space fragment position) — declare only the
   ones you read
+- the output is `layout(location = 0) out vec4 <name>;`
+- under a UI mask the shader is clipped: the importer adds the clip to it, or it calls `ui_clip()` itself, as the project's UiMask setting says ([UiMask](components/UiMask.md), "Shaders"). Either way the fragment slot `set = 3, binding = 2` is the engine's per-draw block, not a slot for a block of the shader's own
 - `sampler2D` at `set = 2, binding = 0` — declare it even if unused; MORE
   samplers at bindings 1..6 become named texture rows (see below). Binding 7 is the directional cascades' shadow atlas, 8 and 9 the environment's reflection and irradiance cubes, 10 the spot and point lights' shadow atlas, 11 the screen's ambient occlusion, 12 the opaque copy, 13 the screen's reflections, bound by gfx for shaders that declare them (the surface template does). The importer accepts up to binding 10 (`SHADER_MAX_SAMPLERS`, gfx's `MAX_FRAGMENT_SAMPLERS`)
 - optional `LightUBO` at `set = 3, binding = 0`: `ambient_count` (x ambient

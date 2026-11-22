@@ -45,6 +45,7 @@ _Draw :: struct {
 	extra_tex:    []^Texture, // fragment sampler bindings 1..N (multi-texture shaders); nil entries = white
 	probe:        Probe_Blend, // mesh draws: the probes' cubes in place of the pass's environment, probe.cube nil = none
 	layers:       u32, // mesh draws: the render layers (draw_mesh `layers`). Batch draws push every bit
+	clip:         []Clip_Mask, // quads: the UI masks they are clipped to (draw_quad `clip`); nil = none
 }
 
 // A reflection probe for a draw (draw_mesh `probe`): its prefiltered cube
@@ -125,6 +126,17 @@ _Draw_Uniform :: struct {
 	probe2_max: [4]f32, // xyz the box, w = its diffuse intensity
 	probe_blend: [4]f32, // x = the probe's weight, 1 = no blend
 	layers:      [4]u32, // x = the draw's render layers, yzw reserved
+	// The UI masks over a quad (shaders/ui_clip.glsl): x = how many, then
+	// five vec4 per mask: its three rows, its shape and its radii.
+	clip_count:  [4]f32,
+	clip_masks:  [CLIP_MAX]_Clip_Uniform,
+}
+
+@(private = "file")
+_Clip_Uniform :: struct {
+	to:    [3][4]f32,
+	shape: [4]f32,
+	radii: [4]f32,
 }
 
 // Fog for a pass's world draws (set_fog): every material shader fades its
@@ -916,56 +928,41 @@ _current_vp :: proc() -> i32 {
 // distinct material slices don't merge (compared by pointer). depth_test=false
 // draws over everything (gizmo icons).
 //
-// `clip` clips the quad (Quad_Clip, a UI mask). It rides in the vertex's
-// tangent, normal and second uv, which the shaders' ui_clip reads, so a
-// clipped quad has no normal or tangent of its own. Clipped and unclipped
-// quads still merge.
-draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture, shader := "", material: []u8 = nil, normal := [3]f32{0, 0, 1}, extra_tex: []^Texture = nil, depth_test := true, clip: ^Quad_Clip = nil) {
+// `clip` clips the quad to UI masks (Clip_Mask, at most CLIP_MAX, the
+// nearest first), in the shaders that call ui_clip (shaders/ui_clip.glsl).
+// The slice is read at pass_end. Quads with the SAME slice merge into one
+// draw, so the caller hands every quad under the same masks one slice.
+draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture, shader := "", material: []u8 = nil, normal := [3]f32{0, 0, 1}, extra_tex: []^Texture = nil, depth_test := true, clip: []Clip_Mask = nil) {
 	c := _color_u8(color)
 	first := u32(len(_pass.vtx))
 	n := normal
 	// u runs along the bottom edge, v up the left one: the tangent is the
 	// bottom edge's direction, flipped when the uvs are mirrored.
-	t: [4][4]f32
-	uv2: [4][2]f32
-	if clip != nil {
-		mark := QUAD_CLIP_MARK + f32(clip.corners & 15) + (16 if clip.has_outer else 0)
-		for k in 0 ..< 4 do t[k] = {clip.pos[k].x, clip.pos[k].y, max(clip.softness, 0), mark}
-		n = {clip.half.x, clip.half.y, max(clip.radius, 0)}
-		if clip.has_outer do uv2 = clip.outer
-	} else {
-		q := _quad_tangent(corners, uvs, n)
-		t = {q, q, q, q}
-	}
+	t := _quad_tangent(corners, uvs, n)
 	append(&_pass.vtx,
-		Vertex{corners[0], n, uvs[0], c, t[0], uv2[0]},
-		Vertex{corners[1], n, uvs[1], c, t[1], uv2[1]},
-		Vertex{corners[2], n, uvs[2], c, t[2], uv2[2]},
-		Vertex{corners[0], n, uvs[0], c, t[0], uv2[0]},
-		Vertex{corners[2], n, uvs[2], c, t[2], uv2[2]},
-		Vertex{corners[3], n, uvs[3], c, t[3], uv2[3]},
+		Vertex{corners[0], n, uvs[0], c, t, {}},
+		Vertex{corners[1], n, uvs[1], c, t, {}},
+		Vertex{corners[2], n, uvs[2], c, t, {}},
+		Vertex{corners[0], n, uvs[0], c, t, {}},
+		Vertex{corners[2], n, uvs[2], c, t, {}},
+		Vertex{corners[3], n, uvs[3], c, t, {}},
 	)
-	_batch_append(.Tris if depth_test else .Tris_Overlay, tex, first, 6, shader, material, extra_tex)
+	_batch_append(.Tris if depth_test else .Tris_Overlay, tex, first, 6, shader, material, extra_tex, clip)
 }
 
-// The tangent w from which a quad's tangent, normal and second uv hold a clip
-// (draw_quad `clip`, the shaders' ui_clip). A real tangent's w is -1, 0 or 1.
-// The mark adds Quad_Clip.corners, and 16 with an outer rect.
-QUAD_CLIP_MARK :: f32(2)
-
-// What a quad is clipped to: a rect with round corners and a soft edge (the
-// nearest UI mask), and inside one more plain rect (the masks above it).
-Quad_Clip :: struct {
-	// Each quad corner's place from the rect's centre, in the rect's own units.
-	pos:       [4][2]f32,
-	half:      [2]f32, // the rect's half size, in those units
-	radius:    f32,    // of the corners in `corners`
-	softness:  f32,    // the width the edge fades over, inward. 0 = one pixel
-	corners:   u8,     // which corners are round: 1 top left, 2 top right, 4 bottom right, 8 bottom left
-	// Each quad corner's place in the outer rect, from -1 to 1 inside it.
-	outer:     [4][2]f32,
-	has_outer: bool,
+// One UI mask a quad is clipped to (draw_quad `clip`, shaders/ui_clip.glsl).
+// `to` maps a pixel of the target (x, y, 1), y down, to the mask's own
+// space times w: its rows give x * w, y * w and w, so the map holds for a
+// mask seen in perspective. The mask's space runs from its rect's centre in
+// its own units.
+Clip_Mask :: struct {
+	to:    [3][4]f32, // the rows, each xyz
+	shape: [4]f32,    // xy = the rect's half size, z = the width its edge fades over (0 = one pixel)
+	radii: [4]f32,    // of the corners: top left, top right, bottom right, bottom left
 }
+
+// The most masks one quad is clipped to. Must match MOONHUG_CLIP_MAX.
+CLIP_MAX :: 8
 
 // A quad's tangent from its corners and uvs (bl, br, tr, tl): the bottom
 // edge's direction, with w the sign that makes cross(normal, tangent) * w
@@ -1149,7 +1146,7 @@ _color_u8 :: proc(c: [4]f32) -> [4]u8 {
 // Extends the previous draw when pipeline/texture/view/shader/material
 // match — the common case for sprite runs and grid lines. Material slices
 // compare by pointer: callers reuse one packed slice per material to merge.
-_batch_append :: proc(kind: _Pipeline_Kind, tex: ^Texture, first: u32, count: u32, shader := "", material: []u8 = nil, extra_tex: []^Texture = nil) {
+_batch_append :: proc(kind: _Pipeline_Kind, tex: ^Texture, first: u32, count: u32, shader := "", material: []u8 = nil, extra_tex: []^Texture = nil, clip: []Clip_Mask = nil) {
 	vp := _current_vp()
 	_instance_base()
 	if len(_pass.draws) > 0 {
@@ -1158,6 +1155,7 @@ _batch_append :: proc(kind: _Pipeline_Kind, tex: ^Texture, first: u32, count: u3
 		   last.shader == shader &&
 		   raw_data(last.material) == raw_data(material) && len(last.material) == len(material) &&
 		   raw_data(last.extra_tex) == raw_data(extra_tex) && len(last.extra_tex) == len(extra_tex) &&
+		   raw_data(last.clip) == raw_data(clip) && len(last.clip) == len(clip) &&
 		   last.first_vertex + last.vertex_count == first {
 			last.vertex_count += count
 			return
@@ -1172,6 +1170,7 @@ _batch_append :: proc(kind: _Pipeline_Kind, tex: ^Texture, first: u32, count: u3
 		shader       = shader,
 		material     = material,
 		extra_tex    = extra_tex,
+		clip         = clip,
 	})
 }
 
@@ -1410,6 +1409,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	pushed_cutoff := f32(-1)
 	pushed_probe := Probe_Blend{weight = -1}
 	pushed_layers := u32(0)
+	pushed_clip: []Clip_Mask
 	pushed_draw_vp := i32(-1) // the draw block holds the view's camera, for the fog
 	viewport := [4]f32{} // the render pass starts on the whole target
 	for &d in _pass.draws {
@@ -1497,7 +1497,8 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 		}
 		sdl.BindGPUFragmentSamplers(rp, 0, &bindings[0], num_bindings)
 		draw_layers := d.is_mesh ? d.layers : ~u32(0) // batch draws are on every layer
-		if !d.fullscreen && (pushed_cutoff != d.alpha_cutoff || pushed_draw_vp != d.vp_index || pushed_probe != d.probe || pushed_layers != draw_layers) {
+		clip_changed := raw_data(pushed_clip) != raw_data(d.clip) || len(pushed_clip) != len(d.clip)
+		if !d.fullscreen && (pushed_cutoff != d.alpha_cutoff || pushed_draw_vp != d.vp_index || pushed_probe != d.probe || pushed_layers != draw_layers || clip_changed) {
 			cam := _pass.vps[d.vp_index].cam_pos
 			u := _Draw_Uniform{params = {d.alpha_cutoff, _pass.normals_out ? 1 : 0, 0, 0}, cam_pos = {cam.x, cam.y, cam.z, 0}, view_proj = _pass.vps[d.vp_index].vp, layers = {draw_layers, 0, 0, 0}}
 			u.fog_color, u.fog_params, u.fog_more = draw_uniform_fog(_pass.fog, cam)
@@ -1517,7 +1518,15 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 					u.probe2_max.w = light.env_params.x
 				}
 			}
-			sdl.PushGPUFragmentUniformData(_gfx.cmd, DRAW_UNIFORM_SLOT, &u, size_of(_Draw_Uniform))
+			for m, k in d.clip {
+				if k >= CLIP_MAX do break
+				u.clip_masks[k] = {to = m.to, shape = m.shape, radii = m.radii}
+			}
+			u.clip_count.x = f32(min(len(d.clip), CLIP_MAX))
+			// What a draw with no mask pushes ends at the count: the masks
+			// after it are read by no shader.
+			sdl.PushGPUFragmentUniformData(_gfx.cmd, DRAW_UNIFORM_SLOT, &u, u32(size_of(_Draw_Uniform) if len(d.clip) > 0 else offset_of(_Draw_Uniform, clip_masks)))
+			pushed_clip = d.clip
 			pushed_cutoff = d.alpha_cutoff
 			pushed_draw_vp = d.vp_index
 			pushed_probe = d.probe
@@ -1530,6 +1539,12 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			if len(d.material) > 0 {
 				sdl.PushGPUFragmentUniformData(_gfx.cmd, 1, raw_data(d.material), u32(len(d.material)))
 			}
+			// A fullscreen shader the importer gave the UI clip reads the
+			// per-draw block's mask count: none here, whatever a quad before
+			// it pushed.
+			no_clip: _Draw_Uniform
+			sdl.PushGPUFragmentUniformData(_gfx.cmd, DRAW_UNIFORM_SLOT, &no_clip, u32(offset_of(_Draw_Uniform, clip_masks)))
+			pushed_clip = nil
 			sdl.DrawGPUPrimitives(rp, 3, 1, 0, 0)
 			_stats_draw(1, 1)
 			// The light UBO push above was for this draw's pipeline, which does

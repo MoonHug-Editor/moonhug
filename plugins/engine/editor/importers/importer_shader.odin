@@ -14,6 +14,8 @@ import "core:fmt"
 import "core:hash"
 import "core:os"
 import "core:strings"
+import "base:runtime"
+import "moonhug:libs/assets"
 import "moonhug:packages/engine"
 import gfx "moonhug:libs/gfx"
 import "moonhug:libs/log"
@@ -48,14 +50,36 @@ shader_compile_source :: proc(source: string, source_path: string, artifact_path
     // next to the artifact, so a generated shader needs no file of its own.
     // `compile_path` is what glslc reads.
     compile_path: string
+    auto_clip := engine.ui_mask_shader_clip() == .Auto_Inject
+    // The UI clip include a plain shader compiles with is gone again after
+    // the compile: the folder is only glslc's.
+    defer if !_is_surface_shader(source) {
+        dir := _surface_include_dir(artifact_path)
+        os.remove(strings.concatenate({dir, "/ui_clip.glsl"}, context.temp_allocator))
+        os.remove(dir)
+    }
     if _is_surface_shader(source) {
         assembled, ok := _surface_assemble(source, artifact_path)
         if !ok do return false
         compile_path = assembled
     } else {
+        // The UI clip include sits beside the artifact for `#include
+        // "ui_clip.glsl"`, written by hand or added here (shader_inject_clip).
+        if !_write_include(artifact_path, "ui_clip.glsl", gfx.UI_CLIP_GLSL) do return false
+        text := source
+        if auto_clip {
+            injected, why := shader_inject_clip(source)
+            if why != "" {
+                log.errorf("[Pipeline] %s: %s. The project's UiMask setting is Auto Inject (Project Settings, UiMask)", source_path, why)
+                return false
+            }
+            text = injected
+        }
         compile_path = strings.concatenate({artifact_path, _SURFACE_TMP_SUFFIX}, context.temp_allocator)
-        if os.write_entire_file(compile_path, transmute([]u8)source) != nil do return false
+        if os.write_entire_file(compile_path, transmute([]u8)text) != nil do return false
     }
+    // With Auto Inject a ui_clip() written by hand is 1 (ui_clip.glsl).
+    clip_define := "-DMOONHUG_UI_CLIP_AUTO" if auto_clip else "-DMOONHUG_UI_CLIP_MANUAL"
     tmp_assembled := strings.concatenate({artifact_path, _SURFACE_TMP_SUFFIX}, context.temp_allocator)
     defer os.remove(tmp_assembled)
 
@@ -66,7 +90,7 @@ shader_compile_source :: proc(source: string, source_path: string, artifact_path
     // MaterialUBO at binding=1 would land at buffer(0) while the engine
     // pushes property data to slot 1 (silently reading the light UBO).
     // -I: the surface template's include folder, next to the artifact.
-    if !_run_tool({"glslc", "-fshader-stage=frag", "-I", _surface_include_dir(artifact_path), compile_path, "-o", tmp_spv}, source_path) do return false
+    if !_run_tool({"glslc", "-fshader-stage=frag", clip_define, "-I", _surface_include_dir(artifact_path), compile_path, "-o", tmp_spv}, source_path) do return false
     if !_run_tool({"spirv-cross", tmp_spv, "--msl", "--msl-decoration-binding", "--output", tmp_msl}, source_path) do return false
     if !_run_tool({"spirv-cross", tmp_spv, "--reflect", "--output", tmp_json}, source_path) do return false
 
@@ -150,11 +174,157 @@ shader_compile_source :: proc(source: string, source_path: string, artifact_path
 // The shader importer's version: 1 plus a hash of the surface template, so
 // an artifact compiled against an older template reimports (the artifact
 // key hashes the importer version).
-shader_compile_version :: 2
+shader_compile_version :: 3
 shader_importer_version :: proc() -> int {
 	h := hash.fnv32a(transmute([]u8)gfx.SURFACE_GLSL)
 	h = hash.fnv32a(transmute([]u8)gfx.SURFACE_MAIN_GLSL, h)
+	// The UI clip include and the project's UiMask setting are inputs of
+	// every plain fragment shader too.
+	h = hash.fnv32a(transmute([]u8)gfx.UI_CLIP_GLSL, h)
+	mode := [1]u8{u8(engine.ui_mask_shader_clip())}
+	h = hash.fnv32a(mode[:], h)
 	return shader_compile_version * 1_000_000 + int(h % 1_000_000)
+}
+
+// The extensions whose importer compiles through shader_compile_source: .glsl
+// here, and what another plugin's importer adds (the shader graph's). A
+// change of what every shader compiles with reimports them
+// (shaders_reimport_all).
+@(private = "file")
+_shader_source_exts: [dynamic]string
+
+shader_source_ext_add :: proc(ext: string) {
+	context.allocator = runtime.default_allocator()
+	for e in _shader_source_exts do if e == ext do return
+	append(&_shader_source_exts, strings.clone(ext))
+}
+
+// Compiles every shader of the project again, now: after the project's
+// UiMask setting changed, which is an input of each. Returns how many.
+shaders_reimport_all :: proc() -> (count: int) {
+	shader_source_ext_add(".glsl")
+	paths := make([dynamic]string, context.temp_allocator)
+	for path, _ in assets.asset_db.path_to_guid {
+		for ext in _shader_source_exts do if strings.has_suffix(path, ext) {
+			append(&paths, path)
+			break
+		}
+	}
+	for path in paths {
+		if guid, ok := engine.asset_db_get_guid(path); ok do engine.shader_unload(engine.Asset_GUID(guid))
+		if engine.asset_pipeline_request_import(path, true) do count += 1
+	}
+	return
+}
+
+// One of the engine's include files into the folder glslc looks in.
+@(private = "file")
+_write_include :: proc(artifact_path: string, name: string, text: string) -> bool {
+	dir := _surface_include_dir(artifact_path)
+	os.make_directory_all(dir)
+	path := strings.concatenate({dir, "/", name}, context.temp_allocator)
+	return os.write_entire_file(path, transmute([]u8)text) == nil
+}
+
+// The name the importer gives a shader's own main() when it adds the UI clip.
+SHADER_USER_MAIN :: "moonhug_user_main"
+
+// A fragment shader's source with the UI clip added (the project's UiMask
+// setting on Auto Inject): its main() renamed, and after its code a main()
+// that runs it and multiplies the alpha of its output by the clip. Every
+// line of the source keeps its number. `why` says what stopped it:
+// - no `void main(`, or more than one: nothing to wrap.
+// - no `layout(location = 0) out vec4 name;`: no output to clip.
+shader_inject_clip :: proc(source: string, allocator := context.temp_allocator) -> (out: string, why: string) {
+	// The one `void main(`, outside of comments.
+	code := _strip_comments(source)
+	at := -1
+	for from := 0; true; /**/ {
+		i := strings.index(code[from:], "main")
+		if i < 0 do break
+		i += from
+		from = i + 4
+		before_ok := i == 0 || !_ident_char(code[i - 1])
+		// `void` before it and `(` after it, across spaces.
+		k := i + 4
+		for k < len(code) && (code[k] == ' ' || code[k] == '\t' || code[k] == '\n' || code[k] == '\r') do k += 1
+		is_call := k < len(code) && code[k] == '('
+		j := i - 1
+		for j >= 0 && (code[j] == ' ' || code[j] == '\t' || code[j] == '\n' || code[j] == '\r') do j -= 1
+		is_void := j >= 3 && code[j - 3:j + 1] == "void" && (j == 3 || !_ident_char(code[j - 4]))
+		if !before_ok || !is_call || !is_void do continue
+		if at >= 0 do return "", "the shader has more than one main(), the UI clip cannot wrap it"
+		at = i
+	}
+	if at < 0 do return "", "the shader has no `void main(`, the UI clip cannot wrap it"
+	output := _output_name(code)
+	if output == "" do return "", "the shader has no `layout(location = 0) out vec4 <name>;`, the UI clip has no output to clip"
+
+	b := strings.builder_make(allocator)
+	strings.write_string(&b, source[:at])
+	strings.write_string(&b, SHADER_USER_MAIN)
+	strings.write_string(&b, source[at + 4:])
+	strings.write_string(&b, "\n\n// Added by the shader importer: the UI clip (Project Settings, UiMask: Auto Inject).\n")
+	strings.write_string(&b, "#include \"ui_clip.glsl\"\nvoid main() {\n    ")
+	strings.write_string(&b, SHADER_USER_MAIN)
+	strings.write_string(&b, "();\n    ")
+	strings.write_string(&b, output)
+	strings.write_string(&b, ".a *= ui_clip_at(gl_FragCoord.xy);\n}\n")
+	return strings.to_string(b), ""
+}
+
+@(private = "file")
+_ident_char :: proc(c: u8) -> bool {
+	return c == '_' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+// The source with its comments turned to spaces, every other character where
+// it was: a `main` in a comment is no main, and an offset here is an offset
+// in the source.
+@(private = "file")
+_strip_comments :: proc(source: string) -> string {
+	out := make([]u8, len(source), context.temp_allocator)
+	copy(out, source)
+	for i := 0; i + 1 < len(out); i += 1 {
+		if out[i] == '/' && out[i + 1] == '/' {
+			for i < len(out) && out[i] != '\n' {
+				out[i] = ' '
+				i += 1
+			}
+		} else if out[i] == '/' && out[i + 1] == '*' {
+			for i + 1 < len(out) && !(out[i] == '*' && out[i + 1] == '/') {
+				if out[i] != '\n' do out[i] = ' '
+				i += 1
+			}
+			if i + 1 < len(out) {
+				out[i], out[i + 1] = ' ', ' '
+				i += 1
+			}
+		}
+	}
+	return string(out)
+}
+
+// The name of the vec4 output at location 0, "" for none.
+@(private = "file")
+_output_name :: proc(code: string) -> string {
+	rest := code
+	for {
+		i := strings.index(rest, "layout")
+		if i < 0 do return ""
+		rest = rest[i + len("layout"):]
+		semi := strings.index_byte(rest, ';')
+		if semi < 0 do return ""
+		decl := rest[:semi]
+		close := strings.index_byte(decl, ')')
+		if close < 0 do continue
+		// `( location = 0 )`, spaces anywhere.
+		inside, _ := strings.remove_all(decl[:close], " ", context.temp_allocator)
+		inside, _ = strings.remove_all(inside, "\t", context.temp_allocator)
+		if inside != "(location=0" do continue
+		words := strings.fields(decl[close + 1:], context.temp_allocator)
+		if len(words) == 3 && words[0] == "out" && words[1] == "vec4" do return words[2]
+	}
 }
 
 _SURFACE_TMP_SUFFIX :: ".surface.glsl.tmp"

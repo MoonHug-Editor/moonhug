@@ -9,8 +9,6 @@ layout(location = 0) in vec2 frag_uv;
 layout(location = 1) in vec4 frag_color;
 layout(location = 2) in vec3 frag_normal; // for a normals pass only
 layout(location = 3) in vec3 frag_world_pos;
-layout(location = 4) in vec4 frag_tangent; // a UI quad under a mask: its clip, see ui_clip
-layout(location = 5) in vec2 frag_uv2;     // the same
 
 layout(set = 2, binding = 0) uniform sampler2D tex;
 
@@ -34,7 +32,11 @@ layout(set = 3, binding = 2) uniform DrawUBO {
     vec4 probe2_max; // xyz the box, w = its diffuse intensity
     vec4 probe_blend; // x = the probe's weight, 1 = no blend
     uvec4 draw_layers; // x = the draw's render layers (gfx.draw_mesh layers), every bit for batch draws
+    vec4 clip_count;      // the UI masks over a quad (ui_clip.glsl): x = how many
+    vec4 clip_masks[40];  // five per mask
 };
+#define MOONHUG_DRAW_UBO
+#include "ui_clip.glsl"
 
 // Fog (gfx.set_fog, the DrawUBO): how much of the fog colour covers a point.
 // Height fog scales the density by exp(-falloff * (y - height)), integrated
@@ -58,33 +60,6 @@ float fog_amount(vec3 world_pos) {
 }
 
 
-// UI clip (the engine's UiMask): a quad under a mask carries the clip in
-// three inputs a UI quad has no other use for, marked by frag_tangent.w of 2
-// or more, a value no real tangent has (gfx.draw_quad `clip`). Returns how
-// much of the pixel is inside, with an edge one pixel soft or as soft as the
-// mask says, and 1 for a quad with no mask.
-float ui_clip(vec4 t, vec3 n, vec2 outer) {
-    if (t.w < 1.5) return 1.0;
-    int mark = int(t.w + 0.5) - 2;
-    // The nearest mask: t.xy is the pixel's place from the mask's centre in
-    // the mask's own units, n.xy its half size, n.z its corner radius, t.z
-    // the width its edge fades over. The mark's low four bits say which
-    // corners are round: 1 top left, 2 top right, 4 bottom right, 8 bottom left.
-    vec2 p = t.xy;
-    int corner = p.x > 0.0 ? (p.y > 0.0 ? 2 : 4) : (p.y > 0.0 ? 1 : 8);
-    float r = (mark & corner) != 0 ? min(n.z, min(n.x, n.y)) : 0.0;
-    vec2 q = abs(p) - n.xy + r;
-    float d = min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
-    float px = max(fwidth(d), 1e-6);
-    float a = t.z > 0.0 ? clamp(-d / max(t.z, px), 0.0, 1.0) : clamp(0.5 - d / px, 0.0, 1.0);
-    // The masks above it, as one rect: `outer` runs from -1 to 1 inside it.
-    if ((mark & 16) != 0) {
-        vec2 e = (1.0 - abs(outer)) / max(fwidth(outer), vec2(1e-6));
-        a *= clamp(min(e.x, e.y) + 0.5, 0.0, 1.0);
-    }
-    return a;
-}
-
 vec3 srgb_to_linear(vec3 c) {
     return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, vec3(lessThanEqual(c, vec3(0.04045))));
 }
@@ -92,7 +67,7 @@ vec3 srgb_to_linear(vec3 c) {
 void main() {
     vec4 t = texture(tex, frag_uv);
     out_color = vec4(srgb_to_linear(t.rgb), t.a) * frag_color;
-    out_color.a *= ui_clip(frag_tangent, frag_normal, frag_uv2);
+    out_color.a *= ui_clip_at(gl_FragCoord.xy);
     if (out_color.a < draw_params.x) discard;
     // A normals pass (gfx.pass_output_normals): the normal as the colour.
     if (draw_params.y > 0.5) {

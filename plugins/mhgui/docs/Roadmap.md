@@ -16,7 +16,7 @@ Status is one of: Done, In progress, Next, Open, Parked.
 | 1 | Procedural shape | A rounded rectangle drawn in the shader: a radius per corner, a border, a two-stop gradient, a drop shadow and an inner shadow. A shape setting, with Rect the first shape | per-draw shader values | Done |
 | 2 | Pointer events | Enter, exit, down, up, click, hold, drag, scroll and cancel, taken by any component with `@(comp_on_pointer_ui)`. A HitArea takes the pointer and draws nothing. Button is written with it | | Done |
 | 3 | Mask, rectangle | `UiMask`, an engine component: clips the nodes under it in the shader. Works turned and in a world-space canvas, adds no draw call. A clipped part takes no pointer | | Done |
-| 12 | Mask, rounded and nested | Round corners with a choice of corners, a soft edge, a circle, and a node cut by every mask above it | 1, 3 | Done |
+| 12 | Mask, rounded and nested | A radius per corner, a soft edge, a circle, and a node cut by every mask above it with each mask's own shape. A project setting says whether shaders get the clip by themselves | 1, 3 | Done |
 | 4 | ScrollRect and Scrollbar | Scrolling content with inertia and elastic edges | 2, 3 | Open |
 | 5 | Slider, Toggle, ToggleGroup | The simple controls on the selectable base Button established | 2 | Open |
 

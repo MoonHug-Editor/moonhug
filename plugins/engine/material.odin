@@ -296,6 +296,20 @@ _material_pack_properties :: proc(mat: ^Material, sr: ^Shader_Runtime) -> []u8 {
 	return data
 }
 
+// Whether a quad drawn with the material is clipped under a UiMask: no
+// material and the built-in unlit shader clip, a custom shader clips when it
+// has the UI clip (it declares the per-draw block), the built-in lit shader
+// does not. True when it cannot be told (nothing loaded yet).
+material_clips_ui :: proc(guid: Asset_GUID) -> bool {
+	if guid == {} do return true
+	mat, ok := material_load(guid)
+	if !ok do return true
+	if mat.custom_shader == {} do return mat.shader != .Lit
+	sr, sr_ok := shader_load(asset_key(mat.custom_shader))
+	if !sr_ok do return true
+	return sr.num_uniform_buffers > gfx.DRAW_UNIFORM_SLOT
+}
+
 // The material's packed property block with a draw's own values written over
 // it (Draw_Property), temp-allocated. `base` is the block the material packs
 // (_resolve_material). Values the shader has no member for are dropped, and a

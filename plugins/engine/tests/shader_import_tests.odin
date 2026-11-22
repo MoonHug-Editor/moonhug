@@ -19,12 +19,25 @@ _toolchain_available :: proc() -> bool {
 	return err == nil
 }
 
+// The compile tests below check what a shader's own source compiles to, so
+// they run with the project's UiMask setting on Manual Include: the importer
+// adds nothing. The clip tests at the end set it themselves.
+@(private = "file")
+_clip_mode :: proc(mode: engine.UiMask_Shader_Clip) -> engine.UiMask_Shader_Clip {
+	prev := engine.ui_mask_shader_clip() // loads the setting once, before it is set
+	engine.ui_mask_settings.shader_clip = mode
+	return prev
+}
+
 @(test)
 test_shader_import_compiles_fixture :: proc(t: ^testing.T) {
 	if !_toolchain_available() {
 		testing.expect(t, true) // toolchain is an optional dependency
 		return
 	}
+	prev_clip := _clip_mode(.Manual_Include)
+	defer _clip_mode(prev_clip)
+
 
 	artifact := "moonhug/tests/fixtures/shaders/_test_shader_artifact.bin"
 	defer os.remove(artifact)
@@ -59,6 +72,9 @@ test_shader_import_reflects_properties :: proc(t: ^testing.T) {
 		testing.expect(t, true)
 		return
 	}
+	prev_clip := _clip_mode(.Manual_Include)
+	defer _clip_mode(prev_clip)
+
 
 	artifact := "moonhug/tests/fixtures/shaders/_test_props_artifact.bin"
 	defer os.remove(artifact)
@@ -86,6 +102,9 @@ test_shader_import_view_dependent_contract :: proc(t: ^testing.T) {
 		testing.expect(t, true)
 		return
 	}
+	prev_clip := _clip_mode(.Manual_Include)
+	defer _clip_mode(prev_clip)
+
 
 	artifact := "moonhug/tests/fixtures/shaders/_test_specular_artifact.bin"
 	defer os.remove(artifact)
@@ -112,6 +131,9 @@ test_shader_import_surface_template :: proc(t: ^testing.T) {
 		testing.expect(t, true)
 		return
 	}
+	prev_clip := _clip_mode(.Manual_Include)
+	defer _clip_mode(prev_clip)
+
 
 	artifact := "moonhug/tests/fixtures/shaders/_test_surface_artifact.bin"
 	defer os.remove(artifact)
@@ -143,6 +165,9 @@ test_shader_import_reflects_textures :: proc(t: ^testing.T) {
 		testing.expect(t, true)
 		return
 	}
+	prev_clip := _clip_mode(.Manual_Include)
+	defer _clip_mode(prev_clip)
+
 
 	artifact := "moonhug/tests/fixtures/shaders/_test_multitex_artifact.bin"
 	defer os.remove(artifact)
@@ -218,3 +243,141 @@ test_shader_artifact_parse_roundtrip :: proc(t: ^testing.T) {
 	_, _, _, _, _, bad = engine._shader_artifact_parse(blob[:], context.temp_allocator)
 	testing.expect(t, !bad, "a texture count past the file's size accepted")
 }
+
+// --- The UI clip ----------------------------------------------------------------------
+
+_CLIP_PLAIN :: `#version 450
+layout(location = 0) in vec2 frag_uv;
+layout(location = 1) in vec4 frag_color;
+layout(set = 2, binding = 0) uniform sampler2D tex;
+layout(location = 0) out vec4 out_color;
+// void main() { in a comment is not the main }
+/* nor is
+   void main() here */
+void main() {
+    out_color = texture(tex, frag_uv) * frag_color;
+}
+`
+
+@(test)
+test_shader_inject_clip_wraps_main :: proc(t: ^testing.T) {
+	plain := _CLIP_PLAIN
+	out, why := importers.shader_inject_clip(plain)
+	testing.expect_value(t, why, "")
+	testing.expect(t, strings.contains(out, "void " + importers.SHADER_USER_MAIN + "() {\n    out_color = texture"), "the shader's main() is renamed in place")
+	testing.expect(t, strings.contains(out, "// void main() { in a comment is not the main }"), "a main in a comment is left alone")
+	testing.expect(t, strings.contains(out, "   void main() here */"), "in a block comment too")
+	testing.expect(t, strings.contains(out, "#include \"ui_clip.glsl\""), "the include is added")
+	testing.expect(t, strings.contains(out, "out_color.a *= ui_clip_at(gl_FragCoord.xy);"), "the output's alpha takes the clip")
+	// The shader's own lines keep their numbers: what is added comes after.
+	testing.expect(t, strings.has_prefix(out, plain[:strings.index(plain, "void main() {\n    out_color")]), "nothing is added before the shader's code")
+	testing.expect_value(t, strings.count(out[:strings.index(out, "// Added by the shader importer")], "\n") - 2, strings.count(_CLIP_PLAIN, "\n"))
+
+	// The output may have any name.
+	named, _ := strings.replace_all(_CLIP_PLAIN, "out_color", "result", context.temp_allocator)
+	out, why = importers.shader_inject_clip(named)
+	testing.expect(t, why == "" && strings.contains(out, "result.a *= ui_clip_at"), "the output is found by its location, not its name")
+	spaced, _ := strings.replace_all(_CLIP_PLAIN, "layout(location = 0) out vec4 out_color;", "layout( location=0 )  out   vec4   out_color ;", context.temp_allocator)
+	out, why = importers.shader_inject_clip(spaced)
+	testing.expect_value(t, why, "")
+
+	// What it cannot wrap is said, not guessed.
+	no_main, _ := strings.replace_all(_CLIP_PLAIN, "void main() {\n    out_color", "void other() {\n    out_color", context.temp_allocator)
+	_, why = importers.shader_inject_clip(no_main)
+	testing.expect(t, strings.contains(why, "no `void main("), why)
+	no_out, _ := strings.replace_all(_CLIP_PLAIN, "layout(location = 0) out vec4 out_color;", "out vec4 out_color;", context.temp_allocator)
+	_, why = importers.shader_inject_clip(no_out)
+	testing.expect(t, strings.contains(why, "no `layout(location = 0) out vec4"), why)
+}
+
+// Auto Inject: a shader with nothing about the clip in it compiles with the
+// per-draw block the clip reads. Manual Include: it compiles as written.
+@(test)
+test_shader_import_auto_inject_adds_the_clip :: proc(t: ^testing.T) {
+	if !_toolchain_available() {
+		testing.expect(t, true)
+		return
+	}
+	prev := _clip_mode(.Auto_Inject)
+	defer _clip_mode(prev)
+	artifact := "moonhug/tests/fixtures/shaders/_test_clip_artifact.bin"
+	defer os.remove(artifact)
+
+	testing.expect(t, importers.shader_compile_source(_CLIP_PLAIN, "clip_plain.glsl", artifact), "the shader compiles with the clip added")
+	blob, _ := os.read_entire_file(artifact, context.temp_allocator)
+	header, _, msl, _, _, ok := engine._shader_artifact_parse(blob, context.temp_allocator)
+	testing.expect(t, ok)
+	testing.expect_value(t, header.num_uniform_buffers, u32(3)) // the per-draw block, slot 2
+	testing.expect(t, strings.contains(string(msl), importers.SHADER_USER_MAIN), "the shader's main() runs inside the added one")
+
+	_clip_mode(.Manual_Include)
+	testing.expect(t, importers.shader_compile_source(_CLIP_PLAIN, "clip_plain.glsl", artifact), "it compiles as written")
+	blob, _ = os.read_entire_file(artifact, context.temp_allocator)
+	header, _, msl, _, _, ok = engine._shader_artifact_parse(blob, context.temp_allocator)
+	testing.expect(t, ok)
+	testing.expect_value(t, header.num_uniform_buffers, u32(0))
+	testing.expect(t, !strings.contains(string(msl), importers.SHADER_USER_MAIN), "nothing is added")
+}
+
+// A shader that includes ui_clip.glsl and calls ui_clip() itself compiles in
+// both settings. On Manual Include its call clips. On Auto Inject its call
+// is 1 and the importer's clips, so the clip applies once.
+@(test)
+test_shader_import_manual_clip_in_both_settings :: proc(t: ^testing.T) {
+	if !_toolchain_available() {
+		testing.expect(t, true)
+		return
+	}
+	manual, _ := strings.replace_all(_CLIP_PLAIN, "void main() {\n    out_color = texture(tex, frag_uv) * frag_color;", "#include \"ui_clip.glsl\"\nvoid main() {\n    out_color = texture(tex, frag_uv) * frag_color;\n    out_color.a *= ui_clip();", context.temp_allocator)
+	artifact := "moonhug/tests/fixtures/shaders/_test_clip_manual_artifact.bin"
+	defer os.remove(artifact)
+	prev := _clip_mode(.Manual_Include)
+	defer _clip_mode(prev)
+	testing.expect(t, importers.shader_compile_source(manual, "clip_manual.glsl", artifact), "Manual Include: the shader's own call compiles")
+	blob, _ := os.read_entire_file(artifact, context.temp_allocator)
+	header, _, _, _, _, ok := engine._shader_artifact_parse(blob, context.temp_allocator)
+	testing.expect(t, ok)
+	testing.expect_value(t, header.num_uniform_buffers, u32(3))
+
+	_clip_mode(.Auto_Inject)
+	testing.expect(t, importers.shader_compile_source(manual, "clip_manual.glsl", artifact), "Auto Inject: the same shader compiles, its call is 1")
+}
+
+// Every plain fragment shader the plugins ship compiles with the UI clip
+// added: Auto Inject is the default, so a shader it cannot wrap would fail to
+// import in every project.
+@(test)
+test_shader_import_auto_inject_compiles_shipped_shaders :: proc(t: ^testing.T) {
+	if !_toolchain_available() {
+		testing.expect(t, true)
+		return
+	}
+	prev := _clip_mode(.Auto_Inject)
+	defer _clip_mode(prev)
+	artifact := "moonhug/tests/fixtures/shaders/_test_shipped_artifact.bin"
+	defer os.remove(artifact)
+	paths := make([dynamic]string, context.temp_allocator)
+	_collect_glsl("plugins", &paths)
+	testing.expect(t, len(paths) > 5, "found the plugins' shaders")
+	for path in paths {
+		data, err := os.read_entire_file(path, context.temp_allocator)
+		if err != nil do continue
+		source := string(data)
+		if strings.contains(source, "void surface(") && !strings.contains(source, "void main(") do continue
+		testing.expectf(t, importers.shader_compile_source(source, path, artifact), "%s compiles with the UI clip added", path)
+	}
+}
+
+@(private = "file")
+_collect_glsl :: proc(dir: string, out: ^[dynamic]string) {
+	entries, err := os.read_all_directory_by_path(dir, context.temp_allocator)
+	if err != nil do return
+	for e in entries {
+		if e.type == .Directory {
+			_collect_glsl(e.fullpath, out)
+		} else if strings.has_suffix(e.name, ".glsl") {
+			append(out, e.fullpath)
+		}
+	}
+}
+
