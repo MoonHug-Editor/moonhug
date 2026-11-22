@@ -24,10 +24,10 @@ Status is one of: Done, In progress, Next, Open, Parked.
 
 | # | Item | What it is | Needs | Status |
 |---|---|---|---|---|
-| 6 | LayoutElement and child expand | Minimum, preferred and flexible sizes. Children stretch to fill | | Open |
-| 7 | ContentSizeFitter | A node sizes itself to its text or its children | 6 | Open |
-| 8 | AspectRatioFitter | A node keeps a ratio inside its parent | | Open |
-| 9 | CanvasGroup | Alpha, interactable and blocks-raycasts for a whole subtree | | Open |
+| 6 | LayoutElement and child expand | Minimum, preferred and flexible sizes. Children stretch to fill | | Done |
+| 7 | ContentSizeFitter | A node sizes itself to its text or its children | 6 | Done |
+| 8 | AspectRatioFitter | A node keeps a ratio inside its parent | | Done |
+| 9 | CanvasGroup | Alpha, interactable and blocks-raycasts for a whole subtree | | Done |
 
 ## Tier 3: the full control set
 

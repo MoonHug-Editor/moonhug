@@ -45,7 +45,7 @@ Button :: struct {
 @(comp_on_pointer_ui={component=Button})
 comp_on_pointer_ui_Button :: proc(b: ^Button, ev: ^engine.UI_Pointer_Event) {
 	selectable_pointer(&b.selectable, ev)
-	if ev.kind == .Click && ev.button == .Left && b.interactable {
+	if ev.kind == .Click && ev.button == .Left && selectable_usable(&b.selectable, b.owner) {
 		b.clicked = true
 		ev.used = true
 	}
@@ -113,7 +113,7 @@ _nav_submit_down :: proc() -> bool {
 @(private = "file")
 _usable :: proc(tH: engine.Transform_Handle) -> bool {
 	sel, enabled := node_selectable(tH)
-	return sel != nil && enabled && sel.interactable && engine.transform_active_in_hierarchy(tH)
+	return sel != nil && enabled && selectable_usable(sel, tH) && engine.transform_active_in_hierarchy(tH)
 }
 
 // The usable Button nearest to `from` in direction `dir` ({±1, 0} or
@@ -210,8 +210,9 @@ ui_tick :: proc(dt: f32) {
 		live := b.enabled && engine.transform_active_in_hierarchy(b.owner)
 		chosen := live && selected == b.owner
 		// The submit key clicks the selected Button. It is no pointer event.
-		if live && b.interactable && submit && chosen do b.clicked = true
-		if !live || !b.interactable do b.clicked = false
+		usable := live && selectable_usable(&b.selectable, b.owner)
+		if usable && submit && chosen do b.clicked = true
+		if !usable do b.clicked = false
 		selectable_update(&b.selectable, b.owner, live, chosen, submit_down, real_dt)
 	}
 	toggles_update(selected, submit, submit_down, real_dt)

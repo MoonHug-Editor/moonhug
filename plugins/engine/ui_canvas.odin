@@ -112,6 +112,55 @@ CanvasRenderer :: struct {
 	tinted: bool   `json:"-" inspect:"-"`,
 }
 
+// Settings for a whole subtree of UI: everything under the node, the node
+// included. Groups nest: a node takes the alpha of every group above it
+// multiplied, and is interactable and hit by the pointer only when every
+// group above it says so. A group with ignore_parent_groups starts over.
+@(component={menu="UI/CanvasGroup"})
+@(typ_guid={guid = "a38382c2-9aa1-46bc-9b65-814fa68cb532"})
+CanvasGroup :: struct {
+	using base:      CompData `inspect:"-"`,
+	alpha:           f32 `decor:range(0, 1) decor:tooltip(desc="How opaque the subtree draws: multiplies the alpha of every graphic under it.")`,
+	interactable:    bool `decor:tooltip(desc="Off, the controls under it cannot be used and show as disabled.")`,
+	blocks_raycasts: bool `decor:tooltip(desc="Off, the pointer passes through everything under it to what is behind.")`,
+	ignore_parent_groups: bool `decor:tooltip(desc="The groups above this one do not count for what is under it.")`,
+}
+
+type_reset_CanvasGroup :: proc(g: ^CanvasGroup) {
+	g.alpha = 1
+	g.interactable = true
+	g.blocks_raycasts = true
+}
+
+// What the CanvasGroups on a node and above it make of it.
+Canvas_Group_State :: struct {
+	alpha:           f32,
+	interactable:    bool,
+	blocks_raycasts: bool,
+}
+
+// The groups' say over a node: full alpha, interactable and hit with no
+// group above it.
+canvas_group_state :: proc(tH: Transform_Handle) -> Canvas_Group_State {
+	state := Canvas_Group_State{1, true, true}
+	w := ctx_world()
+	// With no CanvasGroup in the world, no node looks for one.
+	if canvas_groups(w).count == 0 do return state
+	node := tH
+	for n := 0; node != {} && n < 4096; n += 1 {
+		t := pool_get(&w.transforms, Handle(node))
+		if t == nil do break
+		if _, g := transform_get_comp(node, CanvasGroup); g != nil && g.enabled {
+			state.alpha *= clamp(g.alpha, 0, 1)
+			state.interactable &&= g.interactable
+			state.blocks_raycasts &&= g.blocks_raycasts
+			if g.ignore_parent_groups do break
+		}
+		node = Transform_Handle(t.parent.handle)
+	}
+	return state
+}
+
 // A node the pointer can hit that draws nothing: its rect takes pointer
 // events (ui_pointer.odin) as a graphic with raycast_target does. For an
 // invisible button over a picture, a drag surface, or a larger touch area
@@ -280,11 +329,15 @@ mask_stack :: proc(c: Canvas_Pixels, tH: Transform_Handle, nodes: []Node_Rect) -
 // Whether the pointer can hit the node: an enabled HitArea, or a drawn
 // graphic with raycast_target on.
 node_takes_pointer :: proc(tH: Transform_Handle) -> bool {
-	if _, area := transform_get_comp(tH, HitArea); area != nil && area.enabled do return true
-	_, cr := transform_get_comp(tH, CanvasRenderer)
-	if cr == nil || !cr.enabled do return false
-	_, g, _, ok := node_graphic(tH)
-	return ok && g.raycast_target
+	takes := false
+	if _, area := transform_get_comp(tH, HitArea); area != nil && area.enabled {
+		takes = true
+	} else if _, cr := transform_get_comp(tH, CanvasRenderer); cr != nil && cr.enabled {
+		_, g, _, ok := node_graphic(tH)
+		takes = ok && g.raycast_target
+	}
+	// A CanvasGroup above it may let the pointer through.
+	return takes && canvas_group_state(tH).blocks_raycasts
 }
 
 canvas_renderer_set_tint :: proc(cr: ^CanvasRenderer, tint: [4]f32) {
@@ -549,6 +602,57 @@ canvas_layout_register :: proc(p: Canvas_Layout_Provider) {
 	append(&_canvas_layout_providers, p)
 }
 
+// A component that sets its own node's rect (packages/mhgui
+// ContentSizeFitter, AspectRatioFitter): asked for every node that resolves
+// from its own anchors, with its parent's rect and the rect the anchors gave.
+// A provider that sets the node's rect returns it and true. A node a layout
+// container placed is not asked: the container's rect stands. A package
+// declares one with @(canvas_rect) on the proc.
+Canvas_Rect_Provider :: proc(tH: Transform_Handle, parent: Rect, rect: Rect) -> (Rect, bool)
+
+_canvas_rect_providers: [dynamic]Canvas_Rect_Provider
+
+// Declares a rect provider: a proc that may replace the rect a node's
+// anchors gave it. Process-global registry: never borrows the caller's
+// allocator.
+@(extension_point={attribute="canvas_rect", target="proc", fields=""})
+canvas_rect_register :: proc(p: Canvas_Rect_Provider) {
+	context.allocator = runtime.default_allocator()
+	if _canvas_rect_providers == nil do _canvas_rect_providers = make([dynamic]Canvas_Rect_Provider)
+	append(&_canvas_rect_providers, p)
+}
+
+// How large a component wants its node to be, from what it holds: a Text
+// from its string, an Image from its sprite. `width` is the width it has to
+// fit in, for content that wraps, 0 or less for no limit.
+Canvas_Measure_Proc :: proc(comp: rawptr, width: f32) -> [2]f32
+
+// Declares `canvas_measure_<T>`, the proc that says how large a component of
+// type T wants its node to be. T is a @(component) of the same package and
+// the proc takes a ^T and the width to fit in. A type has at most one.
+@(extension_point={attribute="canvas_measure", target="proc", fields=""})
+canvas_measure_procs: [TypeKey]Canvas_Measure_Proc
+
+canvas_measure_register :: proc(key: TypeKey, fn: Canvas_Measure_Proc) {
+	canvas_measure_procs[key] = fn
+}
+
+// The size the node's content wants (canvas_measure), from the first enabled
+// component on it that says. False when none does.
+node_measure :: proc(tH: Transform_Handle, width: f32) -> (size: [2]f32, ok: bool) {
+	w := ctx_world()
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return
+	for owned in t.components {
+		fn := canvas_measure_procs[owned.handle.type_key]
+		if fn == nil do continue
+		c := world_pool_get(w, owned.handle)
+		if c == nil || !(cast(^CompData)c).enabled do continue
+		return fn(c, width), true
+	}
+	return
+}
+
 // Resolves the rect of the canvas node (always `root`, the canvas drives it)
 // and of every active node under it, appended to `out` in draw order
 // (Node_Rect). A node
@@ -583,6 +687,13 @@ canvas_resolve_rects :: proc(canvas_tH: Transform_Handle, root: Rect, out: ^[dyn
 			rect = e.forced
 		} else if e.tH != canvas_tH && rt != nil {
 			rect = rect_resolve(e.parent, rt)
+			// A component of the node may set its rect: a fitter.
+			for p in _canvas_rect_providers {
+				if fitted, ok := p(e.tH, e.parent, rect); ok {
+					rect = fitted
+					break
+				}
+			}
 		}
 		// The node's own rotation and scale, around its pivot, in the parent's
 		// space. The canvas node itself never rotates (overlay).
@@ -874,8 +985,7 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 	nodes := make([dynamic]Node_Rect, context.temp_allocator)
 	quads := make([dynamic]Graphic_Quad, context.temp_allocator)
 	// With no UiMask in the world, no node looks for one.
-	mask_it := pool_iterator(ui_masks(w))
-	_, _, any_mask := pool_next(&mask_it)
+	any_mask := ui_masks(w).count > 0
 	stacks := make(map[Transform_Handle][]gfx.Clip_Mask, context.temp_allocator)
 
 	it := pool_iterator(canvases(w))
@@ -920,6 +1030,9 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 			key: Sort_Key
 			key[0] = sort_key_word(CANVAS_SORTING_LAYER, canvas.sort_order, 0, u16(i))
 			checked_clip := false
+			// The CanvasGroups above it fade it. Fully faded, it draws nothing.
+			group_alpha := canvas_group_state(n.tH).alpha
+			if group_alpha <= 0 do continue
 			for q in quads {
 				if asset_guid_is_empty(q.texture) do continue
 				material := asset_key(g.material) if !asset_guid_is_empty(asset_key(g.material)) else q.material
@@ -947,7 +1060,7 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 						material = material,
 						corners  = corners,
 						uvs      = q.uvs,
-						color    = g.color * cr.tint if cr.tinted else g.color,
+						color    = (g.color * cr.tint if cr.tinted else g.color) * {1, 1, 1, group_alpha},
 						properties = q.properties,
 						clip     = clip,
 					},

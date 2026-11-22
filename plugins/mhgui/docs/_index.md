@@ -18,6 +18,9 @@ The mhgui plugin draws UI. It adds the Image and UiShape graphics, the Button co
 - [ScrollRect](components/ScrollRect.md) scrolls a content node inside a viewport, by a drag, the wheel or a scrollbar.
 - [Scrollbar](components/Scrollbar.md) is a track with a handle that shows a place and sets it.
 - [LayoutGroup](components/LayoutGroup.md) lays out its children in a row, a column or a grid.
+- [LayoutElement](components/LayoutElement.md) says what a node asks of the LayoutGroup that places it.
+- [ContentSizeFitter](components/ContentSizeFitter.md) sizes a node to its text or its children.
+- [AspectRatioFitter](components/AspectRatioFitter.md) keeps a node at a width to height ratio.
 
 **Concepts**
 
@@ -42,7 +45,7 @@ Plain object and component creation: `transform_new`, then `transform_add_comp` 
 
 ## Extending
 
-The plugin declares no attributes. It uses the engine's: Image and UiShape declare `@(canvas_graphic)` and LayoutGroup `@(canvas_layout)`, which is how another plugin adds a graphic or a container ([UI canvas](/plugins/engine/docs/UICanvas.md), "Graphics").
+The plugin declares no attributes. It uses the engine's: Image and UiShape declare `@(canvas_graphic)`, LayoutGroup `@(canvas_layout)` and the two fitters `@(canvas_rect)`, which is how another plugin adds a graphic or a container ([UI canvas](/plugins/engine/docs/UICanvas.md), "Graphics").
 
 ## Limits
 

@@ -16,6 +16,9 @@ package mhgui_sample
 //   viewport, scrolled by a drag, the wheel or the bar.
 // - Controls, live while the game plays: a Slider and three Toggles of a
 //   ToggleGroup.
+// - Layout: a row with a flexible child, a bubble sized to its text, a
+//   picture kept at a ratio in its frame, and a panel a CanvasGroup fades
+//   and switches off.
 // - Pointer events, live while the game plays: a card that the UIDemoDrag
 //   script (ui_demo.odin) drags, taking its events with
 //   @(comp_on_pointer_ui), and a Button whose graphic is a UiShape.

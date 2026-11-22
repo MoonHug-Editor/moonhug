@@ -16,6 +16,7 @@ UI has two halves. The canvas tree is engine vocabulary, in `plugins/engine/ui_c
 - [CanvasScaler](components/CanvasScaler.md) maps canvas units to screen pixels.
 - [GraphicRaycaster](components/GraphicRaycaster.md) lets the pointer reach a canvas's graphics.
 - [UiMask](components/UiMask.md) clips the nodes under it to its rect.
+- [CanvasGroup](components/CanvasGroup.md) fades a whole subtree and turns it off for the pointer.
 - HitArea takes the pointer on its node's rect and draws nothing.
 
 ## Graphics
@@ -26,6 +27,14 @@ A quad a graphic returns can carry two things of its own:
 
 - `material`, used when the graphic names none. A graphic that needs its own shader works with no setup this way.
 - `properties`, values of that material's shader for this quad alone, by the names the shader's property block declares. They go over the material's values for the one draw (`Draw_Quad.properties`, `material_pack_draw_properties`). Quads with equal values share a draw call when they are neighbours in draw order, and a quad whose values differ is a draw call of its own. The mhgui UiShape sends its size, radii and shadows this way.
+
+## Rects
+
+A node's rect comes from its RectTransform and its parent's rect. Three things in a plugin can change that, each declared with an attribute on a proc:
+
+- `@(canvas_layout)`: a container places its children. Asked for every node with its rect and its RectTransform children. The mhgui LayoutGroup is one.
+- `@(canvas_rect)`: a component sets its own node's rect. Asked for every node that resolves from its own anchors, with its parent's rect and the rect the anchors gave. The mhgui ContentSizeFitter and AspectRatioFitter are one. A node a container placed is not asked.
+- `@(canvas_measure)`: a component says how large it wants its node, on a proc named `canvas_measure_<T>` that takes the component and the width to fit in. `engine.node_measure(node, width)` reads it. The text plugin's Text has one.
 
 ## Position
 

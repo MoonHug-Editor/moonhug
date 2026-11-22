@@ -49,12 +49,13 @@ ui_demo_scene_opens_and_draws :: proc(t: ^testing.T) {
 	frames(r, 10)
 	game, game_shown := window_rect(r, "Game")
 	if testing.expect(t, game_shown, "the Game window is open") {
-		// The scroll view's cell is the fourth of the third row. The canvas is
-		// 1600 wide across the picture: a canvas unit is this many points.
-		unit := game[2] / 1600
+		// The scroll view's cell is the fourth of the third row: its view is
+		// at canvas (250, 0). The canvas is 1800 wide across the picture: a
+		// canvas unit is this many points.
+		unit := game[2] / 1800
 		cx := game.x + game[2] / 2 + 250 * unit
 		// The Game window's picture starts under its toolbar.
-		cy := game.y + game[3] / 2 + 18 + 130 * unit
+		cy := game.y + game[3] / 2 + 18
 		click(r, cx, cy) // the first click gives the Game window the focus
 		frames(r, 5)
 		testing.expectf(t, abs(content_y(r)) < 0.5, "the content starts at its top: %v", content_y(r))
@@ -70,7 +71,7 @@ ui_demo_scene_opens_and_draws :: proc(t: ^testing.T) {
 	// The controls cell: a click turns on the second toggle of the group,
 	// which turns the first off, and a drag along the slider changes its value.
 	if game_shown {
-		unit := game[2] / 1600
+		unit := game[2] / 1800
 		spot :: proc(game: [4]f64, unit, x, y: f64) -> (f64, f64) {
 			return game.x + game[2] / 2 + x * unit, game.y + game[3] / 2 + 18 - y * unit
 		}
@@ -81,18 +82,26 @@ ui_demo_scene_opens_and_draws :: proc(t: ^testing.T) {
 			return as_f64(at(call(r, "get_property", `{"name":"Slider","component":"Slider","path":"value"}`), "value"))
 		}
 		testing.expect(t, is_on(r, "Toggle 1") && !is_on(r, "Toggle 2"), "the first toggle starts on")
-		tx, ty := spot(game, unit, 500, -145)
+		tx, ty := spot(game, unit, 500, -15)
 		click(r, tx, ty)
 		frames(r, 5)
 		testing.expect(t, is_on(r, "Toggle 2") && !is_on(r, "Toggle 1"), "a click on the second turns it on and the first off")
 		testing.expectf(t, value(r) == 60, "the slider starts at 60: %v", value(r))
 		// The handle sits at 60 of 100 along the 180 wide track: the press
 		// lands on it, the drag takes it to a quarter and to three quarters.
-		hx, hy := spot(game, unit, 500 - 90 + 108, -90)
-		qx, _ := spot(game, unit, 500 - 45, -90)
-		ex, _ := spot(game, unit, 500 + 45, -90)
-		call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":2}},{{"type":"down"}},{{"type":"wait","frames":3}},{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":3}}]}}`, hx, hy, qx, hy))
+		// The handle is a few points tall and the picture's place under the
+		// window's bars is not known to the point, so the press is tried a
+		// little higher and lower until it takes hold.
+		hx, hy := spot(game, unit, 500 - 90 + 108, 40)
+		qx, _ := spot(game, unit, 500 - 45, 40)
+		ex, _ := spot(game, unit, 500 + 45, 40)
 		quarter := value(r)
+		for nudge in ([]f64{0, -5, 5, -10, 10}) {
+			call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":2}},{{"type":"down"}},{{"type":"wait","frames":3}},{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":3}}]}}`, hx, hy + nudge, qx, hy + nudge))
+			quarter = value(r)
+			if quarter != 60 do break
+			call(r, "input", `{"steps":[{"type":"up"},{"type":"wait","frames":2}]}`)
+		}
 		testing.expectf(t, abs(quarter - 25) <= 2, "dragged to a quarter along the track it is about 25: %v", quarter)
 		call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":3}}]}}`, ex, hy))
 		call(r, "screenshot", `{"target":"game","max_size":900}`)

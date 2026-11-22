@@ -12,6 +12,12 @@ package engine_gen
 //   @(comp_on_pointer_ui={component=Button})
 //   comp_on_pointer_ui_Button :: proc(b: ^Button, ev: ^engine.UI_Pointer_Event) { ... }
 //
+//   @(canvas_rect)
+//   canvas_rect_fitters :: proc(tH: engine.Transform_Handle, parent, rect: engine.Rect) -> (engine.Rect, bool) { ... }
+//
+//   @(canvas_measure)
+//   canvas_measure_Text :: proc(tx: ^Text, width: f32) -> [2]f32 { ... }
+//
 //   A graphic's name is the contract: `canvas_populate_<T>`, T a struct of
 //   the same package with a `graphic` field, so the generated descriptor
 //   carries its type key, the field's offset and a thunk that casts the
@@ -35,6 +41,8 @@ Canvas_GenComp :: struct {
 	layout: bool,   // @(canvas_layout), else @(canvas_graphic)
 	type_name: string, // the graphic's or the pointer proc's component type, "" for a layout
 	pointer: bool,  // @(comp_on_pointer_ui)
+	rect: bool,     // @(canvas_rect), with layout set: registered like a layout
+	measure: bool,  // @(canvas_measure)
 	editor: bool,
 }
 
@@ -59,8 +67,10 @@ canvas_provide :: proc(w: ^db.World) -> bool {
 		attr_set := db.get(attrs, entity)
 		_, is_graphic := gen_facts.attr_find(attr_set, "canvas_graphic")
 		_, is_layout := gen_facts.attr_find(attr_set, "canvas_layout")
+		_, is_rect := gen_facts.attr_find(attr_set, "canvas_rect")
+		_, is_measure := gen_facts.attr_find(attr_set, "canvas_measure")
 		pointer_args, is_pointer := gen_facts.attr_find(attr_set, "comp_on_pointer_ui")
-		if !is_graphic && !is_layout && !is_pointer do continue
+		if !is_graphic && !is_layout && !is_pointer && !is_rect && !is_measure do continue
 		where_ := fmt.tprintf("%s:%d", gen_facts.decl_rel_path(decl), decl.decl.pos.line)
 		if db.get(procs, entity) == nil {
 			fmt.eprintfln("prebuild: %s: %s must be a proc", where_, decl.name)
@@ -69,6 +79,18 @@ canvas_provide :: proc(w: ^db.World) -> bool {
 		editor := strings.has_suffix(decl.pkg_path, "/editor") || strings.contains(decl.pkg_path, "/editor/")
 		if is_layout {
 			db.set(comps, entity, Canvas_GenComp{layout = true, editor = editor})
+			continue
+		}
+		if is_rect {
+			db.set(comps, entity, Canvas_GenComp{layout = true, rect = true, editor = editor})
+			continue
+		}
+		if is_measure {
+			if !strings.has_prefix(decl.name, "canvas_measure_") || len(decl.name) == len("canvas_measure_") {
+				fmt.eprintfln("prebuild: %s: a canvas measure proc is named canvas_measure_<Type>, the component's own name", where_)
+				return false
+			}
+			db.set(comps, entity, Canvas_GenComp{type_name = decl.name[len("canvas_measure_"):], measure = true, editor = editor})
 			continue
 		}
 		if is_pointer {
@@ -115,6 +137,8 @@ _Canvas_Row :: struct {
 	path:      string,
 	type_name: string, // "" for a layout
 	pointer:   bool,
+	rect:      bool,
+	measure:   bool,
 	editor:    bool,
 }
 
@@ -126,7 +150,7 @@ canvas_generate :: proc(w: ^db.World) -> bool {
 	for entity in db.matched(w, &m) {
 		decl := db.get(decls, entity)
 		c := db.get(comps, entity)
-		append(&rows, _Canvas_Row{name = decl.name, pkg = decl.pkg.name, path = decl.pkg_path, type_name = c.type_name, pointer = c.pointer, editor = c.editor})
+		append(&rows, _Canvas_Row{name = decl.name, pkg = decl.pkg.name, path = decl.pkg_path, type_name = c.type_name, pointer = c.pointer, rect = c.rect, measure = c.measure, editor = c.editor})
 	}
 	slice.sort_by(rows[:], proc(a, b: _Canvas_Row) -> bool {
 		if a.pkg != b.pkg do return a.pkg < b.pkg
@@ -176,7 +200,11 @@ canvas_generate :: proc(w: ^db.World) -> bool {
 _write_canvas_register :: proc(b: ^strings.Builder, r: _Canvas_Row, own_pkg: string) {
 	q := r.pkg == own_pkg ? "" : fmt.tprintf("%s.", r.pkg)
 	if r.type_name == "" {
-		fmt.sbprintf(b, "\tengine.canvas_layout_register(%s%s)\n", q, r.name)
+		fmt.sbprintf(b, "\tengine.%s(%s%s)\n", "canvas_rect_register" if r.rect else "canvas_layout_register", q, r.name)
+		return
+	}
+	if r.measure {
+		fmt.sbprintf(b, "\tengine.canvas_measure_register(.%s, proc(comp: rawptr, width: f32) -> [2]f32 {{ return %s%s(cast(^%s%s)comp, width) }})\n", r.type_name, q, r.name, q, r.type_name)
 		return
 	}
 	if r.pointer {

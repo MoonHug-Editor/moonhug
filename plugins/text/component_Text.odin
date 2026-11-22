@@ -162,6 +162,37 @@ canvas_populate_Text :: proc(tx: ^Text, rect: engine.Rect, out: ^[dynamic]engine
 	append(out, ..kept.quads[:])
 }
 
+// How large the Text wants its node: its string laid out at its font size,
+// wrapped at `width` when the Text wraps (no limit at 0 or less), with the
+// margins added. What a ContentSizeFitter and a LayoutGroup size it by.
+@(canvas_measure)
+canvas_measure_Text :: proc(tx: ^Text, width: f32) -> [2]f32 {
+	if tx.font == {} do return {}
+	p := text_layout_params(tx)
+	margins := [2]f32{tx.margins[0] + tx.margins[2], tx.margins[1] + tx.margins[3]}
+	// Laid out in a rect as wide as it may be and as tall as anything.
+	HUGE :: f32(1e6)
+	limit := width - margins.x if width > 0 && tx.wrap else HUGE
+	str := text_display_string(tx)
+	area := engine.Rect{pos = {0, 0}, size = {max(limit, 1), HUGE}}
+	// Kept like the layout: asked on every resolve of the canvas.
+	key := _layout_key(tx, p, str, area)
+	if kept, has := _measures[tx]; has && kept.key == key do return kept.size
+	quads := make([dynamic]Glyph_Quad, context.temp_allocator)
+	res := layout_text(backend(), p, str, area, &quads)
+	if !res.ok do return {}
+	size := [2]f32{res.size.x + margins.x, res.size.y + margins.y}
+	context.allocator = runtime.default_allocator()
+	_measures[tx] = {key, size}
+	return size
+}
+
+@(private = "file")
+_measures: map[^Text]struct {
+	key:  u64,
+	size: [2]f32,
+}
+
 // A Text's quads and what they were made from. The map and the quads live
 // for the process, so they are the default allocator's.
 @(private = "file")
@@ -201,6 +232,7 @@ _layout_key :: proc(tx: ^Text, p: Layout_Params, str: string, content: engine.Re
 // Forgets a Text's kept layout: the component is going away.
 @(private = "file")
 _layout_drop :: proc(tx: ^Text) {
+	delete_key(&_measures, tx)
 	kept, has := _layouts[tx]
 	if !has do return
 	delete(kept.quads)

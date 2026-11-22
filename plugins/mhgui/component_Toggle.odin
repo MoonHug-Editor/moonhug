@@ -75,7 +75,7 @@ _toggle_show :: proc(t: ^Toggle) {
 @(comp_on_pointer_ui={component=Toggle})
 comp_on_pointer_ui_Toggle :: proc(t: ^Toggle, ev: ^engine.UI_Pointer_Event) {
 	selectable_pointer(&t.selectable, ev)
-	if ev.kind == .Click && ev.button == .Left && t.interactable {
+	if ev.kind == .Click && ev.button == .Left && selectable_usable(&t.selectable, t.owner) {
 		toggle_set(t, !t.is_on)
 		ev.used = true
 	}
@@ -93,7 +93,7 @@ toggles_update :: proc(selected: engine.Transform_Handle, submit, submit_down: b
 	for t, _ in engine.pool_next(&it) {
 		live := t.enabled && engine.transform_active_in_hierarchy(t.owner)
 		chosen := live && selected == t.owner
-		if live && t.interactable && submit && chosen do toggle_set(t, !t.is_on)
+		if live && submit && chosen && selectable_usable(&t.selectable, t.owner) do toggle_set(t, !t.is_on)
 		// The mark follows is_on, set by a click, a key or code.
 		if live do _toggle_show(t)
 		selectable_update(&t.selectable, t.owner, live, chosen, submit_down, dt)

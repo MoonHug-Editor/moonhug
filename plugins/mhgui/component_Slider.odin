@@ -147,7 +147,7 @@ comp_on_pointer_ui_Slider :: proc(s: ^Slider, ev: ^engine.UI_Pointer_Event) {
 	selectable_pointer(&s.selectable, ev)
 	#partial switch ev.kind {
 	case .Down:
-		if ev.button != .Left || !s.interactable do return
+		if ev.button != .Left || !selectable_usable(&s.selectable, s.owner) do return
 		ev.own_drag = true
 		s.dragging = true
 		_slider_to_pointer(s, ev)
@@ -171,7 +171,7 @@ _slider_step :: proc(s: ^Slider) -> f32 {
 // the selection: the node is no usable Slider, or the key runs across it.
 slider_nav :: proc(selected: engine.Transform_Handle, dir: [2]f32) -> bool {
 	_, s := engine.transform_get_comp(selected, Slider)
-	if s == nil || !s.enabled || !s.interactable do return false
+	if s == nil || !s.enabled || !selectable_usable(&s.selectable, selected) do return false
 	along := dir.y if _vertical(s) else dir.x
 	if along == 0 do return false
 	if _reversed(s) do along = -along

@@ -81,6 +81,7 @@ Layout_Params :: struct {
 Layout_Result :: struct {
 	ok:       bool, // the backend serves the font
 	overflow: bool, // a line is wider than the rect or the block is taller, before any cut
+	size:     [2]f32, // the widest line and the block's height, before any cut
 }
 
 @(private = "file")
@@ -183,8 +184,12 @@ layout_text :: proc(b: ^Backend, p: Layout_Params, text: string, rect: engine.Re
 		for l, i in lines do if l.hard && i + 1 < len(lines) do h += para_gap
 		return h
 	}
-	for l in lines do if l.width > rect.size.x + 0.01 do res.overflow = true
-	if block_height(lines[:], line_h, para_gap) > rect.size.y + 0.01 do res.overflow = true
+	for l in lines {
+		if l.width > rect.size.x + 0.01 do res.overflow = true
+		res.size.x = max(res.size.x, l.width)
+	}
+	res.size.y = block_height(lines[:], line_h, para_gap)
+	if res.size.y > rect.size.y + 0.01 do res.overflow = true
 
 	// Ellipsis and Truncate: keep the lines that fit (at least one), then cut
 	// each kept line at the rect's width. The ellipsis takes the room of "...".

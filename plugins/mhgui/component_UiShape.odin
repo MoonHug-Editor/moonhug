@@ -95,6 +95,8 @@ canvas_populate_UiShape :: proc(s: ^UiShape, rect: engine.Rect, out: ^[dynamic]e
 	tint := [4]f32{1, 1, 1, 1}
 	if s.owner != {} {
 		if _, cr := engine.transform_get_comp(s.owner, engine.CanvasRenderer); cr != nil && cr.tinted do tint = cr.tint
+		// A CanvasGroup fades the whole shape, not its fill alone.
+		tint.a *= engine.canvas_group_state(s.owner).alpha
 	}
 	props := make([]engine.Draw_Property, 9, context.temp_allocator)
 	props[0] = {"shape_size", {rect.size.x, rect.size.y, quad_size.x, quad_size.y}}

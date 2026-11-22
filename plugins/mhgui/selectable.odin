@@ -73,7 +73,7 @@ selectable_pointer :: proc(s: ^Selectable, ev: ^engine.UI_Pointer_Event) {
 	case .Enter: s.hovered = true
 	case .Exit:  s.hovered = false
 	case .Down:
-		if ev.button != .Left || !s.interactable do return
+		if ev.button != .Left || !selectable_usable(s, ev.node) do return
 		s.pressed, s.pressed_inside = true, true
 		ev.used = true
 	case .Hold:
@@ -94,8 +94,11 @@ selectable_update :: proc(s: ^Selectable, owner: engine.Transform_Handle, live, 
 		s.hovered, s.pressed, s.pressed_inside = false, false, false
 		return
 	}
+	// A CanvasGroup above it may turn every control under it off.
+	usable := selectable_usable(s, owner)
+	if !usable do s.pressed = false
 	switch {
-	case !s.interactable:               s.state = .Disabled
+	case !usable:                       s.state = .Disabled
 	case s.pressed && s.pressed_inside: s.state = .Pressed
 	case held && chosen:                s.state = .Pressed
 	// Pressed and dragged off: it looks as it does with no pointer on it.
@@ -126,6 +129,12 @@ selectable_update :: proc(s: ^Selectable, owner: engine.Transform_Handle, live, 
 	// Move a fraction of the way each frame: done within fade_duration.
 	t := min(dt / c.fade_duration, 1)
 	engine.canvas_renderer_set_tint(cr, cr.tint + (want - cr.tint) * t)
+}
+
+// Whether the control can be used now: it is interactable, and so says every
+// CanvasGroup above its node.
+selectable_usable :: proc(s: ^Selectable, owner: engine.Transform_Handle) -> bool {
+	return s.interactable && engine.canvas_group_state(owner).interactable
 }
 
 // The Selectable of the control on a node (a Button, a Toggle or a Slider)
