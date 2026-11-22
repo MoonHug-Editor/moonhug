@@ -9,8 +9,9 @@ package mhgui_sample
 //   field with an inner shadow and a glow. Under them, a row of twelve
 //   chips with the same values, which share one draw call.
 //
-// - UiMask: a viewport that cuts a circle, a bar and a line of text to its
-//   rect, plain and turned.
+// - UiMask: a viewport that cuts a circle, a bar and a line of text: with
+//   round corners, turned, a circle, with a soft edge, and one mask in
+//   another.
 // - Pointer events, live while the game plays: a card that the UIDemoDrag
 //   script (ui_demo.odin) drags, taking its events with
 //   @(comp_on_pointer_ui), and a Button whose graphic is a UiShape.

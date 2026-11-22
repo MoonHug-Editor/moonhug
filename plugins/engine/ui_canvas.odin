@@ -13,6 +13,7 @@ import "base:runtime"
 import "core:math"
 import "core:math/linalg"
 import "core:slice"
+import gfx "moonhug:libs/gfx"
 
 // A rectangle in canvas units: bottom-left origin, y up, the same
 // orientation as NDC.
@@ -124,16 +125,33 @@ HitArea :: struct {
 // graphic is not clipped.
 //
 // - The clip follows the node: turned, scaled, or on a canvas in the world.
-// - The edge is one pixel soft.
-// - A node is clipped by the nearest UiMask above it. A mask inside a mask
-//   clips its own nodes to its own rect only, so keep it inside the outer one.
+// - The rect's corners can be round, and its edge can fade.
+// - Masks nest: a node is cut by every mask above it. The nearest one cuts
+//   with its round corners and soft edge. The ones above it cut as plain
+//   rects, and one of them that is turned against the first of them is left
+//   out of the drawing (not of the pointer).
 // - The shader of a clipped quad does the clipping. The built-in unlit
 //   shader, the text shader and the UiShape shader do. Another shader clips
-//   by multiplying its alpha by ui_clip(frag_tangent), the function in those.
+//   by multiplying its alpha by ui_clip, the function in those.
 @(component={menu="UI/UiMask"})
 @(typ_guid={guid = "0907bcc0-c7db-4651-8e5d-826ae1bd8806"})
 UiMask :: struct {
-	using base: CompData `inspect:"-"`,
+	using base:    CompData `inspect:"-"`,
+	corner_radius: f32 `decor:min(0) decor:tooltip(desc="The radius of the round corners, in canvas units. It is cut to half the shorter side, so a large one on a square makes a circle.")`,
+	corners:       UiMask_Corners `decor:tooltip(desc="Which corners are round.")`,
+	softness:      f32 `decor:min(0) decor:tooltip(desc="The width the edge fades over, inward, in canvas units. 0 is a crisp edge.")`,
+}
+
+UiMask_Corner :: enum u8 {
+	Top_Left,
+	Top_Right,
+	Bottom_Right,
+	Bottom_Left,
+}
+UiMask_Corners :: bit_set[UiMask_Corner; u8]
+
+type_reset_UiMask :: proc(m: ^UiMask) {
+	m.corners = {.Top_Left, .Top_Right, .Bottom_Right, .Bottom_Left}
 }
 
 // The nearest enabled UiMask above the node, {} for none. The node's own
@@ -150,14 +168,108 @@ node_mask :: proc(tH: Transform_Handle) -> Transform_Handle {
 	return {}
 }
 
-// A canvas point's place in a mask's rect: from -1 to 1 inside it on both
-// axes. `mask` is the mask node's resolved rect. A mask with no area holds
-// nothing.
-mask_clip_position :: proc(mask: Node_Rect, canvas_point: [3]f32) -> [2]f32 {
-	half := mask.rect.size * 0.5
-	if half.x <= 0 || half.y <= 0 do return {2, 2}
+// A canvas point in a mask node's own space, from its rect's centre.
+@(private = "file")
+_mask_local :: proc(mask: Node_Rect, canvas_point: [3]f32) -> [2]f32 {
 	local := (linalg.inverse(mask.xform) * [4]f32{canvas_point.x, canvas_point.y, canvas_point.z, 1}).xy
-	return (local - (mask.rect.pos + half)) / half
+	return local - (mask.rect.pos + mask.rect.size * 0.5)
+}
+
+// The signed distance from `p` (from the rect's centre) to the mask's
+// outline with its round corners: negative inside. The shaders' ui_clip
+// computes the same.
+mask_distance :: proc(m: ^UiMask, half: [2]f32, p: [2]f32) -> f32 {
+	corner: UiMask_Corner
+	switch {
+	case p.x > 0 && p.y > 0:  corner = .Top_Right
+	case p.x > 0:             corner = .Bottom_Right
+	case p.y > 0:             corner = .Top_Left
+	case:                     corner = .Bottom_Left
+	}
+	r: f32
+	if corner in m.corners do r = clamp(m.corner_radius, 0, min(half.x, half.y))
+	q := [2]f32{abs(p.x) - half.x + r, abs(p.y) - half.y + r}
+	outside := [2]f32{max(q.x, 0), max(q.y, 0)}
+	return min(max(q.x, q.y), 0) + linalg.length(outside) - r
+}
+
+// What the masks above `tH` clip its quads to, false with none. `nodes` are
+// the canvas's resolved rects. The nearest mask clips with its corners and
+// softness. The masks above that one become one rect in the first of their
+// spaces: each is cut into it when it lies straight in that space, and left
+// out when it is turned against it.
+mask_clip :: proc(tH: Transform_Handle, nodes: []Node_Rect) -> (clip: Mask_Clip, ok: bool) {
+	find :: proc(nodes: []Node_Rect, tH: Transform_Handle) -> (Node_Rect, bool) {
+		for n in nodes do if n.tH == tH do return n, true
+		return {}, false
+	}
+	first := node_mask(tH)
+	if first == {} do return
+	clip.near = find(nodes, first) or_return
+	_, clip.mask = transform_get_comp(first, UiMask)
+	second := node_mask(first)
+	if second == {} do return clip, true
+	outer := find(nodes, second) or_return
+	lo, hi := outer.rect.pos, outer.rect.pos + outer.rect.size
+	for next := node_mask(second); next != {}; next = node_mask(next) {
+		m, found := find(nodes, next)
+		if !found do continue
+		// The further mask's rect in the outer one's space.
+		to_outer := linalg.inverse(outer.xform) * m.xform
+		c: [4][2]f32
+		for corner, k in rect_corners(m.rect, to_outer) do c[k] = corner.xy
+		// Straight in that space: its bottom edge runs along x or along y.
+		edge := c[1] - c[0]
+		if abs(edge.x) > 1e-3 && abs(edge.y) > 1e-3 do continue
+		mlo, mhi := c[0], c[0]
+		for p in c[1:] {
+			mlo = {min(mlo.x, p.x), min(mlo.y, p.y)}
+			mhi = {max(mhi.x, p.x), max(mhi.y, p.y)}
+		}
+		lo = {max(lo.x, mlo.x), max(lo.y, mlo.y)}
+		hi = {min(hi.x, mhi.x), min(hi.y, mhi.y)}
+	}
+	clip.outer = outer
+	clip.outer.rect = {pos = lo, size = {max(hi.x - lo.x, 0), max(hi.y - lo.y, 0)}}
+	clip.has_outer = true
+	return clip, true
+}
+
+// A node's clip: the nearest mask and its rect, and the rect of the masks
+// above it (mask_clip).
+Mask_Clip :: struct {
+	mask:      ^UiMask,
+	near:      Node_Rect,
+	outer:     Node_Rect, // its rect is the outer masks cut into one
+	has_outer: bool,
+}
+
+// The clip of a quad with these corners in canvas space, for gfx.draw_quad.
+mask_quad_clip :: proc(c: Mask_Clip, corners: [4][3]f32) -> (q: gfx.Quad_Clip) {
+	q.half = c.near.rect.size * 0.5
+	q.radius = c.mask.corner_radius
+	q.softness = c.mask.softness
+	q.corners = transmute(u8)c.mask.corners
+	for corner, k in corners do q.pos[k] = _mask_local(c.near, corner)
+	if c.has_outer {
+		q.has_outer = true
+		half := c.outer.rect.size * 0.5
+		for corner, k in corners {
+			// A mask with no area holds nothing.
+			q.outer[k] = {2, 2}
+			if half.x > 0 && half.y > 0 do q.outer[k] = _mask_local(c.outer, corner) / half
+		}
+	}
+	return
+}
+
+// Whether a canvas point is inside a mask's outline, round corners included.
+mask_contains :: proc(mask_tH: Transform_Handle, node: Node_Rect, canvas_point: [2]f32) -> bool {
+	_, mask := transform_get_comp(mask_tH, UiMask)
+	if mask == nil do return true
+	half := node.rect.size * 0.5
+	if half.x <= 0 || half.y <= 0 do return false
+	return mask_distance(mask, half, _mask_local(node, {canvas_point.x, canvas_point.y, 0})) <= 0
 }
 
 // Whether the pointer can hit the node: an enabled HitArea, or a drawn
@@ -763,16 +875,9 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 			comp, g, desc, ok := node_graphic(n.tH)
 			if !ok do continue
 			// The mask the node is clipped to, when one is above it.
-			mask: Node_Rect
+			mask: Mask_Clip
 			masked := false
-			if any_mask {
-				if mask_tH := node_mask(n.tH); mask_tH != {} {
-					for m in nodes do if m.tH == mask_tH {
-						mask, masked = m, true
-						break
-					}
-				}
-			}
+			if any_mask do mask, masked = mask_clip(n.tH, nodes[:])
 			clear(&quads)
 			desc.populate(comp, n.rect, &quads)
 			key: Sort_Key
@@ -780,10 +885,8 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 			for q in quads {
 				if asset_guid_is_empty(q.texture) do continue
 				corners: [4][3]f32
-				clip: [4][2]f32
-				if masked {
-					for c, k in graphic_quad_corners(q, n.xform) do clip[k] = mask_clip_position(mask, c)
-				}
+				clip: gfx.Quad_Clip
+				if masked do clip = mask_quad_clip(mask, graphic_quad_corners(q, n.xform))
 				if in_world {
 					corners = graphic_quad_corners(q, canvas_xform * n.xform)
 				} else if view.kind == .Game {
@@ -900,7 +1003,7 @@ canvas_raycast :: proc(point: [2]f32, viewport: [2]f32) -> Transform_Handle {
 			clipped_away := false
 			for mask_tH := node_mask(n.tH); mask_tH != {} && !clipped_away; mask_tH = node_mask(mask_tH) {
 				for m in nodes do if m.tH == mask_tH {
-					if !_point_in_quad(cp, rect_corners(m.rect, m.xform)) do clipped_away = true
+					if !mask_contains(mask_tH, m, cp) do clipped_away = true
 					break
 				}
 			}

@@ -3,7 +3,8 @@ package scenarios
 // The mhgui sample's demo scene in a real editor: it opens with no error and
 // the Game window draws it. The picture is for the eye: the UiShape cells,
 // the UiMask cells with a circle, a bar and a line of text cut to the
-// viewport, and the rows under them.
+// viewport (round, turned, a circle, soft, one in another), and the rows
+// under them.
 
 import "core:encoding/json"
 import "core:fmt"
@@ -33,7 +34,7 @@ ui_demo_scene_opens_and_draws :: proc(t: ^testing.T) {
 	call(r, "invoke_menu", `{"path":"Window/General/Game"}`)
 	frames(r, 30)
 	viewports, _ := at(call(r, "list_objects", `{"name":"Viewport"}`), "objects").(json.Array)
-	testing.expect_value(t, len(viewports), 2) // the two masked viewports
+	testing.expect_value(t, len(viewports), 5) // the masked viewports
 	call(r, "screenshot", `{"target":"game","max_size":900}`)
 	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
 	editor_quit(r)

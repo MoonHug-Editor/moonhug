@@ -35,6 +35,7 @@ struct main0_in
     float3 frag_normal [[user(locn2)]];
     float3 frag_world_pos [[user(locn3)]];
     float4 frag_tangent [[user(locn4)]];
+    float2 frag_uv2 [[user(locn5)]];
 };
 
 static inline __attribute__((always_inline))
@@ -44,85 +45,126 @@ float3 srgb_to_linear(thread const float3& c)
 }
 
 static inline __attribute__((always_inline))
-float ui_clip(thread const float4& t)
+float ui_clip(thread const float4& t, thread const float3& n, thread const float2& outer)
 {
     if (t.w < 1.5)
     {
         return 1.0;
     }
-    float2 d = (float2(1.0) - abs(t.xy)) / fast::max(fwidth(t.xy), float2(9.9999999747524270787835121154785e-07));
-    return fast::clamp(fast::min(d.x, d.y) + 0.5, 0.0, 1.0);
+    int mark = int(t.w + 0.5) - 2;
+    float2 p = t.xy;
+    int _181;
+    if (p.x > 0.0)
+    {
+        _181 = (p.y > 0.0) ? 2 : 4;
+    }
+    else
+    {
+        _181 = (p.y > 0.0) ? 1 : 8;
+    }
+    int corner = _181;
+    float _200;
+    if ((mark & corner) != 0)
+    {
+        _200 = fast::min(n.z, fast::min(n.x, n.y));
+    }
+    else
+    {
+        _200 = 0.0;
+    }
+    float r = _200;
+    float2 q = (abs(p) - n.xy) + float2(r);
+    float d = (fast::min(fast::max(q.x, q.y), 0.0) + length(fast::max(q, float2(0.0)))) - r;
+    float px = fast::max(fwidth(d), 9.9999999747524270787835121154785e-07);
+    float _245;
+    if (t.z > 0.0)
+    {
+        _245 = fast::clamp((-d) / fast::max(t.z, px), 0.0, 1.0);
+    }
+    else
+    {
+        _245 = fast::clamp(0.5 - (d / px), 0.0, 1.0);
+    }
+    float a = _245;
+    if ((mark & 16) != 0)
+    {
+        float2 e = (float2(1.0) - abs(outer)) / fast::max(fwidth(outer), float2(9.9999999747524270787835121154785e-07));
+        a *= fast::clamp(fast::min(e.x, e.y) + 0.5, 0.0, 1.0);
+    }
+    return a;
 }
 
 static inline __attribute__((always_inline))
-float fog_amount(thread const float3& world_pos, constant DrawUBO& _31)
+float fog_amount(thread const float3& world_pos, constant DrawUBO& _35)
 {
-    int mode = int(_31.fog_color.w + 0.5);
+    int mode = int(_35.fog_color.w + 0.5);
     if (mode == 0)
     {
         return 0.0;
     }
-    float3 d = world_pos - _31.view_pos.xyz;
+    float3 d = world_pos - _35.view_pos.xyz;
     float dist = length(d);
     float h = 1.0;
-    if (_31.fog_more.x > 0.0)
+    if (_35.fog_more.x > 0.0)
     {
-        float k = _31.fog_more.x;
+        float k = _35.fog_more.x;
         float ky = k * d.y;
-        float _92;
+        float _96;
         if (abs(ky) > 9.9999997473787516355514526367188e-05)
         {
-            _92 = (1.0 - exp(-ky)) / ky;
+            _96 = (1.0 - exp(-ky)) / ky;
         }
         else
         {
-            _92 = 1.0;
+            _96 = 1.0;
         }
-        h = exp((-k) * (_31.view_pos.y - _31.fog_params.w)) * _92;
+        h = exp((-k) * (_35.view_pos.y - _35.fog_params.w)) * _96;
     }
     float f;
     if (mode == 1)
     {
-        f = 1.0 - exp(((-_31.fog_params.x) * h) * dist);
+        f = 1.0 - exp(((-_35.fog_params.x) * h) * dist);
     }
     else
     {
         if (mode == 2)
         {
-            float x = (_31.fog_params.x * h) * dist;
+            float x = (_35.fog_params.x * h) * dist;
             f = 1.0 - exp((-x) * x);
         }
         else
         {
-            f = fast::clamp((dist - _31.fog_params.y) / fast::max(_31.fog_params.z - _31.fog_params.y, 9.9999997473787516355514526367188e-05), 0.0, 1.0) * fast::clamp(h, 0.0, 1.0);
+            f = fast::clamp((dist - _35.fog_params.y) / fast::max(_35.fog_params.z - _35.fog_params.y, 9.9999997473787516355514526367188e-05), 0.0, 1.0) * fast::clamp(h, 0.0, 1.0);
         }
     }
     return fast::clamp(f, 0.0, 1.0);
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], constant DrawUBO& _31 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
+fragment main0_out main0(main0_in in [[stage_in]], constant DrawUBO& _35 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
 {
     main0_out out = {};
     float4 t = tex.sample(texSmplr, in.frag_uv);
     float3 param = t.xyz;
     out.out_color = float4(srgb_to_linear(param), t.w) * in.frag_color;
     float4 param_1 = in.frag_tangent;
-    out.out_color.w *= ui_clip(param_1);
-    if (out.out_color.w < _31.draw_params.x)
+    float3 param_2 = in.frag_normal;
+    float2 param_3 = in.frag_uv2;
+    out.out_color.w *= ui_clip(param_1, param_2, param_3);
+    if (out.out_color.w < _35.draw_params.x)
     {
         discard_fragment();
     }
-    if (_31.draw_params.y > 0.5)
+    if (_35.draw_params.y > 0.5)
     {
         out.out_color = float4(fast::normalize(in.frag_normal), 1.0);
         return out;
     }
-    float4 _270 = out.out_color;
-    float3 param_2 = in.frag_world_pos;
-    float3 _280 = mix(_270.xyz, _31.fog_color.xyz, float3(fog_amount(param_2, _31)));
-    out.out_color.x = _280.x;
-    out.out_color.y = _280.y;
-    out.out_color.z = _280.z;
+    float4 _378 = out.out_color;
+    float3 param_4 = in.frag_world_pos;
+    float3 _388 = mix(_378.xyz, _35.fog_color.xyz, float3(fog_amount(param_4, _35)));
+    out.out_color.x = _388.x;
+    out.out_color.y = _388.y;
+    out.out_color.z = _388.z;
     return out;
 }
 

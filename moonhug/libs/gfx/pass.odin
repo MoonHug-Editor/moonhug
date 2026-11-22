@@ -916,37 +916,56 @@ _current_vp :: proc() -> i32 {
 // distinct material slices don't merge (compared by pointer). depth_test=false
 // draws over everything (gizmo icons).
 //
-// `clip` clips the quad to a rect (a UI mask): each corner's place in that
-// rect, from -1 to 1 inside it. It rides in the tangent with w = 2
-// (QUAD_CLIP_MARK), which the shaders' ui_clip reads, so a clipped quad has
-// no tangent for a normal map. Clipped and unclipped quads still merge.
-draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture, shader := "", material: []u8 = nil, normal := [3]f32{0, 0, 1}, extra_tex: []^Texture = nil, depth_test := true, clip: ^[4][2]f32 = nil) {
+// `clip` clips the quad (Quad_Clip, a UI mask). It rides in the vertex's
+// tangent, normal and second uv, which the shaders' ui_clip reads, so a
+// clipped quad has no normal or tangent of its own. Clipped and unclipped
+// quads still merge.
+draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture, shader := "", material: []u8 = nil, normal := [3]f32{0, 0, 1}, extra_tex: []^Texture = nil, depth_test := true, clip: ^Quad_Clip = nil) {
 	c := _color_u8(color)
 	first := u32(len(_pass.vtx))
 	n := normal
 	// u runs along the bottom edge, v up the left one: the tangent is the
 	// bottom edge's direction, flipped when the uvs are mirrored.
 	t: [4][4]f32
+	uv2: [4][2]f32
 	if clip != nil {
-		for k in 0 ..< 4 do t[k] = {clip[k].x, clip[k].y, 0, QUAD_CLIP_MARK}
+		mark := QUAD_CLIP_MARK + f32(clip.corners & 15) + (16 if clip.has_outer else 0)
+		for k in 0 ..< 4 do t[k] = {clip.pos[k].x, clip.pos[k].y, max(clip.softness, 0), mark}
+		n = {clip.half.x, clip.half.y, max(clip.radius, 0)}
+		if clip.has_outer do uv2 = clip.outer
 	} else {
 		q := _quad_tangent(corners, uvs, n)
 		t = {q, q, q, q}
 	}
 	append(&_pass.vtx,
-		Vertex{corners[0], n, uvs[0], c, t[0], {}},
-		Vertex{corners[1], n, uvs[1], c, t[1], {}},
-		Vertex{corners[2], n, uvs[2], c, t[2], {}},
-		Vertex{corners[0], n, uvs[0], c, t[0], {}},
-		Vertex{corners[2], n, uvs[2], c, t[2], {}},
-		Vertex{corners[3], n, uvs[3], c, t[3], {}},
+		Vertex{corners[0], n, uvs[0], c, t[0], uv2[0]},
+		Vertex{corners[1], n, uvs[1], c, t[1], uv2[1]},
+		Vertex{corners[2], n, uvs[2], c, t[2], uv2[2]},
+		Vertex{corners[0], n, uvs[0], c, t[0], uv2[0]},
+		Vertex{corners[2], n, uvs[2], c, t[2], uv2[2]},
+		Vertex{corners[3], n, uvs[3], c, t[3], uv2[3]},
 	)
 	_batch_append(.Tris if depth_test else .Tris_Overlay, tex, first, 6, shader, material, extra_tex)
 }
 
-// The tangent w that marks a quad's tangent as a clip position, not a
-// tangent (draw_quad `clip`, the shaders' ui_clip).
+// The tangent w from which a quad's tangent, normal and second uv hold a clip
+// (draw_quad `clip`, the shaders' ui_clip). A real tangent's w is -1, 0 or 1.
+// The mark adds Quad_Clip.corners, and 16 with an outer rect.
 QUAD_CLIP_MARK :: f32(2)
+
+// What a quad is clipped to: a rect with round corners and a soft edge (the
+// nearest UI mask), and inside one more plain rect (the masks above it).
+Quad_Clip :: struct {
+	// Each quad corner's place from the rect's centre, in the rect's own units.
+	pos:       [4][2]f32,
+	half:      [2]f32, // the rect's half size, in those units
+	radius:    f32,    // of the corners in `corners`
+	softness:  f32,    // the width the edge fades over, inward. 0 = one pixel
+	corners:   u8,     // which corners are round: 1 top left, 2 top right, 4 bottom right, 8 bottom left
+	// Each quad corner's place in the outer rect, from -1 to 1 inside it.
+	outer:     [4][2]f32,
+	has_outer: bool,
+}
 
 // A quad's tangent from its corners and uvs (bl, br, tr, tl): the bottom
 // edge's direction, with w the sign that makes cross(normal, tangent) * w

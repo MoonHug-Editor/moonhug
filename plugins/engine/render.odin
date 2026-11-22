@@ -72,10 +72,10 @@ Draw_Quad :: struct {
 	// so they merge like quads of one material. Quads with different values
 	// are separate draws.
 	properties: []Draw_Property,
-	// With `clipped`: each corner's place in the rect the quad is clipped to
-	// (a UiMask), from -1 to 1 inside it. The quad's shader does the clipping
-	// (gfx.draw_quad `clip`): the built-in unlit shader and the UI shaders do.
-	clip:     [4][2]f32,
+	// With `clipped`: what the quad is clipped to (a UiMask and the masks
+	// above it). The quad's shader does the clipping (gfx.draw_quad `clip`):
+	// the built-in unlit shader and the UI shaders do.
+	clip:     gfx.Quad_Clip,
 	clipped:  bool,
 }
 
