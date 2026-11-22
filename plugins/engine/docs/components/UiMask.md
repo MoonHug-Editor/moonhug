@@ -54,7 +54,7 @@ With a `sprite` the mask also multiplies what is under it by the sprite's alpha:
 - The texture's own filter applies: Linear gives a smooth outline, Nearest a pixel-art one.
 - The mask draws nothing itself. To show the image too, put an Image with the same sprite on the node or behind it.
 - One sprite cuts a node: of the masks above it the nearest one with a sprite uses its sprite, and the masks above that one clip by their rect and corners.
-- The pointer goes by the rect and its corners, not by the sprite: a clear part of the image inside the rect still takes the pointer.
+- The pointer follows the sprite: where its alpha is under 0.1, what is under the mask takes no pointer.
 - Nodes under masks with different sprites do not share a draw call.
 
 ## Draw calls
@@ -104,5 +104,4 @@ void main() {
 - At most 8 masks cut one node.
 - A soft edge wider than a corner's radius shows a faint crease running in from that corner.
 - One sprite per node: the nearest mask's with one.
-- The pointer does not follow a sprite's alpha.
 - Surface (lit) shaders are not clipped.

@@ -38,6 +38,7 @@ A node's rect comes from its RectTransform and its parent's rect. Three things i
 - `@(canvas_layout)`: a container places its children. Asked for every node with its rect and its RectTransform children. The mhgui LayoutGroup is one.
 - `@(canvas_rect)`: a component sets its own node's rect. Asked for every node that resolves from its own anchors, with its parent's rect and the rect the anchors gave. The mhgui ContentSizeFitter and AspectRatioFitter are one. A node a container placed is not asked.
 - `@(canvas_effect)`: a component changes the quads of the graphic on its node after the graphic made them, on a proc named `canvas_effect_<T>` that takes the component, the node's rect and the quads. A shadow adds copies behind them, a gradient colours their corners. Effects on one node run in the order of its components. The mhgui plugin's UiGradient, UiShadow and UiOutline are effects.
+- `@(canvas_hit)`: a component says whether a point of its node's rect hits it, on a proc named `canvas_hit_<T>` that takes the component, the rect and the point. See "What the pointer hits".
 - `@(canvas_measure)`: a component says how large it wants its node, on a proc named `canvas_measure_<T>` that takes the component and the width to fit in. `engine.node_measure(node, width)` reads it. The text plugin's Text has one.
 
 ## Position
@@ -61,6 +62,23 @@ The engine's canvas collector runs for Game windows and the Scene window. For ea
 ## The pointer
 
 Every frame, before any game update, `canvas_pointer_update` reads the mouse in viewport coordinates, finds the topmost node under it across the canvases with a GraphicRaycaster, and sends pointer events. Nothing happens while the application has no focus.
+
+### What the pointer hits
+
+- A node is hit inside its rect. A graphic may narrow that with `@(canvas_hit)` on a proc named `canvas_hit_<T>`, which takes the component, the node's rect and a point of it and says whether the point hits. Every component on the node that has one must agree.
+- The mhgui UiShape and UiPolygon are hit by their outlines, and an Image by its sprite's alpha when its `alpha_hit_threshold` is over 0.
+- A node under a [UiMask](components/UiMask.md) is hit only where the mask shows it: inside its rect and corners, and where its sprite's alpha is at least 0.1.
+
+### Touch
+
+Each finger on a touch screen is a pointer of its own. The mouse is pointer 0 and the fingers are 1 and up, in `ev.pointer`.
+
+- A finger sends the same events as the mouse's left button: `Down`, `Hold`, `Drag_Begin`, `Drag`, `Up`, `Click`, `Cancel`. Every control works with it unchanged.
+- Each finger has its own press, its own drag and its own double click, so two fingers hold two buttons, or move two sliders, at once.
+- A finger hovers only while it is down: `Enter` comes with the touch and `Exit` when it lifts.
+- On a touch screen the system also moves the mouse with the first finger. The pointer pass leaves the mouse out while that lasts, so a tap arrives once.
+- A trackpad's fingers are no touches. They move the mouse.
+- Game code reads fingers with `input.touches()`.
 
 ### Taking pointer events
 

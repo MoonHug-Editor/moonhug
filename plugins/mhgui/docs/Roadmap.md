@@ -64,8 +64,8 @@ Status is one of: Done, In progress, Next, Open, Parked.
 | # | Item | What it is | Needs | Status |
 |---|---|---|---|---|
 | 28 | Drag and drop | A drag carries a payload. Nodes say whether they accept it, and the drop goes to the node under the pointer, the dragged node left out | 2 | Open |
-| 29 | Hit test by shape | The pointer hits a UiShape's outline and a sprite's alpha, not the rect: the empty corner of a rounded card takes no click, and neither does the clear part of a sprite mask | 2 | Open |
-| 30 | Touch | Each finger is a pointer with its own id. The events carry the id now, and the input library reads the mouse only | touch in the input library | Open |
+| 29 | Hit test by shape | `@(canvas_hit)`: the pointer hits a UiShape and a UiPolygon by their outlines, an Image by its sprite's alpha over `alpha_hit_threshold`, and nothing under the clear part of a sprite mask | 2 | Done |
+| 30 | Touch | Each finger is a pointer of its own, with its own press and drag: `input.touches()` in the input library, pointers 1 and up in the events. Not run on a touch screen yet | touch in the input library | Done |
 | 31 | Drag threshold by screen density | The threshold is 8 viewport pixels on every screen now | | Open |
 | 32 | Watchers | A component sees events another one used, for sounds and analytics | 2 | Open |
 | 33 | Pointer events for world objects | The same events on a 3D or 2D object with a collider, as `comp_on_pointer_<kind>` beside `comp_on_pointer_ui` | 2 | Open |

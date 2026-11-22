@@ -64,6 +64,9 @@ texture_cache_shutdown :: proc() {
         gfx.texture_destroy(tex.gfx)
     }
     delete(texture_cache)
+    for _, m in _alpha_maps do delete(m.alpha, runtime.default_allocator())
+    delete(_alpha_maps)
+    _alpha_maps = nil
 }
 
 texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
@@ -239,7 +242,62 @@ _texture_load_noise :: proc(key: Asset_GUID) -> (^Texture2D, bool) {
     return &texture_cache[key], true
 }
 
+// A texture's alpha channel on the CPU, for hit tests by a sprite's opaque
+// part: one byte a pixel, rows top down. Read from the artifact the first
+// time one is asked for, kept until the texture unloads.
+@(private = "file")
+_Alpha_Map :: struct {
+	width, height: i32,
+	alpha:         []u8, // empty: the artifact could not be read, not asked again
+}
+
+@(private = "file")
+_alpha_maps: map[Asset_GUID]_Alpha_Map
+
+// The alpha of a texture at a uv (0, 0 the top left), from 0 to 1. False
+// when the texture's image cannot be read. A uv outside the texture is 0.
+texture_alpha :: proc(guid: Asset_GUID, uv: [2]f32) -> (alpha: f32, ok: bool) {
+	m, has := _alpha_maps[guid]
+	if !has {
+		context.allocator = runtime.default_allocator()
+		if _alpha_maps == nil do _alpha_maps = make(map[Asset_GUID]_Alpha_Map)
+		m = _alpha_map_read(guid)
+		_alpha_maps[guid] = m
+	}
+	if len(m.alpha) == 0 do return 0, false
+	if uv.x < 0 || uv.y < 0 || uv.x > 1 || uv.y > 1 do return 0, true
+	x := min(i32(uv.x * f32(m.width)), m.width - 1)
+	y := min(i32(uv.y * f32(m.height)), m.height - 1)
+	return f32(m.alpha[y * m.width + x]) / 255, true
+}
+
+@(private = "file")
+_alpha_map_read :: proc(guid: Asset_GUID) -> (m: _Alpha_Map) {
+	if asset_type(guid) == "noise" do return
+	artifact, artifact_ok := artifact_file(guid)
+	if !artifact_ok do return
+	data, read_err := os.read_entire_file(artifact, context.temp_allocator)
+	if read_err != nil do return
+	d: _Texture_Decoded
+	_texture_decode(data, &d)
+	defer gfx.image_free(&d.image)
+	if !d.ok || len(d.image.pixels) < int(d.image.width * d.image.height * 4) do return
+	m.width, m.height = d.image.width, d.image.height
+	m.alpha = make([]u8, int(m.width * m.height), runtime.default_allocator())
+	for i in 0 ..< int(m.width * m.height) do m.alpha[i] = d.image.pixels[i * 4 + 3]
+	return
+}
+
+@(private = "file")
+_alpha_map_drop :: proc(guid: Asset_GUID) {
+	if m, has := _alpha_maps[guid]; has {
+		delete(m.alpha, runtime.default_allocator())
+		delete_key(&_alpha_maps, guid)
+	}
+}
+
 texture_unload :: proc(guid: Asset_GUID) {
+	_alpha_map_drop(guid)
     if tex, ok := &texture_cache[guid]; ok {
         _texture_sprites_free(tex)
         gfx.texture_destroy(tex.gfx)

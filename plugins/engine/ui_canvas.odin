@@ -204,16 +204,23 @@ UiMask :: struct {
 // height in 0..1 from the top left). False with no sprite, or one that is
 // missing.
 mask_sprite :: proc(mask: ^UiMask) -> (tex: ^gfx.Texture, uv: [4]f32, ok: bool) {
+	t: ^Texture2D
+	t, uv = mask_sprite_uv(mask) or_return
+	return t.gfx, uv, t.gfx != nil
+}
+
+// The texture of a mask's sprite and the sprite's part of it.
+mask_sprite_uv :: proc(mask: ^UiMask) -> (t: ^Texture2D, uv: [4]f32, ok: bool) {
 	if asset_guid_is_empty(mask.sprite.guid) do return
-	t := texture_load(mask.sprite.guid) or_return
-	if t.gfx == nil || t.width <= 0 || t.height <= 0 do return
+	t = texture_load(mask.sprite.guid) or_return
+	if t.width <= 0 || t.height <= 0 do return
 	px := [4]f32{0, 0, f32(t.width), f32(t.height)}
 	if mask.sprite.local_id != 0 {
 		s := texture_sprite_rect(t, mask.sprite.local_id) or_return
 		px = s.rect
 	}
 	w, h := f32(t.width), f32(t.height)
-	return t.gfx, {px.x / w, px.y / h, px.z / w, px.w / h}, true
+	return t, {px.x / w, px.y / h, px.z / w, px.w / h}, true
 }
 
 // The nearest enabled UiMask above the node, {} for none. The node's own
@@ -260,8 +267,20 @@ mask_contains :: proc(mask_tH: Transform_Handle, node: Node_Rect, canvas_point: 
 	if mask == nil do return true
 	half := node.rect.size * 0.5
 	if half.x <= 0 || half.y <= 0 do return false
-	return mask_distance(mask, half, _mask_local(node, {canvas_point.x, canvas_point.y, 0})) <= 0
+	local := _mask_local(node, {canvas_point.x, canvas_point.y, 0})
+	if mask_distance(mask, half, local) > 0 do return false
+	// A sprite's clear part hides what is under the mask: no pointer there.
+	if !asset_guid_is_empty(mask.sprite.guid) {
+		if _, uv, has := mask_sprite_uv(mask); has {
+			unit := [2]f32{local.x / (2 * half.x) + 0.5, 0.5 - local.y / (2 * half.y)}
+			if alpha, known := texture_alpha(mask.sprite.guid, uv.xy + unit * uv.zw); known && alpha < MASK_HIT_ALPHA do return false
+		}
+	}
+	return true
 }
+
+// A sprite mask takes the pointer where its sprite's alpha is at least this.
+MASK_HIT_ALPHA :: f32(0.1)
 
 // Where a canvas's points land in a view's target, for the masks: the pixel
 // a quad's corner is drawn at.
@@ -956,6 +975,43 @@ graphic_quad_points :: proc(q: Graphic_Quad) -> [4][2]f32 {
 	return {{x0 + q.skew[0], y0}, {x1 + q.skew[0], y0}, {x1 + q.skew[1], y1}, {x0 + q.skew[1], y1}}
 }
 
+// Whether the pointer at `point`, in the node's space and inside its rect,
+// hits what the component draws there: a shape's outline, an image's
+// opaque part.
+Canvas_Hit_Proc :: proc(comp: rawptr, rect: Rect, point: [2]f32) -> bool
+
+// Declares `canvas_hit_<T>`, the proc that says whether a point of the
+// node's rect hits a component of type T. T is a @(component) of the same
+// package and the proc takes a ^T, the node's rect and the point. A type
+// has at most one. A node with none is hit anywhere in its rect.
+@(extension_point={attribute="canvas_hit", target="proc", fields=""})
+canvas_hit_procs: [TypeKey]Canvas_Hit_Proc
+
+@(private = "file")
+_canvas_hits_any: bool
+
+canvas_hit_register :: proc(key: TypeKey, fn: Canvas_Hit_Proc) {
+	canvas_hit_procs[key] = fn
+	_canvas_hits_any = true
+}
+
+// Whether a point of a node's rect hits the node: every enabled component
+// on it that has a hit proc says so.
+node_hit :: proc(tH: Transform_Handle, rect: Rect, point: [2]f32) -> bool {
+	if !_canvas_hits_any do return true
+	w := ctx_world()
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return true
+	for owned in t.components {
+		fn := canvas_hit_procs[owned.handle.type_key]
+		if fn == nil do continue
+		c := world_pool_get(w, owned.handle)
+		if c == nil || !(cast(^CompData)c).enabled do continue
+		if !fn(c, rect, point) do return false
+	}
+	return true
+}
+
 // Changes the quads of the graphic on its node after the graphic made them:
 // a shadow or an outline adds copies behind them, a gradient colours them.
 Canvas_Effect_Proc :: proc(comp: rawptr, rect: Rect, quads: ^[dynamic]Graphic_Quad)
@@ -1255,6 +1311,11 @@ canvas_raycast :: proc(point: [2]f32, viewport: [2]f32) -> Transform_Handle {
 			corners := rect_corners(n.rect, n.xform)
 			if c.ignore_reversed && _quad_reversed(corners) do continue
 			if !_point_in_quad(cp, corners) do continue
+			// Inside the rect: the graphic may say the point misses it.
+			if _canvas_hits_any {
+				local := linalg.inverse(n.xform) * [4]f32{cp.x, cp.y, 0, 1}
+				if !node_hit(n.tH, n.rect, local.xy) do continue
+			}
 			// Outside a mask above it, the node is not there to hit. Every
 			// mask up the chain counts here.
 			clipped_away := false

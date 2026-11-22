@@ -24,7 +24,7 @@ The arrow points right and stretches with its rect. The chart is a line through 
 |---|---|---|
 | `color` | white | The fill, alpha included. |
 | `material` | none | The material the mesh draws with. |
-| `raycast_target` | on | The pointer can hover and click this graphic, by its rect. |
+| `raycast_target` | on | The pointer can hover and click this graphic, on its fill and its line. |
 | `points` | empty | The outline, in the node's rect: (0, 0) is the bottom left corner and (1, 1) the top right. |
 | `fill` | on | Fill the outline. |
 | `line_width` | 0 | The width of a line through the points, in canvas units. 0 draws none. |
@@ -40,6 +40,7 @@ The arrow points right and stretches with its rect. The chart is a line through 
 - With `antialias` the edges of the fill and of the line fade out over one canvas unit, by a strip of triangles whose outer points have no alpha. On a canvas scaled far up or down the fade is wider or thinner than a pixel.
 - A [UiGradient](UiGradient.md) on the node runs a gradient across the shape, and [UiShadow](UiShadow.md) and [UiOutline](UiOutline.md) work on it as on any graphic.
 - Fewer than three points fill nothing, and fewer than two draw nothing.
+- The pointer hits the fill and the line, not the rest of the rect. A click beside an arrow's head goes to what is behind it.
 
 ## Editing the points
 
@@ -54,5 +55,4 @@ Each drag is one undo step.
 ## Limits
 
 - The Scene window does not remove a point. The inspector's list does.
-- The pointer hits the rect, not the outline.
 - No round corners or round line ends.

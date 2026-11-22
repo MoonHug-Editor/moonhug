@@ -120,22 +120,50 @@ _Press :: struct {
 	drag_refused: bool, // no node took Drag_Begin: the press stays a click
 }
 
+// The most pointers at once: the mouse and the fingers of a touch screen.
+UI_MAX_POINTERS :: 1 + input.MAX_TOUCHES
+
+// One pointer's state. Each pointer has its own press, hover chain and
+// double click, so two fingers press two buttons at once.
 @(private = "file")
-_press: _Press
-// The hover chain, the hit node first, then its parents.
+_Pointer :: struct {
+	id:         int,  // 0 is the mouse, 1 and up a finger
+	touch:      u64,  // a finger's id in the input library
+	used:       bool, // a finger's slot is taken
+	press:      _Press,
+	hover:      [dynamic]Transform_Handle, // the hit node first, then its parents
+	last_click: struct {
+		node:  Transform_Handle,
+		time:  f64,
+		count: int,
+	},
+	position:   [2]f32,
+	hovered:    Transform_Handle,
+}
+
 @(private = "file")
-_hover: [dynamic]Transform_Handle
+_pointers: [UI_MAX_POINTERS]_Pointer
+// The pointer whose events are being sent.
 @(private = "file")
-_last_click: struct {
-	node:  Transform_Handle,
-	time:  f64,
-	count: int,
+_cur: ^_Pointer
+
+// What one pointer did this frame.
+@(private = "file")
+_Pointer_In :: struct {
+	position: [2]f32,
+	delta:    [2]f32,
+	wheel:    f32,
+	pressed:  [input.Mouse_Button]bool,
+	released: [input.Mouse_Button]bool,
 }
 
 // Whether the pointer is over UI, or holds a press that began on it: game
 // code checks it so a click on a button is not also a click in the world.
 ui_pointer_over_ui :: proc() -> bool {
-	return _ui_pointer.hovered != {} || (_press.down && _press.owner != {})
+	for ptr in _pointers {
+		if ptr.hovered != {} || (ptr.press.down && ptr.press.owner != {}) do return true
+	}
+	return false
 }
 
 // The pointer's position on the canvas of the event's node, in canvas units
@@ -162,12 +190,16 @@ ui_pointer_canvas_delta :: proc(ev: ^UI_Pointer_Event) -> [2]f32 {
 // Takes the pointer from the node that owns it: the owner gets Cancel, and
 // the press ends with no Up and no Click.
 ui_pointer_cancel :: proc() {
-	if !_press.down do return
-	if _press.owner != {} {
-		ev := _event(.Cancel, _press.owner)
-		_deliver(_press.owner, &ev)
+	for &ptr in _pointers {
+		if !ptr.press.down do continue
+		_cur = &ptr
+		if _cur.press.owner != {} {
+			ev := _event(.Cancel, _cur.press.owner)
+			_deliver(_cur.press.owner, &ev)
+		}
+		_cur.press = {}
 	}
-	_press = {}
+	_cur = &_pointers[0]
 	_ui_pointer.pressed = {}
 }
 
@@ -175,12 +207,13 @@ ui_pointer_cancel :: proc() {
 _event :: proc(kind: UI_Pointer_Kind, target: Transform_Handle) -> UI_Pointer_Event {
 	ev := UI_Pointer_Event{
 		kind           = kind,
-		button         = _press.button,
+		pointer        = _cur.id,
+		button         = _cur.press.button,
 		target         = target,
-		position       = _ui_pointer.position,
-		press_position = _press.position,
+		position       = _cur.position,
+		press_position = _cur.press.position,
 	}
-	if _press.down do ev.held = f32(time.now(.Unscaled) - _press.time)
+	if _cur.press.down do ev.held = f32(time.now(.Unscaled) - _cur.press.time)
 	return ev
 }
 
@@ -194,7 +227,7 @@ _deliver :: proc(node: Transform_Handle, ev: ^UI_Pointer_Event) {
 	owned := make([]Handle, len(t.components), context.temp_allocator)
 	for c, i in t.components do owned[i] = c.handle
 	ev.node = node
-	ev.inside = _ui_pointer.hovered != {} && transform_is_under(_ui_pointer.hovered, node)
+	ev.inside = _cur.hovered != {} && transform_is_under(_cur.hovered, node)
 	for h in owned {
 		fn := ui_pointer_procs[h.type_key]
 		if fn == nil do continue
@@ -241,7 +274,7 @@ _common_ancestor :: proc(a, b: Transform_Handle) -> Transform_Handle {
 // deepest first, then Enter for the ones that joined, the highest first.
 @(private = "file")
 _hover_update :: proc(hit: Transform_Handle) {
-	if _hover == nil do _hover = make([dynamic]Transform_Handle, runtime.default_allocator())
+	if _cur.hover == nil do _cur.hover = make([dynamic]Transform_Handle, runtime.default_allocator())
 	w := ctx_world()
 	chain := make([dynamic]Transform_Handle, context.temp_allocator)
 	for node, n := hit, 0; node != {} && n < 4096; n += 1 {
@@ -254,10 +287,10 @@ _hover_update :: proc(hit: Transform_Handle) {
 		for e in list do if e == h do return true
 		return false
 	}
-	old := make([]Transform_Handle, len(_hover), context.temp_allocator)
-	copy(old, _hover[:])
-	clear(&_hover)
-	append(&_hover, ..chain[:])
+	old := make([]Transform_Handle, len(_cur.hover), context.temp_allocator)
+	copy(old, _cur.hover[:])
+	clear(&_cur.hover)
+	append(&_cur.hover, ..chain[:])
 	for node in old {
 		if contains(chain[:], node) do continue
 		ev := _event(.Exit, hit)
@@ -273,94 +306,157 @@ _hover_update :: proc(hit: Transform_Handle) {
 // The pointer pass, once a frame before the game's updates (the mhgui
 // package's ui_tick runs it): reads the mouse, finds the node under it and
 // sends the events above. It also keeps the polled record (ui_pointer).
+//
+// The mouse is pointer 0. Each finger on a touch screen is a pointer of its
+// own, with the left button: it goes down, drags and clicks like the mouse,
+// hovers only while it is down, and two fingers work two controls at once.
+// While the system moves the mouse with a finger, the mouse is left out, so
+// a finger's press arrives once.
 canvas_pointer_update :: proc() {
 	p := &_ui_pointer
 	p.clicked = {}
 	if !application_is_focused() {
 		ui_pointer_cancel()
 		p.hovered = {}
-		_hover_update({})
+		for &ptr in _pointers {
+			_cur = &ptr
+			_cur.hovered = {}
+			_hover_update({})
+			ptr.used = false
+		}
+		_cur = &_pointers[0]
 		return
 	}
+	// The mouse.
+	_cur = &_pointers[0]
+	finger_mouse := input.mouse_is_touch()
+	mouse := _Pointer_In{position = input.mouse_position(), delta = input.mouse_delta(), wheel = input.wheel()}
+	for button in input.Mouse_Button {
+		mouse.pressed[button] = input.mouse_pressed(button) && !finger_mouse
+		mouse.released[button] = input.mouse_released(button)
+	}
+	_pointer_step(mouse, over = !finger_mouse)
+
+	// The fingers.
+	for t in input.touches() {
+		slot: ^_Pointer
+		for &ptr, i in _pointers[1:] {
+			if ptr.used && ptr.touch == t.id {
+				slot = &ptr
+				break
+			}
+			if slot == nil && !ptr.used && t.began {
+				slot = &ptr
+				slot.id = i + 1
+			}
+		}
+		if slot == nil do continue
+		if !slot.used {
+			slot.used, slot.touch = true, t.id
+			slot.press, slot.last_click = {}, {}
+		}
+		_cur = slot
+		finger := _Pointer_In{position = t.position, delta = t.delta}
+		finger.pressed[.Left] = t.began
+		finger.released[.Left] = t.ended
+		_pointer_step(finger, over = true)
+		if t.ended {
+			// A finger that is up is over nothing.
+			_cur.hovered = {}
+			_hover_update({})
+			p.hovered = _pointers[0].hovered
+			slot.used = false
+		}
+	}
+	_cur = &_pointers[0]
+}
+
+// One pointer's frame: finds the node under it and sends its events. With
+// `over` off the pointer is over nothing.
+@(private = "file")
+_pointer_step :: proc(input_now: _Pointer_In, over: bool) {
+	p := &_ui_pointer
 	w := ctx_world()
-	p.position = input.mouse_position()
-	hit := canvas_raycast(p.position, input.viewport_size())
+	_cur.position = input_now.position
+	p.position = input_now.position
+	hit := canvas_raycast(input_now.position, input.viewport_size()) if over else Transform_Handle{}
+	_cur.hovered = hit
 	p.hovered = hit
 	// An owner that left the world takes its press with it.
-	if _press.down && _press.owner != {} && !pool_valid(&w.transforms, Handle(_press.owner)) do _press = {}
-	if !_press.down do _hover_update(hit)
+	if _cur.press.down && _cur.press.owner != {} && !pool_valid(&w.transforms, Handle(_cur.press.owner)) do _cur.press = {}
+	if !_cur.press.down do _hover_update(hit)
 
 	// The press frame's mouse movement came before the press: it is no drag.
 	pressed_now := false
 	for button in input.Mouse_Button {
-		if !input.mouse_pressed(button) do continue
-		if _press.down {
+		if !input_now.pressed[button] do continue
+		if _cur.press.down {
 			// A second button during a press goes to the press's owner.
-			if _press.owner != {} {
-				ev := _event(.Down, _press.owner)
+			if _cur.press.owner != {} {
+				ev := _event(.Down, _cur.press.owner)
 				ev.button = button
-				_deliver(_press.owner, &ev)
+				_deliver(_cur.press.owner, &ev)
 			}
 			continue
 		}
 		pressed_now = true
-		_press = {down = true, button = button, hit = hit, position = p.position, time = time.now(.Unscaled)}
+		_cur.press = {down = true, button = button, hit = hit, position = p.position, time = time.now(.Unscaled)}
 		if hit != {} {
 			ev := _event(.Down, hit)
 			taker := _bubble(hit, &ev)
-			_press.owner = taker if taker != {} else hit
-			_press.owner_used = taker != {}
-			_press.own_drag = taker != {} && ev.own_drag
+			_cur.press.owner = taker if taker != {} else hit
+			_cur.press.owner_used = taker != {}
+			_cur.press.own_drag = taker != {} && ev.own_drag
 		}
-		if button == .Left do p.selected = _press.owner
-		if _press.own_drag {
-			begin := _event(.Drag_Begin, _press.owner)
-			_deliver(_press.owner, &begin)
-			_press.dragging = true
+		if button == .Left do p.selected = _cur.press.owner
+		if _cur.press.own_drag {
+			begin := _event(.Drag_Begin, _cur.press.owner)
+			_deliver(_cur.press.owner, &begin)
+			_cur.press.dragging = true
 		}
 	}
 
-	if _press.down && _press.owner != {} {
-		delta := input.mouse_delta()
-		moved := p.position - _press.position
-		if !_press.dragging && !_press.drag_refused && linalg.length(moved) > ui_drag_threshold {
-			ev := _event(.Drag_Begin, _press.hit)
+	if _cur.press.down && _cur.press.owner != {} {
+		delta := input_now.delta
+		moved := p.position - _cur.press.position
+		if !_cur.press.dragging && !_cur.press.drag_refused && linalg.length(moved) > ui_drag_threshold {
+			ev := _event(.Drag_Begin, _cur.press.hit)
 			ev.delta = moved
-			taker := _bubble(_press.hit, &ev)
+			taker := _bubble(_cur.press.hit, &ev)
 			if taker == {} {
-				_press.drag_refused = true
+				_cur.press.drag_refused = true
 			} else {
-				if taker != _press.owner {
-					cancel := _event(.Cancel, _press.owner)
-					_deliver(_press.owner, &cancel)
+				if taker != _cur.press.owner {
+					cancel := _event(.Cancel, _cur.press.owner)
+					_deliver(_cur.press.owner, &cancel)
 				}
-				_press.owner = taker
-				_press.owner_used = true
-				_press.dragging = true
+				_cur.press.owner = taker
+				_cur.press.owner_used = true
+				_cur.press.dragging = true
 			}
-		} else if _press.dragging && delta != {} && !pressed_now {
-			ev := _event(.Drag, _press.owner)
+		} else if _cur.press.dragging && delta != {} && !pressed_now {
+			ev := _event(.Drag, _cur.press.owner)
 			ev.delta = delta
-			_deliver(_press.owner, &ev)
+			_deliver(_cur.press.owner, &ev)
 		}
-		if _press.down && !_press.dragging {
-			ev := _event(.Hold, _press.owner)
-			_deliver(_press.owner, &ev)
+		if _cur.press.down && !_cur.press.dragging {
+			ev := _event(.Hold, _cur.press.owner)
+			_deliver(_cur.press.owner, &ev)
 		}
 	}
-	p.pressed = _press.owner if _press.down && !_press.dragging else {}
+	p.pressed = _cur.press.owner if _cur.press.down && !_cur.press.dragging else {}
 
 	for button in input.Mouse_Button {
-		if !input.mouse_released(button) || !_press.down do continue
-		if button != _press.button {
-			if _press.owner != {} {
-				ev := _event(.Up, _press.owner)
+		if !input_now.released[button] || !_cur.press.down do continue
+		if button != _cur.press.button {
+			if _cur.press.owner != {} {
+				ev := _event(.Up, _cur.press.owner)
 				ev.button = button
-				_deliver(_press.owner, &ev)
+				_deliver(_cur.press.owner, &ev)
 			}
 			continue
 		}
-		press := _press
+		press := _cur.press
 		if press.owner != {} {
 			if press.dragging {
 				end := _event(.Drag_End, press.owner)
@@ -370,8 +466,8 @@ canvas_pointer_update :: proc() {
 			_bubble(press.owner, &up)
 		}
 		// The procs above may have cancelled the press.
-		clicks := _press.down && !press.dragging
-		_press = {}
+		clicks := _cur.press.down && !press.dragging
+		_cur.press = {}
 		p.pressed = {}
 		if clicks {
 			start: Transform_Handle
@@ -382,12 +478,12 @@ canvas_pointer_update :: proc() {
 			}
 			if start != {} {
 				now := time.now(.Unscaled)
-				again := _last_click.node == start && now - _last_click.time <= UI_DOUBLE_CLICK_TIME
-				_last_click = {node = start, time = now, count = _last_click.count + 1 if again else 1}
+				again := _cur.last_click.node == start && now - _cur.last_click.time <= UI_DOUBLE_CLICK_TIME
+				_cur.last_click = {node = start, time = now, count = _cur.last_click.count + 1 if again else 1}
 				ev := _event(.Click, start)
 				ev.button = press.button
 				ev.press_position = press.position
-				ev.click_count = _last_click.count
+				ev.click_count = _cur.last_click.count
 				taker := _bubble(start, &ev)
 				if press.button == .Left do p.clicked = taker if taker != {} else start
 			}
@@ -395,7 +491,7 @@ canvas_pointer_update :: proc() {
 		_hover_update(hit)
 	}
 
-	if wheel := input.wheel(); wheel != 0 && hit != {} {
+	if wheel := input_now.wheel; wheel != 0 && hit != {} {
 		ev := _event(.Scroll, hit)
 		ev.scroll = {0, wheel}
 		_bubble(hit, &ev)
@@ -404,8 +500,11 @@ canvas_pointer_update :: proc() {
 
 // Forgets the pointer's state: tests, and a world that was replaced.
 ui_pointer_reset :: proc() {
-	_press = {}
-	_last_click = {}
-	if _hover != nil do clear(&_hover)
+	for &ptr, i in _pointers {
+		hover := ptr.hover
+		if hover != nil do clear(&hover)
+		ptr = {id = i, hover = hover}
+	}
+	_cur = &_pointers[0]
 	_ui_pointer = {}
 }

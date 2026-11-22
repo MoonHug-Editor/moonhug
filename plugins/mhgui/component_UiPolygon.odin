@@ -191,3 +191,32 @@ canvas_populate_UiPolygon :: proc(s: ^UiPolygon, rect: engine.Rect, out: ^[dynam
 		}
 	}
 }
+
+// The pointer hits a UiPolygon on its fill and on its line, not in the rest
+// of its rect.
+@(canvas_hit)
+canvas_hit_UiPolygon :: proc(s: ^UiPolygon, rect: engine.Rect, point: [2]f32) -> bool {
+	n := len(s.points)
+	if n < 2 || rect.size.x <= 0 || rect.size.y <= 0 do return false
+	points := make([][2]f32, n, context.temp_allocator)
+	for p, i in s.points do points[i] = rect.pos + p * rect.size
+	if s.fill && n >= 3 {
+		// A ray to the right crosses the outline an odd number of times.
+		inside := false
+		for a, i in points {
+			b := points[(i + 1) % n]
+			if (a.y > point.y) != (b.y > point.y) && point.x < a.x + (point.y - a.y) / (b.y - a.y) * (b.x - a.x) do inside = !inside
+		}
+		if inside do return true
+	}
+	if s.line_width > 0 {
+		reach := s.line_width * 0.5
+		for i in 0 ..< (n if s.closed && n >= 3 else n - 1) {
+			a, b := points[i], points[(i + 1) % n]
+			e := b - a
+			t := clamp(linalg.dot(point - a, e) / max(linalg.dot(e, e), 1e-6), 0, 1)
+			if linalg.length(point - (a + e * t)) <= reach do return true
+		}
+	}
+	return false
+}

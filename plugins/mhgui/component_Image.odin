@@ -39,6 +39,7 @@ Image :: struct {
 	fill_origin:     Fill_Origin `decor:tooltip(desc="Filled: where the fill starts. Horizontal: Left or Right. Vertical: Bottom or Top. Radial_180: the edge the sweep turns on. Radial_360: the edge the sweep starts at. Radial_90: the corner, Bottom is bottom left, Right bottom right, Top top right, Left top left.")`,
 	fill_amount:     f32 `decor:range(0, 1) decor:tooltip(desc="Filled: how much of the image shows, 0 to 1.")`,
 	fill_clockwise:  bool `decor:tooltip(desc="Filled, radial: the sweep turns clockwise.")`,
+	alpha_hit_threshold: f32 `decor:range(0, 1) decor:tooltip(desc="The pointer hits the image only where the sprite's alpha is at least this. 0 hits the whole rect. Simple and Filled images.")`,
 }
 
 Image_Type :: enum u8 {
@@ -356,4 +357,44 @@ image_uvs :: proc(tex_size: [2]f32, px: [4]f32) -> [4][2]f32 {
 	v_top := px.y / tex_size.y
 	v_bottom := (px.y + px.w) / tex_size.y
 	return {{u0, v_bottom}, {u1, v_bottom}, {u1, v_top}, {u0, v_top}}
+}
+
+// The pointer hits an Image with alpha_hit_threshold over 0 only where its
+// sprite's alpha reaches it: the clear corners of a round icon take no
+// pointer. A Filled image is also missed in the part that does not show.
+// Sliced and Tiled images, and an image whose texture cannot be read, are
+// hit anywhere in the rect.
+@(canvas_hit)
+canvas_hit_Image :: proc(img: ^Image, rect: engine.Rect, point: [2]f32) -> bool {
+	if img.alpha_hit_threshold <= 0 || engine.asset_guid_is_empty(img.sprite.guid) do return true
+	if img.image_type != .Simple && img.image_type != .Filled do return true
+	tex, px, tex_size, _, ok := image_source(img)
+	if !ok do return true
+	fit := image_fit(rect, {px.z, px.w}, img.preserve_aspect)
+	if fit.size.x <= 0 || fit.size.y <= 0 do return false
+	t := (point - fit.pos) / fit.size
+	if t.x < 0 || t.y < 0 || t.x > 1 || t.y > 1 do return false
+	if img.image_type == .Filled {
+		// Inside one of the triangles and bars the fill draws.
+		quads := make([dynamic]engine.Graphic_Quad, context.temp_allocator)
+		image_filled(&quads, tex, engine.QUAD_UVS_FULL, fit, img.fill_method, img.fill_origin, img.fill_amount, img.fill_clockwise)
+		shown := false
+		for q in quads {
+			c := engine.graphic_quad_points(q)
+			side := [4]f32{}
+			for k in 0 ..< 4 {
+				a, b := c[k], c[(k + 1) % 4]
+				side[k] = (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x)
+			}
+			if (side[0] >= 0 && side[1] >= 0 && side[2] >= 0 && side[3] >= 0) || (side[0] <= 0 && side[1] <= 0 && side[2] <= 0 && side[3] <= 0) {
+				shown = true
+				break
+			}
+		}
+		if !shown do return false
+	}
+	// The sprite's pixel under the point: its rows run down.
+	uv := [2]f32{(px.x + t.x * px.z) / tex_size.x, (px.y + (1 - t.y) * px.w) / tex_size.y}
+	alpha, known := engine.texture_alpha(tex, uv)
+	return !known || alpha >= img.alpha_hit_threshold
 }

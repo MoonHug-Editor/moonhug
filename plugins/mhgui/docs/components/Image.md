@@ -32,6 +32,15 @@ The panel stretches a 9-slice frame to its size without stretching the corners. 
 | `fill_origin` | Bottom | Filled: where the fill starts, below. |
 | `fill_amount` | 1 | Filled: how much of the image shows, 0 to 1. |
 | `fill_clockwise` | on | Filled, radial: the sweep turns clockwise. |
+| `alpha_hit_threshold` | 0 | The pointer hits the image only where the sprite's alpha is at least this. 0 hits the whole rect. |
+
+## What the pointer hits
+
+- With `alpha_hit_threshold` at 0 the pointer hits the whole rect.
+- Over 0, it hits only where the sprite's alpha reaches the threshold: the clear corners of a round icon take no click, and what is behind them does. 0.1 takes everything that shows, 0.5 the solid part.
+- A Filled image is also missed in the part that does not show.
+- It works on Simple and Filled images. Sliced and Tiled ones are hit anywhere in the rect.
+- The first hit test of a texture reads its alpha into memory, a byte a pixel, and keeps it while the texture is loaded.
 
 ## Image types
 

@@ -96,8 +96,12 @@ The plugin's shader is `assets/shaders/ui_shape.glsl`. A material with another s
 
 The quad's uvs run 0 to 1 over the whole quad, v up, and the fill is the vertex colour. A property the shader does not declare is dropped.
 
+## What the pointer hits
+
+The pointer hits a UiShape inside its outline, not in the rest of its rect: the cut-away corner of a round card, the room between a star's points and the corners round an ellipse take no click, and what is behind them does. A border is part of the outline. A fill with no alpha is still hit, which is what makes an invisible round button.
+
 ## Limits
 
-- The pointer hits the node's rect, not the outline: the empty corner of a star takes a click.
+- The pointer's hit test does not count the shadow, nor the fade of the edge.
 - A gradient has two colours and runs in a straight line.
 - The Scene window's selection outline and picking follow the quad, which a drop shadow makes larger than the rect.

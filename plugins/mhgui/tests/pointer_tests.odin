@@ -862,3 +862,134 @@ test_selectable_sprite_swap :: proc(t: ^testing.T) {
 	testing.expect_value(t, img.sprite, sprite(4))
 	engine.ui_set_selected({})
 }
+
+// One frame of a touch screen: each finger given goes down, moves or comes
+// up at a canvas point from the centre. The mouse stays where it was.
+@(private = "file")
+_Finger :: struct {
+	id:   u64,
+	x, y: f32,
+	kind: sdl.EventType,
+}
+
+@(private = "file")
+_touch_frame :: proc(fingers: .._Finger) {
+	input.frame_reset()
+	for f in fingers {
+		e: sdl.Event
+		e.type = f.kind
+		e.tfinger.fingerID = sdl.FingerID(f.id)
+		// Fingers come as fractions of the window, 800 x 600 here.
+		e.tfinger.x, e.tfinger.y = (400 + f.x) / 800, (300 - f.y) / 600
+		input.apply_event(&e)
+	}
+	mhgui.ui_tick(0)
+}
+
+// Each finger is a pointer of its own: two fingers press and click two
+// buttons at once, and each event says which pointer sent it.
+@(test)
+test_pointer_touches_are_pointers :: proc(t: ^testing.T) {
+	f: _Pointer_Fixture
+	_begin(&f)
+	context.user_ptr = &f.tc.uc
+	defer _end(&f)
+
+	canvas := _canvas()
+	root := _node("Root", canvas, {0, 0}, {800, 600}, drawn = false)
+	left := _as_button(_node("Left", root, {-150, 0}, {100, 40}))
+	right := _as_button(_node("Right", root, {150, 0}, {100, 40}))
+
+	testing.expect_value(t, len(input.touches()), 0)
+	_touch_frame({1, -150, 0, .FINGER_DOWN})
+	testing.expect(t, left.pressed && !right.pressed, "the first finger presses the left button")
+	testing.expect(t, left.hovered, "a finger that is down is over what it touches")
+	testing.expect_value(t, len(input.touches()), 1)
+	_touch_frame({2, 150, 0, .FINGER_DOWN})
+	testing.expect(t, left.pressed && right.pressed, "the second finger presses the right one, the first still holds")
+	testing.expect(t, engine.ui_pointer_over_ui(), "fingers on controls are over the UI")
+
+	// The events carry the pointer: 1 and 2 for the fingers, never the mouse's 0.
+	seen: [3]bool
+	for g in _got[:_got_n] do if g.ev.pointer >= 0 && g.ev.pointer < 3 do seen[g.ev.pointer] = true
+	testing.expect(t, seen[1] && seen[2] && !seen[0], "the fingers are pointers 1 and 2")
+
+	// The second finger comes up: its button clicks, the other is still held.
+	_touch_frame({2, 150, 0, .FINGER_UP})
+	testing.expect(t, right.clicked && !right.pressed, "the right button clicked")
+	testing.expect(t, left.pressed && !left.clicked, "the left one is still held")
+	testing.expect(t, !right.hovered, "a finger that is up is over nothing")
+	_touch_frame({1, -150, 0, .FINGER_UP})
+	testing.expect(t, left.clicked, "the left button clicked")
+	_touch_frame()
+	testing.expect_value(t, len(input.touches()), 0)
+	testing.expect(t, !left.hovered && !left.pressed, "nothing is left over")
+
+	// A finger dragged off its button and released does not click it.
+	_touch_frame({3, -150, 0, .FINGER_DOWN})
+	_touch_frame({3, -150, 200, .FINGER_MOTION})
+	_touch_frame({3, -150, 200, .FINGER_UP})
+	testing.expect(t, !left.clicked, "released off the button, no click")
+
+	// A finger the system takes away cancels nothing it should not: no click.
+	_touch_frame({4, 150, 0, .FINGER_DOWN})
+	_touch_frame({4, 150, 0, .FINGER_CANCELED})
+	testing.expect(t, !right.pressed, "the press is over")
+}
+
+// The pointer hits a UiShape inside its outline, not in the rest of its
+// rect: a click in the cut-away corner of a round card goes to what is
+// behind it.
+@(test)
+test_pointer_hits_a_shape_by_its_outline :: proc(t: ^testing.T) {
+	f: _Pointer_Fixture
+	_begin(&f)
+	context.user_ptr = &f.tc.uc
+	defer _end(&f)
+
+	canvas := _canvas()
+	root := _node("Root", canvas, {0, 0}, {800, 600}, drawn = false)
+	behind := _node("Behind", root, {0, 0}, {300, 300})
+	// A circle: a 100 x 100 rect with a radius past half its side.
+	disc := _node("Disc", root, {0, 0}, {100, 100}, drawn = false)
+	_padd(disc, .CanvasRenderer)
+	shape := cast(^mhgui.UiShape)_padd(disc, .UiShape)
+	mhgui.type_reset_UiShape(shape)
+	shape.corner_radius = {999, 999, 999, 999}
+
+	testing.expect_value(t, engine.canvas_raycast(_at(0, 0), {800, 600}), disc)
+	testing.expect_value(t, engine.canvas_raycast(_at(34, 34), {800, 600}), disc) // 48 from the centre
+	testing.expect_value(t, engine.canvas_raycast(_at(45, 45), {800, 600}), behind) // in the rect, off the disc
+	testing.expect_value(t, engine.canvas_raycast(_at(60, 0), {800, 600}), behind)
+
+	// A star: its points are hit, the room between two of them is not.
+	shape.kind = .Star
+	shape.sides = 5
+	shape.star_inner = 0.4
+	shape.corner_radius = {}
+	testing.expect_value(t, engine.canvas_raycast(_at(0, 45), {800, 600}), disc) // the point that is up
+	testing.expect_value(t, engine.canvas_raycast(_at(0, -45), {800, 600}), behind) // between the two lower points
+	shape.kind = .Ellipse
+	testing.expect_value(t, engine.canvas_raycast(_at(0, -45), {800, 600}), disc)
+	testing.expect_value(t, engine.canvas_raycast(_at(45, 45), {800, 600}), behind)
+
+	// A UiPolygon: its fill and its line, nothing else of its rect.
+	engine.transform_set_active(disc, false)
+	tri := _node("Triangle", root, {0, 0}, {100, 100}, drawn = false)
+	_padd(tri, .CanvasRenderer)
+	poly := cast(^mhgui.UiPolygon)_padd(tri, .UiPolygon)
+	mhgui.type_reset_UiPolygon(poly)
+	defer mhgui.type_cleanup_UiPolygon(poly)
+	append(&poly.points, [2]f32{0, 0}, [2]f32{1, 0}, [2]f32{0.5, 1})
+	testing.expect_value(t, engine.canvas_raycast(_at(0, -20), {800, 600}), tri)
+	testing.expect_value(t, engine.canvas_raycast(_at(-40, 40), {800, 600}), behind) // beside the tip
+	poly.fill = false
+	testing.expect_value(t, engine.canvas_raycast(_at(0, -20), {800, 600}), behind) // no fill, no line
+	poly.line_width = 10
+	testing.expect_value(t, engine.canvas_raycast(_at(0, -47), {800, 600}), tri) // on the bottom edge's line
+	testing.expect_value(t, engine.canvas_raycast(_at(0, -20), {800, 600}), behind)
+
+	// An Image with no threshold is its rect, as before.
+	img := _node("Image", root, {200, 200}, {50, 50})
+	testing.expect_value(t, engine.canvas_raycast(_at(222, 222), {800, 600}), img)
+}

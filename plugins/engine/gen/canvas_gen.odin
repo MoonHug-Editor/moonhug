@@ -18,6 +18,9 @@ package engine_gen
 //   @(canvas_measure)
 //   canvas_measure_Text :: proc(tx: ^Text, width: f32) -> [2]f32 { ... }
 //
+//   @(canvas_hit)
+//   canvas_hit_UiShape :: proc(s: ^UiShape, rect: engine.Rect, point: [2]f32) -> bool { ... }
+//
 //   @(canvas_effect)
 //   canvas_effect_UiShadow :: proc(s: ^UiShadow, rect: engine.Rect, quads: ^[dynamic]engine.Graphic_Quad) { ... }
 //
@@ -47,6 +50,7 @@ Canvas_GenComp :: struct {
 	rect: bool,     // @(canvas_rect), with layout set: registered like a layout
 	measure: bool,  // @(canvas_measure)
 	effect: bool,   // @(canvas_effect)
+	hit: bool,      // @(canvas_hit)
 	editor: bool,
 }
 
@@ -74,8 +78,9 @@ canvas_provide :: proc(w: ^db.World) -> bool {
 		_, is_rect := gen_facts.attr_find(attr_set, "canvas_rect")
 		_, is_measure := gen_facts.attr_find(attr_set, "canvas_measure")
 		_, is_effect := gen_facts.attr_find(attr_set, "canvas_effect")
+		_, is_hit := gen_facts.attr_find(attr_set, "canvas_hit")
 		pointer_args, is_pointer := gen_facts.attr_find(attr_set, "comp_on_pointer_ui")
-		if !is_graphic && !is_layout && !is_pointer && !is_rect && !is_measure && !is_effect do continue
+		if !is_graphic && !is_layout && !is_pointer && !is_rect && !is_measure && !is_effect && !is_hit do continue
 		where_ := fmt.tprintf("%s:%d", gen_facts.decl_rel_path(decl), decl.decl.pos.line)
 		if db.get(procs, entity) == nil {
 			fmt.eprintfln("prebuild: %s: %s must be a proc", where_, decl.name)
@@ -96,6 +101,14 @@ canvas_provide :: proc(w: ^db.World) -> bool {
 				return false
 			}
 			db.set(comps, entity, Canvas_GenComp{type_name = decl.name[len("canvas_measure_"):], measure = true, editor = editor})
+			continue
+		}
+		if is_hit {
+			if !strings.has_prefix(decl.name, "canvas_hit_") || len(decl.name) == len("canvas_hit_") {
+				fmt.eprintfln("prebuild: %s: a canvas hit proc is named canvas_hit_<Type>, the component's own name", where_)
+				return false
+			}
+			db.set(comps, entity, Canvas_GenComp{type_name = decl.name[len("canvas_hit_"):], hit = true, editor = editor})
 			continue
 		}
 		if is_effect {
@@ -153,6 +166,7 @@ _Canvas_Row :: struct {
 	rect:      bool,
 	measure:   bool,
 	effect:    bool,
+	hit:       bool,
 	editor:    bool,
 }
 
@@ -164,7 +178,7 @@ canvas_generate :: proc(w: ^db.World) -> bool {
 	for entity in db.matched(w, &m) {
 		decl := db.get(decls, entity)
 		c := db.get(comps, entity)
-		append(&rows, _Canvas_Row{name = decl.name, pkg = decl.pkg.name, path = decl.pkg_path, type_name = c.type_name, pointer = c.pointer, rect = c.rect, measure = c.measure, effect = c.effect, editor = c.editor})
+		append(&rows, _Canvas_Row{name = decl.name, pkg = decl.pkg.name, path = decl.pkg_path, type_name = c.type_name, pointer = c.pointer, rect = c.rect, measure = c.measure, effect = c.effect, hit = c.hit, editor = c.editor})
 	}
 	slice.sort_by(rows[:], proc(a, b: _Canvas_Row) -> bool {
 		if a.pkg != b.pkg do return a.pkg < b.pkg
@@ -219,6 +233,10 @@ _write_canvas_register :: proc(b: ^strings.Builder, r: _Canvas_Row, own_pkg: str
 	}
 	if r.measure {
 		fmt.sbprintf(b, "\tengine.canvas_measure_register(.%s, proc(comp: rawptr, width: f32) -> [2]f32 {{ return %s%s(cast(^%s%s)comp, width) }})\n", r.type_name, q, r.name, q, r.type_name)
+		return
+	}
+	if r.hit {
+		fmt.sbprintf(b, "\tengine.canvas_hit_register(.%s, proc(comp: rawptr, rect: engine.Rect, point: [2]f32) -> bool {{ return %s%s(cast(^%s%s)comp, rect, point) }})\n", r.type_name, q, r.name, q, r.type_name)
 		return
 	}
 	if r.effect {

@@ -2,6 +2,7 @@ package mhgui
 
 import "core:encoding/uuid"
 import "core:math"
+import "core:math/linalg"
 import "moonhug:packages/engine"
 
 // The graphic that draws a shape with no sprite: a rectangle with a radius
@@ -127,4 +128,53 @@ canvas_populate_UiShape :: proc(s: ^UiShape, rect: engine.Rect, out: ^[dynamic]e
 		material   = ui_shape_material_guid(),
 		properties = props,
 	})
+}
+
+// The signed distance from `p`, counted from the rect's centre with y up, to
+// the outline the UiShape draws in a rect of half size `half`: negative
+// inside. The same outline as the shader's (assets/shaders/ui_shape.glsl
+// shape_sd), without the shadows.
+ui_shape_distance :: proc(s: ^UiShape, half: [2]f32, p: [2]f32) -> f32 {
+	limit := min(half.x, half.y)
+	switch s.kind {
+	case .Ellipse:
+		k0 := linalg.length(p / half)
+		k1 := linalg.length(p / (half * half))
+		return k0 * (k0 - 1) / k1 if k1 > 0 else -limit
+	case .Polygon, .Star:
+		n := f32(s.sides) if s.sides >= 3 else 5
+		inner := math.cos(math.PI / n)
+		if s.kind == .Star do inner = clamp(s.star_inner if s.star_inner > 0 else 0.5, 0.05, 1)
+		round_by := clamp(s.point_rounding, 0, limit * 0.9)
+		r := limit - round_by
+		an := math.PI / n
+		// Folded into half of the sector between two points, a point up.
+		angle := math.atan2(p.x, p.y)
+		bn := angle - 2 * an * math.floor(angle / (2 * an)) - an
+		q := linalg.length(p) * [2]f32{math.cos(bn), abs(math.sin(bn))}
+		a := r * [2]f32{math.cos(an), math.sin(an)}
+		b := [2]f32{r * inner, 0}
+		e := b - a
+		w := q - a
+		h := clamp(linalg.dot(w, e) / linalg.dot(e, e), 0, 1)
+		d := linalg.length(w - e * h)
+		return (-d if w.x * e.y - w.y * e.x > 0 else d) - round_by
+	case .Rect:
+	}
+	radii := s.corner_radius
+	r := radii.y if p.y > 0 else radii.z
+	if p.x <= 0 do r = radii.x if p.y > 0 else radii.w
+	r = clamp(r, 0, limit)
+	q := [2]f32{abs(p.x) - half.x + r, abs(p.y) - half.y + r}
+	return min(max(q.x, q.y), 0) + linalg.length([2]f32{max(q.x, 0), max(q.y, 0)}) - r
+}
+
+// The pointer hits a UiShape inside its outline: the cut-away corner of a
+// rounded card, and the room between a star's points, take no pointer. The
+// shadow is no part of it.
+@(canvas_hit)
+canvas_hit_UiShape :: proc(s: ^UiShape, rect: engine.Rect, point: [2]f32) -> bool {
+	half := rect.size * 0.5
+	if half.x <= 0 || half.y <= 0 do return false
+	return ui_shape_distance(s, half, point - (rect.pos + half)) <= 0
 }

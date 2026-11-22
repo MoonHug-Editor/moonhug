@@ -109,6 +109,37 @@ ui_demo_scene_opens_and_draws :: proc(t: ^testing.T) {
 		dragged := value(r)
 		call(r, "input", `{"steps":[{"type":"up"},{"type":"wait","frames":3}]}`)
 		testing.expectf(t, abs(dragged - 75) <= 2, "dragged to three quarters it is about 75: %v", dragged)
+		// Hits by shape. Under the sprite mask a click lands only where the
+		// heart shows the fill: the clear room beside its tip, a fifth of the
+		// way in from the lower left corner, takes none. The picture sits
+		// about 12 canvas units higher than `spot` says, so the clicks aim
+		// that much lower.
+		hx0, hy0 := spot(game, unit, 750 - 39, 380 - 51)
+		click(r, hx0, hy0)
+		frames(r, 4)
+		testing.expect(t, !is_on(r, "Heart Fill"), "a click in the mask sprite's clear corner lands on nothing")
+		hx1, hy1 := spot(game, unit, 750, 372)
+		click(r, hx1, hy1)
+		frames(r, 4)
+		testing.expect(t, is_on(r, "Heart Fill"), "a click on the heart lands on what is under the mask")
+		// An Image with an alpha threshold: the same, by its own sprite.
+		ax0, ay0 := spot(game, unit, -672 - 19, -370 - 34)
+		click(r, ax0, ay0)
+		frames(r, 4)
+		testing.expect(t, !is_on(r, "Alpha Image"), "a click in the image's clear corner misses it")
+		ax1, ay1 := spot(game, unit, -672, -376)
+		click(r, ax1, ay1)
+		frames(r, 4)
+		testing.expect(t, is_on(r, "Alpha Image"), "a click on its opaque part hits it")
+		// The corner is inside the rect: with no threshold the same click hits.
+		call(r, "set_property", `{"name":"Alpha Image","component":"Image","path":"alpha_hit_threshold","value":"0"}`)
+		click(r, ax0, ay0)
+		frames(r, 4)
+		testing.expect(t, !is_on(r, "Alpha Image"), "with no threshold the corner is the image's too")
+		// A finger on a touch screen: a tap on the third toggle turns it on.
+		fx, fy := spot(game, unit, 556, -15)
+		call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"touch","id":7,"phase":"down","x":%v,"y":%v}},{{"type":"wait","frames":3}},{{"type":"touch","id":7,"phase":"up","x":%v,"y":%v}},{{"type":"wait","frames":3}}]}}`, fx, fy, fx, fy))
+		testing.expect(t, is_on(r, "Toggle 3") && !is_on(r, "Toggle 2"), "a finger's tap turns the third toggle on")
 	}
 	// The InputField and the Dropdown, beside the grid at canvas x 750: real
 	// keys and typed text reach the field, and a click on a row of the open

@@ -31,6 +31,26 @@ Gamepad_Button :: sdl.GamepadButton
 Gamepad_Axis :: sdl.GamepadAxis
 
 MAX_KEYS :: 512
+MAX_TOUCHES :: 10
+
+// One finger on a touch screen: `touches` gives the ones that are down, and
+// for one more frame the ones that came up.
+Touch :: struct {
+	id:       u64,    // the same for as long as the finger stays down
+	position: [2]f32, // viewport coordinates, y down, as mouse_position
+	delta:    [2]f32, // movement this frame
+	began:    bool,   // went down this frame
+	ended:    bool,   // came up this frame, or the system took it away
+	down:     bool,
+}
+
+@(private)
+_Touch_State :: struct {
+	id:    u64,
+	pos:   [2]f32, // window points
+	delta: [2]f32,
+	began, ended, down: bool,
+}
 MAX_PAD_BUTTONS :: 32
 MAX_PAD_AXES :: 8
 
@@ -46,6 +66,9 @@ _input: struct {
 	mouse_delta:    [2]f32,
 	wheel_y:        f32,
 	text_runes:     [dynamic]rune, // text typed this frame
+	touches:        [MAX_TOUCHES]_Touch_State, // the fingers on a touch screen
+	touch_count:    int,
+	mouse_touch:    bool, // the last mouse event was made by the system from a finger
 	pad:            ^sdl.Gamepad,  // the gamepad read, nil when none is connected
 	pad_down:       [MAX_PAD_BUTTONS]bool,
 	pad_pressed:    [MAX_PAD_BUTTONS]bool,
@@ -254,6 +277,16 @@ frame_reset :: proc() {
 	_input.wheel_y = 0
 	_input.focus_edge = false
 	clear(&_input.text_runes)
+	// Fingers that came up last frame are gone. The rest start a new frame.
+	kept := 0
+	for t in _input.touches[:_input.touch_count] {
+		if t.ended do continue
+		_input.touches[kept] = t
+		_input.touches[kept].began = false
+		_input.touches[kept].delta = {}
+		kept += 1
+	}
+	_input.touch_count = kept
 }
 
 // apply_event folds one SDL event into the snapshot. Called by
@@ -279,10 +312,40 @@ apply_event :: proc(e: ^sdl.Event) {
 			if core.application_is_focused() do _input.fixed_key_released_accum[sc] = true
 			_input.key_down[sc] = false
 		}
+	case .FINGER_DOWN, .FINGER_MOTION, .FINGER_UP, .FINGER_CANCELED:
+		// A trackpad reports its fingers too: they move the cursor and are
+		// no touches on the screen.
+		// Asked only with a window: events fed in without one are tests'.
+		if _window != nil {
+			#partial switch sdl.GetTouchDeviceType(e.tfinger.touchID) {
+			case .INDIRECT_ABSOLUTE, .INDIRECT_RELATIVE: return
+			}
+		}
+		id := u64(e.tfinger.fingerID)
+		size := _window_size()
+		slot := -1
+		for t, i in _input.touches[:_input.touch_count] do if t.id == id && !t.ended do slot = i
+		if e.type == .FINGER_DOWN {
+			if slot < 0 {
+				if _input.touch_count >= MAX_TOUCHES do return
+				slot = _input.touch_count
+				_input.touch_count += 1
+			}
+			_input.touches[slot] = {id = id, pos = {e.tfinger.x, e.tfinger.y} * size, began = true, down = true}
+			return
+		}
+		if slot < 0 do return
+		t := &_input.touches[slot]
+		pos := [2]f32{e.tfinger.x, e.tfinger.y} * size
+		t.delta += pos - t.pos
+		t.pos = pos
+		if e.type != .FINGER_MOTION do t.ended, t.down = true, false
 	case .MOUSE_MOTION:
+		_input.mouse_touch = e.motion.which == sdl.TOUCH_MOUSEID
 		_input.mouse_pos = _in_main_window(e.motion.windowID, e.motion.x, e.motion.y)
 		_input.mouse_delta += {e.motion.xrel, e.motion.yrel}
 	case .MOUSE_BUTTON_DOWN, .MOUSE_BUTTON_UP:
+		_input.mouse_touch = e.button.which == sdl.TOUCH_MOUSEID
 		btn: Mouse_Button
 		switch e.button.button {
 		case 1: btn = .Left
@@ -478,6 +541,36 @@ mouse_delta :: proc() -> [2]f32 {
 wheel :: proc() -> f32 {
 	if _hidden() do return 0
 	return _input.wheel_y
+}
+
+// The fingers on a touch screen: the ones that are down, and for one frame
+// the ones that came up. Temp-allocated. A trackpad's fingers are not among
+// them. On a touch screen the system also moves the mouse with the first
+// finger (mouse_is_touch says when), so code that reads the mouse works there
+// with one finger and code that reads touches gets them all.
+touches :: proc(allocator := context.temp_allocator) -> []Touch {
+	if _hidden() || _input.touch_count == 0 do return nil
+	out := make([]Touch, _input.touch_count, allocator)
+	for t, i in _input.touches[:_input.touch_count] {
+		out[i] = {id = t.id, position = t.pos - _input.viewport_pos, delta = t.delta, began = t.began, ended = t.ended, down = t.down}
+	}
+	return out
+}
+
+// Whether the mouse's last movement or press was made by the system from a
+// finger on a touch screen.
+mouse_is_touch :: proc() -> bool {
+	return _input.mouse_touch
+}
+
+// The window's size in points: the viewport's with no window (tests).
+@(private = "file")
+_window_size :: proc() -> [2]f32 {
+	if _window != nil {
+		w, h: i32
+		if sdl.GetWindowSize(_window, &w, &h) do return {f32(w), f32(h)}
+	}
+	return _input.viewport_pos + _input.viewport_size
 }
 
 text :: proc() -> []rune {
