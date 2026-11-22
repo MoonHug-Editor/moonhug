@@ -51,6 +51,25 @@ ui_shape :: proc(t: ^testing.T) {
 	call(r, "screenshot", `{"target":"scene","max_size":900}`)
 	call(r, "screenshot", `{"target":"window","window":"Inspector","max_size":900}`)
 
+	// A UiPolygon from the menu, beside the Shape, with a line round it: a
+	// mesh with a colour per corner.
+	call(r, "select", `{"name":"Canvas"}`)
+	frames(r, 2)
+	call(r, "invoke_menu", `{"path":"GameObject/UI/Polygon"}`)
+	frames(r, 3)
+	testing.expectf(t, has_string(at(call(r, "editor_state"), "selection"), "Polygon"), "the menu made a UiPolygon and selected it")
+	_set(r, "Polygon", "RectTransform", "anchored_position", "[320, 0, 0]")
+	_set(r, "Polygon", "RectTransform", "size_delta", "[200, 150]")
+	_set(r, "Polygon", "UiPolygon", "line_width", "4")
+	_set(r, "Polygon", "UiPolygon", "line_color", "[0.1, 0.2, 0.5, 1]")
+	frames(r, 3)
+	call(r, "select", `{"name":"Canvas"}`)
+	call(r, "run_command", `{"command":"Edit/Frame Selected"}`)
+	frames(r, 20)
+	call(r, "select", `{"name":"Main"}`)
+	frames(r, 3)
+	call(r, "screenshot", `{"target":"scene","max_size":900}`)
+
 	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
 	call(r, "invoke_menu", `{"path":"File/Save"}`)
 	frames(r, 3)

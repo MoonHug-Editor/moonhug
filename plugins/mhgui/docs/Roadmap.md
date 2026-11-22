@@ -44,10 +44,10 @@ Status is one of: Done, In progress, Next, Open, Parked.
 
 | # | Item | What it is | Needs | Status |
 |---|---|---|---|---|
-| 17 | UI mesh output | A graphic emits triangles with a colour per vertex. A graphic emits quads of one colour now | | Open |
-| 18 | Filled image | Radial and linear fills, for cooldowns and health bars | 17 | Open |
-| 19 | Mesh shapes | Free-form outlines from points | 17 | Open |
-| 20 | Text colour gradient, Outline and Shadow effects | Effects that set a colour per vertex | 17 | Open |
+| 17 | UI mesh output | A graphic emits quads with four free corners and a colour per corner. A triangle is a quad with two corners at one point. `@(canvas_effect)` lets a component change the quads of the graphic on its node | | Done |
+| 18 | Filled image | Image type Filled: a bar along an axis, or a sector of 90, 180 or 360 degrees, by `fill_amount` | 17 | Done |
+| 19 | Mesh shapes | `UiPolygon`: an outline from points, filled, drawn as a line or both, with faded edges | 17 | Done |
+| 20 | Text colour gradient, Outline and Shadow effects | `UiGradient`, `UiShadow` and `UiOutline`: effects for any graphic, a Text, an Image or a UiPolygon | 17 | Done |
 
 ## Tier 5: smaller or later
 
@@ -57,6 +57,7 @@ Status is one of: Done, In progress, Next, Open, Parked.
 | 22 | Rich text tags | Bold, colour and size inside one Text | Open |
 | 23 | Grid layout extras | Start corner and start axis | Open |
 | 24 | Navigation through input actions | The submit and move keys come from the input_actions plugin | Parked |
+| 39 | UiPolygon point handles | The points of a UiPolygon are dragged in the Scene window. They are numbers in the inspector now | Open |
 
 ## Pointer
 

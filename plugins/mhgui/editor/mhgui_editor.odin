@@ -124,6 +124,28 @@ ui_menu_shape :: proc() {
 	engine.inspector_request_select(tH)
 }
 
+// A UiPolygon node: an arrow that points right, to start from.
+@(menu_item={path="GameObject/UI/Polygon", order=52, help="Creates a UI polygon: an outline given by points, filled or drawn as a line"})
+ui_menu_polygon :: proc() {
+	g := undo.group_begin("Create Polygon")
+	defer undo.group_end(&g)
+	parent := engine.inspector_active_selection()
+	if _canvas_of(parent) == _NONE {
+		parent = _create_canvas()
+		if parent == _NONE do return
+	}
+	tH := undo.record_create_child("Polygon", parent)
+	if tH == _NONE do return
+	_add_comp(tH, .RectTransform)
+	_add_comp(tH, .CanvasRenderer)
+	_add_comp(tH, .UiPolygon, proc(ptr: rawptr) {
+		p := cast(^mhgui.UiPolygon)ptr
+		append(&p.points, [2]f32{0, 0.3}, [2]f32{0.6, 0.3}, [2]f32{0.6, 0}, [2]f32{1, 0.5}, [2]f32{0.6, 1}, [2]f32{0.6, 0.7}, [2]f32{0, 0.7})
+	})
+	undo.group_commit(&g)
+	engine.inspector_request_select(tH)
+}
+
 // What the Toggle and Slider menus made, for the procs that fill their
 // components (as _scroll_parts).
 @(private = "file")

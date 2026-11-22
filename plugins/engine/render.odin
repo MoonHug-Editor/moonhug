@@ -67,6 +67,10 @@ Draw_Quad :: struct {
 	corners:  [4][3]f32, // world-space bl, br, tr, tl — shared with picking
 	uvs:      [4][2]f32, // per corner; QUAD_UVS_FULL for the whole texture, a sub-rect for slices
 	color:    [4]f32,
+	// With `colored`, a colour per corner (bl, br, tr, tl) that multiplies
+	// `color`: a gradient across the quad.
+	colors:   [4][4]f32,
+	colored:  bool,
 	// Values for this draw alone, written over the material's by name
 	// (Draw_Property). Frame lifetime. Quads with equal values share a block,
 	// so they merge like quads of one material. Quads with different values
@@ -613,11 +617,12 @@ _execute_quads :: proc(view: Render_View, commands: []Render_Command) {
 		// Quad facing for lighting shaders (quads are transform-
 		// oriented, not billboards).
 		normal := linalg.normalize0(linalg.cross(d.corners[1] - d.corners[0], d.corners[3] - d.corners[0]))
+		colors := &d.colors if d.colored else nil
 		switch view.mode {
 		case .Shaded, .Wireframe:
-			gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal, sm.extra, clip = d.clip)
+			gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal, sm.extra, clip = d.clip, colors = colors)
 		case .Unlit:
-			gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, gfx.DEFAULT_SHADER, nil, normal, clip = d.clip)
+			gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, gfx.DEFAULT_SHADER, nil, normal, clip = d.clip, colors = colors)
 		case .Normals:
 			gfx.draw_quad(d.corners, d.uvs, {1, 1, 1, 1}, nil, gfx.NORMALS_SHADER, nil, normal)
 		case .Overdraw:

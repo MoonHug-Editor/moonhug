@@ -904,10 +904,23 @@ Graphic :: struct {
 }
 
 // One quad in the node's rect space, canvas units, bottom-left origin.
+//
+// What a graphic emits: a rect (`pos`, `size`, with `skew` for italic text),
+// or with `free` any four points (`corners`), which is how a graphic emits a
+// mesh: a triangle is a quad with two corners at one point (graphic_triangle).
+// With `colored` each corner has its own colour, which multiplies the
+// graphic's: a gradient, a fade along an edge. With `absolute` the quad's
+// colours stand as they are and only the alpha of the graphic's colour
+// applies: a shadow or an outline behind a graphic keeps its own colour.
 Graphic_Quad :: struct {
 	pos:     [2]f32,
 	size:    [2]f32,
 	skew:    [2]f32, // x shift of the bottom and the top edge (italic text); zero = a rect
+	corners: [4][2]f32, // free: bl, br, tr, tl in the node's space
+	free:    bool,
+	colors:  [4][4]f32, // colored: bl, br, tr, tl
+	colored: bool,
+	absolute: bool,
 	uvs:     [4][2]f32, // bl, br, tr, tl
 	texture: Asset_GUID,
 	// The material the quad draws with when the graphic names none: a graphic
@@ -918,8 +931,70 @@ Graphic_Quad :: struct {
 	properties: []Draw_Property,
 }
 
+// Appends a triangle: a free quad whose last two corners are one point. With
+// `colors` each point has its own colour.
+graphic_triangle :: proc(out: ^[dynamic]Graphic_Quad, points: [3][2]f32, uvs: [3][2]f32, texture: Asset_GUID, colors: ^[3][4]f32 = nil) {
+	q := Graphic_Quad{
+		free    = true,
+		corners = {points[0], points[1], points[2], points[2]},
+		uvs     = {uvs[0], uvs[1], uvs[2], uvs[2]},
+		texture = texture,
+	}
+	if colors != nil {
+		q.colored = true
+		q.colors = {colors[0], colors[1], colors[2], colors[2]}
+	}
+	append(out, q)
+}
+
+// The four points of a quad in the node's space, whichever way it was given:
+// bl, br, tr, tl.
+graphic_quad_points :: proc(q: Graphic_Quad) -> [4][2]f32 {
+	if q.free do return q.corners
+	x0, y0 := q.pos.x, q.pos.y
+	x1, y1 := x0 + q.size.x, y0 + q.size.y
+	return {{x0 + q.skew[0], y0}, {x1 + q.skew[0], y0}, {x1 + q.skew[1], y1}, {x0 + q.skew[1], y1}}
+}
+
+// Changes the quads of the graphic on its node after the graphic made them:
+// a shadow or an outline adds copies behind them, a gradient colours them.
+Canvas_Effect_Proc :: proc(comp: rawptr, rect: Rect, quads: ^[dynamic]Graphic_Quad)
+
+// Declares `canvas_effect_<T>`, the proc that changes the quads of the
+// graphic on the node a component of type T is on. T is a @(component) of
+// the same package and the proc takes a ^T, the node's rect and the quads.
+// Effects on one node run in the order of its components.
+@(extension_point={attribute="canvas_effect", target="proc", fields=""})
+canvas_effect_procs: [TypeKey]Canvas_Effect_Proc
+
+@(private = "file")
+_canvas_effects_any: bool
+
+canvas_effect_register :: proc(key: TypeKey, fn: Canvas_Effect_Proc) {
+	canvas_effect_procs[key] = fn
+	_canvas_effects_any = true
+}
+
+// Runs the effects on a node over its graphic's quads.
+node_effects :: proc(tH: Transform_Handle, rect: Rect, quads: ^[dynamic]Graphic_Quad) {
+	if !_canvas_effects_any do return
+	w := ctx_world()
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return
+	for owned in t.components {
+		fn := canvas_effect_procs[owned.handle.type_key]
+		if fn == nil do continue
+		c := world_pool_get(w, owned.handle)
+		if c == nil || !(cast(^CompData)c).enabled do continue
+		fn(c, rect, quads)
+	}
+}
+
 // The quad's corners through the node's transform, skew applied.
 graphic_quad_corners :: proc(q: Graphic_Quad, m: matrix[4, 4]f32) -> [4][3]f32 {
+	if q.free {
+		return {rect_apply(m, q.corners[0]), rect_apply(m, q.corners[1]), rect_apply(m, q.corners[2]), rect_apply(m, q.corners[3])}
+	}
 	x0, y0 := q.pos.x, q.pos.y
 	x1, y1 := x0 + q.size.x, y0 + q.size.y
 	return {
@@ -1051,12 +1126,14 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 			}
 			clear(&quads)
 			desc.populate(comp, n.rect, &quads)
+			node_effects(n.tH, n.rect, &quads)
 			key: Sort_Key
 			key[0] = sort_key_word(CANVAS_SORTING_LAYER, canvas.sort_order, 0, u16(i))
 			checked_clip := false
 			// The CanvasGroups above it fade it. Fully faded, it draws nothing.
 			group_alpha := canvas_group_state(n.tH).alpha
 			if group_alpha <= 0 do continue
+			color := (g.color * cr.tint if cr.tinted else g.color) * {1, 1, 1, group_alpha}
 			for q in quads {
 				if asset_guid_is_empty(q.texture) do continue
 				material := asset_key(g.material) if !asset_guid_is_empty(asset_key(g.material)) else q.material
@@ -1084,7 +1161,9 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 						material = material,
 						corners  = corners,
 						uvs      = q.uvs,
-						color    = (g.color * cr.tint if cr.tinted else g.color) * {1, 1, 1, group_alpha},
+						color    = color if !q.absolute else {1, 1, 1, color.a},
+						colors   = q.colors,
+						colored  = q.colored,
 						properties = q.properties,
 						clip     = clip,
 					},

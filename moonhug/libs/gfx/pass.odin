@@ -935,20 +935,28 @@ _current_vp :: proc() -> i32 {
 // nearest first), in the shaders that call ui_clip (shaders/ui_clip.glsl).
 // The slice is read at pass_end. Quads with the SAME slice merge into one
 // draw, so the caller hands every quad under the same masks one slice.
-draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture, shader := "", material: []u8 = nil, normal := [3]f32{0, 0, 1}, extra_tex: []^Texture = nil, depth_test := true, clip: []Clip_Mask = nil) {
+//
+// `colors`, when given, is a colour per corner (bl, br, tr, tl), each
+// multiplied by `color`: a gradient across the quad. A triangle is a quad
+// with two corners at one point.
+draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture, shader := "", material: []u8 = nil, normal := [3]f32{0, 0, 1}, extra_tex: []^Texture = nil, depth_test := true, clip: []Clip_Mask = nil, colors: ^[4][4]f32 = nil) {
 	c := _color_u8(color)
+	cs := [4][4]u8{c, c, c, c}
+	if colors != nil {
+		for k in 0 ..< 4 do cs[k] = _color_u8(color * colors[k])
+	}
 	first := u32(len(_pass.vtx))
 	n := normal
 	// u runs along the bottom edge, v up the left one: the tangent is the
 	// bottom edge's direction, flipped when the uvs are mirrored.
 	t := _quad_tangent(corners, uvs, n)
 	append(&_pass.vtx,
-		Vertex{corners[0], n, uvs[0], c, t, {}},
-		Vertex{corners[1], n, uvs[1], c, t, {}},
-		Vertex{corners[2], n, uvs[2], c, t, {}},
-		Vertex{corners[0], n, uvs[0], c, t, {}},
-		Vertex{corners[2], n, uvs[2], c, t, {}},
-		Vertex{corners[3], n, uvs[3], c, t, {}},
+		Vertex{corners[0], n, uvs[0], cs[0], t, {}},
+		Vertex{corners[1], n, uvs[1], cs[1], t, {}},
+		Vertex{corners[2], n, uvs[2], cs[2], t, {}},
+		Vertex{corners[0], n, uvs[0], cs[0], t, {}},
+		Vertex{corners[2], n, uvs[2], cs[2], t, {}},
+		Vertex{corners[3], n, uvs[3], cs[3], t, {}},
 	)
 	_batch_append(.Tris if depth_test else .Tris_Overlay, tex, first, 6, shader, material, extra_tex, clip)
 }

@@ -23,10 +23,13 @@ UI has two halves. The canvas tree is engine vocabulary, in `plugins/engine/ui_c
 
 `Graphic` is not a component but the struct every drawable UI component embeds, as `using graphic: engine.Graphic` with the `inline:""` tag: `color`, `material` and `raycast_target`, saved under "graphic" and drawn flat in the inspector. A plugin declares a graphic type with `@(canvas_graphic)` on a `canvas_populate_<T>` proc, which takes the `^T` and returns the quads the component draws inside its rect. The generated registration records the component's type and where its Graphic sits, so the engine draws Image and Text through one path without knowing either type.
 
-A quad a graphic returns can carry two things of its own:
+A quad a graphic returns can carry these things of its own:
 
 - `material`, used when the graphic names none. A graphic that needs its own shader works with no setup this way.
 - `properties`, values of that material's shader for this quad alone, by the names the shader's property block declares. They go over the material's values for the one draw (`Draw_Quad.properties`, `material_pack_draw_properties`). Quads with equal values share a draw call when they are neighbours in draw order, and a quad whose values differ is a draw call of its own. The mhgui UiShape sends its size, radii and shadows this way.
+- `corners` with `free` set: any four points in place of a rect. This is how a graphic draws a mesh: a triangle is a quad with two corners at one point, and `engine.graphic_triangle` appends one. The mhgui Filled Image and UiPolygon draw this way.
+- `colors` with `colored` set: a colour per corner, which multiplies the graphic's colour. The colour runs smoothly between the corners.
+- `absolute`: the quad's colours stand as they are, and only the alpha of the graphic's colour applies. A shadow behind a graphic keeps its own colour this way.
 
 ## Rects
 
@@ -34,6 +37,7 @@ A node's rect comes from its RectTransform and its parent's rect. Three things i
 
 - `@(canvas_layout)`: a container places its children. Asked for every node with its rect and its RectTransform children. The mhgui LayoutGroup is one.
 - `@(canvas_rect)`: a component sets its own node's rect. Asked for every node that resolves from its own anchors, with its parent's rect and the rect the anchors gave. The mhgui ContentSizeFitter and AspectRatioFitter are one. A node a container placed is not asked.
+- `@(canvas_effect)`: a component changes the quads of the graphic on its node after the graphic made them, on a proc named `canvas_effect_<T>` that takes the component, the node's rect and the quads. A shadow adds copies behind them, a gradient colours their corners. Effects on one node run in the order of its components. The mhgui plugin's UiGradient, UiShadow and UiOutline are effects.
 - `@(canvas_measure)`: a component says how large it wants its node, on a proc named `canvas_measure_<T>` that takes the component and the width to fit in. `engine.node_measure(node, width)` reads it. The text plugin's Text has one.
 
 ## Position
