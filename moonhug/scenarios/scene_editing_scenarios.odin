@@ -276,3 +276,63 @@ render_layers_to_children :: proc(t: ^testing.T) {
 	frames(r, 3)
 	editor_quit(r)
 }
+
+// The wheel zooms the Scene view toward the pointer: the point under it
+// stays under it. An object made at a spot of the view before a zoom and one
+// made at the same spot after it land on the same place.
+@(test)
+scene_zoom_goes_to_the_pointer :: proc(t: ^testing.T) {
+	r := begin(t)
+	project_write(r, "assets/Main.scene", `{"root": 1, "next_local_id": 2, "transforms": [{"local_id": 1, "name": "Main", "is_active": true, "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1, "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}}, "children": [], "components": []}], "nested_scenes": [], "breadcrumbs": [], "components": []}`)
+	editor_start(r)
+	call(r, "open_scene", `{"path":"assets/Main.scene"}`)
+	frames(r, 3)
+	scene, shown := window_rect(r, "Scene")
+	if !testing.expect(t, shown, "the Scene window is open") do return
+	// 2D: the pointer's spot maps to one point of the XY plane.
+	two_d, has := item_rect(r, "Scene", "2D")
+	if !testing.expect(t, has, "the 2D button") do return
+	click(r, two_d.x + two_d[2] / 2, two_d.y + two_d[3] / 2)
+	frames(r, 3)
+
+	// A spot well off the picture's centre.
+	x, y := scene.x + scene[2] * 0.8, scene.y + scene[3] * 0.3
+	make_at :: proc(r: ^Run, t: ^testing.T, x, y: f64, name: string) -> ([3]f64, bool) {
+		_right_click(r, x, y)
+		create, has_create := item_rect(r, "popup", "Create Empty")
+		if !testing.expect(t, has_create, "the Scene window's menu offers Create Empty") do return {}, false
+		click(r, create.x + create[2] / 2, create.y + create[3] / 2)
+		frames(r, 4)
+		call(r, "rename_object", fmt.tprintf(`{{"name":"Transform","new_name":%q}}`, name))
+		frames(r, 2)
+		pos, _, made := _object(r, name)
+		return pos, made
+	}
+	before, ok := make_at(r, t, x, y, "Before")
+	if !testing.expect(t, ok, "an object at the spot") do return
+	testing.expectf(t, abs(before.x) > 0.5, "the spot is off the centre: %v", before)
+
+	call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":2}},{{"type":"wheel","y":4}},{{"type":"wait","frames":4}}]}}`, x, y))
+	zoomed_in, ok_in := make_at(r, t, x, y, "ZoomedIn")
+	if !testing.expect(t, ok_in, "an object at the spot after zooming in") do return
+	testing.expectf(t, abs(zoomed_in.x - before.x) < 0.02 && abs(zoomed_in.y - before.y) < 0.02, "zoomed in, the spot is still the same point: %v, was %v", zoomed_in, before)
+
+	// The view did zoom: the picture's centre shows another point than the
+	// one it would without the zoom going to the pointer, and a spot beside
+	// the pointer is nearer to it than before.
+	near_before_x := x - 100
+	beside, ok_beside := make_at(r, t, near_before_x, y, "Beside")
+	if !testing.expect(t, ok_beside) do return
+	call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":2}},{{"type":"wheel","y":-7}},{{"type":"wait","frames":4}}]}}`, x, y))
+	zoomed_out, ok_out := make_at(r, t, x, y, "ZoomedOut")
+	if !testing.expect(t, ok_out, "an object at the spot after zooming out") do return
+	testing.expectf(t, abs(zoomed_out.x - before.x) < 0.05 && abs(zoomed_out.y - before.y) < 0.05, "zoomed out, the spot is still the same point: %v, was %v", zoomed_out, before)
+	far, ok_far := make_at(r, t, near_before_x, y, "BesideFar")
+	if !testing.expect(t, ok_far) do return
+	testing.expectf(t, abs(far.x - before.x) > abs(beside.x - before.x) * 1.5, "100 points beside the pointer is further away after zooming out: %v then %v, the spot %v", beside, far, before)
+
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 3)
+	editor_quit(r)
+}

@@ -1279,13 +1279,10 @@ handle_scene_input :: proc() {
 	_sv.orbit_active = false
 
 	if alt_down && rmb_dragging {
-		// Zoom drag: dolly the eye toward/away from the fixed anchor.
+		// Zoom drag: toward and away from the point the drag began on.
 		delta := io.MouseDelta
 		zoom_delta := (delta.x + delta.y) * ZOOM_DRAG_FACTOR
-		anchor := _sv.cam_target
-		_sv.cam_dist = clamp(_sv.cam_dist * (1 - zoom_delta), 0.1, 10000)
-		fwd, _, _ := _scene_cam_basis()
-		_sv.cam_pos = anchor - fwd * _sv.cam_dist
+		_scene_zoom_at(clamp(_sv.cam_dist * (1 - zoom_delta), 0.1, 10000), io.MouseClickedPos[im.MouseButton.Right])
 		update_scene_camera()
 		return
 	}
@@ -1307,19 +1304,47 @@ handle_scene_input :: proc() {
 
 	wheel := io.MouseWheel
 	if wheel != 0 {
-		// Logarithmic dolly toward the fixed anchor, with a minimum absolute
-		// step so close-range zoom stays responsive.
-		anchor := _sv.cam_target
+		// Logarithmic dolly toward the point under the pointer, with a
+		// minimum absolute step so close-range zoom stays responsive.
 		old_dist := _sv.cam_dist
 		new_dist := old_dist * math.pow(ZOOM_WHEEL_BASE, -wheel)
 		min_step := ZOOM_MIN_STEP * abs(wheel)
 		if wheel > 0 && old_dist - new_dist < min_step do new_dist = old_dist - min_step
 		if wheel < 0 && new_dist - old_dist < min_step do new_dist = old_dist + min_step
-		_sv.cam_dist = clamp(new_dist, 0.1, 10000)
-		fwd, _, _ := _scene_cam_basis()
-		_sv.cam_pos = anchor - fwd * _sv.cam_dist
+		_scene_zoom_at(clamp(new_dist, 0.1, 10000), io.MousePos)
 		update_scene_camera()
 	}
+}
+
+// Where the view's anchor goes when the distance to it changes from
+// `old_dist` to `new_dist` with the pointer at `ndc` (-1 to 1 across the
+// picture, y up), so the point of the anchor's plane under the pointer stays
+// under it. `right` and `up` are the camera's, `tan_half_fov` and `aspect`
+// the view's. The picture's centre keeps the anchor where it is. It holds
+// for a perspective and an orthographic view: both show a height of
+// distance times tan_half_fov, times two, at the anchor.
+scene_zoom_anchor :: proc(anchor, right, up: [3]f32, ndc: [2]f32, old_dist, new_dist, tan_half_fov, aspect: f32) -> [3]f32 {
+	shrink := (old_dist - new_dist) * tan_half_fov
+	return anchor + right * (ndc.x * aspect * shrink) + up * (ndc.y * shrink)
+}
+
+// Sets the current Scene copy's distance to its anchor, zooming toward the
+// point under `mouse` (imgui screen coordinates). A pointer off the picture
+// zooms toward its nearest edge.
+@(private = "file")
+_scene_zoom_at :: proc(new_dist: f32, mouse: im.Vec2) {
+	fwd, right, up := _scene_cam_basis()
+	anchor := _sv.cam_target
+	if _sv.rt != nil && _sv.rt.width > 0 && _sv.rt.height > 0 {
+		w, h := f32(_sv.rt.width), f32(_sv.rt.height)
+		ndc := [2]f32{
+			clamp(2 * (mouse.x - _sv.img_min.x) / w - 1, -1, 1),
+			clamp(1 - 2 * (mouse.y - _sv.img_min.y) / h, -1, 1),
+		}
+		anchor = scene_zoom_anchor(anchor, right, up, ndc, _sv.cam_dist, new_dist, math.tan(math.to_radians(scene_camera_prefs.fov) * 0.5), w / h)
+	}
+	_sv.cam_dist = new_dist
+	_sv.cam_pos = anchor - fwd * new_dist
 }
 
 // --- Commands and keymaps ----------------------------------------------------

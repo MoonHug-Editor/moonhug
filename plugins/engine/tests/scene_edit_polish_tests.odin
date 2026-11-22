@@ -5,6 +5,7 @@ package engine_tests
 
 import "core:encoding/uuid"
 import "core:testing"
+import "moonhug:editor"
 import "moonhug:editor/viewport"
 import "moonhug:packages/engine"
 import "moonhug:packages/engine/editor/scene_tools"
@@ -123,4 +124,27 @@ test_render_layers_go_to_children_in_the_same_undo_step :: proc(t: ^testing.T) {
 	undo.apply_redo(s)
 	testing.expect_value(t, layers(parent)^, 2)
 	testing.expect_value(t, layers(grandchild)^, 2)
+}
+
+// A zoom keeps the point of the anchor's plane under the pointer where it is.
+@(test)
+test_scene_zoom_keeps_the_point_under_the_pointer :: proc(t: ^testing.T) {
+	right, up := [3]f32{1, 0, 0}, [3]f32{0, 1, 0}
+	tan_half, aspect := f32(0.5), f32(1.6)
+	// The point of the anchor's plane the pointer at `ndc` is over.
+	under :: proc(anchor, right, up: [3]f32, ndc: [2]f32, dist, tan_half, aspect: f32) -> [3]f32 {
+		return anchor + right * (ndc.x * aspect * dist * tan_half) + up * (ndc.y * dist * tan_half)
+	}
+	anchor := [3]f32{3, -2, 5}
+	for ndc in ([][2]f32{{0.5, 0.25}, {-1, 1}, {0.9, -0.3}}) {
+		for new_dist in ([]f32{4, 40}) { // in and out from 10
+			before := under(anchor, right, up, ndc, 10, tan_half, aspect)
+			moved := editor.scene_zoom_anchor(anchor, right, up, ndc, 10, new_dist, tan_half, aspect)
+			after := under(moved, right, up, ndc, new_dist, tan_half, aspect)
+			d := after - before
+			testing.expectf(t, abs(d.x) + abs(d.y) + abs(d.z) < 1e-4, "pointer at %v, to %v: the point moved by %v", ndc, new_dist, d)
+		}
+	}
+	// The pointer at the picture's centre: the anchor stays.
+	testing.expect_value(t, editor.scene_zoom_anchor(anchor, right, up, {0, 0}, 10, 4, tan_half, aspect), anchor)
 }

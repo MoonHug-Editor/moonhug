@@ -222,9 +222,11 @@ The editor renders the active scene into an offscreen `RenderTexture2D` and disp
 | RMB drag | Flythrough look |
 | W/A/S/D/Q/E (while RMB) | Flythrough move (Shift = 3× speed) |
 | Alt + LMB drag | Orbit |
-| Alt + RMB drag | Zoom (drag) |
+| Alt + RMB drag | Zoom toward the point the drag began on |
 | MMB drag | Pan |
-| Scroll wheel | Zoom |
+| Scroll wheel | Zoom toward the point under the pointer |
+
+A zoom with the mouse keeps the point under the pointer under it, in a perspective and an orthographic view: the view's anchor moves so the point of the anchor's plane the pointer is over stays where it is on screen. With the pointer at the picture's centre the anchor stays.
 
 Camera state is stored as `(yaw, pitch, dist, target)` and converted to a `Camera3D` each frame via `update_scene_camera`.
 
