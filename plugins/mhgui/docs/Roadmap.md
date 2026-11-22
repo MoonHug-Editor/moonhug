@@ -17,7 +17,7 @@ Status is one of: Done, In progress, Next, Open, Parked.
 | 2 | Pointer events | Enter, exit, down, up, click, hold, drag, scroll and cancel, taken by any component with `@(comp_on_pointer_ui)`. A HitArea takes the pointer and draws nothing. Button is written with it | | Done |
 | 3 | Mask, rectangle | `UiMask`, an engine component: clips the nodes under it in the shader. Works turned and in a world-space canvas, adds no draw call. A clipped part takes no pointer | | Done |
 | 12 | Mask, rounded and nested | A radius per corner, a soft edge, a circle, and a node cut by every mask above it with each mask's own shape. A project setting says whether shaders get the clip by themselves | 1, 3 | Done |
-| 4 | ScrollRect and Scrollbar | Scrolling content with inertia and elastic edges | 2, 3 | Open |
+| 4 | ScrollRect and Scrollbar | Scrolling content by a drag, the wheel or a bar, with inertia and elastic or clamped ends. A list inside a list takes the drags along its own axis. GameObject, UI, Scroll View | 2, 3 | Done |
 | 5 | Slider, Toggle, ToggleGroup | The simple controls on the selectable base Button established | 2 | Open |
 
 ## Tier 2: layouts that hold together
@@ -79,6 +79,15 @@ Quads merge into one draw call when they are neighbours in draw order with the s
 | 26 | Shape values in a shared buffer | Every UiShape draws with one material and reads its values from a buffer by index, so shapes that differ merge too. Stays crisp and free to animate | a per-frame data buffer in gfx | Open |
 | 27 | Cached UiShape | A UiShape with `dynamic` off is drawn once into an atlas and is an Image after that. The cheapest per pixel. Fixed resolution, redrawn when a field or the size changes | a runtime sprite atlas | Open |
 | 34 | Canvas redrawn only when it changed | A canvas keeps the quads it collected and collects again only when a node, a rect or a graphic under it changed. Every view of a frame, and every frame after it, reuses them. A Text keeps its own layout this way now | a change mark on canvas nodes | Open |
+
+## Scroll views
+
+| # | Item | What it is | Needs | Status |
+|---|---|---|---|---|
+| 35 | Recycled rows | A long list shows with a few row nodes that are reused as it scrolls | 4 | Open |
+| 36 | Snap and pages | The content comes to rest on a row or a page, with an event when the page changes | 4 | Open |
+| 37 | Scrollbars that hide | A bar hides when there is nothing to scroll, and the viewport takes its room | 4 | Open |
+| 38 | Scroll follows the selection | A row the keyboard or gamepad selects out of view scrolls into view by itself | 4 | Open |
 
 ## With every item
 

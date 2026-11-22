@@ -2,7 +2,7 @@ package engine
 
 // UiMask project settings: how a shader comes to clip under a UiMask. A tab
 // in the editor's Project Settings window, saved to
-// ProjectSettings/ui_mask.json. The shader importer reads it when it
+// ProjectSettings/uimask.json. The shader importer reads it when it
 // compiles a shader, so it is an editor-time choice: a built game ships the
 // compiled shaders.
 

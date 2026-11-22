@@ -1,6 +1,6 @@
 ---
 title: "mhgui"
-description: "UI graphics and controls on the engine's canvas tree: Image, UiShape, Button and LayoutGroup, the UI menus and the rect tool"
+description: "UI graphics and controls on the engine's canvas tree: Image, UiShape, Button, ScrollRect, Scrollbar and LayoutGroup, the UI menus and the rect tool"
 tags: ["mhgui", "ui", "plugin"]
 ---
 
@@ -13,6 +13,8 @@ The mhgui plugin draws UI. It adds the Image and UiShape graphics, the Button co
 - [Image](components/Image.md) draws a sprite or a solid colour in its rect, simple, 9-sliced or tiled.
 - [UiShape](components/UiShape.md) draws a rounded rectangle with a border, a gradient and shadows, with no sprite.
 - [Button](components/Button.md) tints a graphic as the pointer hovers and presses it, takes keyboard and gamepad input while selected, and reports clicks.
+- [ScrollRect](components/ScrollRect.md) scrolls a content node inside a viewport, by a drag, the wheel or a scrollbar.
+- [Scrollbar](components/Scrollbar.md) is a track with a handle that shows a place and sets it.
 - [LayoutGroup](components/LayoutGroup.md) lays out its children in a row, a column or a grid.
 
 **Concepts**
@@ -43,7 +45,7 @@ The plugin declares no attributes. It uses the engine's: Image and UiShape decla
 ## Limits
 
 - Every component takes its node's pointer events with `@(comp_on_pointer_ui)`, the engine's attribute ([UI canvas](/plugins/engine/docs/UICanvas.md), "The pointer"). Button is written with it.
-- One control, Button, with a colour tint transition. No toggle, slider, scroll view, input field or dropdown ([Roadmap](Roadmap.md)).
+- The controls are Button, ScrollRect and Scrollbar. No toggle, slider, input field or dropdown ([Roadmap](Roadmap.md)).
 - Keyboard and gamepad navigation picks the nearest button in a direction. A button cannot name its neighbours or stay out of navigation.
 
 ## Reference

@@ -35,8 +35,40 @@ ui_demo_scene_opens_and_draws :: proc(t: ^testing.T) {
 	call(r, "invoke_menu", `{"path":"Window/General/Game"}`)
 	frames(r, 30)
 	viewports, _ := at(call(r, "list_objects", `{"name":"Viewport"}`), "objects").(json.Array)
-	testing.expect_value(t, len(viewports), 5) // the masked viewports
+	testing.expect_value(t, len(viewports), 6) // the masked viewports, the scroll view's among them
 	call(r, "screenshot", `{"target":"game","max_size":900}`)
+
+	// The scroll view, live while the game plays: the wheel over it moves
+	// its content, and a drag does.
+	content_y :: proc(r: ^Run) -> f64 {
+		p, _ := at(call(r, "get_property", `{"name":"Content","component":"RectTransform","path":"anchored_position"}`), "value").(json.Array)
+		if len(p) < 2 do return -1
+		return as_f64(p[1])
+	}
+	call(r, "invoke_menu", `{"path":"Edit/Play"}`)
+	frames(r, 10)
+	game, game_shown := window_rect(r, "Game")
+	if testing.expect(t, game_shown, "the Game window is open") {
+		// The scroll view's cell is the fourth of the third row. The canvas is
+		// 1600 wide across the picture: a canvas unit is this many points.
+		unit := game[2] / 1600
+		cx := game.x + game[2] / 2 + 250 * unit
+		// The Game window's picture starts under its toolbar.
+		cy := game.y + game[3] / 2 + 18 + 130 * unit
+		click(r, cx, cy) // the first click gives the Game window the focus
+		frames(r, 5)
+		testing.expectf(t, abs(content_y(r)) < 0.5, "the content starts at its top: %v", content_y(r))
+		call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":2}},{{"type":"wheel","y":-2}},{{"type":"wait","frames":6}}]}}`, cx, cy))
+		wheeled := content_y(r)
+		testing.expectf(t, wheeled > 40, "the wheel scrolled the content down its list: %v", wheeled)
+		call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"down"}},{{"type":"wait","frames":2}},{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":2}},{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":2}}]}}`, cx, cy - 15, cx, cy - 30))
+		call(r, "screenshot", `{"target":"game","max_size":900}`)
+		dragged := content_y(r)
+		call(r, "input", `{"steps":[{"type":"up"},{"type":"wait","frames":3}]}`)
+		testing.expectf(t, dragged > wheeled + 5, "a drag up scrolled it further: %v after %v", dragged, wheeled)
+	}
+	call(r, "invoke_menu", `{"path":"Edit/Play"}`)
+	frames(r, 5)
 
 	// The UiMask tab of the Project Settings: the setting's row and a box
 	// that describes the chosen option.

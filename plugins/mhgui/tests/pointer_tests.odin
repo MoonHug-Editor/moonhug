@@ -446,3 +446,210 @@ test_pointer_hit_area_and_cancel :: proc(t: ^testing.T) {
 	testing.expect(t, !b.pressed && !b.hovered, "losing focus cancels the press and the hover")
 	input.set_app_focused(true)
 }
+
+// --- ScrollRect and Scrollbar ---------------------------------------------------------
+
+@(private = "file")
+_Scroll_Case :: struct {
+	root, view, content, item: engine.Transform_Handle,
+	scroll:                    ^mhgui.ScrollRect,
+	button:                    ^mhgui.Button,
+	content_rt:                ^engine.RectTransform,
+}
+
+// A 200 x 100 viewport at the canvas centre with a ScrollRect, a 200 x 300
+// content under it whose top is the viewport's top, and a button at the
+// content's top.
+@(private = "file")
+_scroll_case :: proc(canvas: engine.Transform_Handle, pos: [2]f32 = {}) -> (c: _Scroll_Case) {
+	c.root = _node("Root", canvas, {0, 0}, {800, 600}, drawn = false)
+	c.view = _node("View", c.root, pos, {200, 100}, drawn = false)
+	c.scroll = cast(^mhgui.ScrollRect)_padd(c.view, .ScrollRect)
+	mhgui.type_reset_ScrollRect(c.scroll)
+	c.scroll.movement = .Clamped
+	c.scroll.inertia = false
+	c.content = _node("Content", c.view, {0, -100}, {200, 300})
+	_, c.content_rt = engine.transform_get_comp(c.content, engine.RectTransform)
+	c.scroll.content.handle = engine.Handle(c.content)
+	c.item = _node("Item", c.content, {0, 120}, {150, 40})
+	c.button = _as_button(c.item)
+	return
+}
+
+@(test)
+test_scroll_rect_drag_scrolls_and_cancels_the_button :: proc(t: ^testing.T) {
+	f: _Pointer_Fixture
+	_begin(&f)
+	context.user_ptr = &f.tc.uc
+	defer _end(&f)
+	c := _scroll_case(_canvas())
+
+	testing.expect_value(t, mhgui.scroll_rect_normalized(c.scroll), [2]f32{0, 1}) // at the top
+	// The item is at the content's top: canvas (0, 20). Press it and drag up.
+	_frame(_at(0, 20))
+	_frame(_at(0, 20), down = 1)
+	testing.expect(t, c.button.pressed, "the button under the pointer is pressed")
+	_frame(_at(0, 50))
+	testing.expect(t, c.scroll.dragging && !c.button.pressed, "the drag is the ScrollRect's, the button's press is cancelled")
+	_frame(_at(0, 80))
+	// The first move past the threshold starts the drag, the next one moves
+	// the content by what the pointer moved: 30 up.
+	testing.expectf(t, abs(c.content_rt.anchored_position.y - (-70)) < 0.5, "the content follows the pointer up: %v", c.content_rt.anchored_position)
+	_frame(_at(0, 80), up = 1)
+	testing.expect(t, !c.button.clicked && !c.scroll.dragging, "a drag is no click")
+	n := mhgui.scroll_rect_normalized(c.scroll)
+	testing.expectf(t, abs(n.y - 0.85) < 0.01, "30 of 200 down from the top: %v", n)
+
+	// Clamped: a drag down past the top stops at the top.
+	_frame(_at(0, 0), down = 1)
+	_frame(_at(0, -20))
+	_frame(_at(0, -200))
+	_frame(_at(0, -200), up = 1)
+	testing.expectf(t, abs(c.content_rt.anchored_position.y - (-100)) < 0.5, "stopped at the top: %v", c.content_rt.anchored_position)
+
+	// A drag across is not its own: it scrolls up and down only.
+	_forget()
+	_frame(_at(0, 0), down = 1)
+	_frame(_at(60, 0))
+	testing.expect(t, !c.scroll.dragging, "a drag across is left to what is above")
+	testing.expect_value(t, _count(c.root, .Drag_Begin), 1)
+	_frame(_at(60, 0), up = 1)
+}
+
+@(test)
+test_scroll_rect_wheel_and_nested_axes :: proc(t: ^testing.T) {
+	f: _Pointer_Fixture
+	_begin(&f)
+	context.user_ptr = &f.tc.uc
+	defer _end(&f)
+	canvas := _canvas()
+	c := _scroll_case(canvas)
+	// A list that scrolls across, inside the one that scrolls up and down.
+	row := _node("Row", c.content, {0, 0}, {150, 60}, drawn = false)
+	row_scroll := cast(^mhgui.ScrollRect)_padd(row, .ScrollRect)
+	mhgui.type_reset_ScrollRect(row_scroll)
+	row_scroll.horizontal, row_scroll.vertical = true, false
+	row_scroll.movement, row_scroll.inertia = .Clamped, false
+	strip := _node("Strip", row, {75, 0}, {300, 60})
+	_, strip_rt := engine.transform_get_comp(strip, engine.RectTransform)
+	row_scroll.content.handle = engine.Handle(strip)
+	// The row is at the content's centre: canvas (0, -100), out of the
+	// viewport. Scroll down to it with the wheel first.
+	_frame(_at(0, 0), wheel = -2)
+	testing.expectf(t, abs(c.content_rt.anchored_position.y - (-20)) < 0.5, "two notches down is 80 units: %v", c.content_rt.anchored_position)
+	_frame(_at(0, 0), wheel = -1)
+	_frame(_at(0, 0), wheel = -1)
+	_frame(_at(0, 0), wheel = -1)
+	testing.expectf(t, abs(c.content_rt.anchored_position.y - 100) < 0.5, "it stops at the bottom: %v", c.content_rt.anchored_position)
+	testing.expect_value(t, mhgui.scroll_rect_normalized(c.scroll).y, f32(0))
+	// At the bottom the wheel is not used: it goes on up.
+	_forget()
+	_frame(_at(0, 0), wheel = -1)
+	testing.expect_value(t, _count(c.root, .Scroll), 1)
+	_frame(_at(0, 0), wheel = 1)
+	testing.expect_value(t, _count(c.root, .Scroll), 1) // back in range: used again
+
+	// The row now sits in the viewport. A drag across it scrolls the row, a
+	// drag up and down from the same place scrolls the outer list.
+	mhgui.scroll_rect_set_normalized(c.scroll, {0, 0.5})
+	mid := c.content_rt.anchored_position.y
+	_frame(_at(0, 0), down = 1)
+	_frame(_at(-30, 0))
+	_frame(_at(-60, 0))
+	_frame(_at(-60, 0), up = 1)
+	testing.expect(t, strip_rt.anchored_position.x < 75 - 20, "a drag across scrolls the inner list")
+	testing.expectf(t, abs(c.content_rt.anchored_position.y - mid) < 0.5, "and leaves the outer one: %v", c.content_rt.anchored_position)
+	at_x := strip_rt.anchored_position.x
+	_frame(_at(0, 0), down = 1)
+	_frame(_at(0, 30))
+	_frame(_at(0, 60))
+	_frame(_at(0, 60), up = 1)
+	testing.expect(t, c.content_rt.anchored_position.y > mid + 20, "a drag up and down from the inner list scrolls the outer one")
+	testing.expect_value(t, strip_rt.anchored_position.x, at_x)
+}
+
+@(test)
+test_scroll_rect_coasts_and_comes_back :: proc(t: ^testing.T) {
+	f: _Pointer_Fixture
+	_begin(&f)
+	context.user_ptr = &f.tc.uc
+	defer _end(&f)
+	c := _scroll_case(_canvas())
+
+	// Inertia: let go with a speed, and the content goes on, slower each step.
+	c.scroll.inertia = true
+	c.scroll.velocity = {0, 600}
+	mhgui.scroll_rect_step(c.scroll, 0.1)
+	first := c.content_rt.anchored_position.y + 100
+	testing.expect(t, first > 20, "it moved on with its speed")
+	mhgui.scroll_rect_step(c.scroll, 0.1)
+	second := c.content_rt.anchored_position.y + 100 - first
+	testing.expect(t, second > 0 && second < first, "and slower in the next step")
+	// A press stops it.
+	_frame(_at(0, 0), down = 1)
+	testing.expect_value(t, c.scroll.velocity, [2]f32{})
+	_frame(_at(0, 0), up = 1)
+
+	// Elastic: pulled past the top it comes back when let go.
+	c.scroll.movement = .Elastic
+	c.scroll.inertia = false
+	mhgui.scroll_rect_set_normalized(c.scroll, {0, 1})
+	c.content_rt.anchored_position.y = -140 // 40 past the top
+	mhgui.scroll_rect_step(c.scroll, 0.05)
+	part := c.content_rt.anchored_position.y
+	testing.expect(t, part > -140 && part < -100, "it comes back part of the way in a short step")
+	for _ in 0 ..< 60 do mhgui.scroll_rect_step(c.scroll, 0.05)
+	testing.expectf(t, abs(c.content_rt.anchored_position.y - (-100)) < 0.1, "and all the way in the end: %v", c.content_rt.anchored_position)
+
+	// Shown: the least scroll that brings a node into the viewport.
+	low := _node("Low", c.content, {0, -130}, {100, 20})
+	mhgui.scroll_rect_show(c.scroll, low)
+	// Its bottom, 140 under the content's centre, sits on the viewport's bottom.
+	testing.expectf(t, abs(c.content_rt.anchored_position.y - 90) < 0.5, "the low node is brought to the viewport's bottom edge: %v", c.content_rt.anchored_position)
+	mhgui.scroll_rect_show(c.scroll, low)
+	testing.expectf(t, abs(c.content_rt.anchored_position.y - 90) < 0.5, "a node already in view moves nothing: %v", c.content_rt.anchored_position)
+}
+
+@(test)
+test_scrollbar_follows_and_leads :: proc(t: ^testing.T) {
+	f: _Pointer_Fixture
+	_begin(&f)
+	context.user_ptr = &f.tc.uc
+	defer _end(&f)
+	canvas := _canvas()
+	c := _scroll_case(canvas, pos = {-100, 0})
+	// A bar 10 wide and 100 tall to the right of the viewport, its handle under it.
+	bar_node := _node("Bar", c.root, {50, 0}, {10, 100})
+	bar := cast(^mhgui.Scrollbar)_padd(bar_node, .Scrollbar)
+	mhgui.type_reset_Scrollbar(bar)
+	bar.min_handle = 0
+	handle := _node("Handle", bar_node, {0, 0}, {10, 10})
+	_, handle_rt := engine.transform_get_comp(handle, engine.RectTransform)
+	bar.handle.handle = engine.Handle(handle)
+	c.scroll.vertical_scrollbar.handle = engine.Handle(bar_node)
+
+	// It follows: a third of the content shows, at the top.
+	mhgui.scroll_rect_step(c.scroll, 0.016)
+	testing.expectf(t, abs(bar.size - 1.0 / 3) < 0.01 && bar.value == 1, "size %v value %v", bar.size, bar.value)
+	testing.expectf(t, abs(handle_rt.anchor_min.y - 2.0 / 3) < 0.01 && abs(handle_rt.anchor_max.y - 1) < 0.01, "the handle is the top third: %v %v", handle_rt.anchor_min, handle_rt.anchor_max)
+	mhgui.scroll_rect_set_normalized(c.scroll, {0, 0})
+	mhgui.scroll_rect_step(c.scroll, 0.016)
+	testing.expectf(t, bar.value == 0 && abs(handle_rt.anchor_min.y) < 0.01, "at the bottom the handle is the bottom third: %v", handle_rt.anchor_min)
+
+	// It leads: the handle dragged up by half the free track is value 0.5.
+	// The bar's centre is canvas (50, 0), the handle's middle at the bottom is y -33.
+	_frame(_at(50, -33))
+	_frame(_at(50, -33), down = 1)
+	testing.expect(t, bar.dragging, "the press on the handle is the bar's")
+	_frame(_at(50, 0))
+	testing.expectf(t, abs(bar.value - 0.5) < 0.02, "the handle follows the pointer: %v", bar.value)
+	mhgui.scroll_rect_step(c.scroll, 0.016)
+	testing.expectf(t, abs(mhgui.scroll_rect_normalized(c.scroll).y - 0.5) < 0.02, "and the content follows the bar: %v", mhgui.scroll_rect_normalized(c.scroll))
+	_frame(_at(50, 0), up = 1)
+	testing.expect(t, !bar.dragging)
+
+	// A press on the track, off the handle, brings the handle's middle there.
+	_frame(_at(50, 45), down = 1)
+	testing.expectf(t, bar.value > 0.95, "a press near the top of the track goes to the top: %v", bar.value)
+	_frame(_at(50, 45), up = 1)
+}

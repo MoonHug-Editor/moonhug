@@ -124,6 +124,113 @@ ui_menu_shape :: proc() {
 	engine.inspector_request_select(tH)
 }
 
+// A reference to another node of the scene, as a component saves one.
+@(private = "file")
+_ref_to :: proc(tH: engine.Transform_Handle) -> engine.Ref_Local {
+	t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(tH))
+	if t == nil do return {}
+	lid := t.local_id
+	if lid == 0 && t.scene != nil do lid = engine.sm_local_id_get_or_mint(t.scene, engine.Handle(tH))
+	return {local_id = lid, handle = engine.Handle(tH)}
+}
+
+// What the Scroll View menu made, for the procs that fill its components:
+// they take no arguments, and a component is recorded with its fields set.
+@(private = "file")
+_scroll_parts: struct {
+	viewport, content, bar, handle: engine.Transform_Handle,
+}
+
+// A scroll view: a UiShape panel with a ScrollRect, a Viewport with a UiMask
+// that fills it up to the bar, a Content taller than the viewport, and a
+// vertical Scrollbar with its Handle at the right.
+@(menu_item={path="GameObject/UI/Scroll View", order=53, help="Creates a scrolling list: a panel, a masked viewport, a content node and a scrollbar"})
+ui_menu_scroll_view :: proc() {
+	g := undo.group_begin("Create Scroll View")
+	defer undo.group_end(&g)
+	parent := engine.inspector_active_selection()
+	if _canvas_of(parent) == _NONE {
+		parent = _create_canvas()
+		if parent == _NONE do return
+	}
+	BAR :: f32(12)
+	root := undo.record_create_child("Scroll View", parent)
+	if root == _NONE do return
+	_add_comp(root, .RectTransform, proc(ptr: rawptr) {
+		(cast(^engine.RectTransform)ptr).size_delta = {300, 200}
+	})
+	_add_comp(root, .CanvasRenderer)
+	_add_comp(root, .UiShape, proc(ptr: rawptr) {
+		s := cast(^mhgui.UiShape)ptr
+		s.color = {0.16, 0.18, 0.26, 1}
+		s.corner_radius = {8, 8, 8, 8}
+	})
+
+	viewport := undo.record_create_child("Viewport", root)
+	_add_comp(viewport, .RectTransform, proc(ptr: rawptr) {
+		rt := cast(^engine.RectTransform)ptr
+		// The panel, less the bar's width at the right.
+		rt.anchor_min, rt.anchor_max = {0, 0}, {1, 1}
+		rt.size_delta = {-BAR, 0}
+		rt.anchored_position = {-BAR / 2, 0, 0}
+	})
+	_add_comp(viewport, .UiMask, proc(ptr: rawptr) {
+		(cast(^engine.UiMask)ptr).corner_radius = {8, 0, 0, 8}
+	})
+
+	content := undo.record_create_child("Content", viewport)
+	_add_comp(content, .RectTransform, proc(ptr: rawptr) {
+		rt := cast(^engine.RectTransform)ptr
+		// As wide as the viewport, 400 tall, hanging from its top.
+		rt.anchor_min, rt.anchor_max = {0, 1}, {1, 1}
+		rt.pivot = {0.5, 1}
+		rt.size_delta = {0, 400}
+		rt.anchored_position = {0, 0, 0}
+	})
+
+	bar := undo.record_create_child("Scrollbar", root)
+	_add_comp(bar, .RectTransform, proc(ptr: rawptr) {
+		rt := cast(^engine.RectTransform)ptr
+		rt.anchor_min, rt.anchor_max = {1, 0}, {1, 1}
+		rt.pivot = {1, 0.5}
+		rt.size_delta = {BAR, 0}
+		rt.anchored_position = {0, 0, 0}
+	})
+	_add_comp(bar, .CanvasRenderer)
+	_add_comp(bar, .UiShape, proc(ptr: rawptr) {
+		s := cast(^mhgui.UiShape)ptr
+		s.color = {0.11, 0.12, 0.18, 1}
+		s.corner_radius = {0, 8, 8, 0}
+	})
+	handle := undo.record_create_child("Handle", bar)
+	_add_comp(handle, .RectTransform, proc(ptr: rawptr) {
+		// Where the Scrollbar puts it at the top with half the content
+		// showing: the Scrollbar places it from then on.
+		rt := cast(^engine.RectTransform)ptr
+		rt.anchor_min, rt.anchor_max = {0, 0.5}, {1, 1}
+		rt.size_delta = {0, 0}
+	})
+	_add_comp(handle, .CanvasRenderer)
+	_add_comp(handle, .UiShape, proc(ptr: rawptr) {
+		s := cast(^mhgui.UiShape)ptr
+		s.color = {0.45, 0.5, 0.66, 1}
+		s.corner_radius = {6, 6, 6, 6}
+	})
+
+	_scroll_parts = {viewport, content, bar, handle}
+	_add_comp(bar, .Scrollbar, proc(ptr: rawptr) {
+		(cast(^mhgui.Scrollbar)ptr).handle = _ref_to(_scroll_parts.handle)
+	})
+	_add_comp(root, .ScrollRect, proc(ptr: rawptr) {
+		s := cast(^mhgui.ScrollRect)ptr
+		s.content = _ref_to(_scroll_parts.content)
+		s.viewport = _ref_to(_scroll_parts.viewport)
+		s.vertical_scrollbar = _ref_to(_scroll_parts.bar)
+	})
+	undo.group_commit(&g)
+	engine.inspector_request_select(root)
+}
+
 // A Button node: an Image as the target graphic plus the Button. Like the
 // Image menu, under the selection when that sits in a canvas.
 @(menu_item={path="GameObject/UI/Button", order=52, help="Creates a UI button, in the selected canvas or a new one"})
