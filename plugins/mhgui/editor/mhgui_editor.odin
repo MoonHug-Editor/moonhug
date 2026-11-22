@@ -124,6 +124,121 @@ ui_menu_shape :: proc() {
 	engine.inspector_request_select(tH)
 }
 
+// What the Toggle and Slider menus made, for the procs that fill their
+// components (as _scroll_parts).
+@(private = "file")
+_control_parts: struct {
+	a, b: engine.Transform_Handle,
+}
+
+// A Toggle: a box that is a UiShape, with a check mark inside it that shows
+// while the toggle is on.
+@(menu_item={path="GameObject/UI/Toggle", order=54, help="Creates a toggle: a box with a check mark that a click turns on and off"})
+ui_menu_toggle :: proc() {
+	g := undo.group_begin("Create Toggle")
+	defer undo.group_end(&g)
+	parent := engine.inspector_active_selection()
+	if _canvas_of(parent) == _NONE {
+		parent = _create_canvas()
+		if parent == _NONE do return
+	}
+	box := undo.record_create_child("Toggle", parent)
+	if box == _NONE do return
+	_add_comp(box, .RectTransform, proc(ptr: rawptr) {
+		(cast(^engine.RectTransform)ptr).size_delta = {28, 28}
+	})
+	_add_comp(box, .CanvasRenderer)
+	_add_comp(box, .UiShape, proc(ptr: rawptr) {
+		s := cast(^mhgui.UiShape)ptr
+		s.color = {0.16, 0.18, 0.26, 1}
+		s.corner_radius = {6, 6, 6, 6}
+		s.border_width = 2
+		s.border_color = {0.45, 0.5, 0.66, 1}
+	})
+	mark := undo.record_create_child("Checkmark", box)
+	_add_comp(mark, .RectTransform, proc(ptr: rawptr) {
+		(cast(^engine.RectTransform)ptr).size_delta = {14, 14}
+	})
+	_add_comp(mark, .CanvasRenderer)
+	_add_comp(mark, .UiShape, proc(ptr: rawptr) {
+		s := cast(^mhgui.UiShape)ptr
+		s.color = {0.4, 0.75, 1, 1}
+		s.corner_radius = {3, 3, 3, 3}
+		s.raycast_target = false
+	})
+	_control_parts = {a = mark}
+	_add_comp(box, .Toggle, proc(ptr: rawptr) {
+		t := cast(^mhgui.Toggle)ptr
+		t.is_on = true
+		t.graphic = _ref_to(_control_parts.a)
+	})
+	undo.group_commit(&g)
+	engine.inspector_request_select(box)
+}
+
+// A Slider: a track that is a UiShape, a fill from its start to the value
+// and a round handle at the value.
+@(menu_item={path="GameObject/UI/Slider", order=55, help="Creates a slider: a track, a fill and a handle that a drag moves"})
+ui_menu_slider :: proc() {
+	g := undo.group_begin("Create Slider")
+	defer undo.group_end(&g)
+	parent := engine.inspector_active_selection()
+	if _canvas_of(parent) == _NONE {
+		parent = _create_canvas()
+		if parent == _NONE do return
+	}
+	track := undo.record_create_child("Slider", parent)
+	if track == _NONE do return
+	_add_comp(track, .RectTransform, proc(ptr: rawptr) {
+		(cast(^engine.RectTransform)ptr).size_delta = {200, 10}
+	})
+	_add_comp(track, .CanvasRenderer)
+	_add_comp(track, .UiShape, proc(ptr: rawptr) {
+		s := cast(^mhgui.UiShape)ptr
+		s.color = {0.16, 0.18, 0.26, 1}
+		s.corner_radius = {5, 5, 5, 5}
+	})
+	fill := undo.record_create_child("Fill", track)
+	_add_comp(fill, .RectTransform, proc(ptr: rawptr) {
+		// From the track's start to the value, here the middle. The Slider
+		// places it from then on.
+		rt := cast(^engine.RectTransform)ptr
+		rt.anchor_min, rt.anchor_max = {0, 0}, {0.5, 1}
+		rt.size_delta = {0, 0}
+	})
+	_add_comp(fill, .CanvasRenderer)
+	_add_comp(fill, .UiShape, proc(ptr: rawptr) {
+		s := cast(^mhgui.UiShape)ptr
+		s.color = {0.4, 0.75, 1, 1}
+		s.corner_radius = {5, 5, 5, 5}
+		s.raycast_target = false
+	})
+	handle := undo.record_create_child("Handle", track)
+	_add_comp(handle, .RectTransform, proc(ptr: rawptr) {
+		rt := cast(^engine.RectTransform)ptr
+		rt.anchor_min, rt.anchor_max = {0.5, 0.5}, {0.5, 0.5}
+		rt.size_delta = {22, 22}
+	})
+	_add_comp(handle, .CanvasRenderer)
+	_add_comp(handle, .UiShape, proc(ptr: rawptr) {
+		s := cast(^mhgui.UiShape)ptr
+		s.color = {0.95, 0.96, 1, 1}
+		s.corner_radius = {11, 11, 11, 11}
+		s.shadow = {color = {0, 0, 0, 0.5}, offset = {0, -2}, blur = 6}
+	})
+	_control_parts = {a = fill, b = handle}
+	_add_comp(track, .Slider, proc(ptr: rawptr) {
+		s := cast(^mhgui.Slider)ptr
+		s.value = 0.5
+		s.fill = _ref_to(_control_parts.a)
+		s.handle = _ref_to(_control_parts.b)
+		// The handle is what takes the tint.
+		s.target_graphic = _ref_to(_control_parts.b)
+	})
+	undo.group_commit(&g)
+	engine.inspector_request_select(track)
+}
+
 // A reference to another node of the scene, as a component saves one.
 @(private = "file")
 _ref_to :: proc(tH: engine.Transform_Handle) -> engine.Ref_Local {

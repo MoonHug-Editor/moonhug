@@ -17,7 +17,9 @@ package mhgui
 // - The arrow keys, the d-pad and the left stick move the selection to the
 //   nearest usable Button in that direction. With nothing selected they do
 //   nothing: a menu selects its first button when it opens.
-// - Enter, Space and the pad's bottom face button click the selected Button.
+// - Enter, Space and the pad's bottom face button click the selected Button
+//   and flip the selected Toggle. On a selected Slider the keys along its
+//   axis change its value, and the keys across it move the selection.
 // - ui_set_navigation(false) turns both off, for a game that uses those keys
 //   while buttons are on screen.
 
@@ -26,46 +28,15 @@ import "moonhug:packages/engine"
 import "moonhug:libs/input"
 import "moonhug:libs/time"
 
-Selectable_Transition :: enum u8 {
-	None,
-	Color_Tint,
-}
-
-Selectable_State :: enum u8 {
-	Normal,
-	Highlighted,
-	Pressed,
-	Selected,
-	Disabled,
-}
-
-// The colour per state. Colors multiply the graphic's own color.
-Color_Block :: struct {
-	normal:           [4]f32 `decor:color()`,
-	highlighted:      [4]f32 `decor:color()`,
-	pressed:          [4]f32 `decor:color()`,
-	selected:         [4]f32 `decor:color()`,
-	disabled:         [4]f32 `decor:color()`,
-	color_multiplier: f32,
-	fade_duration:    f32, // seconds
-}
-
 @(component={menu="UI/Button"})
 @(typ_guid={guid = "df76380d-f03d-4b86-9872-9f35af0d58e6"})
 Button :: struct {
-	using base:     engine.CompData `inspect:"-"`,
-	interactable:   bool,
-	transition:     Selectable_Transition,
-	target_graphic: engine.Ref_Local `ref:"Transform"`, // the node whose graphic takes the tint; empty = this node
-	colors:         Color_Block,
+	using base:       engine.CompData `inspect:"-"`,
+	// What every control shares (selectable.odin): interactable, the colour
+	// transition and its state. Saved under "selectable", drawn flat.
+	using selectable: Selectable `inline:""`,
 	// Runtime state, never saved.
-	state:   Selectable_State `json:"-" inspect:"-"`,
-	clicked: bool             `json:"-" inspect:"-"`, // clicked this frame, by the pointer or the submit key
-	hovered: bool             `json:"-" inspect:"-"`, // the pointer is over the node or a node under it
-	pressed: bool             `json:"-" inspect:"-"`, // the pointer's left button is down on it
-	// During a press: the pointer is still over the button. Dragged off it,
-	// the button looks let go, and a release there does not click.
-	pressed_inside: bool      `json:"-" inspect:"-"`,
+	clicked: bool `json:"-" inspect:"-"`, // clicked this frame, by the pointer or the submit key
 }
 
 // The Button's pointer events. It uses the left button's Down, which makes it
@@ -73,38 +44,15 @@ Button :: struct {
 // takes the drag.
 @(comp_on_pointer_ui={component=Button})
 comp_on_pointer_ui_Button :: proc(b: ^Button, ev: ^engine.UI_Pointer_Event) {
-	#partial switch ev.kind {
-	case .Enter: b.hovered = true
-	case .Exit:  b.hovered = false
-	case .Down:
-		if ev.button != .Left || !b.interactable do return
-		b.pressed, b.pressed_inside = true, true
-		ev.used = true
-	case .Hold:
-		b.pressed_inside = ev.inside
-	case .Up:
-		if ev.button == .Left do b.pressed = false
-	case .Cancel:
-		b.pressed = false
-	case .Click:
-		if ev.button != .Left || !b.interactable do return
+	selectable_pointer(&b.selectable, ev)
+	if ev.kind == .Click && ev.button == .Left && b.interactable {
 		b.clicked = true
 		ev.used = true
 	}
 }
 
 type_reset_Button :: proc(b: ^Button) {
-	b.interactable = true
-	b.transition = .Color_Tint
-	b.colors = Color_Block{
-		normal           = {1, 1, 1, 1},
-		highlighted      = {0.96, 0.96, 0.96, 1},
-		pressed          = {0.78, 0.78, 0.78, 1},
-		selected         = {0.96, 0.96, 0.96, 1},
-		disabled         = {0.78, 0.78, 0.78, 0.5},
-		color_multiplier = 1,
-		fade_duration    = 0.1,
-	}
+	selectable_reset(&b.selectable)
 }
 
 // True on the frame the button was clicked. Read after ui_tick (any
@@ -161,11 +109,11 @@ _nav_submit_down :: proc() -> bool {
 	return input.key_down(.RETURN) || input.key_down(.KP_ENTER) || input.key_down(.SPACE) || input.gamepad_down(.SOUTH)
 }
 
-// A Button keyboard and gamepad can reach.
+// A control keyboard and gamepad can reach: a Button, a Toggle or a Slider.
 @(private = "file")
 _usable :: proc(tH: engine.Transform_Handle) -> bool {
-	_, b := engine.transform_get_comp(tH, Button)
-	return b != nil && b.enabled && b.interactable && engine.transform_active_in_hierarchy(tH)
+	sel, enabled := node_selectable(tH)
+	return sel != nil && enabled && sel.interactable && engine.transform_active_in_hierarchy(tH)
 }
 
 // The usable Button nearest to `from` in direction `dir` ({±1, 0} or
@@ -196,7 +144,7 @@ button_find_in_direction :: proc(from: engine.Transform_Handle, dir: [2]f32) -> 
 		for n in nodes {
 			if n.tH != from && !_usable(n.tH) do continue
 			if n.tH == from {
-				if _, b := engine.transform_get_comp(n.tH, Button); b == nil do continue
+				if sel, _ := node_selectable(n.tH); sel == nil do continue
 			}
 			c := engine.rect_corners(n.rect, n.xform)
 			lo, hi := c[0].xy, c[0].xy
@@ -233,68 +181,39 @@ button_find_in_direction :: proc(from: engine.Transform_Handle, dir: [2]f32) -> 
 @(update={order=-100})
 ui_tick :: proc(dt: f32) {
 	w := engine.ctx_world()
-	// Last frame's clicks are over before the pointer pass sets this frame's.
+	// Last frame's clicks and changes are over before the pointer pass sets
+	// this frame's.
 	{
 		it := engine.pool_iterator(buttons(w))
 		for b, _ in engine.pool_next(&it) do b.clicked = false
+		toggles_frame_begin()
+		sliders_frame_begin()
 	}
 	engine.canvas_pointer_update()
 	submit, submit_down: bool
 	if _navigation && engine.application_is_focused() {
 		selected := engine.ui_selected()
 		if dir := _nav_move(); dir != {} && selected != {} {
-			if next := button_find_in_direction(selected, dir); next != {} do engine.ui_set_selected(next)
+			// A selected Slider takes the keys along its own axis.
+			if !slider_nav(selected, dir) {
+				if next := button_find_in_direction(selected, dir); next != {} do engine.ui_set_selected(next)
+			}
 		}
 		submit = _nav_submit_pressed()
 		submit_down = _nav_submit_down()
 	}
 	selected := engine.ui_selected()
+	// Real time: a menu responds while the game's time is slowed or held.
+	real_dt := time.delta_time(.Unscaled)
 	it := engine.pool_iterator(buttons(w))
 	for b, _ in engine.pool_next(&it) {
-		if !b.enabled || !engine.transform_active_in_hierarchy(b.owner) {
-			b.clicked, b.hovered, b.pressed, b.pressed_inside = false, false, false, false
-			continue
-		}
-		chosen := selected == b.owner
+		live := b.enabled && engine.transform_active_in_hierarchy(b.owner)
+		chosen := live && selected == b.owner
 		// The submit key clicks the selected Button. It is no pointer event.
-		if b.interactable && submit && chosen do b.clicked = true
-		if !b.interactable do b.clicked = false
-		switch {
-		case !b.interactable:       b.state = .Disabled
-		case b.pressed && b.pressed_inside: b.state = .Pressed
-		case submit_down && chosen: b.state = .Pressed
-		// Pressed and dragged off: it looks as it does with no pointer on it.
-		case b.pressed:             b.state = .Selected if chosen else .Normal
-		case b.hovered:             b.state = .Highlighted
-		case chosen:                b.state = .Selected
-		case:                       b.state = .Normal
-		}
-		// Real time: a menu responds while the game's time is slowed or held.
-		if b.transition == .Color_Tint do _button_tint(b, time.delta_time(.Unscaled))
+		if live && b.interactable && submit && chosen do b.clicked = true
+		if !live || !b.interactable do b.clicked = false
+		selectable_update(&b.selectable, b.owner, live, chosen, submit_down, real_dt)
 	}
-}
-
-@(private = "file")
-_button_tint :: proc(b: ^Button, dt: f32) {
-	target_tH := engine.Transform_Handle(b.target_graphic.handle)
-	if target_tH == {} do target_tH = b.owner
-	_, cr := engine.transform_get_comp(target_tH, engine.CanvasRenderer)
-	if cr == nil do return
-	c := b.colors
-	want: [4]f32
-	switch b.state {
-	case .Normal:      want = c.normal
-	case .Highlighted: want = c.highlighted
-	case .Pressed:     want = c.pressed
-	case .Selected:    want = c.selected
-	case .Disabled:    want = c.disabled
-	}
-	want *= c.color_multiplier
-	if !cr.tinted || c.fade_duration <= 0 {
-		engine.canvas_renderer_set_tint(cr, want)
-		return
-	}
-	// Move a fraction of the way each frame: done within fade_duration.
-	t := min(dt / c.fade_duration, 1)
-	engine.canvas_renderer_set_tint(cr, cr.tint + (want - cr.tint) * t)
+	toggles_update(selected, submit, submit_down, real_dt)
+	sliders_update(selected, real_dt)
 }

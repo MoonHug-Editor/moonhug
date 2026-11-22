@@ -653,3 +653,164 @@ test_scrollbar_follows_and_leads :: proc(t: ^testing.T) {
 	testing.expectf(t, bar.value > 0.95, "a press near the top of the track goes to the top: %v", bar.value)
 	_frame(_at(50, 45), up = 1)
 }
+
+// --- Toggle and Slider ----------------------------------------------------------------
+
+@(private = "file")
+_toggle :: proc(name: string, parent: engine.Transform_Handle, pos: [2]f32) -> (engine.Transform_Handle, ^mhgui.Toggle, ^engine.CanvasRenderer) {
+	node := _node(name, parent, pos, {40, 40})
+	t := cast(^mhgui.Toggle)_padd(node, .Toggle)
+	mhgui.type_reset_Toggle(t)
+	mark := _node("Mark", node, {0, 0}, {20, 20})
+	t.graphic.handle = engine.Handle(mark)
+	_, cr := engine.transform_get_comp(mark, engine.CanvasRenderer)
+	return node, t, cr
+}
+
+@(test)
+test_toggle_flips_and_groups :: proc(t: ^testing.T) {
+	f: _Pointer_Fixture
+	_begin(&f)
+	context.user_ptr = &f.tc.uc
+	defer _end(&f)
+	canvas := _canvas()
+	root := _node("Root", canvas, {0, 0}, {800, 600}, drawn = false)
+	_, alone, alone_mark := _toggle("Alone", root, {0, 200})
+
+	// A click flips it, and the mark shows with it. The mark is a child
+	// graphic: the click lands on it and is still the toggle's.
+	_frame(_at(0, 200))
+	testing.expect(t, !alone_mark.enabled, "off: the mark is hidden")
+	_frame(_at(0, 200), down = 1)
+	_frame(_at(0, 200), up = 1)
+	testing.expect(t, alone.is_on && mhgui.toggle_changed(alone), "a click turns it on")
+	testing.expect(t, alone_mark.enabled, "on: the mark shows")
+	_frame(_at(0, 200))
+	testing.expect(t, !mhgui.toggle_changed(alone), "changed lasts one frame")
+	_frame(_at(0, 200), down = 1)
+	_frame(_at(0, 200), up = 1)
+	testing.expect(t, !alone.is_on && !alone_mark.enabled, "another click turns it off")
+
+	// A group: one on at a time.
+	group_node := _node("Group", root, {0, 0}, {300, 60}, drawn = false)
+	group := cast(^mhgui.ToggleGroup)_padd(group_node, .ToggleGroup)
+	a_node, a, _ := _toggle("A", group_node, {-100, 0})
+	_, b, b_mark := _toggle("B", group_node, {0, 0})
+	_, c, _ := _toggle("C", group_node, {100, 0})
+	for tg in ([]^mhgui.Toggle{a, b, c}) do tg.group.handle = engine.Handle(group_node)
+	click :: proc(x: f32) {
+		_frame(_at(x, 0), down = 1)
+		_frame(_at(x, 0), up = 1)
+	}
+	click(-100)
+	testing.expect(t, a.is_on && !b.is_on && !c.is_on, "A is on")
+	click(0)
+	testing.expect(t, !a.is_on && b.is_on && !c.is_on, "B on turns A off")
+	testing.expect(t, mhgui.toggle_changed(a) && mhgui.toggle_changed(b), "both changed this frame")
+	testing.expect(t, b_mark.enabled, "B's mark shows")
+	// The on one cannot be clicked off: one stays on.
+	click(0)
+	testing.expect(t, b.is_on, "a click on the on toggle of a group keeps it on")
+	group.allow_switch_off = true
+	click(0)
+	testing.expect(t, !a.is_on && !b.is_on && !c.is_on, "with allow_switch_off none is on")
+
+	// The submit key flips the selected one.
+	engine.ui_set_selected(a_node)
+	defer engine.ui_set_selected({})
+	input.frame_reset()
+	e: sdl.Event
+	e.type = .KEY_DOWN
+	e.key.scancode = .RETURN
+	input.apply_event(&e)
+	mhgui.ui_tick(0)
+	e.type = .KEY_UP
+	input.apply_event(&e)
+	testing.expect(t, a.is_on, "Enter turns the selected toggle on")
+
+	// Not interactable: clicks do nothing.
+	c.interactable = false
+	click(100)
+	testing.expect(t, !c.is_on && a.is_on, "a toggle that is not interactable does not flip")
+}
+
+@(test)
+test_slider_drag_keys_and_parts :: proc(t: ^testing.T) {
+	f: _Pointer_Fixture
+	_begin(&f)
+	context.user_ptr = &f.tc.uc
+	defer _end(&f)
+	canvas := _canvas()
+	root := _node("Root", canvas, {0, 0}, {800, 600}, drawn = false)
+	// A list around it that would take a drag across: the slider keeps its own.
+	list := _node("List", root, {0, 0}, {400, 200}, drawn = false)
+	_use(list, .Drag_Begin)
+	// A track 200 wide at the canvas centre, values 0 to 10.
+	track := _node("Slider", list, {0, 0}, {200, 20})
+	s := cast(^mhgui.Slider)_padd(track, .Slider)
+	mhgui.type_reset_Slider(s)
+	s.max_value = 10
+	fill := _node("Fill", track, {0, 0}, {0, 0}, drawn = false)
+	_, fill_rt := engine.transform_get_comp(fill, engine.RectTransform)
+	fill_rt.anchor_min, fill_rt.anchor_max = {0, 0}, {1, 1}
+	handle := _node("Handle", track, {0, 0}, {16, 30})
+	_, handle_rt := engine.transform_get_comp(handle, engine.RectTransform)
+	s.fill.handle = engine.Handle(fill)
+	s.handle.handle = engine.Handle(handle)
+
+	// A press on the track goes there: a quarter along is 2.5.
+	_frame(_at(-50, 0))
+	_frame(_at(-50, 0), down = 1)
+	testing.expectf(t, abs(s.value - 2.5) < 0.05 && mhgui.slider_changed(s), "the press sets the value: %v", s.value)
+	testing.expectf(t, abs(fill_rt.anchor_max.x - 0.25) < 0.01 && fill_rt.anchor_min.x == 0, "the fill covers a quarter: %v", fill_rt.anchor_max)
+	testing.expectf(t, abs(handle_rt.anchor_min.x - 0.25) < 0.01 && handle_rt.anchor_min.x == handle_rt.anchor_max.x, "the handle sits at it: %v", handle_rt.anchor_min)
+	testing.expect_value(t, handle_rt.size_delta, [2]f32{16, 30}) // its own size stays
+	// The drag follows the pointer, and the list around it gets none of it.
+	_frame(_at(50, 5))
+	testing.expectf(t, abs(s.value - 7.5) < 0.05, "the drag moves it: %v", s.value)
+	_frame(_at(500, 5))
+	testing.expect_value(t, s.value, f32(10)) // past the end: the end
+	testing.expect_value(t, _count(list, .Drag_Begin), 0)
+	_frame(_at(500, 5), up = 1)
+	testing.expect(t, !s.dragging)
+	_frame(_at(500, 5))
+	testing.expect(t, !mhgui.slider_changed(s), "changed lasts one frame")
+
+	// Whole numbers.
+	s.whole_numbers = true
+	_frame(_at(-47, 0), down = 1)
+	_frame(_at(-47, 0), up = 1)
+	testing.expect_value(t, s.value, f32(3)) // 2.65 is 3
+
+	// Selected, the keys along it change it, and the keys across it move on.
+	engine.ui_set_selected(track)
+	defer engine.ui_set_selected({})
+	key :: proc(k: input.Key) {
+		input.frame_reset()
+		e: sdl.Event
+		e.type = .KEY_DOWN
+		e.key.scancode = k
+		input.apply_event(&e)
+		mhgui.ui_tick(0)
+		e.type = .KEY_UP
+		input.apply_event(&e)
+		input.frame_reset()
+	}
+	key(.RIGHT)
+	testing.expect_value(t, s.value, f32(4))
+	key(.LEFT)
+	key(.LEFT)
+	testing.expect_value(t, s.value, f32(2))
+	testing.expect_value(t, engine.ui_selected(), track)
+	other := _node("Other", root, {0, 150}, {100, 40})
+	_as_button(other)
+	key(.UP)
+	testing.expect_value(t, engine.ui_selected(), other) // across the slider: the selection moves
+	testing.expect_value(t, s.value, f32(2))
+
+	// Right to left: the least value is at the right.
+	s.direction = .Right_To_Left
+	s.whole_numbers = false
+	mhgui.slider_set(s, 2.5)
+	testing.expectf(t, abs(fill_rt.anchor_min.x - 0.75) < 0.01 && fill_rt.anchor_max.x == 1, "reversed, the fill grows from the right: %v %v", fill_rt.anchor_min, fill_rt.anchor_max)
+}

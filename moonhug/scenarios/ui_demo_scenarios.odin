@@ -67,6 +67,39 @@ ui_demo_scene_opens_and_draws :: proc(t: ^testing.T) {
 		call(r, "input", `{"steps":[{"type":"up"},{"type":"wait","frames":3}]}`)
 		testing.expectf(t, dragged > wheeled + 5, "a drag up scrolled it further: %v after %v", dragged, wheeled)
 	}
+	// The controls cell: a click turns on the second toggle of the group,
+	// which turns the first off, and a drag along the slider changes its value.
+	if game_shown {
+		unit := game[2] / 1600
+		spot :: proc(game: [4]f64, unit, x, y: f64) -> (f64, f64) {
+			return game.x + game[2] / 2 + x * unit, game.y + game[3] / 2 + 18 - y * unit
+		}
+		is_on :: proc(r: ^Run, name: string) -> bool {
+			return as_bool(at(call(r, "get_property", fmt.tprintf(`{{"name":%q,"component":"Toggle","path":"is_on"}}`, name)), "value"))
+		}
+		value :: proc(r: ^Run) -> f64 {
+			return as_f64(at(call(r, "get_property", `{"name":"Slider","component":"Slider","path":"value"}`), "value"))
+		}
+		testing.expect(t, is_on(r, "Toggle 1") && !is_on(r, "Toggle 2"), "the first toggle starts on")
+		tx, ty := spot(game, unit, 500, -145)
+		click(r, tx, ty)
+		frames(r, 5)
+		testing.expect(t, is_on(r, "Toggle 2") && !is_on(r, "Toggle 1"), "a click on the second turns it on and the first off")
+		testing.expectf(t, value(r) == 60, "the slider starts at 60: %v", value(r))
+		// The handle sits at 60 of 100 along the 180 wide track: the press
+		// lands on it, the drag takes it to a quarter and to three quarters.
+		hx, hy := spot(game, unit, 500 - 90 + 108, -90)
+		qx, _ := spot(game, unit, 500 - 45, -90)
+		ex, _ := spot(game, unit, 500 + 45, -90)
+		call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":2}},{{"type":"down"}},{{"type":"wait","frames":3}},{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":3}}]}}`, hx, hy, qx, hy))
+		quarter := value(r)
+		testing.expectf(t, abs(quarter - 25) <= 2, "dragged to a quarter along the track it is about 25: %v", quarter)
+		call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":3}}]}}`, ex, hy))
+		call(r, "screenshot", `{"target":"game","max_size":900}`)
+		dragged := value(r)
+		call(r, "input", `{"steps":[{"type":"up"},{"type":"wait","frames":3}]}`)
+		testing.expectf(t, abs(dragged - 75) <= 2, "dragged to three quarters it is about 75: %v", dragged)
+	}
 	call(r, "invoke_menu", `{"path":"Edit/Play"}`)
 	frames(r, 5)
 

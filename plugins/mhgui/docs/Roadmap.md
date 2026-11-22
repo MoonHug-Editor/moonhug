@@ -18,7 +18,7 @@ Status is one of: Done, In progress, Next, Open, Parked.
 | 3 | Mask, rectangle | `UiMask`, an engine component: clips the nodes under it in the shader. Works turned and in a world-space canvas, adds no draw call. A clipped part takes no pointer | | Done |
 | 12 | Mask, rounded and nested | A radius per corner, a soft edge, a circle, and a node cut by every mask above it with each mask's own shape. A project setting says whether shaders get the clip by themselves | 1, 3 | Done |
 | 4 | ScrollRect and Scrollbar | Scrolling content by a drag, the wheel or a bar, with inertia and elastic or clamped ends. A list inside a list takes the drags along its own axis. GameObject, UI, Scroll View | 2, 3 | Done |
-| 5 | Slider, Toggle, ToggleGroup | The simple controls on the selectable base Button established | 2 | Open |
+| 5 | Slider, Toggle, ToggleGroup | The simple controls. Button, Toggle and Slider share one `Selectable` part: the colour transition, the hover and press state, and keyboard and gamepad selection | 2 | Done |
 
 ## Tier 2: layouts that hold together
 

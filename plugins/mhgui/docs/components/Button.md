@@ -19,6 +19,8 @@ The button tints its Image as the pointer hovers and presses it. Game code polls
 
 ## Properties
 
+The first four fields are the ones every control has. Button, Toggle and Slider share them and what they do: the colour transition, the hover and the press, and being selected by keyboard and gamepad. In a scene file they are saved under `selectable`.
+
 | Field | Default | What it does |
 |---|---|---|
 | `interactable` | on | Off, the button takes no input and shows the disabled colour. |
