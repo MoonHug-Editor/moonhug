@@ -24,9 +24,17 @@ The first four fields are the ones every control has. Button, Toggle and Slider 
 | Field | Default | What it does |
 |---|---|---|
 | `interactable` | on | Off, the button takes no input and shows the disabled colour. |
-| `transition` | Color_Tint | Color_Tint tints the target graphic by state. None leaves it alone. |
-| `target_graphic` | none | The object whose graphic takes the tint. None is this object. |
-| `colors` | see below | The tint per state, a multiplier and a fade time. |
+| `transition` | Color_Tint | How the control shows its state, below. |
+| `target_graphic` | none | The object whose graphic the transition changes. None is this object. |
+| `colors` | see below | Color_Tint: the tint per state, a multiplier and a fade time. |
+| `sprites` | none | Sprite_Swap: the sprite per state. |
+
+| Transition | What it does |
+|---|---|
+| None | Nothing. |
+| Color_Tint | Tints the target graphic with the state's colour, fading over `fade_duration`. |
+| Sprite_Swap | The target Image shows the state's sprite: Highlighted, Pressed, Selected or Disabled. Normal, and a state with no sprite, show the Image's own. |
+| Animation | The Animation component on the target object plays the state of the same name. With the animation plugin installed ([Animation transition](../extends/animation/concepts/AnimationTransition.md)). |
 
 | Colour | Default |
 |---|---|

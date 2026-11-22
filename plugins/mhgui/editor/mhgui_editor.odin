@@ -396,6 +396,19 @@ property_drawer_Image_inspector :: proc(ctx: ^inspector.Ctx) {
 	im.EndDisabled()
 }
 
+// The sprites of a Selectable's Sprite_Swap transition, each with the sprite
+// picker an Image's sprite has.
+@(property_drawer={type=mhgui.Sprite_State})
+property_drawer_Sprite_State :: proc(ctx: ^inspector.Ctx) {
+	s := cast(^mhgui.Sprite_State)ctx.ptr
+	changed := false
+	changed |= drawers.sprite_ref_row("Highlighted Sprite", &s.highlighted)
+	changed |= drawers.sprite_ref_row("Pressed Sprite", &s.pressed)
+	changed |= drawers.sprite_ref_row("Selected Sprite", &s.selected)
+	changed |= drawers.sprite_ref_row("Disabled Sprite", &s.disabled)
+	if changed do inspector.mark_inspector_changed()
+}
+
 // --- Canvas outline --------------------------------------------------------------------
 
 // Every canvas shows its rect in the Scene window, selected or not, so the UI

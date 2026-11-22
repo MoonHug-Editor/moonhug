@@ -14,7 +14,9 @@ import "moonhug:packages/engine"
 
 Selectable_Transition :: enum u8 {
 	None,
-	Color_Tint,
+	Color_Tint,  // the target graphic is tinted with the state's color
+	Sprite_Swap, // the target Image shows the state's sprite
+	Animation,   // the Animation on the target node plays the state of the same name (needs the animation plugin)
 }
 
 Selectable_State :: enum u8 {
@@ -36,11 +38,21 @@ Color_Block :: struct {
 	fade_duration:    f32, // seconds
 }
 
+// The sprite per state, for the Sprite_Swap transition. An empty one shows
+// the Image's own sprite, which is also what Normal shows.
+Sprite_State :: struct {
+	highlighted: engine.PPtr `inspect:"-"`,
+	pressed:     engine.PPtr `inspect:"-"`,
+	selected:    engine.PPtr `inspect:"-"`,
+	disabled:    engine.PPtr `inspect:"-"`,
+}
+
 Selectable :: struct {
 	interactable:   bool,
 	transition:     Selectable_Transition,
-	target_graphic: engine.Ref_Local `ref:"Transform"`, // the node whose graphic takes the tint; empty = this node
+	target_graphic: engine.Ref_Local `ref:"Transform"`, // the node whose graphic the transition changes; empty = this node
 	colors:         Color_Block,
+	sprites:        Sprite_State,
 	// Runtime state, never saved.
 	state:   Selectable_State `json:"-" inspect:"-"`,
 	hovered: bool             `json:"-" inspect:"-"`, // the pointer is over the node or a node under it
@@ -48,6 +60,31 @@ Selectable :: struct {
 	// During a press: the pointer is still over the control. Dragged off it,
 	// the control looks let go, and a release there does not click.
 	pressed_inside: bool      `json:"-" inspect:"-"`,
+	// The state a Sprite_Swap or Animation transition last showed, plus 1: 0
+	// is none yet. They act when the state changes, not every frame.
+	shown:          u8          `json:"-" inspect:"-"`,
+	// Sprite_Swap: the target Image's own sprite, taken before the first swap.
+	own_sprite:     engine.PPtr `json:"-" inspect:"-"`,
+	own_sprite_set: bool        `json:"-" inspect:"-"`,
+}
+
+// The name of a state: what the Animation transition looks for among the
+// states of the target's Animation.
+selectable_state_name :: proc(state: Selectable_State) -> string {
+	switch state {
+	case .Normal:      return "Normal"
+	case .Highlighted: return "Highlighted"
+	case .Pressed:     return "Pressed"
+	case .Selected:    return "Selected"
+	case .Disabled:    return "Disabled"
+	}
+	return "Normal"
+}
+
+// The node whose graphic a Selectable's transition changes.
+selectable_target :: proc(s: ^Selectable, owner: engine.Transform_Handle) -> engine.Transform_Handle {
+	target := engine.Transform_Handle(s.target_graphic.handle)
+	return target if target != {} else owner
 }
 
 selectable_reset :: proc(s: ^Selectable) {
@@ -107,9 +144,12 @@ selectable_update :: proc(s: ^Selectable, owner: engine.Transform_Handle, live, 
 	case chosen:                        s.state = .Selected
 	case:                               s.state = .Normal
 	}
+	if s.transition == .Sprite_Swap {
+		_selectable_swap_sprite(s, owner)
+		return
+	}
 	if s.transition != .Color_Tint do return
-	target_tH := engine.Transform_Handle(s.target_graphic.handle)
-	if target_tH == {} do target_tH = owner
+	target_tH := selectable_target(s, owner)
 	_, cr := engine.transform_get_comp(target_tH, engine.CanvasRenderer)
 	if cr == nil do return
 	c := s.colors
@@ -129,6 +169,28 @@ selectable_update :: proc(s: ^Selectable, owner: engine.Transform_Handle, live, 
 	// Move a fraction of the way each frame: done within fade_duration.
 	t := min(dt / c.fade_duration, 1)
 	engine.canvas_renderer_set_tint(cr, cr.tint + (want - cr.tint) * t)
+}
+
+// Sprite_Swap: the target Image shows the state's sprite, its own for Normal
+// and for a state with none. Only when the state changed.
+@(private = "file")
+_selectable_swap_sprite :: proc(s: ^Selectable, owner: engine.Transform_Handle) {
+	if s.shown == u8(s.state) + 1 do return
+	_, img := engine.transform_get_comp(selectable_target(s, owner), Image)
+	if img == nil do return
+	if !s.own_sprite_set {
+		s.own_sprite, s.own_sprite_set = img.sprite, true
+	}
+	want: engine.PPtr
+	switch s.state {
+	case .Normal:
+	case .Highlighted: want = s.sprites.highlighted
+	case .Pressed:     want = s.sprites.pressed
+	case .Selected:    want = s.sprites.selected
+	case .Disabled:    want = s.sprites.disabled
+	}
+	img.sprite = want if want != {} else s.own_sprite
+	s.shown = u8(s.state) + 1
 }
 
 // Whether the control can be used now: it is interactable, and so says every

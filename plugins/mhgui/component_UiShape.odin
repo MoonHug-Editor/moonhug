@@ -26,6 +26,9 @@ UiShape :: struct {
 	kind:           UiShape_Kind,
 	// Top left, top right, bottom right, bottom left.
 	corner_radius:  [4]f32 `decor:min(0) decor:tooltip(desc="The radius of each corner, in canvas units: top left, top right, bottom right, bottom left. A radius is cut to half the shorter side, so a large one makes a pill or a circle.")`,
+	sides:          i32 `decor:range(3, 64) decor:tooltip(desc="Polygon: its sides. Star: its points.")`,
+	star_inner:     f32 `decor:range(0.05, 1) decor:tooltip(desc="Star: how far out the notches between its points are, as a share of the points' radius. 0.5 is a classic star.")`,
+	point_rounding: f32 `decor:min(0) decor:tooltip(desc="Polygon and Star: how round the points are, in canvas units.")`,
 	border_width:   f32 `decor:min(0) decor:tooltip(desc="The border's width from the edge inward, in canvas units. 0 draws none.")`,
 	border_color:   [4]f32 `decor:color()`,
 	// The fill runs from the color to gradient_color across the shape, along
@@ -41,7 +44,10 @@ UiShape :: struct {
 
 // The outline a UiShape draws.
 UiShape_Kind :: enum u8 {
-	Rect,
+	Rect,    // the node's rect, with a radius per corner
+	Ellipse, // the ellipse that fills the rect
+	Polygon, // a regular polygon of `sides` sides, a point up, in the largest circle that fits the rect
+	Star,    // a star of `sides` points, a point up, in the same circle
 }
 
 // A shadow of the shape: the shape moved by `offset`, grown by `spread`,
@@ -57,6 +63,8 @@ type_reset_UiShape :: proc(s: ^UiShape) {
 	s.color = {1, 1, 1, 1}
 	s.raycast_target = true
 	s.corner_radius = {8, 8, 8, 8}
+	s.sides = 5
+	s.star_inner = 0.5
 	s.border_color = {0, 0, 0, 1}
 	s.gradient_color = {1, 1, 1, 1}
 	s.shadow = {color = {0, 0, 0, 0}, offset = {0, -4}, blur = 8}
@@ -98,7 +106,7 @@ canvas_populate_UiShape :: proc(s: ^UiShape, rect: engine.Rect, out: ^[dynamic]e
 		// A CanvasGroup fades the whole shape, not its fill alone.
 		tint.a *= engine.canvas_group_state(s.owner).alpha
 	}
-	props := make([]engine.Draw_Property, 9, context.temp_allocator)
+	props := make([]engine.Draw_Property, 10, context.temp_allocator)
 	props[0] = {"shape_size", {rect.size.x, rect.size.y, quad_size.x, quad_size.y}}
 	props[1] = {"shape_radii", s.corner_radius}
 	props[2] = {"shape_params", {max(s.border_width, 0), math.to_radians(s.gradient_angle), 1 if s.gradient else 0, 0}}
@@ -108,6 +116,9 @@ canvas_populate_UiShape :: proc(s: ^UiShape, rect: engine.Rect, out: ^[dynamic]e
 	props[6] = {"shadow_params", {s.shadow.offset.x, s.shadow.offset.y, max(s.shadow.blur, 0), s.shadow.spread}}
 	props[7] = {"inner_shadow_color", s.inner_shadow.color * {1, 1, 1, tint.a}}
 	props[8] = {"inner_shadow_params", {s.inner_shadow.offset.x, s.inner_shadow.offset.y, max(s.inner_shadow.blur, 0), s.inner_shadow.spread}}
+	// sides 0 is a component saved before the field: a pentagon.
+	sides := f32(s.sides) if s.sides >= 3 else 5
+	props[9] = {"shape_kind", {f32(s.kind), sides, s.star_inner if s.star_inner > 0 else 0.5, max(s.point_rounding, 0)}}
 	append(out, engine.Graphic_Quad{
 		pos        = rect.pos - m,
 		size       = quad_size,

@@ -6,7 +6,8 @@ package mhgui_sample
 //
 // - UiShape: a card with a soft shadow, a button with a gradient and a border,
 //   a pill, a circle, a radius per corner, an outline with no fill, an inset
-//   field with an inner shadow and a glow. Under them, a row of twelve
+//   field with an inner shadow and a glow. In the fourth row, the other
+//   outlines: an ellipse, a hexagon and a star. Under them, a row of twelve
 //   chips with the same values, which share one draw call.
 //
 // - UiMask: a viewport that cuts a circle, a bar and a line of text: with

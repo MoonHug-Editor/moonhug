@@ -36,8 +36,8 @@ Status is one of: Done, In progress, Next, Open, Parked.
 | 10 | InputField | Text entry with a caret, a selection and the clipboard. Needs caret and selection drawing in the text plugin | 2, 3 | Open |
 | 11 | Dropdown | A button that opens a list | 4 | Open |
 | 13 | Mask, sprite alpha | Any outline from an image, and soft masks | 3 | Open |
-| 14 | More shapes | Circle, ring, pill, polygon and star for the procedural shape | 1 | Open |
-| 15 | Button transitions | Sprite swap and animation. Colour tint is the only one now | | Open |
+| 14 | More shapes | Ellipse, polygon and star for the UiShape. A pill is a rect with a large radius, a ring an ellipse with a border and no fill | 1 | Done |
+| 15 | Button transitions | Sprite swap, and animation with the animation plugin, for every control | | Done |
 | 16 | Explicit navigation | A selectable names its neighbour per direction, or stays out of navigation. Automatic navigation is the only mode now | | Open |
 
 ## Tier 4: triangles and a colour per vertex in the UI path

@@ -814,3 +814,51 @@ test_slider_drag_keys_and_parts :: proc(t: ^testing.T) {
 	mhgui.slider_set(s, 2.5)
 	testing.expectf(t, abs(fill_rt.anchor_min.x - 0.75) < 0.01 && fill_rt.anchor_max.x == 1, "reversed, the fill grows from the right: %v %v", fill_rt.anchor_min, fill_rt.anchor_max)
 }
+
+// The Sprite_Swap transition: the target Image shows the state's sprite, its
+// own again for Normal and for a state that has none.
+@(test)
+test_selectable_sprite_swap :: proc(t: ^testing.T) {
+	f: _Pointer_Fixture
+	_begin(&f)
+	context.user_ptr = &f.tc.uc
+	defer _end(&f)
+	canvas := _canvas()
+	node := _node("Button", canvas, {0, 0}, {100, 40})
+	b := _as_button(node)
+	b.transition = .Sprite_Swap
+	_, img := engine.transform_get_comp(node, mhgui.Image)
+	sprite :: proc(n: u8, slice: engine.Local_ID = 0) -> engine.PPtr {
+		p: engine.PPtr
+		p.guid[0] = n
+		p.local_id = slice
+		return p
+	}
+	img.sprite = sprite(1)
+	b.sprites.highlighted = sprite(2, 7)
+	b.sprites.pressed = sprite(3)
+
+	_frame(_at(300, 200))
+	testing.expect_value(t, img.sprite, sprite(1)) // Normal: its own
+	_frame(_at(0, 0))
+	testing.expect_value(t, img.sprite, sprite(2, 7)) // hovered: the texture and its slice
+	_frame(_at(0, 0), down = 1)
+	testing.expect_value(t, img.sprite, sprite(3))
+	_frame(_at(0, 0), up = 1)
+	testing.expect_value(t, img.sprite, sprite(2, 7))
+	// Selected has no sprite: the Image's own.
+	_frame(_at(300, 200))
+	testing.expect_value(t, b.state, mhgui.Selectable_State.Selected)
+	testing.expect_value(t, img.sprite, sprite(1))
+	// Disabled has none either.
+	b.interactable = false
+	_frame(_at(0, 0))
+	testing.expect_value(t, img.sprite, sprite(1))
+	b.sprites.disabled = sprite(4)
+	b.interactable = true
+	_frame(_at(0, 0))
+	b.interactable = false
+	_frame(_at(0, 0))
+	testing.expect_value(t, img.sprite, sprite(4))
+	engine.ui_set_selected({})
+}

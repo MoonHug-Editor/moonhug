@@ -28,8 +28,11 @@ The sample scene `ui_demo.scene` of the `mhgui_sample` package shows eight of th
 | `color` | white | The fill, alpha included. Alpha 0 with a border draws an outline. |
 | `material` | none | None draws with the plugin's shape material. Another material needs a shader with the same properties, below. |
 | `raycast_target` | on | The pointer can hover and click this graphic. |
-| `kind` | Rect | The outline. Rect is the only one. |
-| `corner_radius` | 8 each | A radius per corner: top left, top right, bottom right, bottom left. |
+| `kind` | Rect | The outline: Rect, Ellipse, Polygon or Star, below. |
+| `corner_radius` | 8 each | Rect: a radius per corner: top left, top right, bottom right, bottom left. |
+| `sides` | 5 | Polygon: its sides. Star: its points. |
+| `star_inner` | 0.5 | Star: how far out the notches between its points are, as a share of the points' radius. |
+| `point_rounding` | 0 | Polygon and Star: how round the points are, in canvas units. |
 | `border_width` | 0 | The border's width, from the edge inward. 0 draws none. |
 | `border_color` | black | The border's colour. |
 | `gradient` | off | The fill runs from `color` to `gradient_color` across the shape. |
@@ -39,6 +42,19 @@ The sample scene `ui_demo.scene` of the `mhgui_sample` package shows eight of th
 | `inner_shadow` | no colour | A shadow inside the shape, on the fill. |
 
 Sizes are in canvas units.
+
+## Outlines
+
+| Kind | What it draws |
+|---|---|
+| Rect | The node's rect, with a radius per corner. |
+| Ellipse | The ellipse that fills the rect: a circle in a square. |
+| Polygon | A regular polygon of `sides` sides with a point up, in the largest circle that fits the rect. |
+| Star | A star of `sides` points with a point up, in the same circle. `star_inner` sets how deep the notches are: near 1 it is close to a polygon, near 0 its points are thin. |
+
+- The border, the gradient and both shadows work on every outline.
+- A polygon or a star does not stretch with a rect that is not square: it keeps its shape, centred. Turn the node to turn it.
+- An ellipse far from a circle has a border a little uneven in width: the distance to an ellipse is worked out closely, not exactly.
 
 ## Radius
 
@@ -82,6 +98,6 @@ The quad's uvs run 0 to 1 over the whole quad, v up, and the fill is the vertex 
 
 ## Limits
 
-- One outline, the rectangle. Circles and pills come from its radius.
+- The pointer hits the node's rect, not the outline: the empty corner of a star takes a click.
 - A gradient has two colours and runs in a straight line.
 - The Scene window's selection outline and picking follow the quad, which a drop shadow makes larger than the rect.

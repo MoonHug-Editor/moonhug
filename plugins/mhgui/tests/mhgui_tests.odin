@@ -1096,5 +1096,5 @@ test_shape_draws_with_its_material_and_values :: proc(t: ^testing.T) {
 	q, is_quad := out[0].variant.(engine.Draw_Quad)
 	testing.expect(t, is_quad, "a UiShape emits a Draw_Quad")
 	testing.expect_value(t, q.material, mhgui.ui_shape_material_guid())
-	testing.expect_value(t, len(q.properties), 9)
+	testing.expect_value(t, len(q.properties), 10)
 }
