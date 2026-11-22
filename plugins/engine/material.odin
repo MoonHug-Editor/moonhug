@@ -271,10 +271,18 @@ _material_resolve_textures :: proc(mat: ^Material, sr: ^Shader_Runtime) -> []^gf
 // Whether a shader property is a color: a vec4 whose name says so ("color",
 // "colour", any case). The inspector shows it with a color picker, and its
 // value, authored in sRGB like every color, reaches the shader as linear.
+//
+// Asked for every property of every draw that packs a block, so it reads the
+// name in place: no copy, no Unicode tables. Names are ASCII identifiers.
 material_property_is_color :: proc(name: string, size: u32) -> bool {
 	if size != 16 do return false
-	lower := strings.to_lower(name, context.temp_allocator)
-	return strings.contains(lower, "color") || strings.contains(lower, "colour")
+	// "colo" then "r" or "ur", letters of any case.
+	for i := 0; i + 5 <= len(name); i += 1 {
+		if name[i] | 0x20 != 'c' || name[i + 1] | 0x20 != 'o' || name[i + 2] | 0x20 != 'l' || name[i + 3] | 0x20 != 'o' do continue
+		if name[i + 4] | 0x20 == 'r' do return true
+		if i + 6 <= len(name) && name[i + 4] | 0x20 == 'u' && name[i + 5] | 0x20 == 'r' do return true
+	}
+	return false
 }
 
 // Packs Material.properties into the shader's reflected UBO layout

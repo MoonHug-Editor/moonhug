@@ -393,6 +393,7 @@ font_cache_insert :: proc(guid: engine.Asset_GUID, f: Font) {
 	if _fonts == nil do _fonts = make(map[engine.Asset_GUID]Font)
 	if old, had := &_fonts[guid]; had do font_destroy(old)
 	_fonts[guid] = f
+	layout_epoch_bump()
 	if f.header.glyph_count > 0 do _font_upload(guid, &_fonts[guid])
 }
 
@@ -472,6 +473,7 @@ font_unload :: proc(guid: engine.Asset_GUID) {
 	if f, ok := &_fonts[guid]; ok {
 		font_destroy(f)
 		delete_key(&_fonts, guid)
+		layout_epoch_bump()
 	}
 }
 

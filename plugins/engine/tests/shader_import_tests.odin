@@ -381,3 +381,16 @@ _collect_glsl :: proc(dir: string, out: ^[dynamic]string) {
 	}
 }
 
+
+// A vec4 property whose name says colour, in either spelling and any case,
+// is a colour. Anything else is not.
+@(test)
+test_material_property_is_color_by_name :: proc(t: ^testing.T) {
+	for name in ([]string{"color", "Color", "border_color", "tintColour", "COLOUR", "shadow_color_2", "emission_colour"}) {
+		testing.expectf(t, engine.material_property_is_color(name, 16), "%s is a colour", name)
+	}
+	for name in ([]string{"", "colo", "col", "shape_radii", "colou", "calor", "shape_params", "c_o_l_o_r"}) {
+		testing.expectf(t, !engine.material_property_is_color(name, 16), "%s is no colour", name)
+	}
+	testing.expect(t, !engine.material_property_is_color("color", 4), "a float is no colour, whatever its name")
+}

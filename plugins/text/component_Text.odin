@@ -8,6 +8,7 @@ package text
 // source behind the Backend seam (backend.odin), swappable by another package.
 
 import "base:runtime"
+import "core:hash"
 import "core:strings"
 import "moonhug:packages/engine"
 
@@ -54,6 +55,7 @@ type_reset_Text :: proc(t: ^Text) {
 type_cleanup_Text :: proc(t: ^Text) {
 	if t.text != "" do delete(t.text)
 	t.text = ""
+	_layout_drop(t)
 }
 
 text_layout_params :: proc(t: ^Text) -> Layout_Params {
@@ -127,18 +129,82 @@ text_fitted_size :: proc(t: ^Text, b: ^Backend, str: string, rect: engine.Rect) 
 
 // The Text's geometry: one quad per glyph from the layout over the current
 // backend.
+//
+// The canvas is collected several times a frame (each view, picking, the
+// shadow pass), and a layout costs far more than a copy, so a Text keeps its
+// quads until something they depend on changes: its string, its settings,
+// its rect, the font or the backend (_layout_key).
 @(canvas_graphic)
 canvas_populate_Text :: proc(tx: ^Text, rect: engine.Rect, out: ^[dynamic]engine.Graphic_Quad) {
 	if tx.font == {} do return
 	content := text_content_rect(tx, rect)
 	str := text_display_string(tx)
 	p := text_layout_params(tx)
+	key := _layout_key(tx, p, str, content)
+	if kept, has := &_layouts[tx]; has && kept.key == key {
+		append(out, ..kept.quads[:])
+		return
+	}
+	text_layouts_made += 1
 	p.size = text_fitted_size(tx, backend(), str, content)
 	quads := make([dynamic]Glyph_Quad, context.temp_allocator)
+	// A font that is not there yet is asked for again the next time.
 	if !layout_text(backend(), p, str, content, &quads).ok do return
+	context.allocator = runtime.default_allocator()
+	kept := _layouts[tx]
+	kept.key = key
+	if kept.quads == nil do kept.quads = make([dynamic]engine.Graphic_Quad)
+	clear(&kept.quads)
 	for q in quads {
-		append(out, engine.Graphic_Quad{pos = q.pos, size = q.size, skew = q.skew, uvs = q.uvs, texture = q.texture})
+		append(&kept.quads, engine.Graphic_Quad{pos = q.pos, size = q.size, skew = q.skew, uvs = q.uvs, texture = q.texture})
 	}
+	_layouts[tx] = kept
+	append(out, ..kept.quads[:])
+}
+
+// A Text's quads and what they were made from. The map and the quads live
+// for the process, so they are the default allocator's.
+@(private = "file")
+_Kept_Layout :: struct {
+	key:   u64,
+	quads: [dynamic]engine.Graphic_Quad,
+}
+
+@(private = "file")
+_layouts: map[^Text]_Kept_Layout
+
+// How many times a Text was laid out, a kept layout not counted: for tests
+// and for a look at what a frame costs.
+text_layouts_made: int
+
+// A hash of everything a Text's quads depend on.
+@(private = "file")
+_layout_key :: proc(tx: ^Text, p: Layout_Params, str: string, content: engine.Rect) -> u64 {
+	Inputs :: struct {
+		params:    Layout_Params,
+		content:   engine.Rect,
+		auto_size: bool,
+		auto_min:  f32,
+		auto_max:  f32,
+		epoch:     u64,
+	}
+	// Zeroed first: the padding between fields is part of the bytes hashed.
+	inputs: Inputs
+	inputs.params = p
+	inputs.content = content
+	inputs.auto_size, inputs.auto_min, inputs.auto_max = tx.auto_size, tx.auto_size_min, tx.auto_size_max
+	inputs.epoch = _layout_epoch
+	h := hash.fnv64a(transmute([]u8)str)
+	return hash.fnv64a((cast([^]u8)&inputs)[:size_of(Inputs)], h)
+}
+
+// Forgets a Text's kept layout: the component is going away.
+@(private = "file")
+_layout_drop :: proc(tx: ^Text) {
+	kept, has := _layouts[tx]
+	if !has do return
+	delete(kept.quads)
+	delete_key(&_layouts, tx)
 }
 
 // ImportersInit is the asset-layer init phase both binaries run.

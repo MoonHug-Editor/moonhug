@@ -919,10 +919,15 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 			desc.populate(comp, n.rect, &quads)
 			key: Sort_Key
 			key[0] = sort_key_word(CANVAS_SORTING_LAYER, canvas.sort_order, 0, u16(i))
+			checked_clip := false
 			for q in quads {
 				if asset_guid_is_empty(q.texture) do continue
 				material := asset_key(g.material) if !asset_guid_is_empty(asset_key(g.material)) else q.material
-				if len(clip) > 0 do _warn_unclipped(material, n.tH)
+				// Once a node, not once a quad: a Text is a quad a glyph.
+				if len(clip) > 0 && !checked_clip {
+					checked_clip = true
+					_warn_unclipped(material, n.tH)
+				}
 				corners: [4][3]f32
 				if in_world {
 					corners = graphic_quad_corners(q, canvas_xform * n.xform)

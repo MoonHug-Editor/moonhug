@@ -304,3 +304,64 @@ test_collector_emits_glyph_quads_through_any_backend :: proc(t: ^testing.T) {
 	testing.expect_value(t, q.texture, _font())
 	testing.expect_value(t, out[0].key[0] >> 56, u64(255))
 }
+
+// A Text keeps its quads between collects and lays out again only when
+// something they depend on changed.
+@(test)
+test_text_keeps_its_layout_until_it_changes :: proc(t: ^testing.T) {
+	prev := text.backend()^
+	text.backend_set(_fake_backend())
+	defer text.backend_set(prev)
+
+	tx: text.Text
+	text.type_reset_Text(&tx)
+	defer text.type_cleanup_Text(&tx)
+	tx.font = engine.PPtr{guid = _font()}
+	tx.font_size = 12
+	tx.text = strings.clone("hello world")
+	rect := engine.Rect{pos = {0, 0}, size = {300, 100}}
+	out := make([dynamic]engine.Graphic_Quad, context.temp_allocator)
+
+	made := text.text_layouts_made
+	text.canvas_populate_Text(&tx, rect, &out)
+	testing.expect_value(t, text.text_layouts_made, made + 1)
+	testing.expect_value(t, len(out), 10) // a space has no quad
+	first := out[0]
+
+	// The same again, as the next view's collect asks: no new layout, the same quads.
+	for _ in 0 ..< 5 {
+		clear(&out)
+		text.canvas_populate_Text(&tx, rect, &out)
+	}
+	testing.expect_value(t, text.text_layouts_made, made + 1)
+	testing.expect_value(t, len(out), 10)
+	testing.expect(t, out[0].pos == first.pos && out[0].size == first.size && out[0].uvs == first.uvs, "the kept quads are the same quads")
+
+	// Each of these changes what is drawn: one new layout each.
+	delete(tx.text)
+	tx.text = strings.clone("hello there")
+	clear(&out)
+	text.canvas_populate_Text(&tx, rect, &out)
+	testing.expect_value(t, text.text_layouts_made, made + 2)
+
+	tx.font_size = 24
+	clear(&out)
+	text.canvas_populate_Text(&tx, rect, &out)
+	testing.expect_value(t, text.text_layouts_made, made + 3)
+	testing.expect(t, out[0].size.x > first.size.x, "the larger size is drawn, not the kept quads")
+
+	clear(&out)
+	text.canvas_populate_Text(&tx, engine.Rect{pos = {0, 0}, size = {100, 100}}, &out)
+	testing.expect_value(t, text.text_layouts_made, made + 4)
+
+	tx.horizontal_alignment = .Right
+	clear(&out)
+	text.canvas_populate_Text(&tx, engine.Rect{pos = {0, 0}, size = {100, 100}}, &out)
+	testing.expect_value(t, text.text_layouts_made, made + 5)
+
+	// Another backend, as a font reload is: laid out again.
+	text.backend_set(_fake_backend())
+	clear(&out)
+	text.canvas_populate_Text(&tx, engine.Rect{pos = {0, 0}, size = {100, 100}}, &out)
+	testing.expect_value(t, text.text_layouts_made, made + 6)
+}

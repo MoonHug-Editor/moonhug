@@ -78,6 +78,7 @@ Quads merge into one draw call when they are neighbours in draw order with the s
 | 25 | Batching by draw order | The collector draws nodes that do not overlap together, so a list of background, label, background, label becomes two draws | | Open |
 | 26 | Shape values in a shared buffer | Every UiShape draws with one material and reads its values from a buffer by index, so shapes that differ merge too. Stays crisp and free to animate | a per-frame data buffer in gfx | Open |
 | 27 | Cached UiShape | A UiShape with `dynamic` off is drawn once into an atlas and is an Image after that. The cheapest per pixel. Fixed resolution, redrawn when a field or the size changes | a runtime sprite atlas | Open |
+| 34 | Canvas redrawn only when it changed | A canvas keeps the quads it collected and collects again only when a node, a rect or a graphic under it changed. Every view of a frame, and every frame after it, reuses them. A Text keeps its own layout this way now | a change mark on canvas nodes | Open |
 
 ## With every item
 

@@ -43,6 +43,16 @@ _backend: Backend
 
 backend_set :: proc(b: Backend) {
 	_backend = b
+	layout_epoch_bump()
+}
+
+// Counts what changes a layout without the Text changing: the backend, a
+// font loaded or dropped. A Text's kept layout (component_Text.odin) is good
+// for one value of it.
+@(private) _layout_epoch: u64
+
+layout_epoch_bump :: proc() {
+	_layout_epoch += 1
 }
 
 backend :: proc() -> ^Backend {
