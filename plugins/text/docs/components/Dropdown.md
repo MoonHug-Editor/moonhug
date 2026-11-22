@@ -2,10 +2,10 @@
 title: "Dropdown"
 description: "A control that shows one of a list of options and opens the list to pick another, and DropdownItem, a row of the list"
 weight: 20
-tags: ["mhgui", "text", "components", "dropdown", "select", "combo box"]
+tags: ["text", "mhgui", "components", "dropdown", "select", "combo box"]
 ---
 
-A control that shows one of a list of options and opens the list to pick another. GameObject, UI, Dropdown creates one with every node it needs. The code is mhgui's `text` subpackage, which builds only with the text plugin installed.
+A control that shows one of a list of options and opens the list to pick another. GameObject, UI, Dropdown creates one with every node it needs. It is a control of the text plugin, built on the mhgui plugin's Selectable.
 
 ## Example
 
@@ -24,7 +24,7 @@ Dropdown          RectTransform, CanvasRenderer, UiShape, Dropdown
 
 ## Properties
 
-`interactable`, `transition`, `target_graphic`, `colors`, `sprites` and `navigation` are what every control has, as on a [Button](../../../components/Button.md).
+`interactable`, `transition`, `target_graphic`, `colors`, `sprites` and `navigation` are what every control has, as on a [Button](/plugins/mhgui/docs/components/Button.md).
 
 | Field | Default | What it does |
 |---|---|---|
@@ -55,12 +55,12 @@ One row of the list. It is a control too, so it has the fields above: its colour
 ## From code
 
 ```odin
-import mhgui_text "moonhug:packages/mhgui/text"
+import text "moonhug:packages/text"
 
 @(update)
 quality_tick :: proc(dt: f32) {
-	_, quality := engine.transform_get_comp(quality_node, mhgui_text.Dropdown)
-	if mhgui_text.dropdown_changed(quality) do apply_quality(int(quality.value))
+	_, quality := engine.transform_get_comp(quality_node, text.Dropdown)
+	if text.dropdown_changed(quality) do apply_quality(int(quality.value))
 }
 ```
 

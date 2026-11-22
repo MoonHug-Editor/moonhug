@@ -1,13 +1,12 @@
-package mhgui_text_editor
+package text_editor
 
-// Editor half of mhgui's text integration: the GameObject, UI menu items
-// that build an Input Field and a Dropdown with the nodes they need.
+// The GameObject, UI menu items that build an Input Field and a Dropdown
+// with the nodes they need.
 
 import "core:strings"
 import "moonhug:packages/engine"
 import undo "moonhug:packages/engine/editor/undo"
 import mhgui "moonhug:packages/mhgui"
-import mhgui_text "moonhug:packages/mhgui/text"
 import text "moonhug:packages/text"
 
 @(private = "file") _NONE :: engine.Transform_Handle{}
@@ -149,7 +148,7 @@ ui_menu_input_field :: proc() {
 	_text(shown, "", {1, 1, 1, 1})
 	_next.a, _next.b = shown, hint
 	_add_comp(field, .InputField, proc(ptr: rawptr) {
-		f := cast(^mhgui_text.InputField)ptr
+		f := cast(^text.InputField)ptr
 		f.text_component = _ref_to(_next.a)
 		f.placeholder = _ref_to(_next.b)
 	})
@@ -201,7 +200,7 @@ ui_menu_dropdown :: proc() {
 	_text(row_label, "Option A", {1, 1, 1, 1}, 16)
 	_next.a, _next.b = row_label, mark
 	_add_comp(row, .DropdownItem, proc(ptr: rawptr) {
-		item := cast(^mhgui_text.DropdownItem)ptr
+		item := cast(^text.DropdownItem)ptr
 		item.label = _ref_to(_next.a)
 		item.checkmark = _ref_to(_next.b)
 		// The row is the card's colour until the pointer or the keys are on it.
@@ -212,7 +211,7 @@ ui_menu_dropdown :: proc() {
 	})
 	_next.a, _next.b = label, template
 	_add_comp(node, .Dropdown, proc(ptr: rawptr) {
-		d := cast(^mhgui_text.Dropdown)ptr
+		d := cast(^text.Dropdown)ptr
 		d.caption = _ref_to(_next.a)
 		d.template = _ref_to(_next.b)
 		for o in ([]string{"Option A", "Option B", "Option C"}) do append(&d.options, strings.clone(o))

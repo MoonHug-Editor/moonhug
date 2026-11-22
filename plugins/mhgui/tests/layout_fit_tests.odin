@@ -232,8 +232,8 @@ test_canvas_group_fades_and_turns_off :: proc(t: ^testing.T) {
 	input.set_app_focused(true)
 	defer input.set_app_focused(false)
 	input.set_viewport({0, 0}, {800, 600})
-	engine.ui_pointer_reset()
-	defer engine.ui_pointer_reset()
+	mhgui.ui_pointer_reset()
+	defer mhgui.ui_pointer_reset()
 	screen := [2]f32{800, 600}
 	engine.canvas_set_game_viewport(screen)
 
@@ -263,7 +263,7 @@ test_canvas_group_fades_and_turns_off :: proc(t: ^testing.T) {
 	}
 	centre := [2]f32{400, 300}
 	testing.expect(t, abs(alpha(node) - 0.8) < 1e-4, "no group: its own alpha")
-	testing.expect_value(t, engine.canvas_raycast(centre, screen), node)
+	testing.expect_value(t, mhgui.canvas_raycast(centre, screen), node)
 
 	// Two groups above it: their alphas multiply.
 	outer := cast(^engine.CanvasGroup)_ladd(panel, .CanvasGroup)
@@ -281,7 +281,7 @@ test_canvas_group_fades_and_turns_off :: proc(t: ^testing.T) {
 	// blocks_raycasts off: the pointer goes through to what is behind.
 	outer.alpha = 1
 	outer.blocks_raycasts = false
-	testing.expect_value(t, engine.canvas_raycast(centre, screen), back)
+	testing.expect_value(t, mhgui.canvas_raycast(centre, screen), back)
 	outer.blocks_raycasts = true
 
 	// interactable off: the button shows disabled and does not click.

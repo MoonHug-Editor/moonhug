@@ -1,11 +1,11 @@
-package engine
+package mhgui
 
 // Pointer events for UI: one mechanism for every component on a canvas node.
 //
 // A component takes them with one proc:
 //
 //   @(comp_on_pointer_ui={component=MyWidget})
-//   comp_on_pointer_ui_MyWidget :: proc(w: ^MyWidget, ev: ^engine.UI_Pointer_Event) {
+//   comp_on_pointer_ui_MyWidget :: proc(w: ^MyWidget, ev: ^UI_Pointer_Event) {
 //       #partial switch ev.kind {
 //       case .Click: ...
 //       }
@@ -49,6 +49,7 @@ import "base:runtime"
 import "core:math/linalg"
 import "moonhug:libs/input"
 import "moonhug:libs/time"
+import "moonhug:packages/engine"
 
 UI_Pointer_Kind :: enum u8 {
 	Enter,      // the pointer came over the node or a node under it
@@ -68,8 +69,8 @@ UI_Pointer_Event :: struct {
 	kind:           UI_Pointer_Kind,
 	pointer:        int,                // which pointer: 0 is the mouse
 	button:         input.Mouse_Button,
-	node:           Transform_Handle,   // the node the proc's component is on
-	target:         Transform_Handle,   // the node the event started at
+	node:           engine.Transform_Handle,   // the node the proc's component is on
+	target:         engine.Transform_Handle,   // the node the event started at
 	position:       [2]f32,             // viewport pixels, y down
 	delta:          [2]f32,             // movement since the last frame. Drag_Begin: since the press
 	press_position: [2]f32,             // where the button went down
@@ -89,13 +90,13 @@ UI_Pointer_Proc :: proc(comp: rawptr, ev: ^UI_Pointer_Event)
 // Runs a proc on a component for every pointer event of its node: the node
 // was hit, or a node under it was and no proc below used the event.
 // `component = T` names a @(component) type of the same package, and the proc
-// is `proc(c: ^T, ev: ^engine.UI_Pointer_Event)`, named
+// is `proc(c: ^T, ev: ^UI_Pointer_Event)`, named
 // `comp_on_pointer_ui_<T>`. A type has at most one. UI nodes only: see the
 // top of this file for what it works on.
 @(extension_point={attribute="comp_on_pointer_ui", target="proc", fields="component"})
-ui_pointer_procs: [TypeKey]UI_Pointer_Proc
+ui_pointer_procs: [engine.TypeKey]UI_Pointer_Proc
 
-ui_pointer_register :: proc(key: TypeKey, fn: UI_Pointer_Proc) {
+ui_pointer_register :: proc(key: engine.TypeKey, fn: UI_Pointer_Proc) {
 	ui_pointer_procs[key] = fn
 }
 
@@ -110,8 +111,8 @@ UI_DOUBLE_CLICK_TIME :: 0.4
 _Press :: struct {
 	down:         bool,
 	button:       input.Mouse_Button,
-	hit:          Transform_Handle, // the node under the pointer at the press
-	owner:        Transform_Handle,
+	hit:          engine.Transform_Handle, // the node under the pointer at the press
+	owner:        engine.Transform_Handle,
 	owner_used:   bool, // a proc used Down
 	own_drag:     bool,
 	position:     [2]f32,
@@ -131,14 +132,14 @@ _Pointer :: struct {
 	touch:      u64,  // a finger's id in the input library
 	used:       bool, // a finger's slot is taken
 	press:      _Press,
-	hover:      [dynamic]Transform_Handle, // the hit node first, then its parents
+	hover:      [dynamic]engine.Transform_Handle, // the hit node first, then its parents
 	last_click: struct {
-		node:  Transform_Handle,
+		node:  engine.Transform_Handle,
 		time:  f64,
 		count: int,
 	},
 	position:   [2]f32,
-	hovered:    Transform_Handle,
+	hovered:    engine.Transform_Handle,
 }
 
 @(private = "file")
@@ -170,19 +171,19 @@ ui_pointer_over_ui :: proc() -> bool {
 // with y up: what a control compares with its rect. False off the canvas's
 // plane.
 ui_pointer_canvas_position :: proc(ev: ^UI_Pointer_Event) -> ([2]f32, bool) {
-	canvas := canvas_of(ev.node)
+	canvas := engine.canvas_of(ev.node)
 	if canvas == {} do return {}, false
-	return canvas_point_at(canvas, ev.position, input.viewport_size())
+	return engine.canvas_point_at(canvas, ev.position, input.viewport_size())
 }
 
 // The event's movement in the canvas units of its node, y up: what a drag
 // adds to an anchored position, whatever the canvas scale or render mode.
 ui_pointer_canvas_delta :: proc(ev: ^UI_Pointer_Event) -> [2]f32 {
-	canvas := canvas_of(ev.node)
+	canvas := engine.canvas_of(ev.node)
 	if canvas == {} do return {}
 	viewport := input.viewport_size()
-	now, ok_now := canvas_point_at(canvas, ev.position, viewport)
-	was, ok_was := canvas_point_at(canvas, ev.position - ev.delta, viewport)
+	now, ok_now := engine.canvas_point_at(canvas, ev.position, viewport)
+	was, ok_was := engine.canvas_point_at(canvas, ev.position - ev.delta, viewport)
 	if !ok_now || !ok_was do return {}
 	return now - was
 }
@@ -204,7 +205,7 @@ ui_pointer_cancel :: proc() {
 }
 
 @(private = "file")
-_event :: proc(kind: UI_Pointer_Kind, target: Transform_Handle) -> UI_Pointer_Event {
+_event :: proc(kind: UI_Pointer_Kind, target: engine.Transform_Handle) -> UI_Pointer_Event {
 	ev := UI_Pointer_Event{
 		kind           = kind,
 		pointer        = _cur.id,
@@ -219,20 +220,20 @@ _event :: proc(kind: UI_Pointer_Kind, target: Transform_Handle) -> UI_Pointer_Ev
 
 // Runs the pointer procs of one node's components.
 @(private = "file")
-_deliver :: proc(node: Transform_Handle, ev: ^UI_Pointer_Event) {
-	w := ctx_world()
-	t := pool_get(&w.transforms, Handle(node))
-	if t == nil || !transform_active_in_hierarchy(node) do return
+_deliver :: proc(node: engine.Transform_Handle, ev: ^UI_Pointer_Event) {
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(node))
+	if t == nil || !engine.transform_active_in_hierarchy(node) do return
 	// A proc may add or remove components: the list is walked as it was.
-	owned := make([]Handle, len(t.components), context.temp_allocator)
+	owned := make([]engine.Handle, len(t.components), context.temp_allocator)
 	for c, i in t.components do owned[i] = c.handle
 	ev.node = node
-	ev.inside = _cur.hovered != {} && transform_is_under(_cur.hovered, node)
+	ev.inside = _cur.hovered != {} && engine.transform_is_under(_cur.hovered, node)
 	for h in owned {
 		fn := ui_pointer_procs[h.type_key]
 		if fn == nil do continue
-		c := world_pool_get(w, h)
-		if c == nil || !(cast(^CompData)c).enabled do continue
+		c := engine.world_pool_get(w, h)
+		if c == nil || !(cast(^engine.CompData)c).enabled do continue
 		fn(c, ev)
 	}
 }
@@ -240,13 +241,13 @@ _deliver :: proc(node: Transform_Handle, ev: ^UI_Pointer_Event) {
 // Sends the event to `start`, then to each parent, until a proc uses it.
 // Returns the node that did, {} for none.
 @(private = "file")
-_bubble :: proc(start: Transform_Handle, ev: ^UI_Pointer_Event) -> Transform_Handle {
-	w := ctx_world()
+_bubble :: proc(start: engine.Transform_Handle, ev: ^UI_Pointer_Event) -> engine.Transform_Handle {
+	w := engine.ctx_world()
 	node := start
 	for _ in 0 ..< 4096 {
-		t := pool_get(&w.transforms, Handle(node))
+		t := engine.pool_get(&w.transforms, engine.Handle(node))
 		if t == nil do return {}
-		parent := Transform_Handle(t.parent.handle)
+		parent := engine.Transform_Handle(t.parent.handle)
 		_deliver(node, ev)
 		if ev.used do return node
 		if parent == {} do return {}
@@ -257,15 +258,15 @@ _bubble :: proc(start: Transform_Handle, ev: ^UI_Pointer_Event) -> Transform_Han
 
 // The nearest node that holds both `a` and `b`, {} for none.
 @(private = "file")
-_common_ancestor :: proc(a, b: Transform_Handle) -> Transform_Handle {
+_common_ancestor :: proc(a, b: engine.Transform_Handle) -> engine.Transform_Handle {
 	if a == {} || b == {} do return {}
-	w := ctx_world()
+	w := engine.ctx_world()
 	node := a
 	for _ in 0 ..< 4096 {
-		if transform_is_under(b, node) do return node
-		t := pool_get(&w.transforms, Handle(node))
+		if engine.transform_is_under(b, node) do return node
+		t := engine.pool_get(&w.transforms, engine.Handle(node))
 		if t == nil || t.parent.handle == {} do return {}
-		node = Transform_Handle(t.parent.handle)
+		node = engine.Transform_Handle(t.parent.handle)
 	}
 	return {}
 }
@@ -273,21 +274,21 @@ _common_ancestor :: proc(a, b: Transform_Handle) -> Transform_Handle {
 // Moves the hover chain to `hit`: Exit for the nodes that left it, the
 // deepest first, then Enter for the ones that joined, the highest first.
 @(private = "file")
-_hover_update :: proc(hit: Transform_Handle) {
-	if _cur.hover == nil do _cur.hover = make([dynamic]Transform_Handle, runtime.default_allocator())
-	w := ctx_world()
-	chain := make([dynamic]Transform_Handle, context.temp_allocator)
+_hover_update :: proc(hit: engine.Transform_Handle) {
+	if _cur.hover == nil do _cur.hover = make([dynamic]engine.Transform_Handle, runtime.default_allocator())
+	w := engine.ctx_world()
+	chain := make([dynamic]engine.Transform_Handle, context.temp_allocator)
 	for node, n := hit, 0; node != {} && n < 4096; n += 1 {
-		t := pool_get(&w.transforms, Handle(node))
+		t := engine.pool_get(&w.transforms, engine.Handle(node))
 		if t == nil do break
 		append(&chain, node)
-		node = Transform_Handle(t.parent.handle)
+		node = engine.Transform_Handle(t.parent.handle)
 	}
-	contains :: proc(list: []Transform_Handle, h: Transform_Handle) -> bool {
+	contains :: proc(list: []engine.Transform_Handle, h: engine.Transform_Handle) -> bool {
 		for e in list do if e == h do return true
 		return false
 	}
-	old := make([]Transform_Handle, len(_cur.hover), context.temp_allocator)
+	old := make([]engine.Transform_Handle, len(_cur.hover), context.temp_allocator)
 	copy(old, _cur.hover[:])
 	clear(&_cur.hover)
 	append(&_cur.hover, ..chain[:])
@@ -315,7 +316,7 @@ _hover_update :: proc(hit: Transform_Handle) {
 canvas_pointer_update :: proc() {
 	p := &_ui_pointer
 	p.clicked = {}
-	if !application_is_focused() {
+	if !engine.application_is_focused() {
 		ui_pointer_cancel()
 		p.hovered = {}
 		for &ptr in _pointers {
@@ -376,14 +377,14 @@ canvas_pointer_update :: proc() {
 @(private = "file")
 _pointer_step :: proc(input_now: _Pointer_In, over: bool) {
 	p := &_ui_pointer
-	w := ctx_world()
+	w := engine.ctx_world()
 	_cur.position = input_now.position
 	p.position = input_now.position
-	hit := canvas_raycast(input_now.position, input.viewport_size()) if over else Transform_Handle{}
+	hit := canvas_raycast(input_now.position, input.viewport_size()) if over else engine.Transform_Handle{}
 	_cur.hovered = hit
 	p.hovered = hit
 	// An owner that left the world takes its press with it.
-	if _cur.press.down && _cur.press.owner != {} && !pool_valid(&w.transforms, Handle(_cur.press.owner)) do _cur.press = {}
+	if _cur.press.down && _cur.press.owner != {} && !engine.pool_valid(&w.transforms, engine.Handle(_cur.press.owner)) do _cur.press = {}
 	if !_cur.press.down do _hover_update(hit)
 
 	// The press frame's mouse movement came before the press: it is no drag.
@@ -470,9 +471,9 @@ _pointer_step :: proc(input_now: _Pointer_In, over: bool) {
 		_cur.press = {}
 		p.pressed = {}
 		if clicks {
-			start: Transform_Handle
+			start: engine.Transform_Handle
 			if press.owner_used {
-				if hit != {} && transform_is_under(hit, press.owner) do start = press.owner
+				if hit != {} && engine.transform_is_under(hit, press.owner) do start = press.owner
 			} else {
 				start = _common_ancestor(press.hit, hit)
 			}

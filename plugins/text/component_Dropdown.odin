@@ -1,4 +1,4 @@
-package mhgui_text
+package text
 
 // Dropdown: a control that shows one of a list of options and opens the list
 // to pick another. The usual tree, which GameObject, UI, Dropdown makes:
@@ -29,7 +29,6 @@ import "moonhug:packages/engine"
 import "moonhug:libs/input"
 import "moonhug:libs/time"
 import mhgui "moonhug:packages/mhgui"
-import text "moonhug:packages/text"
 
 // What an open list's z_index is raised by, and its blocker's one less: over
 // everything else on the canvas.
@@ -92,7 +91,7 @@ _dropdown_register :: proc "contextless" () {
 }
 
 // Makes `s` the string a Text shows.
-text_set :: proc(tx: ^text.Text, s: string) {
+text_set :: proc(tx: ^Text, s: string) {
 	if tx == nil || tx.text == s do return
 	if tx.text != "" do delete(tx.text)
 	tx.text = strings.clone(s) if s != "" else ""
@@ -171,7 +170,7 @@ dropdown_show :: proc(d: ^Dropdown) {
 		item.dropdown = d.owner
 		item.clicked = false
 		if i < len(d.options) {
-			_, label := engine.transform_get_comp(engine.Transform_Handle(item.label.handle), text.Text)
+			_, label := engine.transform_get_comp(engine.Transform_Handle(item.label.handle), Text)
 			text_set(label, d.options[i])
 		}
 		if mark := engine.Transform_Handle(item.checkmark.handle); mark != {} {
@@ -195,7 +194,7 @@ dropdown_show :: proc(d: ^Dropdown) {
 		rt.size_delta = {0, 0}
 		rt.z_index = DROPDOWN_Z - 1
 	}
-	if _, ptr := engine.transform_add_comp(blocker, .HitArea); ptr != nil do (cast(^engine.HitArea)ptr).enabled = true
+	if _, ptr := engine.transform_add_comp(blocker, .HitArea); ptr != nil do (cast(^mhgui.HitArea)ptr).enabled = true
 	if _, ptr := engine.transform_add_comp(blocker, .DropdownItem); ptr != nil {
 		item := cast(^DropdownItem)ptr
 		type_reset_DropdownItem(item)
@@ -206,15 +205,15 @@ dropdown_show :: proc(d: ^Dropdown) {
 		item.dropdown = d.owner
 	}
 	d.list, d.blocker = list, blocker
-	if len(d.options) > 0 do engine.ui_set_selected(selected)
+	if len(d.options) > 0 do mhgui.ui_set_selected(selected)
 }
 
 // Closes the list. The Dropdown becomes the selected node again when the
 // selection was on the list.
 dropdown_hide :: proc(d: ^Dropdown) {
 	if d.list == {} do return
-	selected := engine.ui_selected()
-	if selected == d.blocker || _under(selected, d.list) do engine.ui_set_selected(d.owner)
+	selected := mhgui.ui_selected()
+	if selected == d.blocker || _under(selected, d.list) do mhgui.ui_set_selected(d.owner)
 	engine.transform_destroy_later(d.list)
 	engine.transform_destroy_later(d.blocker)
 	d.list, d.blocker = {}, {}
@@ -238,7 +237,7 @@ _under :: proc(tH, root: engine.Transform_Handle) -> bool {
 // --- Pointer -----------------------------------------------------------------------
 
 @(comp_on_pointer_ui={component=Dropdown})
-comp_on_pointer_ui_Dropdown :: proc(d: ^Dropdown, ev: ^engine.UI_Pointer_Event) {
+comp_on_pointer_ui_Dropdown :: proc(d: ^Dropdown, ev: ^mhgui.UI_Pointer_Event) {
 	mhgui.selectable_pointer(&d.selectable, ev)
 	if ev.kind == .Click && ev.button == .Left && mhgui.selectable_usable(&d.selectable, d.owner) {
 		d.clicked = true
@@ -247,7 +246,7 @@ comp_on_pointer_ui_Dropdown :: proc(d: ^Dropdown, ev: ^engine.UI_Pointer_Event) 
 }
 
 @(comp_on_pointer_ui={component=DropdownItem})
-comp_on_pointer_ui_DropdownItem :: proc(item: ^DropdownItem, ev: ^engine.UI_Pointer_Event) {
+comp_on_pointer_ui_DropdownItem :: proc(item: ^DropdownItem, ev: ^mhgui.UI_Pointer_Event) {
 	mhgui.selectable_pointer(&item.selectable, ev)
 	if ev.kind == .Click && ev.button == .Left && mhgui.selectable_usable(&item.selectable, item.owner) {
 		item.clicked = true
@@ -259,7 +258,7 @@ comp_on_pointer_ui_DropdownItem :: proc(item: ^DropdownItem, ev: ^engine.UI_Poin
 @(update={order=-99})
 dropdown_tick :: proc(dt: f32) {
 	w := engine.ctx_world()
-	selected := engine.ui_selected()
+	selected := mhgui.ui_selected()
 	real_dt := time.delta_time(.Unscaled)
 	keys := mhgui.ui_navigation() && engine.application_is_focused() && !mhgui.ui_keys_captured()
 	submit := keys && mhgui.ui_submit_pressed()
@@ -300,7 +299,7 @@ dropdown_tick :: proc(dt: f32) {
 				close = true
 			}
 			// The selection left the list: by a direction key, or by code.
-			now := engine.ui_selected()
+			now := mhgui.ui_selected()
 			if now != d.blocker && now != d.owner && !_under(now, d.list) do close = true
 			if close do dropdown_hide(d)
 		}
@@ -308,7 +307,7 @@ dropdown_tick :: proc(dt: f32) {
 		mhgui.selectable_update(&d.selectable, d.owner, live, selected == d.owner, false, real_dt)
 		// The caption follows the value, set by a pick or by code.
 		if live {
-			_, caption := engine.transform_get_comp(engine.Transform_Handle(d.caption.handle), text.Text)
+			_, caption := engine.transform_get_comp(engine.Transform_Handle(d.caption.handle), Text)
 			text_set(caption, dropdown_option(d))
 		}
 	}

@@ -1,6 +1,6 @@
-package mhgui_text_tests
+package text_tests
 
-// InputField and Dropdown (mhgui/text) through a fake monospace text
+// InputField and Dropdown through a fake monospace text
 // backend: at size 12 every glyph advances 10, so the caret before character
 // i of a left-aligned Text is 10 * i from its rect's left edge.
 
@@ -8,7 +8,6 @@ import "core:testing"
 import "moonhug:packages/engine"
 import "moonhug:libs/input"
 import mhgui "moonhug:packages/mhgui"
-import mhgui_text "moonhug:packages/mhgui/text"
 import text "moonhug:packages/text"
 import common "moonhug:tests/common"
 import sdl "vendor:sdl3"
@@ -79,9 +78,9 @@ _text :: proc(name: string, parent: engine.Transform_Handle, size: [2]f32) -> (e
 @(private = "file")
 _Field :: struct {
 	node, area, text_node: engine.Transform_Handle,
-	field: ^mhgui_text.InputField,
+	field: ^text.InputField,
 	tx:    ^text.Text,
-	drawn: ^mhgui_text.InputCaret,
+	drawn: ^text.InputCaret,
 }
 
 // A 200 x 40 field at the canvas's centre: its text starts at canvas x -100.
@@ -91,11 +90,11 @@ _field :: proc(canvas: engine.Transform_Handle) -> (f: _Field) {
 	_image(f.node)
 	f.area = _node("Text Area", f.node, {0, 0}, {200, 40})
 	_add(f.area, .CanvasRenderer)
-	f.drawn = cast(^mhgui_text.InputCaret)_add(f.area, .InputCaret)
-	mhgui_text.type_reset_InputCaret(f.drawn)
+	f.drawn = cast(^text.InputCaret)_add(f.area, .InputCaret)
+	text.type_reset_InputCaret(f.drawn)
 	f.text_node, f.tx = _text("Text", f.area, {200, 40})
-	f.field = cast(^mhgui_text.InputField)_add(f.node, .InputField)
-	mhgui_text.type_reset_InputField(f.field)
+	f.field = cast(^text.InputField)_add(f.node, .InputField)
+	text.type_reset_InputField(f.field)
 	f.field.text_component = {handle = engine.Handle(f.text_node)}
 	return
 }
@@ -103,8 +102,8 @@ _field :: proc(canvas: engine.Transform_Handle) -> (f: _Field) {
 @(private = "file")
 _tick :: proc() {
 	mhgui.ui_tick(0)
-	mhgui_text.input_field_tick(0)
-	mhgui_text.dropdown_tick(0)
+	text.input_field_tick(0)
+	text.dropdown_tick(0)
 }
 
 // One frame with `k` going down, then the key let go.
@@ -180,8 +179,8 @@ _begin :: proc(fx: ^_Fixture) -> engine.Transform_Handle {
 	text.backend_set(text.Backend{name = "fake", metrics = _fake_metrics, glyph = _fake_glyph})
 	input.set_app_focused(true)
 	input.set_viewport({0, 0}, {800, 600})
-	engine.ui_pointer_reset()
-	engine.ui_set_selected({})
+	mhgui.ui_pointer_reset()
+	mhgui.ui_set_selected({})
 	canvas := engine.transform_new("Canvas")
 	_add(canvas, .Canvas)
 	_add(canvas, .GraphicRaycaster)
@@ -192,8 +191,8 @@ _begin :: proc(fx: ^_Fixture) -> engine.Transform_Handle {
 _end :: proc(fx: ^_Fixture) {
 	context.user_ptr = &fx.tc.uc
 	mhgui.ui_keys_capture({})
-	engine.ui_set_selected({})
-	engine.ui_pointer_reset()
+	mhgui.ui_set_selected({})
+	mhgui.ui_pointer_reset()
 	input.set_app_focused(false)
 	input.frame_reset()
 	text.backend_set(fx.prev)
@@ -210,20 +209,20 @@ test_input_field_types_and_edits :: proc(t: ^testing.T) {
 	f := _field(canvas)
 	field := f.field
 
-	mhgui_text.input_field_begin(field, select_all = false)
-	testing.expect(t, field.editing && engine.ui_selected() == f.node, "begin selects the field")
+	text.input_field_begin(field, select_all = false)
+	testing.expect(t, field.editing && mhgui.ui_selected() == f.node, "begin selects the field")
 	_type("hello")
 	testing.expect_value(t, field.text, "hello")
 	testing.expect_value(t, field.caret, 5)
-	testing.expect(t, mhgui_text.input_field_changed(field), "typing sets changed")
+	testing.expect(t, text.input_field_changed(field), "typing sets changed")
 	testing.expect_value(t, f.tx.text, "hello")
 
 	// The arrow keys move the caret, not the selection of controls.
 	_tap(.LEFT)
 	_tap(.LEFT)
 	testing.expect_value(t, field.caret, 3)
-	testing.expect(t, !mhgui_text.input_field_changed(field), "a move changes nothing")
-	testing.expect_value(t, engine.ui_selected(), f.node)
+	testing.expect(t, !text.input_field_changed(field), "a move changes nothing")
+	testing.expect_value(t, mhgui.ui_selected(), f.node)
 	_type("X")
 	testing.expect_value(t, field.text, "helXlo")
 	_tap(.BACKSPACE)
@@ -255,12 +254,12 @@ test_input_field_types_and_edits :: proc(t: ^testing.T) {
 	// Enter submits and ends the editing. The text stays.
 	_tap(.RETURN)
 	testing.expect(t, !field.editing, "Enter ends the editing")
-	testing.expect(t, mhgui_text.input_field_submitted(field) && mhgui_text.input_field_ended(field), "Enter submits")
+	testing.expect(t, text.input_field_submitted(field) && text.input_field_ended(field), "Enter submits")
 	testing.expect_value(t, field.text, "hio")
 	testing.expect(t, !mhgui.ui_keys_captured(), "the keys are given back")
 	input.frame_reset()
 	_tick()
-	testing.expect(t, !mhgui_text.input_field_submitted(field), "submitted lasts a frame")
+	testing.expect(t, !text.input_field_submitted(field), "submitted lasts a frame")
 	testing.expect_value(t, f.drawn.count, 0)
 
 	// The submit key on the selected field starts the editing again, with
@@ -272,7 +271,7 @@ test_input_field_types_and_edits :: proc(t: ^testing.T) {
 	_type("new")
 	testing.expect_value(t, field.text, "new")
 	_tap(.ESCAPE)
-	testing.expect(t, !field.editing && !mhgui_text.input_field_submitted(field), "Escape ends without a submit")
+	testing.expect(t, !field.editing && !text.input_field_submitted(field), "Escape ends without a submit")
 	testing.expect_value(t, field.text, "new")
 }
 
@@ -286,19 +285,19 @@ test_input_field_content_limit_and_password :: proc(t: ^testing.T) {
 	field := f.field
 
 	field.content = .Integer_Number
-	mhgui_text.input_field_set_text(field, "-12a3-")
+	text.input_field_set_text(field, "-12a3-")
 	testing.expect_value(t, field.text, "-123")
-	mhgui_text.input_field_begin(field, select_all = false)
+	text.input_field_begin(field, select_all = false)
 	_type("4.5x")
 	testing.expect_value(t, field.text, "-12345")
 
 	field.content = .Decimal_Number
-	mhgui_text.input_field_set_text(field, "1.5.2")
+	text.input_field_set_text(field, "1.5.2")
 	testing.expect_value(t, field.text, "1.52")
 
 	field.content = .Standard
 	field.character_limit = 4
-	mhgui_text.input_field_set_text(field, "")
+	text.input_field_set_text(field, "")
 	_type("abcdef")
 	testing.expect_value(t, field.text, "abcd")
 
@@ -321,7 +320,7 @@ test_input_field_content_limit_and_password :: proc(t: ^testing.T) {
 	_tap(.RETURN)
 	testing.expect(t, !field.editing, "Enter ends a single line")
 	field.lines = .Multi_Line
-	mhgui_text.input_field_begin(field, select_all = false)
+	text.input_field_begin(field, select_all = false)
 	_tap(.RETURN)
 	testing.expect(t, field.editing, "Enter does not end a multi-line field")
 	testing.expect_value(t, field.text, "abcd\n")
@@ -340,7 +339,7 @@ test_input_field_pointer_places_the_caret :: proc(t: ^testing.T) {
 	defer _end(&fx)
 	f := _field(canvas)
 	field := f.field
-	mhgui_text.input_field_set_text(field, "abcdefgh")
+	text.input_field_set_text(field, "abcdefgh")
 	input.frame_reset()
 	_tick()
 
@@ -348,7 +347,7 @@ test_input_field_pointer_places_the_caret :: proc(t: ^testing.T) {
 	// caret before the third character.
 	_mouse(-78, 0, down = true)
 	testing.expect(t, field.editing, "a press starts the editing")
-	testing.expect_value(t, engine.ui_selected(), f.node)
+	testing.expect_value(t, mhgui.ui_selected(), f.node)
 	testing.expect_value(t, field.caret, 2)
 	testing.expect_value(t, field.anchor, 2)
 	// A drag selects.
@@ -376,7 +375,7 @@ test_input_field_scrolls_a_long_line :: proc(t: ^testing.T) {
 	field := f.field
 	_, rt := engine.transform_get_comp(f.text_node, engine.RectTransform)
 
-	mhgui_text.input_field_begin(field, select_all = false)
+	text.input_field_begin(field, select_all = false)
 	_type("0123456789012345678901234") // 250 wide in a 200 wide area
 	input.frame_reset()
 	_tick()
@@ -412,31 +411,31 @@ test_dropdown_opens_picks_and_closes :: proc(t: ^testing.T) {
 	row := _node("Item", template, {0, 30}, {160, 30})
 	_image(row)
 	label_node, _ := _text("Item Label", row, {160, 30})
-	item := cast(^mhgui_text.DropdownItem)_add(row, .DropdownItem)
-	mhgui_text.type_reset_DropdownItem(item)
+	item := cast(^text.DropdownItem)_add(row, .DropdownItem)
+	text.type_reset_DropdownItem(item)
 	item.label = _ref(label_node)
 	engine.transform_set_active(template, false)
 
-	d := cast(^mhgui_text.Dropdown)_add(node, .Dropdown)
-	mhgui_text.type_reset_Dropdown(d)
+	d := cast(^text.Dropdown)_add(node, .Dropdown)
+	text.type_reset_Dropdown(d)
 	d.caption = _ref(caption_node)
 	d.template = _ref(template)
-	mhgui_text.dropdown_set_options(d, {"Low", "Medium", "High"})
+	text.dropdown_set_options(d, {"Low", "Medium", "High"})
 
 	input.frame_reset()
 	_tick()
 	testing.expect_value(t, caption.text, "Low")
-	testing.expect(t, !mhgui_text.dropdown_is_open(d), "closed at first")
+	testing.expect(t, !text.dropdown_is_open(d), "closed at first")
 
 	// A click opens the list: a copy of the template with a row per option.
 	_mouse(0, 100, down = true)
 	_mouse(0, 100, up = true)
-	testing.expect(t, mhgui_text.dropdown_is_open(d), "a click opens the list")
+	testing.expect(t, text.dropdown_is_open(d), "a click opens the list")
 	testing.expect(t, engine.transform_active_in_hierarchy(d.list) && !engine.transform_active_in_hierarchy(template), "the copy shows, the template stays hidden")
-	rows: [3]^mhgui_text.DropdownItem
+	rows: [3]^text.DropdownItem
 	count := 0
 	{
-		it := engine.pool_iterator(mhgui_text.dropdown_items(engine.ctx_world()))
+		it := engine.pool_iterator(text.dropdown_items(engine.ctx_world()))
 		for found, _ in engine.pool_next(&it) {
 			if found.dropdown != node || found.index < 0 do continue
 			count += 1
@@ -447,33 +446,33 @@ test_dropdown_opens_picks_and_closes :: proc(t: ^testing.T) {
 	if rows[2] == nil do return
 	_, high := engine.transform_get_comp(engine.Transform_Handle(rows[2].label.handle), text.Text)
 	testing.expect(t, high != nil && high.text == "High", "a row shows its option")
-	testing.expect_value(t, engine.ui_selected(), rows[0].owner)
+	testing.expect_value(t, mhgui.ui_selected(), rows[0].owner)
 
 	// The submit key on a row picks it and closes the list.
-	engine.ui_set_selected(rows[2].owner)
+	mhgui.ui_set_selected(rows[2].owner)
 	_tap(.RETURN)
 	testing.expect_value(t, d.value, i32(2))
-	testing.expect(t, mhgui_text.dropdown_changed(d), "a pick sets changed")
-	testing.expect(t, !mhgui_text.dropdown_is_open(d), "a pick closes the list")
-	testing.expect_value(t, engine.ui_selected(), node)
+	testing.expect(t, text.dropdown_changed(d), "a pick sets changed")
+	testing.expect(t, !text.dropdown_is_open(d), "a pick closes the list")
+	testing.expect_value(t, mhgui.ui_selected(), node)
 	testing.expect_value(t, caption.text, "High")
 	engine.transform_destroy_pending()
 
 	// Open by the submit key, closed by Escape with nothing picked.
 	_tap(.RETURN)
-	testing.expect(t, mhgui_text.dropdown_is_open(d), "the submit key opens the list")
+	testing.expect(t, text.dropdown_is_open(d), "the submit key opens the list")
 	_tap(.ESCAPE)
-	testing.expect(t, !mhgui_text.dropdown_is_open(d), "Escape closes the list")
+	testing.expect(t, !text.dropdown_is_open(d), "Escape closes the list")
 	testing.expect_value(t, d.value, i32(2))
-	testing.expect(t, !mhgui_text.dropdown_changed(d), "nothing picked, nothing changed")
+	testing.expect(t, !text.dropdown_changed(d), "nothing picked, nothing changed")
 	engine.transform_destroy_pending()
 
 	// A press outside the list lands on the node that covers the canvas.
 	_tap(.RETURN)
-	testing.expect(t, mhgui_text.dropdown_is_open(d), "open again")
+	testing.expect(t, text.dropdown_is_open(d), "open again")
 	_mouse(-300, -200, down = true)
 	_mouse(-300, -200, up = true)
-	testing.expect(t, !mhgui_text.dropdown_is_open(d), "a press outside closes the list")
+	testing.expect(t, !text.dropdown_is_open(d), "a press outside closes the list")
 	testing.expect_value(t, d.value, i32(2))
 	engine.transform_destroy_pending()
 }

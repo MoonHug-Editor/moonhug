@@ -2,8 +2,7 @@
 title: "UiMask"
 description: "Clips the UI nodes under it to its rect, with a radius per corner, a soft edge and the alpha of a sprite: what lies outside is not drawn and takes no pointer"
 weight: 150
-tags: ["engine", "ui", "components", "mask", "clipping"]
-path: engine/components
+tags: ["mhgui", "ui", "components", "mask", "clipping"]
 ---
 
 Clips the nodes under it to its rect. What lies outside the rect is not drawn and takes no pointer.

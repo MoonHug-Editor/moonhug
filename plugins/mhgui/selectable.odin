@@ -124,7 +124,7 @@ selectable_reset :: proc(s: ^Selectable) {
 // hover, and the left button's press. It uses Down, which makes the control
 // the press's owner: Up and Click come back to it, and Cancel when a parent
 // takes the drag. The control handles Click itself.
-selectable_pointer :: proc(s: ^Selectable, ev: ^engine.UI_Pointer_Event) {
+selectable_pointer :: proc(s: ^Selectable, ev: ^UI_Pointer_Event) {
 	#partial switch ev.kind {
 	case .Enter: s.hovered = true
 	case .Exit:  s.hovered = false

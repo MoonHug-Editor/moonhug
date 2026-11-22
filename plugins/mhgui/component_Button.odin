@@ -1,7 +1,7 @@
 package mhgui
 
 // Button: a clickable graphic with a selectable's colour transition. It takes
-// the pointer events of its node (engine/ui_pointer.odin) like any other
+// the pointer events of its node (mhgui pointer.odin) like any other
 // component: it uses Down, so it owns the press, and Enter, Exit, Up, Cancel
 // and Click set its hover, press and click state. From that state it tints
 // its target graphic's CanvasRenderer with the matching color, fading over
@@ -12,8 +12,8 @@ package mhgui
 // A press dragged off the button looks let go, comes back when the pointer
 // does, and does not click when released off it.
 //
-// Keyboard and gamepad act on the selected node (engine.ui_selected: the
-// last one pressed on, or the one code gave engine.ui_set_selected):
+// Keyboard and gamepad act on the selected node (ui_selected: the
+// last one pressed on, or the one code gave ui_set_selected):
 // - The arrow keys, the d-pad and the left stick move the selection to the
 //   nearest usable control in that direction. With nothing selected they do
 //   nothing: a menu selects its first button when it opens.
@@ -46,7 +46,7 @@ Button :: struct {
 // the press's owner: Up and Click come back to it, and Cancel when a parent
 // takes the drag.
 @(comp_on_pointer_ui={component=Button})
-comp_on_pointer_ui_Button :: proc(b: ^Button, ev: ^engine.UI_Pointer_Event) {
+comp_on_pointer_ui_Button :: proc(b: ^Button, ev: ^UI_Pointer_Event) {
 	selectable_pointer(&b.selectable, ev)
 	if ev.kind == .Click && ev.button == .Left && selectable_usable(&b.selectable, b.owner) {
 		b.clicked = true
@@ -88,7 +88,7 @@ ui_keys_capture :: proc(node: engine.Transform_Handle) {
 
 // Whether a control has the keys now.
 ui_keys_captured :: proc() -> bool {
-	return _keys_owner != {} && _keys_owner == engine.ui_selected()
+	return _keys_owner != {} && _keys_owner == ui_selected()
 }
 
 // The submit keys went down this frame: Enter, Space or the gamepad's bottom
@@ -238,20 +238,20 @@ ui_tick :: proc(dt: f32) {
 		toggles_frame_begin()
 		sliders_frame_begin()
 	}
-	engine.canvas_pointer_update()
+	canvas_pointer_update()
 	submit, submit_down: bool
 	if _navigation && engine.application_is_focused() && !ui_keys_captured() {
-		selected := engine.ui_selected()
+		selected := ui_selected()
 		if dir := _nav_move(); dir != {} && selected != {} {
 			// A selected Slider takes the keys along its own axis.
 			if !slider_nav(selected, dir) {
-				if next := ui_navigate_from(selected, dir); next != {} do engine.ui_set_selected(next)
+				if next := ui_navigate_from(selected, dir); next != {} do ui_set_selected(next)
 			}
 		}
 		submit = _nav_submit_pressed()
 		submit_down = _nav_submit_down()
 	}
-	selected := engine.ui_selected()
+	selected := ui_selected()
 	// Real time: a menu responds while the game's time is slowed or held.
 	real_dt := time.delta_time(.Unscaled)
 	it := engine.pool_iterator(buttons(w))

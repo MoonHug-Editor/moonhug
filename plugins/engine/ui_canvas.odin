@@ -2,8 +2,10 @@ package engine
 
 // The canvas tree: the layout half of UI (plugins/engine/docs/UICanvas.md). RectTransform lays a
 // node out inside its parent's rect, Canvas roots a tree on the game
-// viewport, CanvasScaler sets how many screen pixels a canvas unit is, and
-// CanvasRenderer marks a node as drawing. What a node draws is a graphic
+// viewport, CanvasRenderer marks a node as drawing and CanvasGroup fades a
+// subtree. The canvas's scale and what clips its nodes are installed by a
+// plugin (canvas_scale_install, canvas_clip_install): the mhgui plugin's
+// CanvasScaler and UiMask. The pointer is that plugin's too. What a node draws is a graphic
 // component (Image in packages/mhgui, Text in packages/text) embedding
 // `Graphic` and registered through canvas_graphic_register; the one canvas
 // collector here walks the tree and asks each graphic for its quads. Layout
@@ -84,19 +86,6 @@ type_reset_Canvas :: proc(c: ^Canvas) {
 	c.plane_distance = 100
 }
 
-// Makes a canvas receive pointer events: the pointer pass (canvas_raycast)
-// only looks at canvases carrying one. GameObject > UI > Canvas adds it.
-@(component={menu="UI/GraphicRaycaster"})
-@(typ_guid={guid = "b625f6b5-e1fd-4590-9757-ffa073e23bef"})
-GraphicRaycaster :: struct {
-	using base:               CompData `inspect:"-"`,
-	ignore_reversed_graphics: bool, // a graphic whose rect faces away from the viewer (flipped by a transform) is not hit
-}
-
-type_reset_GraphicRaycaster :: proc(r: ^GraphicRaycaster) {
-	r.ignore_reversed_graphics = true
-}
-
 // Marks a node as drawing. What it draws comes from the node's graphic
 // (packages/mhgui Image); a CanvasRenderer without one draws nothing.
 // Disabling it hides the node's graphic without touching the graphic's
@@ -161,127 +150,6 @@ canvas_group_state :: proc(tH: Transform_Handle) -> Canvas_Group_State {
 	return state
 }
 
-// A node the pointer can hit that draws nothing: its rect takes pointer
-// events (ui_pointer.odin) as a graphic with raycast_target does. For an
-// invisible button over a picture, a drag surface, or a larger touch area
-// around a small icon. It needs no CanvasRenderer.
-@(component={menu="UI/HitArea"})
-@(typ_guid={guid = "1b81a833-e1e0-4857-bb17-eea53665ee29"})
-HitArea :: struct {
-	using base: CompData `inspect:"-"`,
-}
-
-// Clips the nodes under it to its rect: what lies outside is not drawn and
-// takes no pointer. A scrolling list's viewport is one. The node's own
-// graphic is not clipped.
-//
-// - The clip follows the node: turned, scaled, or on a canvas in the world
-//   seen at an angle.
-// - Each corner of the rect has its own radius, and the edge can fade.
-// - Masks nest: a node is cut by every mask above it, each with its own
-//   corners and edge, up to gfx.CLIP_MAX of them.
-// - With a sprite the mask also multiplies by the sprite's alpha, the sprite
-//   stretched over the rect: any outline an image has, and a fade where the
-//   image fades. Of the masks above a node the nearest one with a sprite
-//   uses it, the ones above that clip by their rect. The pointer goes by
-//   the rect and its corners, not by the sprite.
-// - The shader of a clipped quad does the clipping (libs/gfx/shaders/
-//   ui_clip.glsl). The built-in unlit shader does, and every shader the
-//   importer compiles does when the project's UiMask setting is Auto Inject
-//   (ui_mask_settings.odin).
-@(component={menu="UI/UiMask"})
-@(typ_guid={guid = "0907bcc0-c7db-4651-8e5d-826ae1bd8806"})
-UiMask :: struct {
-	using base:    CompData `inspect:"-"`,
-	// Top left, top right, bottom right, bottom left.
-	corner_radius: [4]f32 `decor:min(0) decor:tooltip(desc="The radius of each corner, in canvas units: top left, top right, bottom right, bottom left. A radius is cut to half the shorter side, so a large one on a square makes a circle.")`,
-	softness:      f32 `decor:min(0) decor:tooltip(desc="The width the edge fades over, inward, in canvas units. 0 is a crisp edge.")`,
-	// Drawn by the inspector's sprite picker (the field itself is inspect:"-").
-	sprite:        PPtr `inspect:"-"`,
-}
-
-// The texture of a mask's sprite and the sprite's part of it (x, y, width,
-// height in 0..1 from the top left). False with no sprite, or one that is
-// missing.
-mask_sprite :: proc(mask: ^UiMask) -> (tex: ^gfx.Texture, uv: [4]f32, ok: bool) {
-	t: ^Texture2D
-	t, uv = mask_sprite_uv(mask) or_return
-	return t.gfx, uv, t.gfx != nil
-}
-
-// The texture of a mask's sprite and the sprite's part of it.
-mask_sprite_uv :: proc(mask: ^UiMask) -> (t: ^Texture2D, uv: [4]f32, ok: bool) {
-	if asset_guid_is_empty(mask.sprite.guid) do return
-	t = texture_load(mask.sprite.guid) or_return
-	if t.width <= 0 || t.height <= 0 do return
-	px := [4]f32{0, 0, f32(t.width), f32(t.height)}
-	if mask.sprite.local_id != 0 {
-		s := texture_sprite_rect(t, mask.sprite.local_id) or_return
-		px = s.rect
-	}
-	w, h := f32(t.width), f32(t.height)
-	return t, {px.x / w, px.y / h, px.z / w, px.w / h}, true
-}
-
-// The nearest enabled UiMask above the node, {} for none. The node's own
-// mask does not count: it clips what is under it.
-node_mask :: proc(tH: Transform_Handle) -> Transform_Handle {
-	w := ctx_world()
-	t := pool_get(&w.transforms, Handle(tH))
-	for n := 0; t != nil && n < 4096; n += 1 {
-		parent := Transform_Handle(t.parent.handle)
-		if parent == {} do return {}
-		if _, mask := transform_get_comp(parent, UiMask); mask != nil && mask.enabled do return parent
-		t = pool_get(&w.transforms, Handle(parent))
-	}
-	return {}
-}
-
-// A canvas point in a mask node's own space, from its rect's centre.
-@(private = "file")
-_mask_local :: proc(mask: Node_Rect, canvas_point: [3]f32) -> [2]f32 {
-	local := (linalg.inverse(mask.xform) * [4]f32{canvas_point.x, canvas_point.y, canvas_point.z, 1}).xy
-	return local - (mask.rect.pos + mask.rect.size * 0.5)
-}
-
-// The signed distance from `p` (from the rect's centre) to the mask's
-// outline with its round corners: negative inside. The shaders' ui_clip
-// computes the same.
-mask_distance :: proc(m: ^UiMask, half: [2]f32, p: [2]f32) -> f32 {
-	r: f32
-	switch {
-	case p.x > 0 && p.y > 0:  r = m.corner_radius[1]
-	case p.x > 0:             r = m.corner_radius[2]
-	case p.y > 0:             r = m.corner_radius[0]
-	case:                     r = m.corner_radius[3]
-	}
-	r = clamp(r, 0, min(half.x, half.y))
-	q := [2]f32{abs(p.x) - half.x + r, abs(p.y) - half.y + r}
-	outside := [2]f32{max(q.x, 0), max(q.y, 0)}
-	return min(max(q.x, q.y), 0) + linalg.length(outside) - r
-}
-
-// Whether a canvas point is inside a mask's outline, round corners included.
-mask_contains :: proc(mask_tH: Transform_Handle, node: Node_Rect, canvas_point: [2]f32) -> bool {
-	_, mask := transform_get_comp(mask_tH, UiMask)
-	if mask == nil do return true
-	half := node.rect.size * 0.5
-	if half.x <= 0 || half.y <= 0 do return false
-	local := _mask_local(node, {canvas_point.x, canvas_point.y, 0})
-	if mask_distance(mask, half, local) > 0 do return false
-	// A sprite's clear part hides what is under the mask: no pointer there.
-	if !asset_guid_is_empty(mask.sprite.guid) {
-		if _, uv, has := mask_sprite_uv(mask); has {
-			unit := [2]f32{local.x / (2 * half.x) + 0.5, 0.5 - local.y / (2 * half.y)}
-			if alpha, known := texture_alpha(mask.sprite.guid, uv.xy + unit * uv.zw); known && alpha < MASK_HIT_ALPHA do return false
-		}
-	}
-	return true
-}
-
-// A sprite mask takes the pointer where its sprite's alpha is at least this.
-MASK_HIT_ALPHA :: f32(0.1)
-
 // Where a canvas's points land in a view's target, for the masks: the pixel
 // a quad's corner is drawn at.
 Canvas_Pixels :: struct {
@@ -302,85 +170,34 @@ canvas_point_pixel :: proc(c: Canvas_Pixels, canvas_point: [3]f32) -> (pixel: [2
 	return {(ndc.x * 0.5 + 0.5) * c.view.width, (0.5 - ndc.y * 0.5) * c.view.height}, true
 }
 
-// The mask as gfx clips to it: the map from a target pixel to the mask's own
-// space, found from where its rect's four corners are drawn, with its shape.
-// False when a corner is behind the camera or the rect has no area.
-mask_clip :: proc(c: Canvas_Pixels, mask_tH: Transform_Handle, node: Node_Rect) -> (clip: gfx.Clip_Mask, ok: bool) {
-	_, mask := transform_get_comp(mask_tH, UiMask)
-	if mask == nil do return
-	half := node.rect.size * 0.5
-	if half.x <= 0 || half.y <= 0 do return
-	// The rect's corners (bl, br, tr, tl): where they are drawn, and where
-	// they are in the mask's space.
-	local := [4][2]f32{{-half.x, -half.y}, {half.x, -half.y}, {half.x, half.y}, {-half.x, half.y}}
-	pixels: [4][2]f32
-	for corner, k in rect_corners(node.rect, node.xform) {
-		pixels[k] = canvas_point_pixel(c, corner) or_return
-	}
-	h := _homography(pixels, local) or_return
-	clip.to = {{h[0], h[1], h[2], 0}, {h[3], h[4], h[5], 0}, {h[6], h[7], 1, 0}}
-	clip.shape = {half.x, half.y, max(mask.softness, 0), 0}
-	clip.radii = mask.corner_radius
-	if tex, uv, has := mask_sprite(mask); has do clip.tex, clip.uv = tex, uv
-	return clip, true
+// What clips the nodes of a canvas: installed by the plugin that has masks
+// (the mhgui UiMask). The collector asks it which mask a node is under and
+// what the masks above it are in a view, and hands the answer to gfx with
+// the node's quads.
+Canvas_Clip_Provider :: struct {
+	any:     proc() -> bool,                                   // whether the world holds a mask at all
+	nearest: proc(tH: Transform_Handle) -> Transform_Handle,   // the nearest mask above a node, {} for none
+	stack:   proc(c: Canvas_Pixels, tH: Transform_Handle, nodes: []Node_Rect) -> []gfx.Clip_Mask, // the masks above a node, the nearest first, temp-allocated
 }
 
-// The map that takes each `from` point to its `to` point, as (x, y) =
-// (h0 u + h1 v + h2, h3 u + h4 v + h5) / (h6 u + h7 v + 1): what a flat
-// rect seen in perspective needs. Solved in doubles. False when the points
-// do not span an area.
 @(private = "file")
-_homography :: proc(from, to: [4][2]f32) -> (h: [8]f32, ok: bool) {
-	a: [8][9]f64
-	for k in 0 ..< 4 {
-		u, v := f64(from[k].x), f64(from[k].y)
-		x, y := f64(to[k].x), f64(to[k].y)
-		a[k * 2] = {u, v, 1, 0, 0, 0, -u * x, -v * x, x}
-		a[k * 2 + 1] = {0, 0, 0, u, v, 1, -u * y, -v * y, y}
-	}
-	// Gauss-Jordan with the largest pivot of each column.
-	for col in 0 ..< 8 {
-		pivot := col
-		for row in col + 1 ..< 8 do if abs(a[row][col]) > abs(a[pivot][col]) do pivot = row
-		if abs(a[pivot][col]) < 1e-12 do return {}, false
-		a[col], a[pivot] = a[pivot], a[col]
-		for row in 0 ..< 8 {
-			if row == col do continue
-			f := a[row][col] / a[col][col]
-			if f == 0 do continue
-			for k in col ..< 9 do a[row][k] -= f * a[col][k]
-		}
-	}
-	for k in 0 ..< 8 do h[k] = f32(a[k][8] / a[k][k])
-	return h, true
+_canvas_clip: Canvas_Clip_Provider
+
+// Installs what clips canvas nodes, from an @(init) proc.
+canvas_clip_install :: proc(p: Canvas_Clip_Provider) {
+	_canvas_clip = p
 }
 
-// The masks a node's quads are clipped to, the nearest first, at most
-// gfx.CLIP_MAX. `nodes` are the canvas's resolved rects. Allocated with the
-// temp allocator. Empty with no mask above the node.
-mask_stack :: proc(c: Canvas_Pixels, tH: Transform_Handle, nodes: []Node_Rect) -> []gfx.Clip_Mask {
-	stack := make([dynamic]gfx.Clip_Mask, context.temp_allocator)
-	for mask_tH := node_mask(tH); mask_tH != {} && len(stack) < gfx.CLIP_MAX; mask_tH = node_mask(mask_tH) {
-		for m in nodes do if m.tH == mask_tH {
-			if clip, ok := mask_clip(c, mask_tH, m); ok do append(&stack, clip)
-			break
-		}
-	}
-	return stack[:]
+canvas_clip_any :: proc() -> bool {
+	return _canvas_clip.any != nil && _canvas_clip.any()
 }
 
-// Whether the pointer can hit the node: an enabled HitArea, or a drawn
-// graphic with raycast_target on.
-node_takes_pointer :: proc(tH: Transform_Handle) -> bool {
-	takes := false
-	if _, area := transform_get_comp(tH, HitArea); area != nil && area.enabled {
-		takes = true
-	} else if _, cr := transform_get_comp(tH, CanvasRenderer); cr != nil && cr.enabled {
-		_, g, _, ok := node_graphic(tH)
-		takes = ok && g.raycast_target
-	}
-	// A CanvasGroup above it may let the pointer through.
-	return takes && canvas_group_state(tH).blocks_raycasts
+canvas_clip_nearest :: proc(tH: Transform_Handle) -> Transform_Handle {
+	return _canvas_clip.nearest(tH) if _canvas_clip.nearest != nil else Transform_Handle{}
+}
+
+canvas_clip_stack :: proc(c: Canvas_Pixels, tH: Transform_Handle, nodes: []Node_Rect) -> []gfx.Clip_Mask {
+	return _canvas_clip.stack(c, tH, nodes) if _canvas_clip.stack != nil else nil
 }
 
 canvas_renderer_set_tint :: proc(cr: ^CanvasRenderer, tint: [4]f32) {
@@ -391,57 +208,23 @@ canvas_renderer_set_tint :: proc(cr: ^CanvasRenderer, tint: [4]f32) {
 type_reset_CanvasRenderer :: proc(cr: ^CanvasRenderer) {
 }
 
-// --- CanvasScaler -----------------------------------------------------------------------
+// --- Canvas scale -------------------------------------------------------------------------
 
-// How the canvas resolution follows the screen. Sits on the Canvas node.
-Scale_Mode :: enum u8 {
-	Constant_Pixel_Size,    // one canvas unit is scale_factor screen pixels
-	Scale_With_Screen_Size, // the canvas is reference_resolution units wide/tall, scaled to fit the screen
+// How many screen pixels a canvas unit is, for a canvas and a screen size.
+Canvas_Scale_Proc :: proc(canvas_tH: Transform_Handle, screen: [2]f32) -> f32
+
+@(private = "file")
+_canvas_scale_proc: Canvas_Scale_Proc
+
+// Installs the proc that says a canvas's scale. A plugin with a scaler
+// component does, from an @(init) proc (the mhgui CanvasScaler).
+canvas_scale_install :: proc(fn: Canvas_Scale_Proc) {
+	_canvas_scale_proc = fn
 }
 
-// Scales the canvas as a whole so a layout authored once holds up across
-// window sizes. Without a CanvasScaler one canvas unit is one screen pixel.
-@(component={menu="UI/CanvasScaler"})
-@(typ_guid={guid = "39805feb-6d86-481c-bb1a-f662b7309f64"})
-CanvasScaler :: struct {
-	using base:           CompData `inspect:"-"`,
-	mode:                 Scale_Mode,
-	scale_factor:         f32,    // Constant_Pixel_Size
-	reference_resolution: [2]f32, // Scale_With_Screen_Size: the authored canvas size
-	// Scale_With_Screen_Size: 0 fits the reference width, 1 the reference
-	// height, values between blend the two (logarithmically, so 0.5 is the
-	// geometric mean).
-	match:                f32,
-}
-
-type_reset_CanvasScaler :: proc(cs: ^CanvasScaler) {
-	cs.mode = .Scale_With_Screen_Size
-	cs.scale_factor = 1
-	cs.reference_resolution = {1920, 1080}
-	cs.match = 0.5
-}
-
-// Screen pixels per canvas unit for `screen`.
-scaler_factor :: proc(cs: ^CanvasScaler, screen: [2]f32) -> f32 {
-	switch cs.mode {
-	case .Constant_Pixel_Size:
-		return max(cs.scale_factor, 0.0001)
-	case .Scale_With_Screen_Size:
-		ref := cs.reference_resolution
-		if ref.x <= 0 || ref.y <= 0 || screen.x <= 0 || screen.y <= 0 do return 1
-		log_w := math.log2(screen.x / ref.x)
-		log_h := math.log2(screen.y / ref.y)
-		m := clamp(cs.match, 0, 1)
-		return math.pow(f32(2), log_w * (1 - m) + log_h * m)
-	}
-	return 1
-}
-
-// The canvas node's scale for `screen`: its CanvasScaler's, or 1.
+// The canvas node's scale for `screen`: what the installed proc says, or 1.
 canvas_scale :: proc(canvas_tH: Transform_Handle, screen: [2]f32) -> f32 {
-	if _, cs := transform_get_comp(canvas_tH, CanvasScaler); cs != nil && cs.enabled {
-		return scaler_factor(cs, screen)
-	}
+	if _canvas_scale_proc != nil do return _canvas_scale_proc(canvas_tH, screen)
 	return 1
 }
 
@@ -975,43 +758,6 @@ graphic_quad_points :: proc(q: Graphic_Quad) -> [4][2]f32 {
 	return {{x0 + q.skew[0], y0}, {x1 + q.skew[0], y0}, {x1 + q.skew[1], y1}, {x0 + q.skew[1], y1}}
 }
 
-// Whether the pointer at `point`, in the node's space and inside its rect,
-// hits what the component draws there: a shape's outline, an image's
-// opaque part.
-Canvas_Hit_Proc :: proc(comp: rawptr, rect: Rect, point: [2]f32) -> bool
-
-// Declares `canvas_hit_<T>`, the proc that says whether a point of the
-// node's rect hits a component of type T. T is a @(component) of the same
-// package and the proc takes a ^T, the node's rect and the point. A type
-// has at most one. A node with none is hit anywhere in its rect.
-@(extension_point={attribute="canvas_hit", target="proc", fields=""})
-canvas_hit_procs: [TypeKey]Canvas_Hit_Proc
-
-@(private = "file")
-_canvas_hits_any: bool
-
-canvas_hit_register :: proc(key: TypeKey, fn: Canvas_Hit_Proc) {
-	canvas_hit_procs[key] = fn
-	_canvas_hits_any = true
-}
-
-// Whether a point of a node's rect hits the node: every enabled component
-// on it that has a hit proc says so.
-node_hit :: proc(tH: Transform_Handle, rect: Rect, point: [2]f32) -> bool {
-	if !_canvas_hits_any do return true
-	w := ctx_world()
-	t := pool_get(&w.transforms, Handle(tH))
-	if t == nil do return true
-	for owned in t.components {
-		fn := canvas_hit_procs[owned.handle.type_key]
-		if fn == nil do continue
-		c := world_pool_get(w, owned.handle)
-		if c == nil || !(cast(^CompData)c).enabled do continue
-		if !fn(c, rect, point) do return false
-	}
-	return true
-}
-
 // Changes the quads of the graphic on its node after the graphic made them:
 // a shadow or an outline adds copies behind them, a gradient colours them.
 Canvas_Effect_Proc :: proc(comp: rawptr, rect: Rect, quads: ^[dynamic]Graphic_Quad)
@@ -1167,7 +913,7 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 			if n.mask != {} {
 				shared, known := stacks[n.mask]
 				if !known {
-					shared = mask_stack(pixels, n.tH, kept.nodes[:])
+					shared = canvas_clip_stack(pixels, n.tH, kept.nodes[:])
 					stacks[n.mask] = shared
 				}
 				clip = shared
@@ -1204,108 +950,6 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 	}
 }
 
-// --- Pointer -----------------------------------------------------------------------------
-// The event system's pointer pass. Every frame canvas_pointer_update reads the
-// mouse (viewport coordinates, see libs/input) and raycasts the canvases
-// that carry a GraphicRaycaster: the topmost graphic with raycast_target under
-// the pointer is `hovered`. The left button's press remembers its target
-// (`pressed`, also `selected`: a press selects what it lands on), and a
-// release over that same target is a `clicked`, for one frame. Code selects
-// a node with ui_set_selected, which is where keyboard and gamepad
-// navigation starts from (the mhgui package's Button moves it).
-// Components read the state (ui_pointer) instead of receiving events; the
-// mhgui package's Button is the first reader. Nothing while the application
-// has no focus.
-
-UI_Pointer :: struct {
-	position: [2]f32, // viewport pixels, y down
-	hovered:  Transform_Handle,
-	pressed:  Transform_Handle, // where the left button went down, until it comes up
-	selected: Transform_Handle, // the last node pressed on or given to ui_set_selected; pressing on nothing clears it
-	clicked:  Transform_Handle, // released this frame over the node it was pressed on
-}
-
-@(private) _ui_pointer: UI_Pointer
-
-ui_pointer :: proc() -> UI_Pointer {
-	return _ui_pointer
-}
-
-// Selects `node`, {} for none: the node keyboard and gamepad input acts on.
-ui_set_selected :: proc(node: Transform_Handle) {
-	_ui_pointer.selected = node
-}
-
-ui_selected :: proc() -> Transform_Handle {
-	return _ui_pointer.selected
-}
-
-// The topmost raycast-target graphic under a viewport point (pixels, y
-// down), across the canvases with an enabled GraphicRaycaster, in draw
-// order: higher sort_order over lower, higher z_index over lower, later
-// nodes over earlier. {} when nothing is hit.
-canvas_raycast :: proc(point: [2]f32, viewport: [2]f32) -> Transform_Handle {
-	w := ctx_world()
-	if w == nil do return {}
-
-	Hit_Canvas :: struct {
-		tH:         Transform_Handle,
-		sort_order: i32,
-		ignore_reversed: bool,
-	}
-	hit_canvases := make([dynamic]Hit_Canvas, context.temp_allocator)
-	it := pool_iterator(canvases(w))
-	for canvas, _ in pool_next(&it) {
-		if !canvas.enabled || !transform_active_in_hierarchy(canvas.owner) do continue
-		_, rc := transform_get_comp(canvas.owner, GraphicRaycaster)
-		if rc == nil || !rc.enabled do continue
-		append(&hit_canvases, Hit_Canvas{canvas.owner, canvas.sort_order, rc.ignore_reversed_graphics})
-	}
-	slice.stable_sort_by(hit_canvases[:], proc(a, b: Hit_Canvas) -> bool { return a.sort_order < b.sort_order })
-
-	// Overlay canvases lie over the camera-space and world ones, so they are
-	// tested last and win.
-	slice.stable_sort_by(hit_canvases[:], proc(a, b: Hit_Canvas) -> bool {
-		_, ca := transform_get_comp(a.tH, Canvas)
-		_, cb := transform_get_comp(b.tH, Canvas)
-		oa := ca != nil && ca.render_mode == .ScreenSpaceOverlay
-		ob := cb != nil && cb.render_mode == .ScreenSpaceOverlay
-		return !oa && ob
-	})
-
-	hit: Transform_Handle
-	nodes := make([dynamic]Node_Rect, context.temp_allocator)
-	for c in hit_canvases {
-		root, _, _ := canvas_placement(c.tH, viewport)
-		cp, on_canvas := canvas_point_at(c.tH, point, viewport)
-		if !on_canvas do continue
-		clear(&nodes)
-		canvas_resolve_rects(c.tH, root, &nodes)
-		for n in nodes {
-			if !node_takes_pointer(n.tH) do continue
-			corners := rect_corners(n.rect, n.xform)
-			if c.ignore_reversed && _quad_reversed(corners) do continue
-			if !_point_in_quad(cp, corners) do continue
-			// Inside the rect: the graphic may say the point misses it.
-			if _canvas_hits_any {
-				local := linalg.inverse(n.xform) * [4]f32{cp.x, cp.y, 0, 1}
-				if !node_hit(n.tH, n.rect, local.xy) do continue
-			}
-			// Outside a mask above it, the node is not there to hit. Every
-			// mask up the chain counts here.
-			clipped_away := false
-			for mask_tH := node_mask(n.tH); mask_tH != {} && !clipped_away; mask_tH = node_mask(mask_tH) {
-				for m in nodes do if m.tH == mask_tH {
-					if !mask_contains(mask_tH, m, cp) do clipped_away = true
-					break
-				}
-			}
-			if !clipped_away do hit = n.tH
-		}
-	}
-	return hit
-}
-
 // The point of a canvas under a viewport point (pixels, y down), in canvas
 // units with y up, in any render mode: an overlay canvas maps through its
 // scale, a canvas in the world or before a camera through the camera's ray
@@ -1334,27 +978,5 @@ canvas_point_at :: proc(canvas_tH: Transform_Handle, point: [2]f32, viewport: [2
 	if t < 0 do return {}, false
 	local := linalg.inverse(xform) * [4]f32{ray.origin.x + ray.direction.x * t, ray.origin.y + ray.direction.y * t, ray.origin.z + ray.direction.z * t, 1}
 	return local.xy, true
-}
-
-// The quad's winding on the canvas plane: negative area means a transform
-// flipped it, so it faces away.
-@(private = "file")
-_quad_reversed :: proc(c: [4][3]f32) -> bool {
-	a := c[1].xy - c[0].xy
-	b := c[3].xy - c[0].xy
-	return a.x * b.y - a.y * b.x < 0
-}
-
-@(private = "file")
-_point_in_quad :: proc(p: [2]f32, c: [4][3]f32) -> bool {
-	in_tri :: proc(p, a, b, c: [2]f32) -> bool {
-		s1 := (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)
-		s2 := (c.x - b.x) * (p.y - b.y) - (c.y - b.y) * (p.x - b.x)
-		s3 := (a.x - c.x) * (p.y - c.y) - (a.y - c.y) * (p.x - c.x)
-		neg := s1 < 0 || s2 < 0 || s3 < 0
-		pos := s1 > 0 || s2 > 0 || s3 > 0
-		return !(neg && pos)
-	}
-	return in_tri(p, c[0].xy, c[1].xy, c[2].xy) || in_tri(p, c[0].xy, c[2].xy, c[3].xy)
 }
 

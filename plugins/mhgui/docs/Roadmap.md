@@ -15,7 +15,7 @@ Status is one of: Done, In progress, Next, Open, Parked.
 |---|---|---|---|---|
 | 1 | Procedural shape | A rounded rectangle drawn in the shader: a radius per corner, a border, a two-stop gradient, a drop shadow and an inner shadow. A shape setting, with Rect the first shape | per-draw shader values | Done |
 | 2 | Pointer events | Enter, exit, down, up, click, hold, drag, scroll and cancel, taken by any component with `@(comp_on_pointer_ui)`. A HitArea takes the pointer and draws nothing. Button is written with it | | Done |
-| 3 | Mask, rectangle | `UiMask`, an engine component: clips the nodes under it in the shader. Works turned and in a world-space canvas, adds no draw call. A clipped part takes no pointer | | Done |
+| 3 | Mask, rectangle | `UiMask`: clips the nodes under it in the shader. Works turned and in a world-space canvas, adds no draw call. A clipped part takes no pointer | | Done |
 | 12 | Mask, rounded and nested | A radius per corner, a soft edge, a circle, and a node cut by every mask above it with each mask's own shape. A project setting says whether shaders get the clip by themselves | 1, 3 | Done |
 | 4 | ScrollRect and Scrollbar | Scrolling content by a drag, the wheel or a bar, with inertia and elastic or clamped ends. A list inside a list takes the drags along its own axis. GameObject, UI, Scroll View | 2, 3 | Done |
 | 5 | Slider, Toggle, ToggleGroup | The simple controls. Button, Toggle and Slider share one `Selectable` part: the colour transition, the hover and press state, and keyboard and gamepad selection | 2 | Done |
@@ -33,8 +33,8 @@ Status is one of: Done, In progress, Next, Open, Parked.
 
 | # | Item | What it is | Needs | Status |
 |---|---|---|---|---|
-| 10 | InputField | Text entry with a caret, a selection, the clipboard, a hint, content kinds and a password mode, single or multi-line. In the `text` subpackage, built with the text plugin | 2, 3 | Done |
-| 11 | Dropdown | A control that opens a list of options over the rest of the canvas and picks one. The list is a copy of a Template subtree. In the `text` subpackage | 4 | Done |
+| 10 | InputField | Text entry with a caret, a selection, the clipboard, a hint, content kinds and a password mode, single or multi-line. In the text plugin | 2, 3 | Done |
+| 11 | Dropdown | A control that opens a list of options over the rest of the canvas and picks one. The list is a copy of a Template subtree. In the text plugin | 4 | Done |
 | 13 | Mask, sprite alpha | A `sprite` on the UiMask: its alpha shapes the mask, so any outline an image has and any fade. One sprite cuts a node, the nearest mask's | 3 | Done |
 | 14 | More shapes | Ellipse, polygon and star for the UiShape. A pill is a rect with a large radius, a ring an ellipse with a border and no fill | 1 | Done |
 | 15 | Button transitions | Sprite swap, and animation with the animation plugin, for every control | | Done |

@@ -2,8 +2,7 @@
 title: "GraphicRaycaster"
 description: "Lets the pointer reach the graphics of its canvas"
 weight: 140
-tags: ["engine", "ui", "components"]
-path: engine/components
+tags: ["mhgui", "ui", "components"]
 ---
 
 Lets the pointer reach the graphics of its canvas.
@@ -25,5 +24,5 @@ The pointer can press the button. Without the GraphicRaycaster on the Canvas nod
 
 ## Behavior
 
-- It sits on the Canvas node, and the pointer looks for graphics only in canvases that have one ([UI canvas](../UICanvas.md), "The pointer").
+- It sits on the Canvas node, and the pointer looks for graphics only in canvases that have one ([UI canvas](/plugins/engine/docs/UICanvas.md), "The pointer").
 - GameObject, UI, Canvas adds one.

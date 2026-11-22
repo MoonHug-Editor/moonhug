@@ -114,7 +114,7 @@ _slider_place :: proc(s: ^Slider) {
 
 // Where the pointer is along the track, 0 to 1 from its start.
 @(private = "file")
-_pointer_along :: proc(s: ^Slider, ev: ^engine.UI_Pointer_Event) -> (at: f32, ok: bool) {
+_pointer_along :: proc(s: ^Slider, ev: ^UI_Pointer_Event) -> (at: f32, ok: bool) {
 	canvas := engine.canvas_of(s.owner)
 	if canvas == {} do return
 	root, _, _ := engine.canvas_placement(canvas, input.viewport_size())
@@ -122,7 +122,7 @@ _pointer_along :: proc(s: ^Slider, ev: ^engine.UI_Pointer_Event) -> (at: f32, ok
 	engine.canvas_resolve_rects(canvas, root, &nodes)
 	for n in nodes {
 		if n.tH != s.owner do continue
-		p := engine.ui_pointer_canvas_position(ev) or_return
+		p := ui_pointer_canvas_position(ev) or_return
 		local := (linalg.inverse(n.xform) * [4]f32{p.x, p.y, 0, 1}).xy
 		length := n.rect.size.y if _vertical(s) else n.rect.size.x
 		if length <= 0 do return
@@ -133,7 +133,7 @@ _pointer_along :: proc(s: ^Slider, ev: ^engine.UI_Pointer_Event) -> (at: f32, ok
 }
 
 @(private = "file")
-_slider_to_pointer :: proc(s: ^Slider, ev: ^engine.UI_Pointer_Event) {
+_slider_to_pointer :: proc(s: ^Slider, ev: ^UI_Pointer_Event) {
 	at, ok := _pointer_along(s, ev)
 	if !ok do return
 	n := 1 - at if _reversed(s) else at
@@ -143,7 +143,7 @@ _slider_to_pointer :: proc(s: ^Slider, ev: ^engine.UI_Pointer_Event) {
 // The press goes to the pointer's place on the track and the drag follows
 // it. The Slider keeps the drag: no list above takes it.
 @(comp_on_pointer_ui={component=Slider})
-comp_on_pointer_ui_Slider :: proc(s: ^Slider, ev: ^engine.UI_Pointer_Event) {
+comp_on_pointer_ui_Slider :: proc(s: ^Slider, ev: ^UI_Pointer_Event) {
 	selectable_pointer(&s.selectable, ev)
 	#partial switch ev.kind {
 	case .Down:

@@ -10,8 +10,14 @@ The mhgui plugin draws UI. It adds the Image and UiShape graphics, the Button co
 
 **Components**
 
-- [Image](components/Image.md) draws a sprite or a solid colour in its rect, simple, 9-sliced or tiled.
-- [UiShape](components/UiShape.md) draws a rounded rectangle with a border, a gradient and shadows, with no sprite.
+- [Image](components/Image.md) draws a sprite or a solid colour in its rect, simple, 9-sliced, tiled or filled by an amount.
+- [RawImage](components/RawImage.md) draws a texture, whole or a part of it.
+- [UiShape](components/UiShape.md) draws a rounded rectangle, an ellipse, a polygon or a star with a border, a gradient and shadows, with no sprite.
+- [UiPolygon](components/UiPolygon.md) draws an outline given by points, filled or as a line.
+- [UiGradient](components/UiGradient.md), [UiShadow](components/UiShadow.md) and [UiOutline](components/UiOutline.md) are effects for any graphic.
+- [UiMask](components/UiMask.md) clips the nodes under it to its rect, its round corners or a sprite's alpha.
+- [CanvasScaler](components/CanvasScaler.md) maps canvas units to screen pixels.
+- [GraphicRaycaster](components/GraphicRaycaster.md) lets the pointer reach a canvas's graphics, and HitArea takes the pointer on a rect that draws nothing.
 - [Button](components/Button.md) tints a graphic as the pointer hovers and presses it, takes keyboard and gamepad input while selected, and reports clicks.
 - [Toggle](components/Toggle.md) is on or off, and a ToggleGroup keeps one toggle of a set on.
 - [Slider](components/Slider.md) sets a number by dragging a handle along a track.
@@ -24,14 +30,15 @@ The mhgui plugin draws UI. It adds the Image and UiShape graphics, the Button co
 
 **Concepts**
 
+- [The pointer](concepts/Pointer.md): what the pointer hits, touch, and how a component takes pointer events.
 - [Editing UI](concepts/EditingUI.md): the UI menus, picking in the Scene window and the rect tool.
 
 [Roadmap](Roadmap.md): the controls and features that come next.
 
 ## What it needs
 
-- The engine plugin, whose canvas tree this plugin draws on: Canvas, RectTransform, CanvasRenderer, CanvasScaler and GraphicRaycaster ([UI canvas](/plugins/engine/docs/UICanvas.md)).
-- Text is its own plugin, [text](/plugins/text/docs/_index.md). Neither the canvas tree nor mhgui knows about it.
+- The engine plugin, whose canvas tree this plugin draws on: Canvas, RectTransform, CanvasRenderer and CanvasGroup ([UI canvas](/plugins/engine/docs/UICanvas.md)). The scaler, the masks, the raycaster and [the pointer](concepts/Pointer.md) are this plugin's.
+- Text is its own plugin, [text](/plugins/text/docs/_index.md), which builds on this one: it holds the Text graphic and the controls made of text, InputField and Dropdown. mhgui does not know about it.
 
 ## Quick start
 
@@ -45,13 +52,17 @@ Plain object and component creation: `transform_new`, then `transform_add_comp` 
 
 ## Extending
 
-The plugin declares no attributes. It uses the engine's: Image and UiShape declare `@(canvas_graphic)`, LayoutGroup `@(canvas_layout)` and the two fitters `@(canvas_rect)`, which is how another plugin adds a graphic or a container ([UI canvas](/plugins/engine/docs/UICanvas.md), "Graphics").
+The plugin declares two attributes, both in [The pointer](concepts/Pointer.md):
+
+- `@(comp_on_pointer_ui={component=T})`: a component takes its node's pointer events.
+- `@(canvas_hit)`: a graphic says whether a point of its rect hits it.
+
+It uses the engine's for drawing and layout: its graphics declare `@(canvas_graphic)`, its effects `@(canvas_effect)`, LayoutGroup `@(canvas_layout)` and the two fitters `@(canvas_rect)`, which is how another plugin adds a graphic or a container ([UI canvas](/plugins/engine/docs/UICanvas.md), "Graphics").
 
 ## Limits
 
-- Every component takes its node's pointer events with `@(comp_on_pointer_ui)`, the engine's attribute ([UI canvas](/plugins/engine/docs/UICanvas.md), "The pointer"). Button is written with it.
-- The controls are Button, Toggle, Slider, ScrollRect and Scrollbar. No input field or dropdown ([Roadmap](Roadmap.md)).
-- Keyboard and gamepad navigation picks the nearest Button, Toggle or Slider in a direction. A control cannot name its neighbours or stay out of navigation.
+- The controls here are Button, Toggle, Slider, ScrollRect and Scrollbar. InputField and Dropdown are the [text](/plugins/text/docs/_index.md) plugin's.
+- What is not built is in the [Roadmap](Roadmap.md).
 
 ## Reference
 

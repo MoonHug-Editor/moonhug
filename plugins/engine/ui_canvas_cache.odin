@@ -139,7 +139,7 @@ _kept_build :: proc(k: ^_Canvas_Kept, root: Rect) {
 		context.allocator = runtime.default_allocator()
 		canvas_resolve_rects(k.canvas, root, &k.nodes)
 	}
-	any_mask := ui_masks(ctx_world()).count > 0
+	any_mask := canvas_clip_any()
 	quads := make([dynamic]Graphic_Quad, context.temp_allocator)
 	for n, i in k.nodes {
 		_, cr := transform_get_comp(n.tH, CanvasRenderer)
@@ -156,7 +156,7 @@ _kept_build :: proc(k: ^_Canvas_Kept, root: Rect) {
 		node := _Kept_Node{
 			index = i,
 			tH    = n.tH,
-			mask  = node_mask(n.tH) if any_mask else Transform_Handle{},
+			mask  = canvas_clip_nearest(n.tH) if any_mask else Transform_Handle{},
 			color = (g.color * cr.tint if cr.tinted else g.color) * {1, 1, 1, group_alpha},
 			xform = n.xform,
 			first = len(k.quads),

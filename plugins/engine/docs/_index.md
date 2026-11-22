@@ -13,7 +13,7 @@ The engine plugin is everything a game runs on: the world of pools and handles, 
 
 - Rendering: [Camera](components/Camera.md), [Light](components/Light.md), [Environment](components/Environment.md), [Reflection Probe](components/ReflectionProbe.md) and [Volume](components/Volume.md).
 - Meshes: [MeshFilter](components/MeshFilter.md), [MeshRenderer](components/MeshRenderer.md) and [SkinnedMeshRenderer](components/SkinnedMeshRenderer.md).
-- UI canvas: [Canvas](components/Canvas.md), [RectTransform](components/RectTransform.md), [CanvasRenderer](components/CanvasRenderer.md), [CanvasScaler](components/CanvasScaler.md) and [GraphicRaycaster](components/GraphicRaycaster.md).
+- UI canvas: [Canvas](components/Canvas.md), [RectTransform](components/RectTransform.md), [CanvasRenderer](components/CanvasRenderer.md) and [CanvasGroup](components/CanvasGroup.md). The scaler, the masks, the raycaster and the pointer are the [mhgui](/plugins/mhgui/docs/_index.md) plugin's.
 - Scene: [Groups](components/Groups.md).
 
 **Assets**

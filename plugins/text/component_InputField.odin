@@ -1,4 +1,4 @@
-package mhgui_text
+package text
 
 // InputField: a control the user types text into. It holds the string and
 // edits it. A Text on another node shows it (`text_component`), and an
@@ -24,8 +24,8 @@ package mhgui_text
 // It is a Selectable (mhgui selectable.odin), so it tints its target graphic
 // and takes part in keyboard and gamepad navigation as a Button does.
 //
-// This folder is what mhgui adds with the text plugin installed. mhgui
-// itself builds without it.
+// The text plugin holds the controls that are made of text: this one and
+// the Dropdown. They build on the mhgui plugin's Selectable.
 
 import "base:runtime"
 import "core:math/linalg"
@@ -36,7 +36,6 @@ import "moonhug:packages/engine"
 import "moonhug:libs/input"
 import "moonhug:libs/time"
 import mhgui "moonhug:packages/mhgui"
-import text "moonhug:packages/text"
 
 Input_Content :: enum u8 {
 	Standard,       // any character
@@ -172,7 +171,7 @@ input_field_set_text :: proc(f: ^InputField, s: string) {
 // Starts the editing, as a press on the field does: the field becomes the
 // selected node and takes the keys. `select_all` selects the whole string.
 input_field_begin :: proc(f: ^InputField, select_all := true) {
-	engine.ui_set_selected(f.owner)
+	mhgui.ui_set_selected(f.owner)
 	mhgui.ui_keys_capture(f.owner)
 	n := utf8.rune_count_in_string(f.text)
 	f.editing = true
@@ -281,7 +280,7 @@ _word_edge :: proc(runes: []rune, at: int, forward: bool) -> int {
 
 // The first and the last caret index of the line `at` is on.
 @(private = "file")
-_line_span :: proc(carets: []text.Caret, at, n: int) -> (first, last: int) {
+_line_span :: proc(carets: []Caret, at, n: int) -> (first, last: int) {
 	if len(carets) != n + 1 do return 0, n
 	first, last = at, at
 	for first > 0 && carets[first - 1].line == carets[at].line do first -= 1
@@ -291,7 +290,7 @@ _line_span :: proc(carets: []text.Caret, at, n: int) -> (first, last: int) {
 
 // The caret index on the line above or below `at` nearest to its x.
 @(private = "file")
-_line_step :: proc(carets: []text.Caret, at, n, step: int) -> int {
+_line_step :: proc(carets: []Caret, at, n, step: int) -> int {
 	if len(carets) != n + 1 do return 0 if step < 0 else n
 	want := carets[at].line + step
 	best, best_d := -1, f32(0)
@@ -313,7 +312,7 @@ _keys :: proc(f: ^InputField) {
 	f.anchor = clamp(f.anchor, 0, n)
 	shift, shortcut, word := input.shift_down(), input.shortcut_down(), input.word_down()
 	lo, hi := _selection(f)
-	carets: []text.Caret
+	carets: []Caret
 	if f.lines == .Multi_Line do carets = _carets(f)
 
 	go :: proc(f: ^InputField, to: int, shift: bool) {
@@ -403,7 +402,7 @@ _keys :: proc(f: ^InputField) {
 // --- Pointer -----------------------------------------------------------------------
 
 @(comp_on_pointer_ui={component=InputField})
-comp_on_pointer_ui_InputField :: proc(f: ^InputField, ev: ^engine.UI_Pointer_Event) {
+comp_on_pointer_ui_InputField :: proc(f: ^InputField, ev: ^mhgui.UI_Pointer_Event) {
 	mhgui.selectable_pointer(&f.selectable, ev)
 	#partial switch ev.kind {
 	case .Down:
@@ -437,9 +436,9 @@ comp_on_pointer_ui_InputField :: proc(f: ^InputField, ev: ^engine.UI_Pointer_Eve
 
 // The field's Text, the Text's node and the node's parent.
 @(private = "file")
-_parts :: proc(f: ^InputField) -> (tx: ^text.Text, text_tH, area_tH: engine.Transform_Handle) {
+_parts :: proc(f: ^InputField) -> (tx: ^Text, text_tH, area_tH: engine.Transform_Handle) {
 	text_tH = engine.Transform_Handle(f.text_component.handle)
-	_, tx = engine.transform_get_comp(text_tH, text.Text)
+	_, tx = engine.transform_get_comp(text_tH, Text)
 	if tx == nil do return nil, {}, {}
 	if t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(text_tH)); t != nil {
 		area_tH = engine.Transform_Handle(t.parent.handle)
@@ -465,25 +464,25 @@ _rects :: proc(f: ^InputField, text_tH, area_tH: engine.Transform_Handle) -> (te
 
 // The carets of the field's Text, in the Text node's space.
 @(private = "file")
-_carets :: proc(f: ^InputField) -> []text.Caret {
+_carets :: proc(f: ^InputField) -> []Caret {
 	tx, text_tH, area_tH := _parts(f)
 	if tx == nil do return nil
 	text_node, _, ok := _rects(f, text_tH, area_tH)
 	if !ok do return nil
-	return text.text_carets(tx, text_node.rect)
+	return text_carets(tx, text_node.rect)
 }
 
 // The caret index under the event's pointer: on the nearest line, the
 // nearest caret.
 @(private = "file")
-_index_at :: proc(f: ^InputField, ev: ^engine.UI_Pointer_Event) -> (at: int, ok: bool) {
+_index_at :: proc(f: ^InputField, ev: ^mhgui.UI_Pointer_Event) -> (at: int, ok: bool) {
 	tx, text_tH, area_tH := _parts(f)
 	if tx == nil do return
 	text_node, _, found := _rects(f, text_tH, area_tH)
 	if !found do return
-	carets := text.text_carets(tx, text_node.rect)
+	carets := text_carets(tx, text_node.rect)
 	if len(carets) == 0 do return
-	p := engine.ui_pointer_canvas_position(ev) or_return
+	p := mhgui.ui_pointer_canvas_position(ev) or_return
 	local := (linalg.inverse(text_node.xform) * [4]f32{p.x, p.y, 0, 1}).xy
 	// The line: the one the pointer's y is in, or the nearest.
 	line, line_d := 0, max(f32)
@@ -531,7 +530,7 @@ _place :: proc(f: ^InputField) {
 	if !f.editing && f.scroll == 0 do return
 	text_node, area_node, ok := _rects(f, text_tH, area_tH)
 	if !ok || area_node.tH != area_tH do return
-	carets := text.text_carets(tx, text_node.rect)
+	carets := text_carets(tx, text_node.rect)
 	n := len(carets) - 1
 	if n < 0 do return
 	f.caret = clamp(f.caret, 0, n)
@@ -609,7 +608,7 @@ _place :: proc(f: ^InputField) {
 @(update={order=-99})
 input_field_tick :: proc(dt: f32) {
 	w := engine.ctx_world()
-	selected := engine.ui_selected()
+	selected := mhgui.ui_selected()
 	real_dt := time.delta_time(.Unscaled)
 	it := engine.pool_iterator(input_fields(w))
 	for f, _ in engine.pool_next(&it) {

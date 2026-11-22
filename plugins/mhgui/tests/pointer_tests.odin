@@ -1,6 +1,6 @@
 package mhgui_tests
 
-// Pointer events (plugins/engine/ui_pointer.odin), driven by real mouse
+// Pointer events (plugins/mhgui/pointer.odin), driven by real mouse
 // events through the pointer pass. A recorder proc on RectTransform, which
 // every UI node has, writes down what each node got, and a table says which
 // node uses which event, so a test builds a scroll list or a slider out of
@@ -16,15 +16,15 @@ import common "moonhug:tests/common"
 
 @(private = "file")
 _Got :: struct {
-	kind: engine.UI_Pointer_Kind,
+	kind: mhgui.UI_Pointer_Kind,
 	node: engine.Transform_Handle,
-	ev:   engine.UI_Pointer_Event,
+	ev:   mhgui.UI_Pointer_Event,
 }
 
 @(private = "file")
 _Use :: struct {
 	node:     engine.Transform_Handle,
-	kind:     engine.UI_Pointer_Kind,
+	kind:     mhgui.UI_Pointer_Kind,
 	own_drag: bool,
 }
 
@@ -35,7 +35,7 @@ _Use :: struct {
 @(private = "file") _mouse: [2]f32
 
 @(private = "file")
-_record :: proc(comp: rawptr, ev: ^engine.UI_Pointer_Event) {
+_record :: proc(comp: rawptr, ev: ^mhgui.UI_Pointer_Event) {
 	if _got_n < len(_got) {
 		_got[_got_n] = {ev.kind, ev.node, ev^}
 		_got_n += 1
@@ -47,27 +47,27 @@ _record :: proc(comp: rawptr, ev: ^engine.UI_Pointer_Event) {
 }
 
 @(private = "file")
-_use :: proc(node: engine.Transform_Handle, kind: engine.UI_Pointer_Kind, own_drag := false) {
+_use :: proc(node: engine.Transform_Handle, kind: mhgui.UI_Pointer_Kind, own_drag := false) {
 	_uses[_uses_n] = {node, kind, own_drag}
 	_uses_n += 1
 }
 
 // How many events of `kind` the node got since the last _forget.
 @(private = "file")
-_count :: proc(node: engine.Transform_Handle, kind: engine.UI_Pointer_Kind) -> (n: int) {
+_count :: proc(node: engine.Transform_Handle, kind: mhgui.UI_Pointer_Kind) -> (n: int) {
 	for g in _got[:_got_n] do if g.node == node && g.kind == kind do n += 1
 	return
 }
 
 @(private = "file")
-_last :: proc(node: engine.Transform_Handle, kind: engine.UI_Pointer_Kind) -> engine.UI_Pointer_Event {
+_last :: proc(node: engine.Transform_Handle, kind: mhgui.UI_Pointer_Kind) -> mhgui.UI_Pointer_Event {
 	#reverse for g in _got[:_got_n] do if g.node == node && g.kind == kind do return g.ev
 	return {}
 }
 
 // The place of the first `kind` the node got, -1 for none.
 @(private = "file")
-_index :: proc(node: engine.Transform_Handle, kind: engine.UI_Pointer_Kind) -> int {
+_index :: proc(node: engine.Transform_Handle, kind: mhgui.UI_Pointer_Kind) -> int {
 	for g, i in _got[:_got_n] do if g.node == node && g.kind == kind do return i
 	return -1
 }
@@ -80,7 +80,7 @@ _forget :: proc() {
 @(private = "file")
 _Pointer_Fixture :: struct {
 	tc:   ^common.TestCtx,
-	prev: engine.UI_Pointer_Proc,
+	prev: mhgui.UI_Pointer_Proc,
 }
 
 @(private = "file")
@@ -89,9 +89,9 @@ _begin :: proc(f: ^_Pointer_Fixture) {
 	common.setup(f.tc)
 	input.set_app_focused(true)
 	input.set_viewport({0, 0}, {800, 600})
-	engine.ui_pointer_reset()
-	f.prev = engine.ui_pointer_procs[.RectTransform]
-	engine.ui_pointer_register(.RectTransform, _record)
+	mhgui.ui_pointer_reset()
+	f.prev = mhgui.ui_pointer_procs[.RectTransform]
+	mhgui.ui_pointer_register(.RectTransform, _record)
 	_got_n, _uses_n = 0, 0
 	_mouse = {-10, -10}
 	input.frame_reset()
@@ -102,8 +102,8 @@ _end :: proc(f: ^_Pointer_Fixture) {
 	// Let go of every button, so no press leaks into another test.
 	for b in ([]u8{1, 2, 3}) do _button(b, false)
 	input.frame_reset()
-	engine.ui_pointer_reset()
-	engine.ui_pointer_register(.RectTransform, f.prev)
+	mhgui.ui_pointer_reset()
+	mhgui.ui_pointer_register(.RectTransform, f.prev)
 	input.set_app_focused(false)
 	common.teardown(f.tc)
 	free(f.tc)
@@ -204,14 +204,14 @@ test_pointer_click_goes_to_the_button :: proc(t: ^testing.T) {
 	_frame(_at(0, 0))
 	testing.expect(t, b.hovered, "the pointer over its label is over the button")
 	testing.expect(t, _index(node, .Enter) < _index(label, .Enter) && _index(node, .Enter) >= 0, "Enter goes to the parent first")
-	testing.expect(t, engine.ui_pointer_over_ui(), "the pointer is over UI")
+	testing.expect(t, mhgui.ui_pointer_over_ui(), "the pointer is over UI")
 
 	_frame(_at(0, 0), down = 1)
 	testing.expect(t, b.pressed, "Down presses it")
 	testing.expect_value(t, b.state, mhgui.Selectable_State.Pressed)
 	testing.expect_value(t, _count(label, .Down), 1)
 	testing.expect_value(t, _count(root, .Down), 0) // the Button used it
-	testing.expect_value(t, engine.ui_selected(), node)
+	testing.expect_value(t, mhgui.ui_selected(), node)
 
 	// Released over another part of the button: still its click.
 	_frame(_at(40, 0), up = 1)
@@ -241,7 +241,7 @@ test_pointer_click_goes_to_the_button :: proc(t: ^testing.T) {
 	testing.expect(t, !b.clicked && !b.pressed, "a release off the button does not click")
 	testing.expect_value(t, _count(node, .Up), 1)
 	testing.expect(t, !_last(node, .Up).inside, "Up says the pointer is outside")
-	testing.expect(t, !b.hovered && !engine.ui_pointer_over_ui(), "and the pointer left the UI")
+	testing.expect(t, !b.hovered && !mhgui.ui_pointer_over_ui(), "and the pointer left the UI")
 
 	// The right button is not the Button's.
 	_frame(_at(0, 0), down = 3)
@@ -422,15 +422,15 @@ test_pointer_hit_area_and_cancel :: proc(t: ^testing.T) {
 	canvas := _canvas()
 	// A node that draws nothing and takes the pointer through a HitArea.
 	area := _node("Area", canvas, {0, 0}, {100, 100}, drawn = false)
-	testing.expect_value(t, engine.canvas_raycast(_at(0, 0), {800, 600}), engine.Transform_Handle{})
+	testing.expect_value(t, mhgui.canvas_raycast(_at(0, 0), {800, 600}), engine.Transform_Handle{})
 	_padd(area, .HitArea)
-	testing.expect_value(t, engine.canvas_raycast(_at(0, 0), {800, 600}), area)
+	testing.expect_value(t, mhgui.canvas_raycast(_at(0, 0), {800, 600}), area)
 	b := _as_button(area)
 
 	_frame(_at(0, 0), down = 1)
 	testing.expect(t, b.pressed, "a HitArea makes the node pressable")
 	// Code takes the pointer away: Cancel, and no Up or Click after.
-	engine.ui_pointer_cancel()
+	mhgui.ui_pointer_cancel()
 	testing.expect_value(t, _count(area, .Cancel), 1)
 	testing.expect(t, !b.pressed, "Cancel lets go of the press")
 	_frame(_at(0, 0), up = 1)
@@ -716,8 +716,8 @@ test_toggle_flips_and_groups :: proc(t: ^testing.T) {
 	testing.expect(t, !a.is_on && !b.is_on && !c.is_on, "with allow_switch_off none is on")
 
 	// The submit key flips the selected one.
-	engine.ui_set_selected(a_node)
-	defer engine.ui_set_selected({})
+	mhgui.ui_set_selected(a_node)
+	defer mhgui.ui_set_selected({})
 	input.frame_reset()
 	e: sdl.Event
 	e.type = .KEY_DOWN
@@ -783,8 +783,8 @@ test_slider_drag_keys_and_parts :: proc(t: ^testing.T) {
 	testing.expect_value(t, s.value, f32(3)) // 2.65 is 3
 
 	// Selected, the keys along it change it, and the keys across it move on.
-	engine.ui_set_selected(track)
-	defer engine.ui_set_selected({})
+	mhgui.ui_set_selected(track)
+	defer mhgui.ui_set_selected({})
 	key :: proc(k: input.Key) {
 		input.frame_reset()
 		e: sdl.Event
@@ -801,11 +801,11 @@ test_slider_drag_keys_and_parts :: proc(t: ^testing.T) {
 	key(.LEFT)
 	key(.LEFT)
 	testing.expect_value(t, s.value, f32(2))
-	testing.expect_value(t, engine.ui_selected(), track)
+	testing.expect_value(t, mhgui.ui_selected(), track)
 	other := _node("Other", root, {0, 150}, {100, 40})
 	_as_button(other)
 	key(.UP)
-	testing.expect_value(t, engine.ui_selected(), other) // across the slider: the selection moves
+	testing.expect_value(t, mhgui.ui_selected(), other) // across the slider: the selection moves
 	testing.expect_value(t, s.value, f32(2))
 
 	// Right to left: the least value is at the right.
@@ -860,7 +860,7 @@ test_selectable_sprite_swap :: proc(t: ^testing.T) {
 	b.interactable = false
 	_frame(_at(0, 0))
 	testing.expect_value(t, img.sprite, sprite(4))
-	engine.ui_set_selected({})
+	mhgui.ui_set_selected({})
 }
 
 // One frame of a touch screen: each finger given goes down, moves or comes
@@ -907,7 +907,7 @@ test_pointer_touches_are_pointers :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(input.touches()), 1)
 	_touch_frame({2, 150, 0, .FINGER_DOWN})
 	testing.expect(t, left.pressed && right.pressed, "the second finger presses the right one, the first still holds")
-	testing.expect(t, engine.ui_pointer_over_ui(), "fingers on controls are over the UI")
+	testing.expect(t, mhgui.ui_pointer_over_ui(), "fingers on controls are over the UI")
 
 	// The events carry the pointer: 1 and 2 for the fingers, never the mouse's 0.
 	seen: [3]bool
@@ -957,21 +957,21 @@ test_pointer_hits_a_shape_by_its_outline :: proc(t: ^testing.T) {
 	mhgui.type_reset_UiShape(shape)
 	shape.corner_radius = {999, 999, 999, 999}
 
-	testing.expect_value(t, engine.canvas_raycast(_at(0, 0), {800, 600}), disc)
-	testing.expect_value(t, engine.canvas_raycast(_at(34, 34), {800, 600}), disc) // 48 from the centre
-	testing.expect_value(t, engine.canvas_raycast(_at(45, 45), {800, 600}), behind) // in the rect, off the disc
-	testing.expect_value(t, engine.canvas_raycast(_at(60, 0), {800, 600}), behind)
+	testing.expect_value(t, mhgui.canvas_raycast(_at(0, 0), {800, 600}), disc)
+	testing.expect_value(t, mhgui.canvas_raycast(_at(34, 34), {800, 600}), disc) // 48 from the centre
+	testing.expect_value(t, mhgui.canvas_raycast(_at(45, 45), {800, 600}), behind) // in the rect, off the disc
+	testing.expect_value(t, mhgui.canvas_raycast(_at(60, 0), {800, 600}), behind)
 
 	// A star: its points are hit, the room between two of them is not.
 	shape.kind = .Star
 	shape.sides = 5
 	shape.star_inner = 0.4
 	shape.corner_radius = {}
-	testing.expect_value(t, engine.canvas_raycast(_at(0, 45), {800, 600}), disc) // the point that is up
-	testing.expect_value(t, engine.canvas_raycast(_at(0, -45), {800, 600}), behind) // between the two lower points
+	testing.expect_value(t, mhgui.canvas_raycast(_at(0, 45), {800, 600}), disc) // the point that is up
+	testing.expect_value(t, mhgui.canvas_raycast(_at(0, -45), {800, 600}), behind) // between the two lower points
 	shape.kind = .Ellipse
-	testing.expect_value(t, engine.canvas_raycast(_at(0, -45), {800, 600}), disc)
-	testing.expect_value(t, engine.canvas_raycast(_at(45, 45), {800, 600}), behind)
+	testing.expect_value(t, mhgui.canvas_raycast(_at(0, -45), {800, 600}), disc)
+	testing.expect_value(t, mhgui.canvas_raycast(_at(45, 45), {800, 600}), behind)
 
 	// A UiPolygon: its fill and its line, nothing else of its rect.
 	engine.transform_set_active(disc, false)
@@ -981,15 +981,15 @@ test_pointer_hits_a_shape_by_its_outline :: proc(t: ^testing.T) {
 	mhgui.type_reset_UiPolygon(poly)
 	defer mhgui.type_cleanup_UiPolygon(poly)
 	append(&poly.points, [2]f32{0, 0}, [2]f32{1, 0}, [2]f32{0.5, 1})
-	testing.expect_value(t, engine.canvas_raycast(_at(0, -20), {800, 600}), tri)
-	testing.expect_value(t, engine.canvas_raycast(_at(-40, 40), {800, 600}), behind) // beside the tip
+	testing.expect_value(t, mhgui.canvas_raycast(_at(0, -20), {800, 600}), tri)
+	testing.expect_value(t, mhgui.canvas_raycast(_at(-40, 40), {800, 600}), behind) // beside the tip
 	poly.fill = false
-	testing.expect_value(t, engine.canvas_raycast(_at(0, -20), {800, 600}), behind) // no fill, no line
+	testing.expect_value(t, mhgui.canvas_raycast(_at(0, -20), {800, 600}), behind) // no fill, no line
 	poly.line_width = 10
-	testing.expect_value(t, engine.canvas_raycast(_at(0, -47), {800, 600}), tri) // on the bottom edge's line
-	testing.expect_value(t, engine.canvas_raycast(_at(0, -20), {800, 600}), behind)
+	testing.expect_value(t, mhgui.canvas_raycast(_at(0, -47), {800, 600}), tri) // on the bottom edge's line
+	testing.expect_value(t, mhgui.canvas_raycast(_at(0, -20), {800, 600}), behind)
 
 	// An Image with no threshold is its rect, as before.
 	img := _node("Image", root, {200, 200}, {50, 50})
-	testing.expect_value(t, engine.canvas_raycast(_at(222, 222), {800, 600}), img)
+	testing.expect_value(t, mhgui.canvas_raycast(_at(222, 222), {800, 600}), img)
 }

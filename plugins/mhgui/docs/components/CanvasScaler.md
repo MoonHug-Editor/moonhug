@@ -2,8 +2,7 @@
 title: "CanvasScaler"
 description: "Sets how canvas units map to screen pixels: constant pixel size, or scaled with the screen to a reference resolution"
 weight: 130
-tags: ["engine", "ui", "components"]
-path: engine/components
+tags: ["mhgui", "ui", "components"]
 ---
 
 Sets how canvas units map to screen pixels. It sits on the Canvas node. Without one, one canvas unit is one screen pixel.

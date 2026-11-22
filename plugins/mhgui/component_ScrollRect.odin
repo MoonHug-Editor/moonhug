@@ -6,7 +6,7 @@ package mhgui
 // larger than it along the axes that scroll.
 //
 // It takes the pointer events of its node like any other component
-// (engine/ui_pointer.odin):
+// (mhgui pointer.odin):
 // - A drag along an axis it scrolls is its own: it uses Drag_Begin, so a
 //   Button under the pointer gets Cancel and does not click. A drag along an
 //   axis it does not scroll is left unused, and reaches the ScrollRect or
@@ -230,7 +230,7 @@ scroll_rect_show :: proc(s: ^ScrollRect, node: engine.Transform_Handle) {
 }
 
 @(comp_on_pointer_ui={component=ScrollRect})
-comp_on_pointer_ui_ScrollRect :: proc(s: ^ScrollRect, ev: ^engine.UI_Pointer_Event) {
+comp_on_pointer_ui_ScrollRect :: proc(s: ^ScrollRect, ev: ^UI_Pointer_Event) {
 	#partial switch ev.kind {
 	case .Down:
 		// A press holds the content still. Not used: what is under the
@@ -241,7 +241,7 @@ comp_on_pointer_ui_ScrollRect :: proc(s: ^ScrollRect, ev: ^engine.UI_Pointer_Eve
 		g, ok := scroll_rect_geometry(s)
 		if !ok do return
 		can := scroll_rect_can_scroll(s, g)
-		d := engine.ui_pointer_canvas_delta(ev)
+		d := ui_pointer_canvas_delta(ev)
 		// Its own when the drag runs along an axis it scrolls.
 		across := abs(d.x) >= abs(d.y)
 		if !((across && can.x) || (!across && can.y) || (can.x && can.y)) do return
@@ -253,7 +253,7 @@ comp_on_pointer_ui_ScrollRect :: proc(s: ^ScrollRect, ev: ^engine.UI_Pointer_Eve
 		if !ok do return
 		view_tH := engine.Transform_Handle(s.viewport.handle)
 		if view_tH == {} do view_tH = s.owner
-		d := _to_view(view_tH, engine.ui_pointer_canvas_delta(ev))
+		d := _to_view(view_tH, ui_pointer_canvas_delta(ev))
 		if !s.horizontal do d.x = 0
 		if !s.vertical do d.y = 0
 		// Past an end Elastic gives way less and less: the pointer's move

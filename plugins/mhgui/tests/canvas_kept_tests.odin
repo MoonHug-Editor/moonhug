@@ -151,8 +151,8 @@ test_canvas_fingerprint_holds_while_controls_rest :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
-	engine.ui_pointer_reset()
-	defer engine.ui_pointer_reset()
+	mhgui.ui_pointer_reset()
+	defer mhgui.ui_pointer_reset()
 
 	canvas := engine.transform_new("Canvas")
 	_kadd(canvas, .Canvas)

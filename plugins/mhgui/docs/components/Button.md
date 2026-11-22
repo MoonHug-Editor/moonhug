@@ -55,7 +55,7 @@ The first four fields are the ones every control has. Button, Toggle and Slider 
 
 ## Behavior
 
-- The button takes its node's [pointer events](/plugins/engine/docs/UICanvas.md) like any other component: it uses the left button's press, so it owns it, and the hover, the press and the click come from the events. A press selects the button, and so does `engine.ui_set_selected`.
+- The button takes its node's [pointer events](../concepts/Pointer.md) like any other component: it uses the left button's press, so it owns it, and the hover, the press and the click come from the events. A press selects the button, and so does `engine.ui_set_selected`.
 - The pointer hits the button through a graphic on its node or on a node under it (an Image, a UiShape, a Text with `raycast_target` on), or through a HitArea. A press and a release on different parts of one button still click it.
 - A parent that takes the drag, such as a scrolling list, cancels the press: no click follows.
 - A press dragged off the button looks let go, and a release there does not click. Dragged back over it, the button is pressed again and a release clicks.
@@ -63,7 +63,7 @@ The first four fields are the ones every control has. Button, Toggle and Slider 
 - Enter, Space and the gamepad's bottom face button click the selected button.
 - The arrow keys, the d-pad and the left stick move the selection to the nearest button in that direction that is enabled and interactable. Near and straight ahead wins over far or off to the side. Buttons on overlay canvases are compared on the screen, so the selection crosses from one overlay canvas to another. A canvas in the world or before a camera keeps the selection inside it.
 - A control's `navigation` replaces that for the moves that start on it. Explicit makes a fixed order: a ring that wraps from the last button to the first, a grid that skips a decoration, a move to a control on another canvas. A control named by an Explicit neighbour is reached whatever its own mode is.
-- A control that reads the keyboard itself takes these keys while it is the selected node (`ui_keys_capture`): an [InputField](../extends/text/components/InputField.md) does while it is edited.
+- A control that reads the keyboard itself takes these keys while it is the selected node (`ui_keys_capture`): an [InputField](/plugins/text/docs/components/InputField.md) does while it is edited.
 - With nothing selected the keys do nothing. A menu selects its first button when it opens, as in From code below.
 - `ui_set_navigation(false)` turns keyboard and gamepad input off, for a game that uses those keys while buttons are on screen.
 - `button_clicked` is true on the frame of a click. Poll it from an `@(update)` proc at order 0 or later, after the pointer pass at order -100.
@@ -80,7 +80,7 @@ menu_update :: proc(dt: f32) {
 }
 
 // When the menu opens: the keyboard and the gamepad start from Play.
-engine.ui_set_selected(play_row)
+mhgui.ui_set_selected(play_row)
 
 // While the game plays with the HUD's buttons on screen.
 mhgui.ui_set_navigation(false)

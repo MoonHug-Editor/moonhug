@@ -2,10 +2,10 @@
 title: "InputField"
 description: "A control the user types text into, with a caret, a selection, the clipboard and a hint, and InputCaret, which draws the caret"
 weight: 10
-tags: ["mhgui", "text", "components", "input", "text field"]
+tags: ["text", "mhgui", "components", "input", "text field"]
 ---
 
-A control the user types text into. GameObject, UI, Input Field creates one with every node it needs. The code is mhgui's `text` subpackage, which builds only with the text plugin installed.
+A control the user types text into. GameObject, UI, Input Field creates one with every node it needs. It is a control of the text plugin, built on the mhgui plugin's Selectable.
 
 ## Example
 
@@ -22,7 +22,7 @@ Input Field       RectTransform, CanvasRenderer, UiShape, InputField
 
 ## Properties
 
-`interactable`, `transition`, `target_graphic`, `colors`, `sprites` and `navigation` are what every control has, as on a [Button](../../../components/Button.md).
+`interactable`, `transition`, `target_graphic`, `colors`, `sprites` and `navigation` are what every control has, as on a [Button](/plugins/mhgui/docs/components/Button.md).
 
 | Field | Default | What it does |
 |---|---|---|
@@ -72,13 +72,13 @@ The shortcut key is Command on macOS and Control on Windows and Linux.
 ## From code
 
 ```odin
-import mhgui_text "moonhug:packages/mhgui/text"
+import text "moonhug:packages/text"
 
 @(update)
 login_tick :: proc(dt: f32) {
-	_, name := engine.transform_get_comp(name_node, mhgui_text.InputField)
-	if mhgui_text.input_field_submitted(name) do log_in(name.text)
-	if mhgui_text.input_field_changed(name) do validate(name.text)
+	_, name := engine.transform_get_comp(name_node, text.InputField)
+	if text.input_field_submitted(name) do log_in(name.text)
+	if text.input_field_changed(name) do validate(name.text)
 }
 ```
 

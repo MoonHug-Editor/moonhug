@@ -6,13 +6,15 @@ tags: ["text", "ui", "plugin"]
 
 The text plugin draws text on the UI canvas. A font imports into a signed-distance-field atlas, and glyphs draw through an SDF material, so text stays sharp at any size and gets an outline, a shadow, dilation and softness from the shader. Layout is separate from the glyph source, so another plugin can supply its own.
 
-The engine's canvas tree and the mhgui plugin know nothing about this plugin. Text embeds `engine.Graphic` and registers as a graphic, so the canvas collector draws it in hierarchy order next to images.
+The engine's canvas tree and the mhgui plugin know nothing about this plugin: it builds on them. Text embeds `engine.Graphic` and registers as a graphic, so the canvas collector draws it in hierarchy order next to images.
 
 ## What it adds
 
 **Components**
 
-- [Text](components/Text.md) draws a string in its rect, with styles, alignment, wrapping and overflow.
+- [Text](components/Text.md) draws a string in its rect, with styles, alignment, wrapping, overflow and rich text tags.
+- [InputField](components/InputField.md): a control the user types text into.
+- [Dropdown](components/Dropdown.md): a control that opens a list of options to pick one.
 
 **Assets**
 
@@ -28,6 +30,7 @@ The engine's canvas tree and the mhgui plugin know nothing about this plugin. Te
 ## What it needs
 
 - The engine plugin, whose canvas tree and material system Text uses.
+- The [mhgui](/plugins/mhgui/docs/_index.md) plugin, whose controls InputField and Dropdown build on.
 - It ships `Roboto-Medium.ttf`, `materials/TextSDF.mat` and `shaders/text_sdf.glsl`.
 
 ## Quick start

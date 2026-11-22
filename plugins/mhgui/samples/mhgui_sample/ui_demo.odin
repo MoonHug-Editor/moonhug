@@ -6,7 +6,7 @@ import "moonhug:packages/engine"
 import mhgui "moonhug:packages/mhgui"
 
 // Makes its node draggable, to show a component of your own taking pointer
-// events (plugins/engine/ui_pointer.odin). It uses Down and keeps the drag,
+// events (plugins/mhgui/pointer.odin). It uses Down and keeps the drag,
 // so it follows the pointer from the first pixel and no parent takes the
 // drag. Its UiShape's border lights up while the pointer is over it.
 @(component={menu="Demo/UIDemoDrag"})
@@ -24,7 +24,7 @@ type_reset_UIDemoDrag :: proc(d: ^UIDemoDrag) {
 }
 
 @(comp_on_pointer_ui={component=UIDemoDrag})
-comp_on_pointer_ui_UIDemoDrag :: proc(d: ^UIDemoDrag, ev: ^engine.UI_Pointer_Event) {
+comp_on_pointer_ui_UIDemoDrag :: proc(d: ^UIDemoDrag, ev: ^mhgui.UI_Pointer_Event) {
 	#partial switch ev.kind {
 	case .Enter, .Exit:
 		if _, shape := engine.transform_get_comp(d.owner, mhgui.UiShape); shape != nil {
@@ -37,7 +37,7 @@ comp_on_pointer_ui_UIDemoDrag :: proc(d: ^UIDemoDrag, ev: ^engine.UI_Pointer_Eve
 	case .Drag:
 		// The movement in the canvas's own units, whatever its scale.
 		if _, rt := engine.transform_get_comp(d.owner, engine.RectTransform); rt != nil {
-			delta := engine.ui_pointer_canvas_delta(ev)
+			delta := mhgui.ui_pointer_canvas_delta(ev)
 			rt.anchored_position.xy += delta
 		}
 	}

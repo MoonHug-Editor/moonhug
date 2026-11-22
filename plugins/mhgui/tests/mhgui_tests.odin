@@ -231,24 +231,24 @@ test_image_uvs_flip_v_for_top_left_rects :: proc(t: ^testing.T) {
 
 @(test)
 test_scaler_factor_modes :: proc(t: ^testing.T) {
-	cs: engine.CanvasScaler
-	engine.type_reset_CanvasScaler(&cs) // scale with screen size, 1920x1080, match 0.5
-	testing.expect_value(t, engine.scaler_factor(&cs, {1920, 1080}), 1)
+	cs: mhgui.CanvasScaler
+	mhgui.type_reset_CanvasScaler(&cs) // scale with screen size, 1920x1080, match 0.5
+	testing.expect_value(t, mhgui.scaler_factor(&cs, {1920, 1080}), 1)
 	// Twice the reference in both axes: 2 whatever the match.
-	testing.expect_value(t, engine.scaler_factor(&cs, {3840, 2160}), 2)
+	testing.expect_value(t, mhgui.scaler_factor(&cs, {3840, 2160}), 2)
 	// Only the width doubled: match 0 follows width (2), match 1 follows
 	// height (1), 0.5 is the geometric mean.
 	cs.match = 0
-	testing.expect_value(t, engine.scaler_factor(&cs, {3840, 1080}), 2)
+	testing.expect_value(t, mhgui.scaler_factor(&cs, {3840, 1080}), 2)
 	cs.match = 1
-	testing.expect_value(t, engine.scaler_factor(&cs, {3840, 1080}), 1)
+	testing.expect_value(t, mhgui.scaler_factor(&cs, {3840, 1080}), 1)
 	cs.match = 0.5
-	mid := engine.scaler_factor(&cs, {3840, 1080})
+	mid := mhgui.scaler_factor(&cs, {3840, 1080})
 	testing.expect(t, abs(mid - 1.4142135) < 1e-4, "match 0.5 is the geometric mean of width and height scale")
 
 	cs.mode = .Constant_Pixel_Size
 	cs.scale_factor = 3
-	testing.expect_value(t, engine.scaler_factor(&cs, {640, 480}), 3)
+	testing.expect_value(t, mhgui.scaler_factor(&cs, {640, 480}), 3)
 }
 
 @(test)
@@ -325,7 +325,7 @@ test_canvas_resolve_rects_applies_layout_and_scaler :: proc(t: ^testing.T) {
 	defer common.teardown(tc)
 	canvas := engine.transform_new("Canvas")
 	_add(canvas, .Canvas)
-	cs := cast(^engine.CanvasScaler)_add(canvas, .CanvasScaler)
+	cs := cast(^mhgui.CanvasScaler)_add(canvas, .CanvasScaler)
 	cs.mode = .Constant_Pixel_Size
 	cs.scale_factor = 2
 
@@ -505,12 +505,12 @@ test_canvas_raycast_hits_topmost_raycast_target :: proc(t: ^testing.T) {
 	mhgui.type_reset_Image(img)
 
 	// No raycaster on the canvas: nothing is hit.
-	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), engine.Transform_Handle{})
-	rc := cast(^engine.GraphicRaycaster)_add(canvas, .GraphicRaycaster)
-	engine.type_reset_GraphicRaycaster(rc)
-	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), node)
-	testing.expect_value(t, engine.canvas_raycast({20, 50}, viewport), engine.Transform_Handle{}) // left of the image
-	testing.expect_value(t, engine.canvas_raycast({100, 99}, viewport), node) // viewport y down, the image spans the full height
+	testing.expect_value(t, mhgui.canvas_raycast({100, 50}, viewport), engine.Transform_Handle{})
+	rc := cast(^mhgui.GraphicRaycaster)_add(canvas, .GraphicRaycaster)
+	mhgui.type_reset_GraphicRaycaster(rc)
+	testing.expect_value(t, mhgui.canvas_raycast({100, 50}, viewport), node)
+	testing.expect_value(t, mhgui.canvas_raycast({20, 50}, viewport), engine.Transform_Handle{}) // left of the image
+	testing.expect_value(t, mhgui.canvas_raycast({100, 99}, viewport), node) // viewport y down, the image spans the full height
 
 	// A later node over the same spot wins; without raycast_target it takes no part.
 	top := engine.transform_new("Top", canvas)
@@ -519,9 +519,9 @@ test_canvas_raycast_hits_topmost_raycast_target :: proc(t: ^testing.T) {
 	_add(top, .CanvasRenderer)
 	timg := cast(^mhgui.Image)_add(top, .Image)
 	mhgui.type_reset_Image(timg)
-	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), top)
+	testing.expect_value(t, mhgui.canvas_raycast({100, 50}, viewport), top)
 	timg.raycast_target = false
-	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), node)
+	testing.expect_value(t, mhgui.canvas_raycast({100, 50}, viewport), node)
 }
 
 
@@ -879,8 +879,8 @@ test_z_index_orders_draw_and_hits :: proc(t: ^testing.T) {
 
 	canvas := engine.transform_new("Canvas")
 	_add(canvas, .Canvas)
-	rc := cast(^engine.GraphicRaycaster)_add(canvas, .GraphicRaycaster)
-	engine.type_reset_GraphicRaycaster(rc)
+	rc := cast(^mhgui.GraphicRaycaster)_add(canvas, .GraphicRaycaster)
+	mhgui.type_reset_GraphicRaycaster(rc)
 	viewport := [2]f32{200, 100}
 	a := _ui_image("A", canvas)
 	a_child := _ui_image("A child", a)
@@ -895,21 +895,21 @@ test_z_index_orders_draw_and_hits :: proc(t: ^testing.T) {
 	}
 	o := order(canvas)
 	testing.expectf(t, o[1] == a && o[2] == a_child && o[3] == b, "hierarchy order with no z_index: %v", o)
-	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), b)
+	testing.expect_value(t, mhgui.canvas_raycast({100, 50}, viewport), b)
 
 	_, art := engine.transform_get_comp(a, engine.RectTransform)
 	art.z_index = 1
 	o = order(canvas)
 	testing.expectf(t, o[0] == canvas && o[1] == b && o[2] == a && o[3] == a_child, "A and its child draw after B: %v", o)
-	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), a_child)
+	testing.expect_value(t, mhgui.canvas_raycast({100, 50}, viewport), a_child)
 
 	// A child lowered by as much as its parent is raised is level with B again,
 	// and B comes later in the hierarchy.
 	_, crt := engine.transform_get_comp(a_child, engine.RectTransform)
 	crt.z_index = -1
-	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), a)
+	testing.expect_value(t, mhgui.canvas_raycast({100, 50}, viewport), a)
 	art.z_index = 0
-	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), b)
+	testing.expect_value(t, mhgui.canvas_raycast({100, 50}, viewport), b)
 	o = order(canvas)
 	testing.expectf(t, o[0] == a_child, "below zero draws under the canvas's own graphic: %v", o)
 }
@@ -944,7 +944,7 @@ test_button_keyboard_navigation :: proc(t: ^testing.T) {
 	input.set_app_focused(true)
 	defer input.set_app_focused(false)
 	input.set_viewport({0, 0}, {800, 600})
-	defer engine.ui_set_selected({})
+	defer mhgui.ui_set_selected({})
 
 	// Play  Options
 	// Quit  (off)    Far
@@ -959,27 +959,27 @@ test_button_keyboard_navigation :: proc(t: ^testing.T) {
 
 	// Nothing selected: the keys do nothing.
 	_ui_tap(.RIGHT)
-	testing.expect_value(t, engine.ui_selected(), engine.Transform_Handle{})
+	testing.expect_value(t, mhgui.ui_selected(), engine.Transform_Handle{})
 	_ui_tap(.RETURN)
 	testing.expect(t, !play_b.clicked && !options_b.clicked, "Enter clicks nothing with nothing selected")
 
-	engine.ui_set_selected(play)
+	mhgui.ui_set_selected(play)
 	_ui_tap(.RIGHT)
-	testing.expect_value(t, engine.ui_selected(), options)
+	testing.expect_value(t, mhgui.ui_selected(), options)
 	_ui_tap(.UP)
-	testing.expect_value(t, engine.ui_selected(), options) // nothing above
+	testing.expect_value(t, mhgui.ui_selected(), options) // nothing above
 	_ui_tap(.RIGHT)
-	testing.expect_value(t, engine.ui_selected(), far) // the only button further right, a row down
+	testing.expect_value(t, mhgui.ui_selected(), far) // the only button further right, a row down
 	_ui_tap(.LEFT)
-	testing.expect_value(t, engine.ui_selected(), quit) // past the button that is not interactable
+	testing.expect_value(t, mhgui.ui_selected(), quit) // past the button that is not interactable
 	_ui_tap(.UP)
-	testing.expect_value(t, engine.ui_selected(), play)
+	testing.expect_value(t, mhgui.ui_selected(), play)
 	_ui_tap(.DOWN)
-	testing.expect_value(t, engine.ui_selected(), quit)
+	testing.expect_value(t, mhgui.ui_selected(), quit)
 	_ui_tap(.RIGHT)
-	testing.expect_value(t, engine.ui_selected(), far)
+	testing.expect_value(t, mhgui.ui_selected(), far)
 	_ui_tap(.UP)
-	testing.expect_value(t, engine.ui_selected(), options)
+	testing.expect_value(t, mhgui.ui_selected(), options)
 
 	// Enter clicks the selected button, for that frame.
 	input.frame_reset()
@@ -999,7 +999,7 @@ test_button_keyboard_navigation :: proc(t: ^testing.T) {
 	mhgui.ui_set_navigation(false)
 	defer mhgui.ui_set_navigation(true)
 	_ui_tap(.LEFT)
-	testing.expect_value(t, engine.ui_selected(), options)
+	testing.expect_value(t, mhgui.ui_selected(), options)
 	input.frame_reset()
 	_ui_key(.SPACE, true)
 	mhgui.ui_tick(0)
@@ -1111,7 +1111,7 @@ test_explicit_navigation :: proc(t: ^testing.T) {
 	input.set_app_focused(true)
 	defer input.set_app_focused(false)
 	input.set_viewport({0, 0}, {800, 600})
-	defer engine.ui_set_selected({})
+	defer mhgui.ui_set_selected({})
 
 	// A  B  C  D
 	canvas := engine.transform_new("Canvas")
@@ -1125,28 +1125,28 @@ test_explicit_navigation :: proc(t: ^testing.T) {
 	a_b.navigation.mode = .Explicit
 	a_b.navigation.right = {handle = engine.Handle(d)}
 	a_b.navigation.down = {handle = engine.Handle(c)}
-	engine.ui_set_selected(a)
+	mhgui.ui_set_selected(a)
 	_ui_tap(.RIGHT)
-	testing.expect_value(t, engine.ui_selected(), d) // past B and C
-	engine.ui_set_selected(a)
+	testing.expect_value(t, mhgui.ui_selected(), d) // past B and C
+	mhgui.ui_set_selected(a)
 	_ui_tap(.DOWN)
-	testing.expect_value(t, engine.ui_selected(), c) // not the direction C lies in
-	engine.ui_set_selected(a)
+	testing.expect_value(t, mhgui.ui_selected(), c) // not the direction C lies in
+	mhgui.ui_set_selected(a)
 	_ui_tap(.UP)
-	testing.expect_value(t, engine.ui_selected(), a) // no neighbour named
+	testing.expect_value(t, mhgui.ui_selected(), a) // no neighbour named
 
 	// A neighbour that cannot be used keeps the selection.
 	c_b.interactable = false
 	_ui_tap(.DOWN)
-	testing.expect_value(t, engine.ui_selected(), a)
+	testing.expect_value(t, mhgui.ui_selected(), a)
 	c_b.interactable = true
 
 	// None: automatic moves skip B, and the keys do not leave it.
 	b_b.navigation.mode = .None
-	engine.ui_set_selected(c)
+	mhgui.ui_set_selected(c)
 	_ui_tap(.LEFT)
-	testing.expect_value(t, engine.ui_selected(), a)
-	engine.ui_set_selected(b)
+	testing.expect_value(t, mhgui.ui_selected(), a)
+	mhgui.ui_set_selected(b)
 	_ui_tap(.RIGHT)
-	testing.expect_value(t, engine.ui_selected(), b)
+	testing.expect_value(t, mhgui.ui_selected(), b)
 }

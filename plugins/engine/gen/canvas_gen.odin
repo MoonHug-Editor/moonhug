@@ -9,17 +9,11 @@ package engine_gen
 //   @(canvas_layout)
 //   canvas_layout_groups :: proc(tH: engine.Transform_Handle, rect: engine.Rect, children: []engine.Transform_Handle, out: []engine.Rect) -> bool { ... }
 //
-//   @(comp_on_pointer_ui={component=Button})
-//   comp_on_pointer_ui_Button :: proc(b: ^Button, ev: ^engine.UI_Pointer_Event) { ... }
-//
 //   @(canvas_rect)
 //   canvas_rect_fitters :: proc(tH: engine.Transform_Handle, parent, rect: engine.Rect) -> (engine.Rect, bool) { ... }
 //
 //   @(canvas_measure)
 //   canvas_measure_Text :: proc(tx: ^Text, width: f32) -> [2]f32 { ... }
-//
-//   @(canvas_hit)
-//   canvas_hit_UiShape :: proc(s: ^UiShape, rect: engine.Rect, point: [2]f32) -> bool { ... }
 //
 //   @(canvas_effect)
 //   canvas_effect_UiShadow :: proc(s: ^UiShadow, rect: engine.Rect, quads: ^[dynamic]engine.Graphic_Quad) { ... }
@@ -27,9 +21,8 @@ package engine_gen
 //   A graphic's name is the contract: `canvas_populate_<T>`, T a struct of
 //   the same package with a `graphic` field, so the generated descriptor
 //   carries its type key, the field's offset and a thunk that casts the
-//   component for the proc. A layout proc's name is free. A pointer proc is
-//   named `comp_on_pointer_ui_<T>`, as every comp_ attribute's proc is
-//   (gen_facts.comp_proc_name), and registers under T's type key.
+//   component for the proc. A layout proc's name is free. The pointer and
+//   hit attributes of a canvas are the mhgui plugin's (mhgui/gen).
 //
 //   generate - editor/scene_tools/canvas_editor_generated.odin: every
 //              declaration, registered from @(init) for the editor.
@@ -45,12 +38,10 @@ import "moonhug:prebuild/gen_facts"
 
 Canvas_GenComp :: struct {
 	layout: bool,   // @(canvas_layout), else @(canvas_graphic)
-	type_name: string, // the graphic's or the pointer proc's component type, "" for a layout
-	pointer: bool,  // @(comp_on_pointer_ui)
+	type_name: string, // the graphic's component type, "" for a layout
 	rect: bool,     // @(canvas_rect), with layout set: registered like a layout
 	measure: bool,  // @(canvas_measure)
 	effect: bool,   // @(canvas_effect)
-	hit: bool,      // @(canvas_hit)
 	editor: bool,
 }
 
@@ -78,9 +69,7 @@ canvas_provide :: proc(w: ^db.World) -> bool {
 		_, is_rect := gen_facts.attr_find(attr_set, "canvas_rect")
 		_, is_measure := gen_facts.attr_find(attr_set, "canvas_measure")
 		_, is_effect := gen_facts.attr_find(attr_set, "canvas_effect")
-		_, is_hit := gen_facts.attr_find(attr_set, "canvas_hit")
-		pointer_args, is_pointer := gen_facts.attr_find(attr_set, "comp_on_pointer_ui")
-		if !is_graphic && !is_layout && !is_pointer && !is_rect && !is_measure && !is_effect && !is_hit do continue
+		if !is_graphic && !is_layout && !is_rect && !is_measure && !is_effect do continue
 		where_ := fmt.tprintf("%s:%d", gen_facts.decl_rel_path(decl), decl.decl.pos.line)
 		if db.get(procs, entity) == nil {
 			fmt.eprintfln("prebuild: %s: %s must be a proc", where_, decl.name)
@@ -103,34 +92,12 @@ canvas_provide :: proc(w: ^db.World) -> bool {
 			db.set(comps, entity, Canvas_GenComp{type_name = decl.name[len("canvas_measure_"):], measure = true, editor = editor})
 			continue
 		}
-		if is_hit {
-			if !strings.has_prefix(decl.name, "canvas_hit_") || len(decl.name) == len("canvas_hit_") {
-				fmt.eprintfln("prebuild: %s: a canvas hit proc is named canvas_hit_<Type>, the component's own name", where_)
-				return false
-			}
-			db.set(comps, entity, Canvas_GenComp{type_name = decl.name[len("canvas_hit_"):], hit = true, editor = editor})
-			continue
-		}
 		if is_effect {
 			if !strings.has_prefix(decl.name, "canvas_effect_") || len(decl.name) == len("canvas_effect_") {
 				fmt.eprintfln("prebuild: %s: a canvas effect proc is named canvas_effect_<Type>, the component's own name", where_)
 				return false
 			}
 			db.set(comps, entity, Canvas_GenComp{type_name = decl.name[len("canvas_effect_"):], effect = true, editor = editor})
-			continue
-		}
-		if is_pointer {
-			comp := pointer_args.fields["component"]
-			if comp == "" do comp = gen_facts.attr_keyname(pointer_args, "component")
-			if comp == "" || strings.contains(comp, ".") {
-				fmt.eprintfln("prebuild: %s: @(comp_on_pointer_ui) names its component with component=T, a type of the same package", where_)
-				return false
-			}
-			if want := gen_facts.comp_proc_name("comp_on_pointer_ui", comp); decl.name != want {
-				fmt.eprintfln("prebuild: %s: a @(comp_on_pointer_ui={{component=%s}}) proc is named %s", where_, comp, want)
-				return false
-			}
-			db.set(comps, entity, Canvas_GenComp{type_name = comp, pointer = true, editor = editor})
 			continue
 		}
 		if !strings.has_prefix(decl.name, "canvas_populate_") || len(decl.name) == len("canvas_populate_") {
@@ -162,11 +129,9 @@ _Canvas_Row :: struct {
 	pkg:       string,
 	path:      string,
 	type_name: string, // "" for a layout
-	pointer:   bool,
 	rect:      bool,
 	measure:   bool,
 	effect:    bool,
-	hit:       bool,
 	editor:    bool,
 }
 
@@ -178,7 +143,7 @@ canvas_generate :: proc(w: ^db.World) -> bool {
 	for entity in db.matched(w, &m) {
 		decl := db.get(decls, entity)
 		c := db.get(comps, entity)
-		append(&rows, _Canvas_Row{name = decl.name, pkg = decl.pkg.name, path = decl.pkg_path, type_name = c.type_name, pointer = c.pointer, rect = c.rect, measure = c.measure, effect = c.effect, hit = c.hit, editor = c.editor})
+		append(&rows, _Canvas_Row{name = decl.name, pkg = decl.pkg.name, path = decl.pkg_path, type_name = c.type_name, rect = c.rect, measure = c.measure, effect = c.effect, editor = c.editor})
 	}
 	slice.sort_by(rows[:], proc(a, b: _Canvas_Row) -> bool {
 		if a.pkg != b.pkg do return a.pkg < b.pkg
@@ -190,7 +155,7 @@ canvas_generate :: proc(w: ^db.World) -> bool {
 		defer strings.builder_destroy(&b)
 		strings.write_string(&b, "package scene_tools\n\n")
 		strings.write_string(&b, "// Code generated by canvas_gen. Do not edit.\n")
-		strings.write_string(&b, "// Every canvas graphic, layout and pointer proc, for the editor (plugins/engine/ui_canvas.odin).\n\n")
+		strings.write_string(&b, "// Every canvas graphic, layout, measure and effect proc, for the editor (plugins/engine/ui_canvas.odin).\n\n")
 		strings.write_string(&b, "import \"base:runtime\"\n")
 		_write_canvas_imports(&b, rows[:], "")
 		strings.write_string(&b, "\n@(init)\n_register_canvas :: proc \"contextless\" () {\n\tcontext = runtime.default_context()\n")
@@ -212,7 +177,7 @@ canvas_generate :: proc(w: ^db.World) -> bool {
 		defer strings.builder_destroy(&b)
 		fmt.sbprintf(&b, "package %s\n\n", host.name)
 		strings.write_string(&b, "// Code generated by canvas_gen. Do not edit.\n")
-		strings.write_string(&b, "// This package's canvas graphics, layouts and pointer procs and the library packages', registered by __standalone_run.\n\n")
+		strings.write_string(&b, "// This package's canvas graphics, layouts, measures and effects and the library packages', registered by __standalone_run.\n\n")
 		_write_canvas_imports(&b, mine[:], host.name)
 		strings.write_string(&b, "\n__register_canvas :: proc() {\n")
 		for r in mine do _write_canvas_register(&b, r, host.name)
@@ -235,16 +200,8 @@ _write_canvas_register :: proc(b: ^strings.Builder, r: _Canvas_Row, own_pkg: str
 		fmt.sbprintf(b, "\tengine.canvas_measure_register(.%s, proc(comp: rawptr, width: f32) -> [2]f32 {{ return %s%s(cast(^%s%s)comp, width) }})\n", r.type_name, q, r.name, q, r.type_name)
 		return
 	}
-	if r.hit {
-		fmt.sbprintf(b, "\tengine.canvas_hit_register(.%s, proc(comp: rawptr, rect: engine.Rect, point: [2]f32) -> bool {{ return %s%s(cast(^%s%s)comp, rect, point) }})\n", r.type_name, q, r.name, q, r.type_name)
-		return
-	}
 	if r.effect {
 		fmt.sbprintf(b, "\tengine.canvas_effect_register(.%s, proc(comp: rawptr, rect: engine.Rect, quads: ^[dynamic]engine.Graphic_Quad) {{ %s%s(cast(^%s%s)comp, rect, quads) }})\n", r.type_name, q, r.name, q, r.type_name)
-		return
-	}
-	if r.pointer {
-		fmt.sbprintf(b, "\tengine.ui_pointer_register(.%s, proc(comp: rawptr, ev: ^engine.UI_Pointer_Event) {{ %s%s(cast(^%s%s)comp, ev) }})\n", r.type_name, q, r.name, q, r.type_name)
 		return
 	}
 	fmt.sbprintf(b, "\tengine.canvas_graphic_register({{\n")

@@ -312,7 +312,7 @@ ui_menu_scroll_view :: proc() {
 		rt.anchored_position = {-BAR / 2, 0, 0}
 	})
 	_add_comp(viewport, .UiMask, proc(ptr: rawptr) {
-		(cast(^engine.UiMask)ptr).corner_radius = {8, 0, 0, 8}
+		(cast(^mhgui.UiMask)ptr).corner_radius = {8, 0, 0, 8}
 	})
 
 	content := undo.record_create_child("Content", viewport)
@@ -500,6 +500,20 @@ comp_on_scene_handles_UiPolygon :: proc(p: ^mhgui.UiPolygon, ctx: handles.Gizmo_
 			undo.edit_session_end(&_polygon_edit)
 			_polygon_added = -1
 		}
+	}
+}
+
+// --- UiMask inspector ------------------------------------------------------------------
+
+// A UiMask in the inspector: its fields, then the Sprite row (the shared
+// sprite picker, the field itself is inspect:"-").
+@(property_drawer={type=mhgui.UiMask, order="middle"})
+property_drawer_UiMask_inspector :: proc(ctx: ^inspector.Ctx) {
+	inspector.draw(ctx)
+	mask := cast(^mhgui.UiMask)ctx.ptr
+	if drawers.sprite_ref_row("Sprite", &mask.sprite) {
+		inspector.mark_inspector_changed()
+		inspector.record_nested_override(&mask.sprite, typeid_of(engine.PPtr), "sprite", true)
 	}
 }
 

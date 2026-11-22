@@ -83,7 +83,7 @@ test_mask_gives_its_children_a_clip :: proc(t: ^testing.T) {
 	q, found := _quad_of(child)
 	testing.expect(t, found && len(q.clip) == 0, "with no mask nothing is clipped")
 
-	mask := cast(^engine.UiMask)_madd(viewport, .UiMask)
+	mask := cast(^mhgui.UiMask)_madd(viewport, .UiMask)
 	mask.corner_radius = {40, 30, 20, 10}
 	mask.softness = 6
 	q, found = _quad_of(child)
@@ -166,20 +166,20 @@ test_mask_hides_its_children_from_the_pointer :: proc(t: ^testing.T) {
 	inside := [2]f32{400, 300}
 	below := [2]f32{400, 300 + 120} // on the child, under the viewport's bottom edge
 
-	testing.expect_value(t, engine.canvas_raycast(inside, screen), child)
-	testing.expect_value(t, engine.canvas_raycast(below, screen), child)
+	testing.expect_value(t, mhgui.canvas_raycast(inside, screen), child)
+	testing.expect_value(t, mhgui.canvas_raycast(below, screen), child)
 	_madd(viewport, .UiMask)
-	testing.expect_value(t, engine.canvas_raycast(inside, screen), child)
-	testing.expect_value(t, engine.canvas_raycast(below, screen), engine.Transform_Handle{})
+	testing.expect_value(t, mhgui.canvas_raycast(inside, screen), child)
+	testing.expect_value(t, mhgui.canvas_raycast(below, screen), engine.Transform_Handle{})
 
 	// A mask in a mask: a node is hidden where either cuts it.
 	inner, _ := _mnode("Inner", viewport, {0, 0}, {60, 300}, drawn = false)
 	_madd(inner, .UiMask)
 	leaf, _ := _mnode("Leaf", inner, {0, 0}, {300, 300})
 	engine.pool_get(&tc.world.transforms, engine.Handle(child)).is_active = false
-	testing.expect_value(t, engine.canvas_raycast(inside, screen), leaf)
-	testing.expect_value(t, engine.canvas_raycast({400 + 60, 300}, screen), engine.Transform_Handle{}) // past the inner mask's side
-	testing.expect_value(t, engine.canvas_raycast({400, 300 + 80}, screen), engine.Transform_Handle{}) // in the inner, under the outer's edge
+	testing.expect_value(t, mhgui.canvas_raycast(inside, screen), leaf)
+	testing.expect_value(t, mhgui.canvas_raycast({400 + 60, 300}, screen), engine.Transform_Handle{}) // past the inner mask's side
+	testing.expect_value(t, mhgui.canvas_raycast({400, 300 + 80}, screen), engine.Transform_Handle{}) // in the inner, under the outer's edge
 }
 
 // A node under several masks is clipped to every one, each with its own shape.
@@ -197,12 +197,12 @@ test_mask_in_a_mask_clips_to_both :: proc(t: ^testing.T) {
 	// Page 400 x 200, a panel 300 x 300 in it moved 100 right and turned, a
 	// list 200 x 100 in the panel. Every one a mask with its own radius.
 	page, _ := _mnode("Page", canvas, {0, 0}, {400, 200}, drawn = false)
-	(cast(^engine.UiMask)_madd(page, .UiMask)).corner_radius = {30, 30, 30, 30}
+	(cast(^mhgui.UiMask)_madd(page, .UiMask)).corner_radius = {30, 30, 30, 30}
 	panel, _ := _mnode("Panel", page, {100, 0}, {300, 300}, drawn = false)
-	(cast(^engine.UiMask)_madd(panel, .UiMask)).corner_radius = {20, 0, 0, 0}
+	(cast(^mhgui.UiMask)_madd(panel, .UiMask)).corner_radius = {20, 0, 0, 0}
 	engine.pool_get(&tc.world.transforms, engine.Handle(panel)).rotation = engine.quat_from_euler_xyz(0, 0, 30)
 	list, _ := _mnode("List", panel, {0, 0}, {200, 100}, drawn = false)
-	(cast(^engine.UiMask)_madd(list, .UiMask)).softness = 8
+	(cast(^mhgui.UiMask)_madd(list, .UiMask)).softness = 8
 	item, _ := _mnode("Item", list, {0, 0}, {100, 100})
 
 	q, found := _quad_of(item)
@@ -236,18 +236,18 @@ test_mask_round_corner_takes_no_pointer :: proc(t: ^testing.T) {
 	_madd(canvas, .Canvas)
 	_madd(canvas, .GraphicRaycaster)
 	viewport, _ := _mnode("Viewport", canvas, {0, 0}, {200, 200}, drawn = false)
-	mask := cast(^engine.UiMask)_madd(viewport, .UiMask)
+	mask := cast(^mhgui.UiMask)_madd(viewport, .UiMask)
 	child, _ := _mnode("Child", viewport, {0, 0}, {400, 400})
 	// Just inside the viewport's top right corner: screen (400 + 95, 300 - 95).
 	corner := [2]f32{495, 205}
-	testing.expect_value(t, engine.canvas_raycast(corner, screen), child)
+	testing.expect_value(t, mhgui.canvas_raycast(corner, screen), child)
 	// A circle: the corner is outside it.
 	mask.corner_radius = {100, 100, 100, 100}
-	testing.expect_value(t, engine.canvas_raycast(corner, screen), engine.Transform_Handle{})
-	testing.expect_value(t, engine.canvas_raycast({400 + 60, 300 - 60}, screen), child) // inside the circle
+	testing.expect_value(t, mhgui.canvas_raycast(corner, screen), engine.Transform_Handle{})
+	testing.expect_value(t, mhgui.canvas_raycast({400 + 60, 300 - 60}, screen), child) // inside the circle
 	// The top right corner left square.
 	mask.corner_radius[1] = 0
-	testing.expect_value(t, engine.canvas_raycast(corner, screen), child)
-	testing.expect_value(t, engine.canvas_raycast({400 - 95, 300 - 95}, screen), engine.Transform_Handle{}) // top left is still round
+	testing.expect_value(t, mhgui.canvas_raycast(corner, screen), child)
+	testing.expect_value(t, mhgui.canvas_raycast({400 - 95, 300 - 95}, screen), engine.Transform_Handle{}) // top left is still round
 }
 

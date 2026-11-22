@@ -1,6 +1,6 @@
 ---
 title: "UI canvas"
-description: "The canvas tree in the engine: Canvas, RectTransform, CanvasRenderer, CanvasScaler, GraphicRaycaster and UiMask, rect layout, positions, drawing, clipping and the pointer"
+description: "The canvas tree in the engine: Canvas, RectTransform, CanvasRenderer and CanvasGroup, rect layout, positions, drawing, and what a plugin installs on it"
 weight: 60
 tags: ["ui", "rendering", "components"]
 path: engine/concepts/rendering
@@ -13,11 +13,16 @@ UI has two halves. The canvas tree is engine vocabulary, in `plugins/engine/ui_c
 - [Canvas](components/Canvas.md), the root of a UI tree: screen overlay, in front of a camera, or in the world.
 - [RectTransform](components/RectTransform.md), a node's rect: anchors, size, pivot and position.
 - [CanvasRenderer](components/CanvasRenderer.md) marks a node as drawing its graphic.
-- [CanvasScaler](components/CanvasScaler.md) maps canvas units to screen pixels.
-- [GraphicRaycaster](components/GraphicRaycaster.md) lets the pointer reach a canvas's graphics.
-- [UiMask](components/UiMask.md) clips the nodes under it to its rect.
 - [CanvasGroup](components/CanvasGroup.md) fades a whole subtree and turns it off for the pointer.
-- HitArea takes the pointer on its node's rect and draws nothing.
+
+The rest of UI is the [mhgui](/plugins/mhgui/docs/_index.md) plugin's, built on these: the graphics and controls, [CanvasScaler](/plugins/mhgui/docs/components/CanvasScaler.md), [UiMask](/plugins/mhgui/docs/components/UiMask.md), [GraphicRaycaster](/plugins/mhgui/docs/components/GraphicRaycaster.md), HitArea and [the pointer](/plugins/mhgui/docs/concepts/Pointer.md).
+
+## What a plugin installs
+
+The engine draws the tree and asks a plugin for two things it does not decide itself. Each is installed once, from an `@(init)` proc:
+
+- `engine.canvas_scale_install(proc)`: how many screen pixels a canvas unit is, for a canvas and a screen size. With none installed the scale is 1. The mhgui CanvasScaler installs it.
+- `engine.canvas_clip_install(provider)`: which mask a node is under, and the masks above it in a view as gfx clips to them. With none installed nothing is clipped. The mhgui UiMask installs it.
 
 ## Graphics
 
@@ -38,7 +43,6 @@ A node's rect comes from its RectTransform and its parent's rect. Three things i
 - `@(canvas_layout)`: a container places its children. Asked for every node with its rect and its RectTransform children. The mhgui LayoutGroup is one.
 - `@(canvas_rect)`: a component sets its own node's rect. Asked for every node that resolves from its own anchors, with its parent's rect and the rect the anchors gave. The mhgui ContentSizeFitter and AspectRatioFitter are one. A node a container placed is not asked.
 - `@(canvas_effect)`: a component changes the quads of the graphic on its node after the graphic made them, on a proc named `canvas_effect_<T>` that takes the component, the node's rect and the quads. A shadow adds copies behind them, a gradient colours their corners. Effects on one node run in the order of its components. The mhgui plugin's UiGradient, UiShadow and UiOutline are effects.
-- `@(canvas_hit)`: a component says whether a point of its node's rect hits it, on a proc named `canvas_hit_<T>` that takes the component, the rect and the point. See "What the pointer hits".
 - `@(canvas_measure)`: a component says how large it wants its node, on a proc named `canvas_measure_<T>` that takes the component and the width to fit in. `engine.node_measure(node, width)` reads it. The text plugin's Text has one.
 
 ## Position
@@ -56,7 +60,7 @@ The engine's canvas collector runs for Game windows and the Scene window. For ea
 - **Draw order.** Nodes draw in hierarchy order, parents before children. A RectTransform's `z_index` changes that: a higher one draws over a lower one, whatever the hierarchy order. A node's `z_index` adds to its parent's, so a raised parent takes its children along. The pointer and the Scene window's picking follow the same order.
 - **Game windows.** Quads sit on a plane just inside the camera's near plane, with the rect's pixel corners projected back through the camera, so they land on exactly those pixels for any camera and nothing in the scene draws in front of them.
 - **Scene window.** The canvas is a world rect with its bottom-left at the origin in the XY plane, one world unit per canvas unit, sized like the last Game window, 1920 by 1080 before one has drawn.
-- **Clipping.** A quad of a node under a [UiMask](components/UiMask.md) carries the masks above it (`Draw_Quad.clip`): for each, the map from a pixel of the target into the mask's own space, its half size, its radii and its softness. The quad's shader cuts it to them. Nodes under the same masks share one list, so their quads merge. No stencil is used.
+- **Clipping.** A quad of a node under a mask (the mhgui [UiMask](/plugins/mhgui/docs/components/UiMask.md), through the installed clip provider) carries the masks above it (`Draw_Quad.clip`): for each, the map from a pixel of the target into the mask's own space, its half size, its radii and its softness. The quad's shader cuts it to them. Nodes under the same masks share one list, so their quads merge. No stencil is used.
 - Sort keys use layer 127, the top of the transparent range, then the canvas's `sort_order`, then the node's place in the draw order.
 
 ## What a canvas keeps
@@ -74,83 +78,3 @@ A graphic whose quads depend on something outside its node's components, the tim
 - A canvas with something moving in it collects afresh each frame, as before. Put what changes every frame on a canvas of its own and the rest stays kept.
 - A component that counts time in one of its fields while it rests makes its canvas collect afresh every frame. The plugin's controls do not.
 - `engine.canvas_rebuilds` counts the fresh collects.
-
-## The pointer
-
-Every frame, before any game update, `canvas_pointer_update` reads the mouse in viewport coordinates, finds the topmost node under it across the canvases with a GraphicRaycaster, and sends pointer events. Nothing happens while the application has no focus.
-
-### What the pointer hits
-
-- A node is hit inside its rect. A graphic may narrow that with `@(canvas_hit)` on a proc named `canvas_hit_<T>`, which takes the component, the node's rect and a point of it and says whether the point hits. Every component on the node that has one must agree.
-- The mhgui UiShape and UiPolygon are hit by their outlines, and an Image by its sprite's alpha when its `alpha_hit_threshold` is over 0.
-- A node under a [UiMask](components/UiMask.md) is hit only where the mask shows it: inside its rect and corners, and where its sprite's alpha is at least 0.1.
-
-### Touch
-
-Each finger on a touch screen is a pointer of its own. The mouse is pointer 0 and the fingers are 1 and up, in `ev.pointer`.
-
-- A finger sends the same events as the mouse's left button: `Down`, `Hold`, `Drag_Begin`, `Drag`, `Up`, `Click`, `Cancel`. Every control works with it unchanged.
-- Each finger has its own press, its own drag and its own double click, so two fingers hold two buttons, or move two sliders, at once.
-- A finger hovers only while it is down: `Enter` comes with the touch and `Exit` when it lifts.
-- On a touch screen the system also moves the mouse with the first finger. The pointer pass leaves the mouse out while that lasts, so a tap arrives once.
-- A trackpad's fingers are no touches. They move the mouse.
-- Game code reads fingers with `input.touches()`.
-
-### Taking pointer events
-
-Any component on a UI node takes the pointer events of that node with one proc. A control of the engine, a control of a plugin and a script of a game all use this one way:
-
-```odin
-@(comp_on_pointer_ui={component=Chest})
-comp_on_pointer_ui_Chest :: proc(c: ^Chest, ev: ^engine.UI_Pointer_Event) {
-	#partial switch ev.kind {
-	case .Click: chest_open(c)
-	case .Enter: c.glow = true
-	case .Exit:  c.glow = false
-	}
-}
-```
-
-What it works on:
-
-- Components on a node inside a canvas that has a GraphicRaycaster.
-- An event starts at a node the pointer can hit: one with a drawn graphic whose `raycast_target` is on, or one with a `HitArea`, a component that takes the pointer and draws nothing. It then goes to that node's parents, which need no graphic of their own. That is how a container hears about its children.
-- It does not work on objects outside a canvas, such as a 3D object with a collider, nor on inactive nodes and disabled components.
-- Keyboard and gamepad are not pointers and send none of these events.
-
-### Events
-
-| `ev.kind` | When | Goes to |
-|---|---|---|
-| `Enter`, `Exit` | The pointer came over the node or a node under it, or left | Each node that joined or left the chain from the hit node up |
-| `Down` | A button went down | The hit node, then up |
-| `Up` | The button came up | The press's owner, then up |
-| `Click` | Pressed and released without a drag | See Click below |
-| `Hold` | Every frame the button stays down, until a drag starts | The owner |
-| `Drag_Begin` | The pointer moved past the drag threshold | The pressed node, then up |
-| `Drag`, `Drag_End` | The pointer moved during a drag, the button came up | The drag's owner |
-| `Scroll` | The wheel turned | The hit node, then up |
-| `Cancel` | The node lost the pointer it owned | The owner |
-
-The event carries `button`, `position` (viewport pixels, y down), `delta`, `press_position`, `scroll`, `click_count` (2 for a double click), `held` (seconds since the press, for a long press), `inside` (the pointer is over the node or a node under it), `node` (the node the proc's component is on) and `target` (the node the event started at). `ui_pointer_canvas_position(ev)` and `ui_pointer_canvas_delta(ev)` give the position and the movement in the canvas's own units with y up, in every canvas render mode: what a drag adds to an `anchored_position`.
-
-### Rules
-
-The same for every component:
-
-- **Routing.** An event that goes "up" visits the node's parents in turn. A proc that sets `ev.used` stops it there.
-- **Ownership.** The node that uses `Down` owns the pointer until the button comes up, and the hit node does when none uses it. `Up` reaches the owner wherever the pointer is, with `inside` saying whether it is still over it.
-- **Click.** With an owner that used `Down`, the release must be over the owner or a node under it, and `Click` starts at the owner. So a button with a label and an icon clicks wherever on it the press and the release land. With no node using `Down`, `Click` starts at the nearest node that holds both the pressed and the released node.
-- **Taking over a gesture.** Past the drag threshold (`engine.ui_drag_threshold`, 8 viewport pixels), `Drag_Begin` goes up from the pressed node. The first node that uses it owns the drag, and the owner before it gets `Cancel`. A scrolling list takes the drag from a button inside it this way, and a list that scrolls across leaves an up-and-down drag unused, so the list around it takes it. When no node uses `Drag_Begin` there is no drag, and the press can still click.
-- **Keeping the drag.** A proc that sets `ev.own_drag` with `ev.used` on `Down` drags from the press itself: `Drag_Begin` comes at once with no threshold, and no parent takes the drag. A slider does this.
-- **Scroll.** A scroller sets `ev.used` only when it moved, so at its limit the wheel reaches the scroller around it.
-- **Hover.** A parent stays entered while the pointer is over its child. The chain holds still while a button is down and moves on the release.
-- **Cancel is always sent.** A node that loses the pointer hears it: a parent took the drag, the application lost focus, or code called `engine.ui_pointer_cancel()`. After `Cancel` there is no `Up` and no `Click`.
-- A second mouse button pressed during a press goes to the press's owner as `Down` and `Up` with its `button`.
-
-### Reading the pointer
-
-- `engine.ui_pointer_over_ui()` says whether the pointer is over UI or holds a press that began on it. Game code checks it so a click on a button is not also a shot in the world.
-- `engine.ui_pointer()` is the polled record: the position, the hovered node, the press's owner, the selected node and the node clicked this frame with the left button.
-
-The selected node is the one keyboard and gamepad input acts on. A press selects the node it lands on, a press on nothing clears the selection, and `engine.ui_set_selected(node)` selects one from code. `engine.ui_selected()` reads it. The mhgui plugin's [Button](/plugins/mhgui/docs/components/Button.md) moves the selection with the arrow keys and the gamepad.
