@@ -365,3 +365,51 @@ test_text_keeps_its_layout_until_it_changes :: proc(t: ^testing.T) {
 	text.canvas_populate_Text(&tx, engine.Rect{pos = {0, 0}, size = {100, 100}}, &out)
 	testing.expect_value(t, text.text_layouts_made, made + 6)
 }
+
+// A caret per rune and one for the end: on the line of its rune, at the pen.
+@(test)
+test_layout_carets :: proc(t: ^testing.T) {
+	b := _fake_backend()
+	out := make([dynamic]text.Glyph_Quad)
+	defer delete(out)
+	carets := make([dynamic]text.Caret)
+	defer delete(carets)
+	rect := engine.Rect{pos = {0, 0}, size = {200, 100}}
+
+	// Top left by default. "ab\ncd": six carets, the line break's at the end
+	// of the first line, the last after "cd".
+	res := text.layout_text(&b, _params(), "ab\ncd", rect, &out, &carets)
+	testing.expect(t, res.ok)
+	testing.expect_value(t, len(carets), 6)
+	for want, i in ([]f32{0, 10, 20, 0, 10, 20}) do _near(t, carets[i].pos.x, want, "caret x")
+	for want, i in ([]int{0, 0, 0, 1, 1, 1}) do testing.expect_value(t, carets[i].line, want)
+	_near(t, carets[0].pos.y, 88, "first line's bottom")
+	_near(t, carets[3].pos.y, 76, "second line's bottom")
+	_near(t, carets[0].height, 12, "caret height")
+
+	// An empty string has one caret, where its text would start.
+	clear(&carets)
+	res = text.layout_text(&b, _params(), "", rect, &out, &carets)
+	testing.expect(t, res.ok)
+	testing.expect_value(t, len(carets), 1)
+	_near(t, carets[0].pos.x, 0, "empty caret x")
+	_near(t, carets[0].pos.y, 88, "empty caret y")
+
+	// A string that ends with a line break: the end is on the new line.
+	clear(&carets)
+	text.layout_text(&b, _params(), "ab\n", rect, &out, &carets)
+	testing.expect_value(t, len(carets), 4)
+	testing.expect_value(t, carets[3].line, 1)
+	_near(t, carets[3].pos.x, 0, "caret after the break")
+
+	// Wrapped: the space the line wrapped at stands at its line's end.
+	clear(&carets)
+	p := _params(true)
+	text.layout_text(&b, p, "aaa bbb", engine.Rect{pos = {0, 0}, size = {40, 100}}, &out, &carets)
+	testing.expect_value(t, len(carets), 8)
+	testing.expect_value(t, carets[3].line, 0)
+	_near(t, carets[3].pos.x, 30, "caret at the wrap")
+	testing.expect_value(t, carets[4].line, 1)
+	_near(t, carets[4].pos.x, 0, "caret after the wrap")
+	_near(t, carets[7].pos.x, 30, "caret at the end")
+}

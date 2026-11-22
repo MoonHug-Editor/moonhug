@@ -33,8 +33,8 @@ Status is one of: Done, In progress, Next, Open, Parked.
 
 | # | Item | What it is | Needs | Status |
 |---|---|---|---|---|
-| 10 | InputField | Text entry with a caret, a selection and the clipboard. Needs caret and selection drawing in the text plugin | 2, 3 | Open |
-| 11 | Dropdown | A button that opens a list | 4 | Open |
+| 10 | InputField | Text entry with a caret, a selection, the clipboard, a hint, content kinds and a password mode, single or multi-line. In the `text` subpackage, built with the text plugin | 2, 3 | Done |
+| 11 | Dropdown | A control that opens a list of options over the rest of the canvas and picks one. The list is a copy of a Template subtree. In the `text` subpackage | 4 | Done |
 | 13 | Mask, sprite alpha | A `sprite` on the UiMask: its alpha shapes the mask, so any outline an image has and any fade. One sprite cuts a node, the nearest mask's | 3 | Done |
 | 14 | More shapes | Ellipse, polygon and star for the UiShape. A pill is a rect with a large radius, a ring an ellipse with a border and no fill | 1 | Done |
 | 15 | Button transitions | Sprite swap, and animation with the animation plugin, for every control | | Done |

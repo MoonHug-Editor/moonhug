@@ -6,6 +6,8 @@
 // contained here.
 package input
 
+import "base:runtime"
+import "core:strings"
 import sdl "vendor:sdl3"
 import core "moonhug:libs/core"
 
@@ -36,6 +38,7 @@ _input: struct {
 	key_down:       [MAX_KEYS]bool,
 	key_pressed:    [MAX_KEYS]bool,
 	key_released:   [MAX_KEYS]bool,
+	key_repeated:   [MAX_KEYS]bool, // pressed this frame, or repeated by the system while held
 	mouse_down:     [Mouse_Button]bool,
 	mouse_pressed:  [Mouse_Button]bool,
 	mouse_released: [Mouse_Button]bool,
@@ -194,6 +197,7 @@ _hidden :: proc() -> bool {
 reset_edges :: proc() {
 	_input.key_pressed = {}
 	_input.key_released = {}
+	_input.key_repeated = {}
 	_input.mouse_pressed = {}
 	_input.mouse_released = {}
 	_input.wheel_y = 0
@@ -241,6 +245,7 @@ sync_global_mouse :: proc() {
 frame_reset :: proc() {
 	_input.key_pressed = {}
 	_input.key_released = {}
+	_input.key_repeated = {}
 	_input.mouse_pressed = {}
 	_input.mouse_released = {}
 	_input.pad_pressed = {}
@@ -263,6 +268,7 @@ apply_event :: proc(e: ^sdl.Event) {
 				_input.key_pressed[sc] = true
 				if core.application_is_focused() do _input.fixed_key_pressed_accum[sc] = true
 			}
+			_input.key_repeated[sc] = true
 			_input.key_down[sc] = true
 		}
 	case .KEY_UP:
@@ -332,6 +338,8 @@ apply_event :: proc(e: ^sdl.Event) {
 		if a < 0 || a >= MAX_PAD_AXES do return
 		_input.pad_axis[a] = f32(e.gaxis.value) / 32767
 	case .TEXT_INPUT:
+		// Kept for the process, whatever context the event comes in with.
+		if _input.text_runes.allocator.procedure == nil do _input.text_runes = make([dynamic]rune, runtime.default_allocator())
 		for r in string(e.text.text) {
 			append(&_input.text_runes, r)
 		}
@@ -385,6 +393,60 @@ key_pressed :: proc(k: Key) -> bool {
 
 key_released :: proc(k: Key) -> bool {
 	return !_hidden() && _input.key_released[int(k)]
+}
+
+// True on the frame the key went down and on every repeat the system sends
+// while it is held: what a text field moves its caret and deletes by.
+key_repeated :: proc(k: Key) -> bool {
+	return !_hidden() && _input.key_repeated[int(k)]
+}
+
+// The key that makes a shortcut on this system: Command on macOS, Control
+// elsewhere.
+shortcut_down :: proc() -> bool {
+	when ODIN_OS == .Darwin {
+		return key_down(.LGUI) || key_down(.RGUI)
+	} else {
+		return key_down(.LCTRL) || key_down(.RCTRL)
+	}
+}
+
+shift_down :: proc() -> bool {
+	return key_down(.LSHIFT) || key_down(.RSHIFT)
+}
+
+// The key that moves by a word in text: Option on macOS, Control elsewhere.
+word_down :: proc() -> bool {
+	when ODIN_OS == .Darwin {
+		return key_down(.LALT) || key_down(.RALT)
+	} else {
+		return key_down(.LCTRL) || key_down(.RCTRL)
+	}
+}
+
+// Typed text (`text`) arrives only while text input is on: the system then
+// composes keys into characters, with the layout, dead keys and an input
+// method. A text field turns it on while it is edited and off after.
+// text_input_start is safe to call every frame.
+text_input_start :: proc() {
+	if _window != nil && !sdl.TextInputActive(_window) do _ = sdl.StartTextInput(_window)
+}
+
+text_input_stop :: proc() {
+	if _window != nil && sdl.TextInputActive(_window) do _ = sdl.StopTextInput(_window)
+}
+
+// The system clipboard's text, "" when it holds none. Allocated.
+clipboard_text :: proc(allocator := context.allocator) -> string {
+	if !sdl.HasClipboardText() do return ""
+	raw := sdl.GetClipboardText()
+	if raw == nil do return ""
+	defer sdl.free(raw)
+	return strings.clone(string(cstring(raw)), allocator)
+}
+
+clipboard_set_text :: proc(text: string) {
+	_ = sdl.SetClipboardText(strings.clone_to_cstring(text, context.temp_allocator))
 }
 
 mouse_down :: proc(b: Mouse_Button) -> bool {

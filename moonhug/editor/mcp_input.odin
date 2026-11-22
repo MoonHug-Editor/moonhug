@@ -213,7 +213,7 @@ _input_parse :: proc(raw: json.Array) -> (steps: [dynamic]_Input_Step, err: Mcp_
 }
 
 @(mcp_tool={
-	description="Drive the editor's widgets with real mouse and keyboard input: a script of steps played one per frame into imgui, the way the OS feeds it. Steps are objects with a type: move {x, y} (points from the editor's top-left, item_rect and window_list use the same frame), down {button} and up {button} (left, right, middle, default left), key {name, down} (an imgui key name, or ctrl, shift, alt, cmd for the physical modifier keys, down defaults to true, a press needs a down and an up), text {text} (characters typed into the focused field), wheel {x, y} (a scroll at the mouse, in wheel notches, y up and x across), wait {frames}. A drag is move, down, a few moves, up. Answers when the script is done, with what each step's frame saw: the mouse position, the window under it, whether an item was hovered or active. The script's position holds until the real cursor moves. One script at a time, and not in a batch.",
+	description="Drive the editor's widgets with real mouse and keyboard input: a script of steps played one per frame into imgui, the way the OS feeds it. Steps are objects with a type: move {x, y} (points from the editor's top-left, item_rect and window_list use the same frame), down {button} and up {button} (left, right, middle, default left), key {name, down} (an imgui key name, or ctrl, shift, alt, cmd for the physical modifier keys, down defaults to true, a press needs a down and an up), text {text} (characters typed into the focused field), wheel {x, y} (a scroll at the mouse, in wheel notches, y up and x across), wait {frames}. A drag is move, down, a few moves, up. Answers when the script is done, with what each step's frame saw: the mouse position, the window under it, whether an item was hovered or active. The mouse, key and text steps also reach a game in Play (the Game window focused, as with real input). The script's position holds until the real cursor moves. One script at a time, and not in a batch.",
 	param_steps="object[]!:The steps, in order, at most 500 and 3000 frames",
 })
 mcp_tool_input :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
@@ -301,8 +301,14 @@ mcp_bridge_input_feed :: proc() {
 		// The backend sends the modifier flag before the key itself.
 		if step.mod != .None do im.IO_AddKeyEvent(io, step.mod, step.down)
 		im.IO_AddKeyEvent(io, step.key, step.down)
+		_game_key(step.key, step.down)
 	case .Text:
-		im.IO_AddInputCharactersUTF8(io, strings.clone_to_cstring(step.text, context.temp_allocator))
+		text := strings.clone_to_cstring(step.text, context.temp_allocator)
+		im.IO_AddInputCharactersUTF8(io, text)
+		e: sdl.Event
+		e.type = .TEXT_INPUT
+		e.text.text = text
+		input.apply_event(&e)
 	case .Wheel:
 		e: sdl.Event
 		e.type = .MOUSE_WHEEL
@@ -316,9 +322,12 @@ mcp_bridge_input_feed :: proc() {
 	if _input.wait == 0 do _input.pending = true
 }
 
-// The mouse steps reach the game's own input too (libs/input, what a game in
-// Play reads), as the SDL events of a real mouse would: imgui alone gets the
-// editor's widgets, not the game. Positions are in the main window's points,
+// The mouse, key and text steps reach the game's own input too (libs/input,
+// what a game in Play reads), as the SDL events of a real mouse and keyboard
+// would: imgui alone gets the editor's widgets, not the game. The game reads
+// them while its Game window has the focus, as with real input. Keys the
+// game gets: letters, digits, the arrows, Enter, Escape, Backspace, Delete,
+// Tab, Space, Home, End, the page keys and the modifiers. Positions are in the main window's points,
 // which is what the steps carry.
 //
 // The last position sent outlives the script, as the real mouse's does: a
@@ -354,6 +363,51 @@ _game_mouse_button :: proc(button: i32, down: bool) {
 	e.button.down = down
 	if !_game_mouse_known do return
 	e.button.x, e.button.y = _game_mouse.x, _game_mouse.y
+	input.apply_event(&e)
+}
+
+// The key as the scancode the game reads, false for a key with none here.
+@(private = "file")
+_game_scancode :: proc(key: im.Key) -> (sdl.Scancode, bool) {
+	if key >= .A && key <= .Z do return sdl.Scancode(int(sdl.Scancode.A) + int(key) - int(im.Key.A)), true
+	if key == ._0 do return ._0, true
+	if key >= ._1 && key <= ._9 do return sdl.Scancode(int(sdl.Scancode._1) + int(key) - int(im.Key._1)), true
+	#partial switch key {
+	case .Enter:       return .RETURN, true
+	case .KeypadEnter: return .KP_ENTER, true
+	case .Escape:      return .ESCAPE, true
+	case .Backspace:   return .BACKSPACE, true
+	case .Delete:      return .DELETE, true
+	case .Tab:         return .TAB, true
+	case .Space:       return .SPACE, true
+	case .Home:        return .HOME, true
+	case .End:         return .END, true
+	case .PageUp:      return .PAGEUP, true
+	case .PageDown:    return .PAGEDOWN, true
+	case .LeftArrow:   return .LEFT, true
+	case .RightArrow:  return .RIGHT, true
+	case .UpArrow:     return .UP, true
+	case .DownArrow:   return .DOWN, true
+	case .LeftCtrl:    return .LCTRL, true
+	case .RightCtrl:   return .RCTRL, true
+	case .LeftShift:   return .LSHIFT, true
+	case .RightShift:  return .RSHIFT, true
+	case .LeftAlt:     return .LALT, true
+	case .RightAlt:    return .RALT, true
+	case .LeftSuper:   return .LGUI, true
+	case .RightSuper:  return .RGUI, true
+	}
+	return .UNKNOWN, false
+}
+
+@(private = "file")
+_game_key :: proc(key: im.Key, down: bool) {
+	sc, ok := _game_scancode(key)
+	if !ok do return
+	e: sdl.Event
+	e.type = .KEY_DOWN if down else .KEY_UP
+	e.key.scancode = sc
+	e.key.down = down
 	input.apply_event(&e)
 }
 

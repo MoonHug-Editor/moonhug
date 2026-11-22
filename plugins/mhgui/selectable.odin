@@ -10,6 +10,7 @@ package mhgui
 // Selectable picks a state and tints the target graphic's CanvasRenderer
 // with that state's color, fading over fade_duration.
 
+import "base:runtime"
 import "moonhug:packages/engine"
 
 Selectable_Transition :: enum u8 {
@@ -217,11 +218,29 @@ selectable_usable :: proc(s: ^Selectable, owner: engine.Transform_Handle) -> boo
 	return s.interactable && engine.canvas_group_state(owner).interactable
 }
 
-// The Selectable of the control on a node (a Button, a Toggle or a Slider)
-// and whether that component is enabled. nil for a node with none.
+// Finds the Selectable of a control another package adds (the InputField and
+// the Dropdown of mhgui's text integration): nil for a node without one.
+Selectable_Lookup :: proc(tH: engine.Transform_Handle) -> (sel: ^Selectable, enabled: bool)
+
+@(private = "file")
+_lookups: [dynamic]Selectable_Lookup
+
+// Makes a control of another package one that keyboard and gamepad reach.
+// Called once, from an @(init) proc.
+selectable_register :: proc(lookup: Selectable_Lookup) {
+	context.allocator = runtime.default_allocator()
+	append(&_lookups, lookup)
+}
+
+// The Selectable of the control on a node (a Button, a Toggle, a Slider or a
+// registered control) and whether that component is enabled. nil for a node
+// with none.
 node_selectable :: proc(tH: engine.Transform_Handle) -> (sel: ^Selectable, enabled: bool) {
 	if _, b := engine.transform_get_comp(tH, Button); b != nil do return &b.selectable, b.enabled
 	if _, t := engine.transform_get_comp(tH, Toggle); t != nil do return &t.selectable, t.enabled
 	if _, s := engine.transform_get_comp(tH, Slider); s != nil do return &s.selectable, s.enabled
+	for lookup in _lookups {
+		if found, on := lookup(tH); found != nil do return found, on
+	}
 	return nil, false
 }

@@ -76,6 +76,27 @@ ui_navigation :: proc() -> bool {
 	return _navigation
 }
 
+@(private = "file") _keys_owner: engine.Transform_Handle
+
+// A control that reads the keyboard itself takes the keys while it is the
+// selected node: the arrow keys do not move the selection and the submit
+// keys click nothing. A text field does while it is edited. {} gives them
+// back.
+ui_keys_capture :: proc(node: engine.Transform_Handle) {
+	_keys_owner = node
+}
+
+// Whether a control has the keys now.
+ui_keys_captured :: proc() -> bool {
+	return _keys_owner != {} && _keys_owner == engine.ui_selected()
+}
+
+// The submit keys went down this frame: Enter, Space or the gamepad's bottom
+// face button.
+ui_submit_pressed :: proc() -> bool {
+	return _nav_submit_pressed()
+}
+
 // How far the left stick is pushed before it counts as a direction.
 @(private = "file") _STICK_PUSH :: f32(0.5)
 
@@ -219,7 +240,7 @@ ui_tick :: proc(dt: f32) {
 	}
 	engine.canvas_pointer_update()
 	submit, submit_down: bool
-	if _navigation && engine.application_is_focused() {
+	if _navigation && engine.application_is_focused() && !ui_keys_captured() {
 		selected := engine.ui_selected()
 		if dir := _nav_move(); dir != {} && selected != {} {
 			// A selected Slider takes the keys along its own axis.

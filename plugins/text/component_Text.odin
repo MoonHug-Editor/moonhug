@@ -127,6 +127,22 @@ text_fitted_size :: proc(t: ^Text, b: ^Backend, str: string, rect: engine.Rect) 
 	return size
 }
 
+// Where a caret stands before each rune of the Text's string and after the
+// last one, in the node's own space: `rect` is the node's rect. What a text
+// field places its caret and its selection by. Temp-allocated. Empty when
+// the font is not there.
+text_carets :: proc(tx: ^Text, rect: engine.Rect) -> []Caret {
+	if tx.font == {} do return nil
+	content := text_content_rect(tx, rect)
+	str := text_display_string(tx)
+	p := text_layout_params(tx)
+	p.size = text_fitted_size(tx, backend(), str, content)
+	quads := make([dynamic]Glyph_Quad, context.temp_allocator)
+	carets := make([dynamic]Caret, context.temp_allocator)
+	if !layout_text(backend(), p, str, content, &quads, &carets).ok do return nil
+	return carets[:]
+}
+
 // The Text's geometry: one quad per glyph from the layout over the current
 // backend.
 //

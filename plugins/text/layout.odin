@@ -84,6 +84,17 @@ Layout_Result :: struct {
 	size:     [2]f32, // the widest line and the block's height, before any cut
 }
 
+// Where a text caret stands before one rune of a laid out string, or after
+// the last one: `pos` is the foot of the caret, on the line's bottom edge,
+// and `height` runs up to the line's top. `line` counts from 0 at the top.
+// layout_text gives one per rune and one for the end, so a string of n runes
+// has n + 1.
+Caret :: struct {
+	pos:    [2]f32,
+	height: f32,
+	line:   int,
+}
+
 @(private = "file")
 _Line :: struct {
 	first, last: int, // rune indices, [first, last)
@@ -98,12 +109,17 @@ _Line :: struct {
 // Lines break at '\n', and when `p.wrap` is set also at spaces once a line
 // would pass the rect's width (a single word wider than the rect stays on its
 // own line). A '\t' advances TAB_SPACES spaces.
-layout_text :: proc(b: ^Backend, p: Layout_Params, text: string, rect: engine.Rect, out: ^[dynamic]Glyph_Quad) -> Layout_Result {
+//
+// `carets`, when given, gets a Caret per rune of the text and one for its
+// end (the runes of the string as passed, before any case style). An empty
+// string has the one caret where its first glyph would start. A rune on a
+// line that an overflow mode cut away has the caret of the last line kept.
+layout_text :: proc(b: ^Backend, p: Layout_Params, text: string, rect: engine.Rect, out: ^[dynamic]Glyph_Quad, carets: ^[dynamic]Caret = nil) -> Layout_Result {
 	if b.metrics == nil || b.glyph == nil do return {}
 	m, ok := b.metrics(p.font, p.size)
 	if !ok do return {}
 	res := Layout_Result{ok = true}
-	if text == "" do return res
+	if text == "" && carets == nil do return res
 	base := len(out)
 	em := p.size * 0.01
 	line_h := m.ascent + m.descent + m.line_gap + p.line_spacing * em
@@ -121,6 +137,12 @@ layout_text :: proc(b: ^Backend, p: Layout_Params, text: string, rect: engine.Re
 		append(&sizes, sz)
 	}
 	n := len(runes)
+	caret_base := 0
+	if carets != nil {
+		caret_base = len(carets)
+		resize(carets, caret_base + n + 1)
+	}
+	carets_set := 0 // how many carets, from the first, have their place
 
 	// Per rune: the pen shift after it (advance plus spacing) and the kerning
 	// shift before it.
@@ -232,7 +254,7 @@ layout_text :: proc(b: ^Backend, p: Layout_Params, text: string, rect: engine.Re
 	}
 
 	y_top := top
-	for line in lines {
+	for line, line_index in lines {
 		baseline := y_top - m.ascent
 		pen := rect.pos.x
 		#partial switch p.horizontal {
@@ -252,8 +274,10 @@ layout_text :: proc(b: ^Backend, p: Layout_Params, text: string, rect: engine.Re
 			}
 		}
 		x0 := pen
+		line_bottom := y_top - (m.ascent + m.descent)
 		for i in line.first ..< line.last {
 			r := runes[i]
+			if carets != nil do carets[caret_base + i] = Caret{{pen, line_bottom}, m.ascent + m.descent, line_index}
 			pen += kern[i]
 			if r != '\t' {
 				if g, gok := b.glyph(p.font, sizes[i], r); gok do _emit_glyph(out, g, pen, baseline, p.style, sizes[i])
@@ -271,10 +295,24 @@ layout_text :: proc(b: ^Backend, p: Layout_Params, text: string, rect: engine.Re
 			}
 		}
 		x1 := pen - char_gap
+		if carets != nil {
+			// The line's end: after its last glyph, where the rune that
+			// broke it (a '\n', or the space it wrapped at) stands. Runes
+			// an overflow mode cut from the line stand there too.
+			line_end := Caret{{x1 if line.last > line.first else pen, line_bottom}, m.ascent + m.descent, line_index}
+			next_first := lines[line_index + 1].first if line_index + 1 < len(lines) else n + 1
+			for i in line.last ..< min(next_first, n + 1) do carets[caret_base + i] = line_end
+			carets_set = min(next_first, n + 1)
+		}
 		if .Underline in p.style do _emit_rule(out, b, p, x0, x1, baseline, false, m)
 		if .Strikethrough in p.style do _emit_rule(out, b, p, x0, x1, baseline, true, m)
 		y_top -= line_h
 		if line.hard do y_top -= para_gap
+	}
+
+	// Runes on lines that were cut away.
+	if carets != nil && carets_set > 0 {
+		for i in carets_set ..< n + 1 do carets[caret_base + i] = carets[caret_base + carets_set - 1]
 	}
 
 	if p.overflow == .Masking {

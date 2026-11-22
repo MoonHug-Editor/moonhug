@@ -110,6 +110,46 @@ ui_demo_scene_opens_and_draws :: proc(t: ^testing.T) {
 		call(r, "input", `{"steps":[{"type":"up"},{"type":"wait","frames":3}]}`)
 		testing.expectf(t, abs(dragged - 75) <= 2, "dragged to three quarters it is about 75: %v", dragged)
 	}
+	// The InputField and the Dropdown, beside the grid at canvas x 750: real
+	// keys and typed text reach the field, and a click on a row of the open
+	// list picks its option.
+	if game_shown {
+		unit := game[2] / 1800
+		spot :: proc(game: [4]f64, unit, x, y: f64) -> (f64, f64) {
+			return game.x + game[2] / 2 + x * unit, game.y + game[3] / 2 + 18 - y * unit
+		}
+		typed :: proc(r: ^Run) -> string {
+			s, _ := at(call(r, "get_property", `{"name":"Input Field","component":"InputField","path":"text"}`), "value").(json.String)
+			return string(s)
+		}
+		fx, fy := spot(game, unit, 750, 10)
+		click(r, fx, fy)
+		frames(r, 3)
+		call(r, "input", `{"steps":[{"type":"text","text":"Hi there"},{"type":"wait","frames":3}]}`)
+		testing.expectf(t, typed(r) == "Hi there", "typed text reaches the field: %q", typed(r))
+		call(r, "screenshot", `{"target":"game","max_size":900}`)
+		call(r, "input", `{"steps":[{"type":"key","name":"backspace"},{"type":"wait","frames":2},{"type":"key","name":"backspace","down":false},{"type":"wait","frames":2},{"type":"key","name":"left"},{"type":"wait","frames":2},{"type":"key","name":"left","down":false},{"type":"wait","frames":2},{"type":"text","text":"-"},{"type":"wait","frames":3}]}`)
+		testing.expectf(t, typed(r) == "Hi the-r", "Backspace, the left arrow and a character edit it: %q", typed(r))
+		call(r, "input", `{"steps":[{"type":"key","name":"return"},{"type":"wait","frames":2},{"type":"key","name":"return","down":false},{"type":"wait","frames":3},{"type":"text","text":"x"},{"type":"wait","frames":3}]}`)
+		testing.expectf(t, typed(r) == "Hi the-r", "after Enter the field takes no more typing: %q", typed(r))
+
+		value :: proc(r: ^Run) -> f64 {
+			return as_f64(at(call(r, "get_property", `{"name":"Dropdown","component":"Dropdown","path":"value"}`), "value"))
+		}
+		dx, dy := spot(game, unit, 750, -150)
+		testing.expectf(t, value(r) == 0, "the dropdown starts on its first option: %v", value(r))
+		click(r, dx, dy)
+		frames(r, 5)
+		call(r, "screenshot", `{"target":"game","max_size":900}`)
+		// The third row of the open list.
+		rx, ry := spot(game, unit, 750, -248)
+		click(r, rx, ry)
+		frames(r, 5)
+		testing.expectf(t, value(r) == 2, "a click on the third row picks it: %v", value(r))
+		caption, _ := at(call(r, "get_property", `{"name":"Dropdown Label","component":"Text","path":"text"}`), "value").(json.String)
+		testing.expectf(t, caption == "High", "the label shows the picked option: %q", caption)
+		call(r, "screenshot", `{"target":"game","max_size":900}`)
+	}
 	call(r, "invoke_menu", `{"path":"Edit/Play"}`)
 	frames(r, 5)
 
