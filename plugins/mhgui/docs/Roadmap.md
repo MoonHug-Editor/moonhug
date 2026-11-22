@@ -35,10 +35,10 @@ Status is one of: Done, In progress, Next, Open, Parked.
 |---|---|---|---|---|
 | 10 | InputField | Text entry with a caret, a selection and the clipboard. Needs caret and selection drawing in the text plugin | 2, 3 | Open |
 | 11 | Dropdown | A button that opens a list | 4 | Open |
-| 13 | Mask, sprite alpha | Any outline from an image, and soft masks | 3 | Open |
+| 13 | Mask, sprite alpha | A `sprite` on the UiMask: its alpha shapes the mask, so any outline an image has and any fade. One sprite cuts a node, the nearest mask's | 3 | Done |
 | 14 | More shapes | Ellipse, polygon and star for the UiShape. A pill is a rect with a large radius, a ring an ellipse with a border and no fill | 1 | Done |
 | 15 | Button transitions | Sprite swap, and animation with the animation plugin, for every control | | Done |
-| 16 | Explicit navigation | A selectable names its neighbour per direction, or stays out of navigation. Automatic navigation is the only mode now | | Open |
+| 16 | Explicit navigation | `navigation` on every control: Automatic, Explicit with a neighbour named per direction, or None, which keeps the selection and stays out of automatic moves | | Done |
 
 ## Tier 4: triangles and a colour per vertex in the UI path
 
@@ -63,7 +63,7 @@ Status is one of: Done, In progress, Next, Open, Parked.
 | # | Item | What it is | Needs | Status |
 |---|---|---|---|---|
 | 28 | Drag and drop | A drag carries a payload. Nodes say whether they accept it, and the drop goes to the node under the pointer, the dragged node left out | 2 | Open |
-| 29 | Hit test by shape | The pointer hits a UiShape's outline and a sprite's alpha, not the rect: the empty corner of a rounded card takes no click | 2 | Open |
+| 29 | Hit test by shape | The pointer hits a UiShape's outline and a sprite's alpha, not the rect: the empty corner of a rounded card takes no click, and neither does the clear part of a sprite mask | 2 | Open |
 | 30 | Touch | Each finger is a pointer with its own id. The events carry the id now, and the input library reads the mouse only | touch in the input library | Open |
 | 31 | Drag threshold by screen density | The threshold is 8 viewport pixels on every screen now | | Open |
 | 32 | Watchers | A component sees events another one used, for sounds and analytics | 2 | Open |

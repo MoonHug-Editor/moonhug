@@ -71,9 +71,15 @@ cubemap_render :: proc(c: ^Cubemap, face, mip: i32, shader: string, inputs: []Te
 	rp := sdl.BeginGPURenderPass(_gfx.cmd, &color, 1, nil)
 	_stats_pass()
 	sdl.BindGPUGraphicsPipeline(rp, pipeline)
-	bindings: [4]sdl.GPUTextureSamplerBinding
+	bindings: [MAX_FRAGMENT_SAMPLERS]sdl.GPUTextureSamplerBinding
 	n := min(len(inputs), len(bindings))
 	for i in 0 ..< n do bindings[i] = {texture = inputs[i].gpu, sampler = _gfx.sampler_linear}
+	// The slots the shader declares past its inputs bind white (a shader
+	// with the UI clip declares the mask texture).
+	for n > 0 && n < int(min(_fullscreen_samplers(shader), MAX_FRAGMENT_SAMPLERS)) {
+		bindings[n] = {texture = _gfx.white_tex.gpu, sampler = _gfx.sampler_linear}
+		n += 1
+	}
 	if n > 0 do sdl.BindGPUFragmentSamplers(rp, 0, &bindings[0], u32(n))
 	if len(params) > 0 do sdl.PushGPUFragmentUniformData(_gfx.cmd, 1, raw_data(params), u32(len(params)))
 	sdl.DrawGPUPrimitives(rp, 3, 1, 0, 0)

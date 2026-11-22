@@ -180,6 +180,11 @@ HitArea :: struct {
 // - Each corner of the rect has its own radius, and the edge can fade.
 // - Masks nest: a node is cut by every mask above it, each with its own
 //   corners and edge, up to gfx.CLIP_MAX of them.
+// - With a sprite the mask also multiplies by the sprite's alpha, the sprite
+//   stretched over the rect: any outline an image has, and a fade where the
+//   image fades. Of the masks above a node the nearest one with a sprite
+//   uses it, the ones above that clip by their rect. The pointer goes by
+//   the rect and its corners, not by the sprite.
 // - The shader of a clipped quad does the clipping (libs/gfx/shaders/
 //   ui_clip.glsl). The built-in unlit shader does, and every shader the
 //   importer compiles does when the project's UiMask setting is Auto Inject
@@ -191,6 +196,24 @@ UiMask :: struct {
 	// Top left, top right, bottom right, bottom left.
 	corner_radius: [4]f32 `decor:min(0) decor:tooltip(desc="The radius of each corner, in canvas units: top left, top right, bottom right, bottom left. A radius is cut to half the shorter side, so a large one on a square makes a circle.")`,
 	softness:      f32 `decor:min(0) decor:tooltip(desc="The width the edge fades over, inward, in canvas units. 0 is a crisp edge.")`,
+	// Drawn by the inspector's sprite picker (the field itself is inspect:"-").
+	sprite:        PPtr `inspect:"-"`,
+}
+
+// The texture of a mask's sprite and the sprite's part of it (x, y, width,
+// height in 0..1 from the top left). False with no sprite, or one that is
+// missing.
+mask_sprite :: proc(mask: ^UiMask) -> (tex: ^gfx.Texture, uv: [4]f32, ok: bool) {
+	if asset_guid_is_empty(mask.sprite.guid) do return
+	t := texture_load(mask.sprite.guid) or_return
+	if t.gfx == nil || t.width <= 0 || t.height <= 0 do return
+	px := [4]f32{0, 0, f32(t.width), f32(t.height)}
+	if mask.sprite.local_id != 0 {
+		s := texture_sprite_rect(t, mask.sprite.local_id) or_return
+		px = s.rect
+	}
+	w, h := f32(t.width), f32(t.height)
+	return t.gfx, {px.x / w, px.y / h, px.z / w, px.w / h}, true
 }
 
 // The nearest enabled UiMask above the node, {} for none. The node's own
@@ -279,6 +302,7 @@ mask_clip :: proc(c: Canvas_Pixels, mask_tH: Transform_Handle, node: Node_Rect) 
 	clip.to = {{h[0], h[1], h[2], 0}, {h[3], h[4], h[5], 0}, {h[6], h[7], 1, 0}}
 	clip.shape = {half.x, half.y, max(mask.softness, 0), 0}
 	clip.radii = mask.corner_radius
+	if tex, uv, has := mask_sprite(mask); has do clip.tex, clip.uv = tex, uv
 	return clip, true
 }
 

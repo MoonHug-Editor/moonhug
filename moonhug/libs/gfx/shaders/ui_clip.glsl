@@ -40,15 +40,21 @@ layout(set = 3, binding = 2) uniform DrawUBO {
     vec4 probe2_max;
     vec4 probe_blend;
     uvec4 draw_layers;
-    vec4 clip_count;                         // x = how many masks follow
+    vec4 clip_count;                         // x = how many masks follow, y = the one that reads ui_clip_tex, from 1
     vec4 clip_masks[MOONHUG_CLIP_MAX * 5];   // per mask: three rows that map the pixel, its shape, its radii
 };
 #endif
+
+// The texture of the draw's textured mask (gfx CLIP_SAMPLER_SLOT), white
+// with none. A shader with the UI clip keeps binding 6 for it.
+layout(set = 2, binding = 6) uniform sampler2D ui_clip_tex;
 
 // How much of the pixel at `frag` (gl_FragCoord.xy) is inside every mask of
 // the draw: 1 inside them all, 0 outside any, between on an edge.
 float ui_clip_at(vec2 frag) {
     int count = int(clip_count.x + 0.5);
+    int textured = int(clip_count.y + 0.5) - 1;
+    vec2 tex_uv = vec2(0.0);
     float a = 1.0;
     for (int i = 0; i < count && i < MOONHUG_CLIP_MAX; i++) {
         int b = i * 5;
@@ -65,7 +71,17 @@ float ui_clip_at(vec2 frag) {
         float d = min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
         float px = max(fwidth(d), 1e-6);
         a *= soft > 0.0 ? clamp(-d / max(soft, px), 0.0, 1.0) : clamp(0.5 - d / px, 0.0, 1.0);
+        // The textured mask: its uv rect (x, y, width, height from the top
+        // left) is in the w of its rows and of its shape, stretched over
+        // the rect.
+        if (i == textured) {
+            vec2 unit = vec2(p.x / (2.0 * half_size.x) + 0.5, 0.5 - p.y / (2.0 * half_size.y));
+            tex_uv = vec2(clip_masks[b].w, clip_masks[b + 1].w) + unit * vec2(clip_masks[b + 2].w, clip_masks[b + 3].w);
+        }
     }
+    // Read after the loop: the count comes with the draw, so every pixel of
+    // it takes this branch or none does.
+    if (textured >= 0) a *= texture(ui_clip_tex, tex_uv).a;
     return a;
 }
 

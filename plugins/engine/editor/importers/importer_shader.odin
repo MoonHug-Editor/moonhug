@@ -119,6 +119,14 @@ shader_compile_source :: proc(source: string, source_path: string, artifact_path
         if !ok do return false
     }
 
+    // A shader with the UI clip keeps one sampler slot for a mask's texture.
+    clip_slot_users := 0
+    for tex in reflect.textures do if tex.binding == gfx.CLIP_SAMPLER_SLOT do clip_slot_users += 1
+    if clip_slot_users > 1 {
+        log.errorf("[Pipeline] %s declares a texture at sampler binding %d, which the UI clip uses for a mask's texture. Use bindings 1 to %d",
+            source_path, gfx.CLIP_SAMPLER_SLOT, gfx.CLIP_SAMPLER_SLOT - 1)
+        return false
+    }
     if reflect.num_samplers > engine.SHADER_MAX_SAMPLERS {
         log.errorf("[Pipeline] %s declares sampler binding %d — max is %d",
             source_path, reflect.num_samplers - 1, engine.SHADER_MAX_SAMPLERS - 1)

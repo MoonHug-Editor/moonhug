@@ -1,6 +1,6 @@
 ---
 title: "UiMask"
-description: "Clips the UI nodes under it to its rect, with a radius per corner and a soft edge: what lies outside is not drawn and takes no pointer"
+description: "Clips the UI nodes under it to its rect, with a radius per corner, a soft edge and the alpha of a sprite: what lies outside is not drawn and takes no pointer"
 weight: 150
 tags: ["engine", "ui", "components", "mask", "clipping"]
 path: engine/components
@@ -25,6 +25,7 @@ The rows show inside the viewport's 300 by 200 rect only. A row that is half out
 |---|---|---|
 | `corner_radius` | 0 each | A radius per corner, in canvas units: top left, top right, bottom right, bottom left. A radius is cut to half the shorter side, so a large one on a square makes a circle. |
 | `softness` | 0 | The width the edge fades over, inward, in canvas units. 0 is a crisp edge. |
+| `sprite` | none | An image whose alpha shapes the mask, stretched over the rect. See "A mask from a sprite". |
 
 The rect it clips to is the node's own, from its RectTransform.
 
@@ -42,6 +43,19 @@ A node is cut by every mask above it, each with its own corners, its own soft ed
 
 - At most 8 masks cut one node. Past that, the nearest 8 do.
 - The pointer follows every mask above a node, with no such limit.
+
+## A mask from a sprite
+
+With a `sprite` the mask also multiplies what is under it by the sprite's alpha: the content shows where the image is opaque, fades where it fades and is gone where it is clear. Any outline an image has, a heart or a torn edge, and any fade, a vignette or a list that fades out at both ends.
+
+- The sprite stretches over the mask's rect, whatever its own aspect. A slice of a sliced texture works, and its 9-slice borders are not used.
+- The rect, the corner radii and the soft edge still clip. Leave the radii at 0 to see the whole sprite.
+- The colour of the image does not matter, only its alpha.
+- The texture's own filter applies: Linear gives a smooth outline, Nearest a pixel-art one.
+- The mask draws nothing itself. To show the image too, put an Image with the same sprite on the node or behind it.
+- One sprite cuts a node: of the masks above it the nearest one with a sprite uses its sprite, and the masks above that one clip by their rect and corners.
+- The pointer goes by the rect and its corners, not by the sprite: a clear part of the image inside the rect still takes the pointer.
+- Nodes under masks with different sprites do not share a draw call.
 
 ## Draw calls
 
@@ -82,10 +96,13 @@ void main() {
 - The importer renames the shader's `main()` and adds one after the shader's code that runs it and clips. The lines of the shader keep their numbers in compile errors.
 - It needs one `void main(` and an output declared as `layout(location = 0) out vec4 <name>;`. A shader without them fails to import with a message that says which is missing.
 - A shader used for a full-screen effect gets the clip too and is never under a mask, so nothing changes for it.
+- A shader with the clip reads a mask's sprite at sampler `set = 2, binding = 6`, so its own textures use bindings 1 to 5. One that declares a texture at binding 6 fails to import with a message that says so. This holds for Manual Include shaders that include `ui_clip.glsl` as well.
 - Surface shaders, the ones that write `surface()` and no `main()`, are not clipped in either setting. A lit material under a mask draws whole, and the Console names it once.
 
 ## Limits
 
 - At most 8 masks cut one node.
 - A soft edge wider than a corner's radius shows a faint crease running in from that corner.
+- One sprite per node: the nearest mask's with one.
+- The pointer does not follow a sprite's alpha.
 - Surface (lit) shaders are not clipped.

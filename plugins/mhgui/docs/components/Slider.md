@@ -21,7 +21,7 @@ The Slider's node is the track. The fill covers it from its start up to the valu
 
 | Field | Default | What it does |
 |---|---|---|
-| `interactable`, `transition`, `target_graphic`, `colors` | | What every control has, as on a [Button](Button.md). The menu makes the handle the target graphic. |
+| `interactable`, `transition`, `target_graphic`, `colors`, `sprites`, `navigation` | | What every control has, as on a [Button](Button.md). The menu makes the handle the target graphic. |
 | `fill` | none | The node that covers the track from its start to the value. |
 | `handle` | none | The node that sits at the value. |
 | `direction` | Left_To_Right | Where the least value is: the left, the right, the bottom or the top. |

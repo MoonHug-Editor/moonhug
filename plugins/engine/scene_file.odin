@@ -1719,9 +1719,12 @@ scene_reload_in_place_bytes :: proc(target: ^Scene, data: []byte, guid: Asset_GU
 	}
 	defer scene_file_destroy(&sf)
 
+	// Callers pass target.path, which scene_destroy frees partway through the
+	// reload: keep a copy.
+	p := strings.clone(path, context.temp_allocator)
 	s := scene_reload_in_place(target, &sf, guid)
-	if s != nil && len(path) > 0 {
-		s.path = strings.clone(path)
+	if s != nil && len(p) > 0 {
+		s.path = strings.clone(p)
 	}
 	return s
 }

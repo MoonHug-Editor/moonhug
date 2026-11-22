@@ -23,7 +23,7 @@ One of the three is on. A click on another turns it on and the one that was on o
 
 | Field | Default | What it does |
 |---|---|---|
-| `interactable`, `transition`, `target_graphic`, `colors` | | What every control has, as on a [Button](Button.md). |
+| `interactable`, `transition`, `target_graphic`, `colors`, `sprites`, `navigation` | | What every control has, as on a [Button](Button.md). |
 | `is_on` | off | Whether it is on. |
 | `graphic` | none | The node that shows only while the toggle is on: the check mark. |
 | `group` | none | The node with the ToggleGroup this toggle belongs to. None stands alone. |

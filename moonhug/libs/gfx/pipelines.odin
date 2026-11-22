@@ -25,6 +25,7 @@ _Shader_Set :: [_Pipeline_Kind]^sdl.GPUGraphicsPipeline
 _Shader_Entry :: struct {
 	vert, frag:    ^sdl.GPUShader, // kept alive so later formats can build their set
 	frag_samplers: u32,            // sampler slots the fragment stage declares
+	clip_sampler:  bool,           // it declares the UI mask texture at CLIP_SAMPLER_SLOT
 	// The fragment stage of depth-only pipelines: the shader's caster variant
 	// (alpha clipping, no lighting), nil for depth.frag. The built-in caster
 	// is shared, so only a caster the entry created is released with it.
@@ -43,7 +44,8 @@ _Shader_Entry :: struct {
 @(private)
 _Fullscreen_Entry :: struct {
 	frag:      ^sdl.GPUShader,
-	samplers:  u32, // the inputs the fragment stage declares (draw_fullscreen checks them)
+	samplers:  u32, // the sampler slots the fragment stage declares
+	inputs:    u32, // how many of them a draw gives (draw_fullscreen checks them); the rest bind white
 	pipelines: [Target_Format]^sdl.GPUGraphicsPipeline,
 	// draw_sky: depth-tested at the far plane, no depth write.
 	sky:       [Target_Format]^sdl.GPUGraphicsPipeline,
@@ -99,7 +101,8 @@ _create_pipelines :: proc() -> bool {
 	_gfx.caster_frag = _create_shader(.FRAGMENT, MAX_FRAGMENT_SAMPLERS, LIGHT_LIST_SLOT + 1, _CASTER_FRAG_SPV, _CASTER_FRAG_MSL)
 	if _gfx.depth_frag == nil || _gfx.caster_frag == nil do return false
 	// The world shaders that clip declare the per-draw block (DRAW_UNIFORM_SLOT).
-	if !shader_register(DEFAULT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _WORLD_FRAG_SPV, _WORLD_FRAG_MSL, frag_uniform_buffers = DRAW_UNIFORM_SLOT + 1) do return false
+	// The unlit shader reads a mask's texture too (CLIP_SAMPLER_SLOT).
+	if !shader_register(DEFAULT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _WORLD_FRAG_SPV, _WORLD_FRAG_MSL, frag_samplers = CLIP_SAMPLER_SLOT + 1, frag_uniform_buffers = DRAW_UNIFORM_SLOT + 1, clip_sampler = true) do return false
 	// The surface template declares every block: lights, material, draw, light list.
 	if !shader_register(LIT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL, frag_samplers = MAX_FRAGMENT_SAMPLERS, frag_uniform_buffers = LIGHT_LIST_SLOT + 1) do return false
 	if !shader_register(NORMALS_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _NORMALS_FRAG_SPV, _NORMALS_FRAG_MSL, frag_uniform_buffers = DRAW_UNIFORM_SLOT + 1) do return false
@@ -161,9 +164,9 @@ shader_exists :: proc(name: string) -> bool {
 // counts come from import-time reflection, not convention. `caster` is the
 // shader's depth-pass variant (a surface shader's caster, alpha clipping),
 // empty for none: depth passes then draw it with depth.frag.
-shader_register_fragment :: proc(name: string, frag_spv, frag_msl: []u8, num_samplers, num_uniform_buffers: u32, caster_spv: []u8 = nil, caster_msl: []u8 = nil, caster_samplers: u32 = 0, caster_uniform_buffers: u32 = 0) -> bool {
+shader_register_fragment :: proc(name: string, frag_spv, frag_msl: []u8, num_samplers, num_uniform_buffers: u32, caster_spv: []u8 = nil, caster_msl: []u8 = nil, caster_samplers: u32 = 0, caster_uniform_buffers: u32 = 0, clip_sampler := false) -> bool {
 	return shader_register(name, _WORLD_VERT_SPV, _WORLD_VERT_MSL, frag_spv, frag_msl,
-		frag_samplers = num_samplers, frag_uniform_buffers = num_uniform_buffers,
+		frag_samplers = num_samplers, frag_uniform_buffers = num_uniform_buffers, clip_sampler = clip_sampler,
 		caster_spv = caster_spv, caster_msl = caster_msl, caster_samplers = caster_samplers, caster_uniform_buffers = caster_uniform_buffers)
 }
 
@@ -182,12 +185,13 @@ shader_unregister :: proc(name: string) {
 // 1 UBO (_Uniform layout); fragment resource counts must match the shader's
 // declarations (sampler2D at set=2, optional Light UBO at set=3).
 // Re-registering a name is an error (false).
-shader_register :: proc(name: string, vert_spv, vert_msl, frag_spv, frag_msl: []u8, frag_samplers: u32 = 1, frag_uniform_buffers: u32 = 0, caster_spv: []u8 = nil, caster_msl: []u8 = nil, caster_samplers: u32 = 0, caster_uniform_buffers: u32 = 0) -> bool {
+shader_register :: proc(name: string, vert_spv, vert_msl, frag_spv, frag_msl: []u8, frag_samplers: u32 = 1, frag_uniform_buffers: u32 = 0, caster_spv: []u8 = nil, caster_msl: []u8 = nil, caster_samplers: u32 = 0, caster_uniform_buffers: u32 = 0, clip_sampler := false) -> bool {
 	if name in _gfx.shaders do return false
 	e := _Shader_Entry{
 		vert          = _create_shader(.VERTEX, 0, 1, vert_spv, vert_msl),
 		frag          = _create_shader(.FRAGMENT, frag_samplers, frag_uniform_buffers, frag_spv, frag_msl),
 		frag_samplers = frag_samplers,
+		clip_sampler  = clip_sampler,
 	}
 	if len(caster_spv) > 0 || len(caster_msl) > 0 {
 		e.caster = _create_shader(.FRAGMENT, caster_samplers, caster_uniform_buffers, caster_spv, caster_msl)
@@ -234,6 +238,20 @@ _shader_samplers :: proc(name: string, format: Target_Format) -> u32 {
 	if !ok do e = &_gfx.shaders[DEFAULT_SHADER]
 	if format == .Depth do return e.caster != nil ? e.caster_samplers : 0
 	return e.frag_samplers
+}
+
+// Whether the shader a draw binds declares the UI mask texture.
+@(private)
+_shader_clip_sampler :: proc(name: string) -> bool {
+	e, ok := &_gfx.shaders[name]
+	if !ok do e = &_gfx.shaders[DEFAULT_SHADER]
+	return e.clip_sampler
+}
+
+@(private)
+_fullscreen_samplers :: proc(name: string) -> u32 {
+	e, ok := &_gfx.fullscreen[name]
+	return e.samplers if ok else 0
 }
 
 @(private)
@@ -375,9 +393,9 @@ fullscreen_exists :: proc(name: string) -> bool {
 // It receives uv in location 0, its inputs as samplers at set=2 and an
 // optional property block at set=3 binding=1 (slot 1, as a material's). No
 // blending, no depth.
-fullscreen_register :: proc(name: string, frag_spv, frag_msl: []u8, num_samplers, num_uniform_buffers: u32) -> bool {
+fullscreen_register :: proc(name: string, frag_spv, frag_msl: []u8, num_samplers, num_uniform_buffers: u32, inputs: u32 = 0) -> bool {
 	if name in _gfx.fullscreen do return false
-	e := _Fullscreen_Entry{frag = _create_shader(.FRAGMENT, num_samplers, num_uniform_buffers, frag_spv, frag_msl), samplers = num_samplers}
+	e := _Fullscreen_Entry{frag = _create_shader(.FRAGMENT, num_samplers, num_uniform_buffers, frag_spv, frag_msl), samplers = num_samplers, inputs = inputs if inputs > 0 else num_samplers}
 	if e.frag == nil do return false
 	if _fullscreen_build(&e, .LDR) == nil {
 		_fullscreen_entry_release(&e)

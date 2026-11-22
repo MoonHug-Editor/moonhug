@@ -31,3 +31,15 @@ property_drawer_UiMask_Settings_inspector :: proc(ctx: ^inspector.Ctx) {
 		log.infof("[UiMask] Shader clip is %v: %d shaders compiled again", s.shader_clip, count)
 	}
 }
+
+// A UiMask in the inspector: its fields, then the Sprite row (the shared
+// sprite picker, the field itself is inspect:"-").
+@(property_drawer={type=engine.UiMask, order="middle"})
+property_drawer_UiMask_inspector :: proc(ctx: ^inspector.Ctx) {
+	inspector.draw(ctx)
+	mask := cast(^engine.UiMask)ctx.ptr
+	if sprite_ref_row("Sprite", &mask.sprite) {
+		inspector.mark_inspector_changed()
+		inspector.record_nested_override(&mask.sprite, typeid_of(engine.PPtr), "sprite", true)
+	}
+}

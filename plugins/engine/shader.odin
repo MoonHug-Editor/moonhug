@@ -21,6 +21,9 @@ Shader_Runtime :: struct {
 	// Fragment uniform slots (max binding + 1). A shader with the UI clip
 	// declares the per-draw block, slot gfx.DRAW_UNIFORM_SLOT.
 	num_uniform_buffers: u32,
+	// It declares the UI mask texture (ui_clip.glsl `ui_clip_tex`, sampler
+	// slot gfx.CLIP_SAMPLER_SLOT). gfx binds it, it is no material row.
+	clip_sampler: bool,
 	properties:   []Shader_Property, // owned (names too)
 	textures:     []Shader_Texture,  // owned (names too); bindings 1+ are material rows
 }
@@ -76,6 +79,23 @@ _shader_runtime_destroy :: proc(sr: ^Shader_Runtime) {
 	sr^ = {}
 }
 
+// The name of the UI mask texture in a shader with the UI clip (ui_clip.glsl).
+SHADER_CLIP_TEXTURE :: "ui_clip_tex"
+
+// Takes the UI mask texture out of a shader's reflected textures: gfx binds
+// it, so it is no material row. True when the shader declares it.
+@(private = "file")
+_shader_take_clip_texture :: proc(textures: ^[]Shader_Texture) -> bool {
+	for tex, i in textures {
+		if tex.name != SHADER_CLIP_TEXTURE || tex.binding != gfx.CLIP_SAMPLER_SLOT do continue
+		delete(tex.name, runtime.default_allocator())
+		copy(textures[i:], textures[i + 1:])
+		textures^ = textures[:len(textures) - 1]
+		return true
+	}
+	return false
+}
+
 shader_load :: proc(guid: Asset_GUID) -> (^Shader_Runtime, bool) {
 	if cached, hit := &shader_cache[guid]; hit {
 		return cached, true
@@ -89,11 +109,12 @@ shader_load :: proc(guid: Asset_GUID) -> (^Shader_Runtime, bool) {
 	blob, header, spv, msl, properties, textures, parse_ok := _shader_artifact_load(guid)
 	if !parse_ok do return nil, false
 
+	clip_sampler := _shader_take_clip_texture(&textures)
 	guid_str := uuid.to_string(uuid.Identifier(guid), context.temp_allocator)
 	// A leftover registration (cache cleared without unregister) is reused.
 	if !gfx.shader_exists(guid_str) {
 		caster_spv, caster_msl := _shader_artifact_caster(blob, header)
-		if !gfx.shader_register_fragment(guid_str, spv, msl, header.num_samplers, header.num_uniform_buffers, caster_spv, caster_msl, header.caster_samplers, header.caster_uniform_buffers) {
+		if !gfx.shader_register_fragment(guid_str, spv, msl, header.num_samplers, header.num_uniform_buffers, caster_spv, caster_msl, header.caster_samplers, header.caster_uniform_buffers, clip_sampler) {
 			for prop in properties do delete(prop.name)
 			delete(properties)
 			for tex in textures do delete(tex.name)
@@ -107,6 +128,7 @@ shader_load :: proc(guid: Asset_GUID) -> (^Shader_Runtime, bool) {
 		block_size   = header.block_size,
 		num_samplers = header.num_samplers,
 		num_uniform_buffers = header.num_uniform_buffers,
+		clip_sampler = clip_sampler,
 		properties   = properties,
 		textures     = textures,
 	}
@@ -142,6 +164,11 @@ shader_load_fullscreen :: proc(guid: Asset_GUID) -> (name: string, ok: bool) {
 
 	_, header, spv, msl, properties, textures, parse_ok := _shader_artifact_load(guid)
 	if !parse_ok do return "", false
+	// The inputs a draw gives: the samplers the shader declares, the UI mask
+	// texture left out (gfx binds white there).
+	inputs := u32(1)
+	_shader_take_clip_texture(&textures)
+	for tex in textures do inputs = max(inputs, tex.binding + 1)
 	for prop in properties do delete(prop.name)
 	delete(properties)
 	for tex in textures do delete(tex.name)
@@ -150,7 +177,7 @@ shader_load_fullscreen :: proc(guid: Asset_GUID) -> (name: string, ok: bool) {
 	guid_str := uuid.to_string(uuid.Identifier(guid), context.temp_allocator)
 	name = strings.concatenate({"fullscreen:", guid_str})
 	if !gfx.fullscreen_exists(name) {
-		if !gfx.fullscreen_register(name, spv, msl, header.num_samplers, header.num_uniform_buffers) {
+		if !gfx.fullscreen_register(name, spv, msl, header.num_samplers, header.num_uniform_buffers, inputs) {
 			delete(name)
 			_shader_failed[guid] = true
 			return "", false

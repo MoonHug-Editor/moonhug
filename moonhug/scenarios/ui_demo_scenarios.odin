@@ -19,6 +19,7 @@ ui_demo_scene_opens_and_draws :: proc(t: ^testing.T) {
 	// What the scene draws with, by guid: the metas travel with the files.
 	for file in ([]string{
 		"plugins/mhgui/assets/white.png",
+		"plugins/mhgui/samples/mhgui_sample/assets/mask_heart.png",
 		"plugins/mhgui/assets/shaders/ui_shape.glsl",
 		"plugins/mhgui/assets/materials/UiShape.mat",
 		"plugins/text/assets/Roboto-Medium.ttf",
@@ -35,7 +36,7 @@ ui_demo_scene_opens_and_draws :: proc(t: ^testing.T) {
 	call(r, "invoke_menu", `{"path":"Window/General/Game"}`)
 	frames(r, 30)
 	viewports, _ := at(call(r, "list_objects", `{"name":"Viewport"}`), "objects").(json.Array)
-	testing.expect_value(t, len(viewports), 6) // the masked viewports, the scroll view's among them
+	testing.expect_value(t, len(viewports), 7) // the masked viewports, the scroll view's and the sprite mask's among them
 	call(r, "screenshot", `{"target":"game","max_size":900}`)
 
 	// The scroll view, live while the game plays: the wheel over it moves

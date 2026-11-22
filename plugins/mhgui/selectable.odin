@@ -47,12 +47,30 @@ Sprite_State :: struct {
 	disabled:    engine.PPtr `inspect:"-"`,
 }
 
+Navigation_Mode :: enum u8 {
+	Automatic, // a direction key selects the nearest usable control that way
+	Explicit,  // a direction key selects the control named for that direction
+	None,      // the direction keys do not leave this control, and no automatic move lands on it
+}
+
+// Where the direction keys take the selection from a control. The four
+// neighbours count in Explicit mode only. An empty one, or one that cannot be
+// used now, keeps the selection where it is.
+Navigation :: struct {
+	mode:  Navigation_Mode,
+	up:    engine.Ref_Local `ref:"Transform"`,
+	down:  engine.Ref_Local `ref:"Transform"`,
+	left:  engine.Ref_Local `ref:"Transform"`,
+	right: engine.Ref_Local `ref:"Transform"`,
+}
+
 Selectable :: struct {
 	interactable:   bool,
 	transition:     Selectable_Transition,
 	target_graphic: engine.Ref_Local `ref:"Transform"`, // the node whose graphic the transition changes; empty = this node
 	colors:         Color_Block,
 	sprites:        Sprite_State,
+	navigation:     Navigation,
 	// Runtime state, never saved.
 	state:   Selectable_State `json:"-" inspect:"-"`,
 	hovered: bool             `json:"-" inspect:"-"`, // the pointer is over the node or a node under it

@@ -45,14 +45,16 @@ float3 srgb_to_linear(thread const float3& c)
 }
 
 static inline __attribute__((always_inline))
-float ui_clip_at(thread const float2& frag, constant DrawUBO& _34)
+float ui_clip_at(thread const float2& frag, constant DrawUBO& _34, texture2d<float> ui_clip_tex, sampler ui_clip_texSmplr)
 {
     int count = int(_34.clip_count.x + 0.5);
+    int textured = int(_34.clip_count.y + 0.5) - 1;
+    float2 tex_uv = float2(0.0);
     float a = 1.0;
-    float _132;
-    float _139;
-    float _152;
-    float _199;
+    float _141;
+    float _147;
+    float _160;
+    float _207;
     for (int i = 0; (i < count) && (i < 8); i++)
     {
         int b = i * 5;
@@ -65,40 +67,49 @@ float ui_clip_at(thread const float2& frag, constant DrawUBO& _34)
         {
             if (p.y > 0.0)
             {
-                _139 = radii.y;
+                _147 = radii.y;
             }
             else
             {
-                _139 = radii.z;
+                _147 = radii.z;
             }
-            _132 = _139;
+            _141 = _147;
         }
         else
         {
             if (p.y > 0.0)
             {
-                _152 = radii.x;
+                _160 = radii.x;
             }
             else
             {
-                _152 = radii.w;
+                _160 = radii.w;
             }
-            _132 = _152;
+            _141 = _160;
         }
-        float r = _132;
+        float r = _141;
         r = fast::min(r, fast::min(half_size.x, half_size.y));
         float2 q = (abs(p) - half_size) + float2(r);
         float d = (fast::min(fast::max(q.x, q.y), 0.0) + length(fast::max(q, float2(0.0)))) - r;
         float px = fast::max(fwidth(d), 9.9999999747524270787835121154785e-07);
         if (soft > 0.0)
         {
-            _199 = fast::clamp((-d) / fast::max(soft, px), 0.0, 1.0);
+            _207 = fast::clamp((-d) / fast::max(soft, px), 0.0, 1.0);
         }
         else
         {
-            _199 = fast::clamp(0.5 - (d / px), 0.0, 1.0);
+            _207 = fast::clamp(0.5 - (d / px), 0.0, 1.0);
         }
-        a *= _199;
+        a *= _207;
+        if (i == textured)
+        {
+            float2 unit = float2((p.x / (2.0 * half_size.x)) + 0.5, 0.5 - (p.y / (2.0 * half_size.y)));
+            tex_uv = float2(_34.clip_masks[b].w, _34.clip_masks[b + 1].w) + (unit * float2(_34.clip_masks[b + 2].w, _34.clip_masks[b + 3].w));
+        }
+    }
+    if (textured >= 0)
+    {
+        a *= ui_clip_tex.sample(ui_clip_texSmplr, tex_uv).w;
     }
     return a;
 }
@@ -118,16 +129,16 @@ float fog_amount(thread const float3& world_pos, constant DrawUBO& _34)
     {
         float k = _34.fog_more.x;
         float ky = k * d.y;
-        float _269;
+        float _333;
         if (abs(ky) > 9.9999997473787516355514526367188e-05)
         {
-            _269 = (1.0 - exp(-ky)) / ky;
+            _333 = (1.0 - exp(-ky)) / ky;
         }
         else
         {
-            _269 = 1.0;
+            _333 = 1.0;
         }
-        h = exp((-k) * (_34.view_pos.y - _34.fog_params.w)) * _269;
+        h = exp((-k) * (_34.view_pos.y - _34.fog_params.w)) * _333;
     }
     float f;
     if (mode == 1)
@@ -149,14 +160,14 @@ float fog_amount(thread const float3& world_pos, constant DrawUBO& _34)
     return fast::clamp(f, 0.0, 1.0);
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], constant DrawUBO& _34 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]], float4 gl_FragCoord [[position]])
+fragment main0_out main0(main0_in in [[stage_in]], constant DrawUBO& _34 [[buffer(2)]], texture2d<float> tex [[texture(0)]], texture2d<float> ui_clip_tex [[texture(6)]], sampler texSmplr [[sampler(0)]], sampler ui_clip_texSmplr [[sampler(6)]], float4 gl_FragCoord [[position]])
 {
     main0_out out = {};
     float4 t = tex.sample(texSmplr, in.frag_uv);
     float3 param = t.xyz;
     out.out_color = float4(srgb_to_linear(param), t.w) * in.frag_color;
     float2 param_1 = gl_FragCoord.xy;
-    out.out_color.w *= ui_clip_at(param_1, _34);
+    out.out_color.w *= ui_clip_at(param_1, _34, ui_clip_tex, ui_clip_texSmplr);
     if (out.out_color.w < _34.draw_params.x)
     {
         discard_fragment();
@@ -166,12 +177,12 @@ fragment main0_out main0(main0_in in [[stage_in]], constant DrawUBO& _34 [[buffe
         out.out_color = float4(fast::normalize(in.frag_normal), 1.0);
         return out;
     }
-    float4 _416 = out.out_color;
+    float4 _477 = out.out_color;
     float3 param_2 = in.frag_world_pos;
-    float3 _426 = mix(_416.xyz, _34.fog_color.xyz, float3(fog_amount(param_2, _34)));
-    out.out_color.x = _426.x;
-    out.out_color.y = _426.y;
-    out.out_color.z = _426.z;
+    float3 _487 = mix(_477.xyz, _34.fog_color.xyz, float3(fog_amount(param_2, _34)));
+    out.out_color.x = _487.x;
+    out.out_color.y = _487.y;
+    out.out_color.z = _487.z;
     return out;
 }
 

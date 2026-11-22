@@ -126,8 +126,11 @@ _Draw_Uniform :: struct {
 	probe2_max: [4]f32, // xyz the box, w = its diffuse intensity
 	probe_blend: [4]f32, // x = the probe's weight, 1 = no blend
 	layers:      [4]u32, // x = the draw's render layers, yzw reserved
-	// The UI masks over a quad (shaders/ui_clip.glsl): x = how many, then
-	// five vec4 per mask: its three rows, its shape and its radii.
+	// The UI masks over a quad (shaders/ui_clip.glsl): x = how many, y = the
+	// one that reads the mask texture, counted from 1 (0 = none), then five
+	// vec4 per mask: its three rows, its shape and its radii. The textured
+	// mask has its uv rect in the w of its rows (x, y, width) and of its
+	// shape (height).
 	clip_count:  [4]f32,
 	clip_masks:  [CLIP_MAX]_Clip_Uniform,
 }
@@ -955,11 +958,23 @@ draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Textu
 // space times w: its rows give x * w, y * w and w, so the map holds for a
 // mask seen in perspective. The mask's space runs from its rect's centre in
 // its own units.
+//
+// A mask with `tex` also multiplies by that texture's alpha, the part `uv`
+// (x, y, width, height, in 0..1 from the top left) stretched over the rect.
+// One texture per draw: of the masks over a quad the nearest one with a
+// texture reads it, and the ones after it clip by their rect only. A shader
+// reads it at CLIP_SAMPLER_SLOT (ui_clip.glsl `ui_clip_tex`).
 Clip_Mask :: struct {
 	to:    [3][4]f32, // the rows, each xyz
 	shape: [4]f32,    // xy = the rect's half size, z = the width its edge fades over (0 = one pixel)
 	radii: [4]f32,    // of the corners: top left, top right, bottom right, bottom left
+	tex:   ^Texture,  // nil = the rect alone
+	uv:    [4]f32,
 }
+
+// The fragment sampler slot of a mask's texture, in a shader that has the UI
+// clip. A shader with the clip has material texture rows 1 to 5.
+CLIP_SAMPLER_SLOT :: 6
 
 // The most masks one quad is clipped to. Must match MOONHUG_CLIP_MAX.
 CLIP_MAX :: 8
@@ -1104,7 +1119,7 @@ _instance_base :: proc() {
 draw_fullscreen :: proc(shader: string, inputs: []^Texture, material: []u8 = nil, loc := #caller_location) {
 	if len(inputs) == 0 do return
 	if e, ok := _gfx.fullscreen[shader]; ok {
-		fmt.assertf(u32(len(inputs)) >= e.samplers, "gfx: fullscreen shader %q declares %d inputs, the draw gives %d", shader, e.samplers, len(inputs), loc = loc)
+		fmt.assertf(u32(len(inputs)) >= e.inputs, "gfx: fullscreen shader %q declares %d inputs, the draw gives %d", shader, e.inputs, len(inputs), loc = loc)
 	}
 	append(&_pass.draws, _Draw{
 		fullscreen = true,
@@ -1455,6 +1470,25 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 		// there (white, depth 1, when none is set: every surface lit). Nearest
 		// filtering: the PCF taps compare depths, a blend of two depths is
 		// neither.
+		// The slots a shader declares past the draw's textures are bound too,
+		// as white, up to where the pass's own textures start.
+		declared := _fullscreen_samplers(d.shader) if d.fullscreen else _shader_samplers(d.shader, _pass.format)
+		for num_bindings < min(declared, SHADOW_SAMPLER_SLOT) {
+			bindings[num_bindings] = {texture = _gfx.white_tex.gpu, sampler = smp}
+			num_bindings += 1
+		}
+		// A shader with the UI clip reads the texture of the draw's nearest
+		// textured mask.
+		clip_tex := -1
+		if !d.fullscreen && _pass.format != .Depth && _shader_clip_sampler(d.shader) {
+			for m, k in d.clip {
+				if k >= CLIP_MAX do break
+				if m.tex == nil do continue
+				bindings[CLIP_SAMPLER_SLOT] = {texture = m.tex.gpu, sampler = _draw_sampler(m.tex, false)}
+				clip_tex = k
+				break
+			}
+		}
 		if !d.fullscreen && _shader_samplers(d.shader, _pass.format) > SHADOW_SAMPLER_SLOT {
 			// The slots between the draw's textures and the shadow slot are
 			// bound too (SDL binds a contiguous range), as white.
@@ -1523,6 +1557,14 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 				u.clip_masks[k] = {to = m.to, shape = m.shape, radii = m.radii}
 			}
 			u.clip_count.x = f32(min(len(d.clip), CLIP_MAX))
+			// The textured mask: which one, and its uv rect in the spare w of
+			// its rows and its shape.
+			if clip_tex >= 0 {
+				m := &u.clip_masks[clip_tex]
+				uv := d.clip[clip_tex].uv
+				m.to[0].w, m.to[1].w, m.to[2].w, m.shape.w = uv.x, uv.y, uv.z, uv.w
+				u.clip_count.y = f32(clip_tex + 1)
+			}
 			// What a draw with no mask pushes ends at the count: the masks
 			// after it are read by no shader.
 			sdl.PushGPUFragmentUniformData(_gfx.cmd, DRAW_UNIFORM_SLOT, &u, u32(size_of(_Draw_Uniform) if len(d.clip) > 0 else offset_of(_Draw_Uniform, clip_masks)))

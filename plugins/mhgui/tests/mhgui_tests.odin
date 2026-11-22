@@ -1098,3 +1098,55 @@ test_shape_draws_with_its_material_and_values :: proc(t: ^testing.T) {
 	testing.expect_value(t, q.material, mhgui.ui_shape_material_guid())
 	testing.expect_value(t, len(q.properties), 10)
 }
+
+// Explicit navigation goes to the named neighbour, None keeps the selection
+// and takes no automatic move.
+@(test)
+test_explicit_navigation :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	input.set_app_focused(true)
+	defer input.set_app_focused(false)
+	input.set_viewport({0, 0}, {800, 600})
+	defer engine.ui_set_selected({})
+
+	// A  B  C  D
+	canvas := engine.transform_new("Canvas")
+	_add(canvas, .Canvas)
+	a, a_b := _ui_button("A", canvas, {-300, 0})
+	b, b_b := _ui_button("B", canvas, {-100, 0})
+	c, c_b := _ui_button("C", canvas, {100, 0})
+	d, _ := _ui_button("D", canvas, {300, 0})
+
+	// A names D on its right and nothing on its left. Down wraps to C.
+	a_b.navigation.mode = .Explicit
+	a_b.navigation.right = {handle = engine.Handle(d)}
+	a_b.navigation.down = {handle = engine.Handle(c)}
+	engine.ui_set_selected(a)
+	_ui_tap(.RIGHT)
+	testing.expect_value(t, engine.ui_selected(), d) // past B and C
+	engine.ui_set_selected(a)
+	_ui_tap(.DOWN)
+	testing.expect_value(t, engine.ui_selected(), c) // not the direction C lies in
+	engine.ui_set_selected(a)
+	_ui_tap(.UP)
+	testing.expect_value(t, engine.ui_selected(), a) // no neighbour named
+
+	// A neighbour that cannot be used keeps the selection.
+	c_b.interactable = false
+	_ui_tap(.DOWN)
+	testing.expect_value(t, engine.ui_selected(), a)
+	c_b.interactable = true
+
+	// None: automatic moves skip B, and the keys do not leave it.
+	b_b.navigation.mode = .None
+	engine.ui_set_selected(c)
+	_ui_tap(.LEFT)
+	testing.expect_value(t, engine.ui_selected(), a)
+	engine.ui_set_selected(b)
+	_ui_tap(.RIGHT)
+	testing.expect_value(t, engine.ui_selected(), b)
+}

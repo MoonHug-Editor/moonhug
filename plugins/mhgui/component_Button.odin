@@ -15,8 +15,11 @@ package mhgui
 // Keyboard and gamepad act on the selected node (engine.ui_selected: the
 // last one pressed on, or the one code gave engine.ui_set_selected):
 // - The arrow keys, the d-pad and the left stick move the selection to the
-//   nearest usable Button in that direction. With nothing selected they do
+//   nearest usable control in that direction. With nothing selected they do
 //   nothing: a menu selects its first button when it opens.
+// - A control's `navigation` changes that for the moves that start on it:
+//   Explicit names the neighbour per direction, None keeps the selection on
+//   it and keeps automatic moves off it (selectable.odin).
 // - Enter, Space and the pad's bottom face button click the selected Button
 //   and flip the selected Toggle. On a selected Slider the keys along its
 //   axis change its value, and the keys across it move the selection.
@@ -116,8 +119,34 @@ _usable :: proc(tH: engine.Transform_Handle) -> bool {
 	return sel != nil && enabled && selectable_usable(sel, tH) && engine.transform_active_in_hierarchy(tH)
 }
 
-// The usable Button nearest to `from` in direction `dir` ({±1, 0} or
-// {0, ±1}, y up), {} for none. Buttons on overlay canvases compare in
+// Where a direction key takes the selection from `from`, by its navigation
+// mode: the nearest control (Automatic), the named neighbour (Explicit) or
+// nowhere (None). {} for no move.
+ui_navigate_from :: proc(from: engine.Transform_Handle, dir: [2]f32) -> engine.Transform_Handle {
+	sel, _ := node_selectable(from)
+	if sel == nil do return {}
+	switch sel.navigation.mode {
+	case .Automatic:
+		return button_find_in_direction(from, dir)
+	case .Explicit:
+		nav := &sel.navigation
+		ref: engine.Ref_Local
+		switch {
+		case dir.x < 0: ref = nav.left
+		case dir.x > 0: ref = nav.right
+		case dir.y > 0: ref = nav.up
+		case dir.y < 0: ref = nav.down
+		}
+		next := engine.Transform_Handle(ref.handle)
+		if next == {} || next == from || !_usable(next) do return {}
+		return next
+	case .None:
+	}
+	return {}
+}
+
+// The usable control nearest to `from` in direction `dir` ({±1, 0} or
+// {0, ±1}, y up), {} for none. A control with navigation None is no candidate. Buttons on overlay canvases compare in
 // screen pixels, so the selection crosses from one overlay canvas to
 // another. A canvas in the world or before a camera is its own space.
 // A candidate scores by how far along `dir` it lies over its squared
@@ -142,10 +171,9 @@ button_find_in_direction :: proc(from: engine.Transform_Handle, dir: [2]f32) -> 
 		clear(&nodes)
 		engine.canvas_resolve_rects(canvas.owner, root, &nodes)
 		for n in nodes {
-			if n.tH != from && !_usable(n.tH) do continue
-			if n.tH == from {
-				if sel, _ := node_selectable(n.tH); sel == nil do continue
-			}
+			sel, _ := node_selectable(n.tH)
+			if sel == nil do continue
+			if n.tH != from && (!_usable(n.tH) || sel.navigation.mode == .None) do continue
 			c := engine.rect_corners(n.rect, n.xform)
 			lo, hi := c[0].xy, c[0].xy
 			for p in c[1:] {
@@ -196,7 +224,7 @@ ui_tick :: proc(dt: f32) {
 		if dir := _nav_move(); dir != {} && selected != {} {
 			// A selected Slider takes the keys along its own axis.
 			if !slider_nav(selected, dir) {
-				if next := button_find_in_direction(selected, dir); next != {} do engine.ui_set_selected(next)
+				if next := ui_navigate_from(selected, dir); next != {} do engine.ui_set_selected(next)
 			}
 		}
 		submit = _nav_submit_pressed()
