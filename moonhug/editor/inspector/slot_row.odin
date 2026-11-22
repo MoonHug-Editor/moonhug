@@ -176,7 +176,7 @@ _draw_link :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 @(private)
 _owner_object :: proc() -> core.Transform_Handle {
 	o, ok := undo.current_owner()
-	if !ok || o.kind != .Pooled || o.base_ptr == nil || o.handle.type_key == .Transform do return {}
+	if !ok || o.kind != .Pooled || o.base_ptr == nil || o.handle.type_key == core.transform_type_key do return {}
 	return (cast(^core.CompData)o.base_ptr).owner
 }
 
