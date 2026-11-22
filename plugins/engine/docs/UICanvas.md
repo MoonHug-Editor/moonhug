@@ -1,6 +1,6 @@
 ---
 title: "UI canvas"
-description: "The canvas tree in the engine: Canvas, RectTransform, CanvasRenderer, CanvasScaler and GraphicRaycaster, rect layout, positions, drawing and the pointer"
+description: "The canvas tree in the engine: Canvas, RectTransform, CanvasRenderer, CanvasScaler, GraphicRaycaster and UiMask, rect layout, positions, drawing, clipping and the pointer"
 weight: 60
 tags: ["ui", "rendering", "components"]
 path: engine/concepts/rendering
@@ -15,6 +15,8 @@ UI has two halves. The canvas tree is engine vocabulary, in `plugins/engine/ui_c
 - [CanvasRenderer](components/CanvasRenderer.md) marks a node as drawing its graphic.
 - [CanvasScaler](components/CanvasScaler.md) maps canvas units to screen pixels.
 - [GraphicRaycaster](components/GraphicRaycaster.md) lets the pointer reach a canvas's graphics.
+- [UiMask](components/UiMask.md) clips the nodes under it to its rect.
+- HitArea takes the pointer on its node's rect and draws nothing.
 
 ## Graphics
 
@@ -23,7 +25,7 @@ UI has two halves. The canvas tree is engine vocabulary, in `plugins/engine/ui_c
 A quad a graphic returns can carry two things of its own:
 
 - `material`, used when the graphic names none. A graphic that needs its own shader works with no setup this way.
-- `properties`, values of that material's shader for this quad alone, by the names the shader's property block declares. They go over the material's values for the one draw (`Draw_Quad.properties`, `material_pack_draw_properties`). Quads with equal values share a draw call when they are neighbours in draw order, and a quad whose values differ is a draw call of its own. The mhgui Shape sends its size, radii and shadows this way.
+- `properties`, values of that material's shader for this quad alone, by the names the shader's property block declares. They go over the material's values for the one draw (`Draw_Quad.properties`, `material_pack_draw_properties`). Quads with equal values share a draw call when they are neighbours in draw order, and a quad whose values differ is a draw call of its own. The mhgui UiShape sends its size, radii and shadows this way.
 
 ## Position
 
@@ -40,6 +42,7 @@ The engine's canvas collector runs for Game windows and the Scene window. For ea
 - **Draw order.** Nodes draw in hierarchy order, parents before children. A RectTransform's `z_index` changes that: a higher one draws over a lower one, whatever the hierarchy order. A node's `z_index` adds to its parent's, so a raised parent takes its children along. The pointer and the Scene window's picking follow the same order.
 - **Game windows.** Quads sit on a plane just inside the camera's near plane, with the rect's pixel corners projected back through the camera, so they land on exactly those pixels for any camera and nothing in the scene draws in front of them.
 - **Scene window.** The canvas is a world rect with its bottom-left at the origin in the XY plane, one world unit per canvas unit, sized like the last Game window, 1920 by 1080 before one has drawn.
+- **Clipping.** A quad of a node under a [UiMask](components/UiMask.md) carries each corner's place in the mask's rect, from -1 to 1 inside it (`Draw_Quad.clip`), and its shader cuts it there. No draw call is added and no stencil is used.
 - Sort keys use layer 127, the top of the transparent range, then the canvas's `sort_order`, then the node's place in the draw order.
 
 ## The pointer

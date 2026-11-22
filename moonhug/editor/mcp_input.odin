@@ -287,7 +287,7 @@ mcp_bridge_input_feed :: proc() {
 	_input.next += 1
 	switch step.kind {
 	case .Move:
-		_game_mouse_move(step.pos, _input.mouse if _input.has_mouse else step.pos)
+		_game_mouse_move(step.pos)
 		_input.mouse = step.pos
 		_input.has_mouse = true
 		im.IO_AddMousePosEvent(io, vp.Pos.x + step.pos.x, vp.Pos.y + step.pos.y)
@@ -320,13 +320,24 @@ mcp_bridge_input_feed :: proc() {
 // Play reads), as the SDL events of a real mouse would: imgui alone gets the
 // editor's widgets, not the game. Positions are in the main window's points,
 // which is what the steps carry.
+//
+// The last position sent outlives the script, as the real mouse's does: a
+// script that begins with a button step presses where the one before it left
+// the mouse.
 @(private = "file")
-_game_mouse_move :: proc(pos, from: [2]f32) {
+_game_mouse: [2]f32
+@(private = "file")
+_game_mouse_known: bool
+
+@(private = "file")
+_game_mouse_move :: proc(pos: [2]f32) {
+	from := _game_mouse if _game_mouse_known else pos
 	e: sdl.Event
 	e.type = .MOUSE_MOTION
 	e.motion.x, e.motion.y = pos.x, pos.y
 	e.motion.xrel, e.motion.yrel = pos.x - from.x, pos.y - from.y
 	input.apply_event(&e)
+	_game_mouse, _game_mouse_known = pos, true
 }
 
 // imgui's buttons are 0 left, 1 right, 2 middle. SDL's are 1 left, 2 middle, 3 right.
@@ -341,7 +352,8 @@ _game_mouse_button :: proc(button: i32, down: bool) {
 	case: return
 	}
 	e.button.down = down
-	e.button.x, e.button.y = _input.mouse.x, _input.mouse.y
+	if !_game_mouse_known do return
+	e.button.x, e.button.y = _game_mouse.x, _game_mouse.y
 	input.apply_event(&e)
 }
 

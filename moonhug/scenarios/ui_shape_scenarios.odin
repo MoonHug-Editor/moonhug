@@ -1,6 +1,6 @@
 package scenarios
 
-// The mhgui Shape in a real editor: made from the GameObject menu, it draws
+// The mhgui UiShape in a real editor: made from the GameObject menu, it draws
 // with the package's shape material and no setup, and its fields reach the
 // shader (the Scene window's picture changes with them).
 
@@ -16,7 +16,7 @@ _set :: proc(r: ^Run, object, component, path, value: string) {
 ui_shape :: proc(t: ^testing.T) {
 	r := begin(t)
 	project_write(r, "assets/Main.scene", `{"root": 1, "next_local_id": 2, "transforms": [{"local_id": 1, "name": "Main", "is_active": true, "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1, "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}}, "children": [], "components": []}], "nested_scenes": [], "breadcrumbs": [], "components": []}`)
-	for file in ([]string{"white.png", "shaders/ui_shape.glsl", "materials/Shape.mat"}) {
+	for file in ([]string{"white.png", "shaders/ui_shape.glsl", "materials/UiShape.mat"}) {
 		project_copy(r, fmt.tprintf("plugins/mhgui/assets/%s", file), fmt.tprintf("assets/%s", file))
 		project_copy(r, fmt.tprintf("plugins/mhgui/assets/%s.meta", file), fmt.tprintf("assets/%s.meta", file))
 	}
@@ -26,19 +26,19 @@ ui_shape :: proc(t: ^testing.T) {
 
 	call(r, "invoke_menu", `{"path":"GameObject/UI/Shape"}`)
 	frames(r, 3)
-	testing.expectf(t, has_string(at(call(r, "editor_state"), "selection"), "Shape"), "the menu made a Shape and selected it")
+	testing.expectf(t, has_string(at(call(r, "editor_state"), "selection"), "Shape"), "the menu made a UiShape and selected it")
 	_set(r, "Shape", "RectTransform", "size_delta", "[320, 180]")
-	_set(r, "Shape", "Shape", "graphic.color", "[0.2, 0.5, 1, 1]")
-	_set(r, "Shape", "Shape", "corner_radius", "[40, 40, 8, 8]")
-	_set(r, "Shape", "Shape", "border_width", "6")
-	_set(r, "Shape", "Shape", "border_color", "[1, 1, 1, 1]")
-	_set(r, "Shape", "Shape", "gradient", "true")
-	_set(r, "Shape", "Shape", "gradient_color", "[0.6, 0.1, 0.8, 1]")
-	_set(r, "Shape", "Shape", "gradient_angle", "90")
-	_set(r, "Shape", "Shape", "shadow.color", "[0, 0, 0, 0.6]")
-	_set(r, "Shape", "Shape", "shadow.offset", "[10, -14]")
-	_set(r, "Shape", "Shape", "shadow.blur", "18")
-	_set(r, "Shape", "Shape", "inner_shadow.color", "[0, 0, 0, 0.5]")
+	_set(r, "Shape", "UiShape", "graphic.color", "[0.2, 0.5, 1, 1]")
+	_set(r, "Shape", "UiShape", "corner_radius", "[40, 40, 8, 8]")
+	_set(r, "Shape", "UiShape", "border_width", "6")
+	_set(r, "Shape", "UiShape", "border_color", "[1, 1, 1, 1]")
+	_set(r, "Shape", "UiShape", "gradient", "true")
+	_set(r, "Shape", "UiShape", "gradient_color", "[0.6, 0.1, 0.8, 1]")
+	_set(r, "Shape", "UiShape", "gradient_angle", "90")
+	_set(r, "Shape", "UiShape", "shadow.color", "[0, 0, 0, 0.6]")
+	_set(r, "Shape", "UiShape", "shadow.offset", "[10, -14]")
+	_set(r, "Shape", "UiShape", "shadow.blur", "18")
+	_set(r, "Shape", "UiShape", "inner_shadow.color", "[0, 0, 0, 0.5]")
 	frames(r, 3)
 
 	two_d, has := item_rect(r, "Scene", "2D")

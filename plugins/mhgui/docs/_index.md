@@ -1,17 +1,17 @@
 ---
 title: "mhgui"
-description: "UI graphics and controls on the engine's canvas tree: Image, Shape, Button and LayoutGroup, the UI menus and the rect tool"
+description: "UI graphics and controls on the engine's canvas tree: Image, UiShape, Button and LayoutGroup, the UI menus and the rect tool"
 tags: ["mhgui", "ui", "plugin"]
 ---
 
-The mhgui plugin draws UI. It adds the Image and Shape graphics, the Button control and the LayoutGroup container on top of the engine's [canvas tree](/plugins/engine/docs/UICanvas.md), with the render collector that turns a canvas into quads, the GameObject, UI menus, and the rect tool that edits rects in the Scene window.
+The mhgui plugin draws UI. It adds the Image and UiShape graphics, the Button control and the LayoutGroup container on top of the engine's [canvas tree](/plugins/engine/docs/UICanvas.md), with the render collector that turns a canvas into quads, the GameObject, UI menus, and the rect tool that edits rects in the Scene window.
 
 ## What it adds
 
 **Components**
 
 - [Image](components/Image.md) draws a sprite or a solid colour in its rect, simple, 9-sliced or tiled.
-- [Shape](components/Shape.md) draws a rounded rectangle with a border, a gradient and shadows, with no sprite.
+- [UiShape](components/UiShape.md) draws a rounded rectangle with a border, a gradient and shadows, with no sprite.
 - [Button](components/Button.md) tints a graphic as the pointer hovers and presses it, takes keyboard and gamepad input while selected, and reports clicks.
 - [LayoutGroup](components/LayoutGroup.md) lays out its children in a row, a column or a grid.
 
@@ -38,13 +38,12 @@ Plain object and component creation: `transform_new`, then `transform_add_comp` 
 
 ## Extending
 
-The plugin declares no attributes. It uses the engine's: Image and Shape declare `@(canvas_graphic)` and LayoutGroup `@(canvas_layout)`, which is how another plugin adds a graphic or a container ([UI canvas](/plugins/engine/docs/UICanvas.md), "Graphics").
+The plugin declares no attributes. It uses the engine's: Image and UiShape declare `@(canvas_graphic)` and LayoutGroup `@(canvas_layout)`, which is how another plugin adds a graphic or a container ([UI canvas](/plugins/engine/docs/UICanvas.md), "Graphics").
 
 ## Limits
 
 - Every component takes its node's pointer events with `@(comp_on_pointer_ui)`, the engine's attribute ([UI canvas](/plugins/engine/docs/UICanvas.md), "The pointer"). Button is written with it.
 - One control, Button, with a colour tint transition. No toggle, slider, scroll view, input field or dropdown ([Roadmap](Roadmap.md)).
-- No clipping and no masks.
 - Keyboard and gamepad navigation picks the nearest button in a direction. A button cannot name its neighbours or stay out of navigation.
 
 ## Reference

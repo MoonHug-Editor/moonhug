@@ -1,20 +1,20 @@
 ---
-title: "Shape"
+title: "UiShape"
 description: "A UI graphic drawn with no sprite: a rectangle with a radius per corner, a border, a gradient, a drop shadow and an inner shadow"
 weight: 15
 tags: ["mhgui", "components", "shape", "rounded corners"]
 ---
 
-A UI graphic that draws a shape with no sprite: a rectangle with a radius per corner, a border, a gradient and two shadows. It needs a RectTransform and a CanvasRenderer on its node ([UI canvas](/plugins/engine/docs/UICanvas.md)). GameObject, UI, Shape makes one.
+A UI graphic that draws a shape with no sprite: a rectangle with a radius per corner, a border, a gradient and two shadows. It needs a RectTransform and a CanvasRenderer on its node ([UI canvas](/plugins/engine/docs/UICanvas.md)). GameObject, UI, Shape makes one, and Add Component lists it as UI, UiShape.
 
-Panels, cards, buttons, pills, badges and input fields need no art this way, and the same Shape holds up at any size.
+Panels, cards, buttons, pills, badges and input fields need no art this way, and the same UiShape holds up at any size.
 
 ## Example
 
 ```
-Card       RectTransform size_delta 200, 130, CanvasRenderer, Shape corner_radius 16, shadow color black 55%, offset 0 -10, blur 24
-Button     RectTransform size_delta 200, 64, CanvasRenderer, Shape corner_radius 12, border_width 2, gradient on, gradient_angle 270
-Avatar     RectTransform size_delta 120, 120, CanvasRenderer, Shape corner_radius 999, border_width 6
+Card       RectTransform size_delta 200, 130, CanvasRenderer, UiShape corner_radius 16, shadow color black 55%, offset 0 -10, blur 24
+Button     RectTransform size_delta 200, 64, CanvasRenderer, UiShape corner_radius 12, border_width 2, gradient on, gradient_angle 270
+Avatar     RectTransform size_delta 120, 120, CanvasRenderer, UiShape corner_radius 999, border_width 6
 ```
 
 The card floats over the page on a soft shadow. The button is lighter at the top than at the bottom. The avatar frame is a circle: a square with a radius past half its side.
@@ -58,18 +58,18 @@ Both shadows have a `color`, an `offset`, a `blur` and a `spread`. A shadow draw
 
 ## How it draws
 
-The Shape is one quad at any size. The shader computes, for every pixel, its distance to the shape's edge and colours it from that.
+The UiShape is one quad at any size. The shader computes, for every pixel, its distance to the shape's edge and colours it from that.
 
 - The edge is one pixel soft at any size, canvas scale and zoom, in a world-space canvas too.
 - A field can change every frame at no cost: nothing is rebuilt.
-- Shapes with the same field values and the same size share a draw call when they are neighbours in draw order: a row of identical buttons is one draw. A text or an image drawn between two of them breaks the run, so give the labels a higher `z_index` than the shapes to keep the shapes together.
-- A Shape that differs from its neighbours is a draw call of its own.
+- UiShapes with the same field values and the same size share a draw call when they are neighbours in draw order: a row of identical buttons is one draw. A text or an image drawn between two of them breaks the run, so give the labels a higher `z_index` than the shapes to keep the shapes together.
+- A UiShape that differs from its neighbours is a draw call of its own.
 
 ## Another shader
 
-The plugin's shader is `assets/shaders/ui_shape.glsl`. A material with another shader works when that shader declares the properties the Shape sets, by name. Each is a vec4:
+The plugin's shader is `assets/shaders/ui_shape.glsl`. A material with another shader works when that shader declares the properties the UiShape sets, by name. Each is a vec4:
 
-| Property | What the Shape puts in it |
+| Property | What the UiShape puts in it |
 |---|---|
 | `shape_size` | xy: the shape's size. zw: the quad's size, larger by the drop shadow's room |
 | `shape_radii` | The four radii |

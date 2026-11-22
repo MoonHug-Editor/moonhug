@@ -119,6 +119,47 @@ HitArea :: struct {
 	using base: CompData `inspect:"-"`,
 }
 
+// Clips the nodes under it to its rect: what lies outside is not drawn and
+// takes no pointer. A scrolling list's viewport is one. The node's own
+// graphic is not clipped.
+//
+// - The clip follows the node: turned, scaled, or on a canvas in the world.
+// - The edge is one pixel soft.
+// - A node is clipped by the nearest UiMask above it. A mask inside a mask
+//   clips its own nodes to its own rect only, so keep it inside the outer one.
+// - The shader of a clipped quad does the clipping. The built-in unlit
+//   shader, the text shader and the UiShape shader do. Another shader clips
+//   by multiplying its alpha by ui_clip(frag_tangent), the function in those.
+@(component={menu="UI/UiMask"})
+@(typ_guid={guid = "0907bcc0-c7db-4651-8e5d-826ae1bd8806"})
+UiMask :: struct {
+	using base: CompData `inspect:"-"`,
+}
+
+// The nearest enabled UiMask above the node, {} for none. The node's own
+// mask does not count: it clips what is under it.
+node_mask :: proc(tH: Transform_Handle) -> Transform_Handle {
+	w := ctx_world()
+	t := pool_get(&w.transforms, Handle(tH))
+	for n := 0; t != nil && n < 4096; n += 1 {
+		parent := Transform_Handle(t.parent.handle)
+		if parent == {} do return {}
+		if _, mask := transform_get_comp(parent, UiMask); mask != nil && mask.enabled do return parent
+		t = pool_get(&w.transforms, Handle(parent))
+	}
+	return {}
+}
+
+// A canvas point's place in a mask's rect: from -1 to 1 inside it on both
+// axes. `mask` is the mask node's resolved rect. A mask with no area holds
+// nothing.
+mask_clip_position :: proc(mask: Node_Rect, canvas_point: [3]f32) -> [2]f32 {
+	half := mask.rect.size * 0.5
+	if half.x <= 0 || half.y <= 0 do return {2, 2}
+	local := (linalg.inverse(mask.xform) * [4]f32{canvas_point.x, canvas_point.y, canvas_point.z, 1}).xy
+	return (local - (mask.rect.pos + half)) / half
+}
+
 // Whether the pointer can hit the node: an enabled HitArea, or a drawn
 // graphic with raycast_target on.
 node_takes_pointer :: proc(tH: Transform_Handle) -> bool {
@@ -618,7 +659,7 @@ Graphic_Quad :: struct {
 	uvs:     [4][2]f32, // bl, br, tr, tl
 	texture: Asset_GUID,
 	// The material the quad draws with when the graphic names none: a graphic
-	// that needs its own shader (a procedural shape) works with no setup.
+	// that needs its own shader (the mhgui UiShape) works with no setup.
 	material:   Asset_GUID,
 	// Values of that shader for this quad alone (Draw_Quad.properties). Frame
 	// lifetime: populate allocates them with the temp allocator.
@@ -696,6 +737,9 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 	w := ctx_world()
 	nodes := make([dynamic]Node_Rect, context.temp_allocator)
 	quads := make([dynamic]Graphic_Quad, context.temp_allocator)
+	// With no UiMask in the world, no node looks for one.
+	mask_it := pool_iterator(ui_masks(w))
+	_, _, any_mask := pool_next(&mask_it)
 
 	it := pool_iterator(canvases(w))
 	for canvas, _ in pool_next(&it) {
@@ -718,6 +762,17 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 			if cr == nil || !cr.enabled do continue
 			comp, g, desc, ok := node_graphic(n.tH)
 			if !ok do continue
+			// The mask the node is clipped to, when one is above it.
+			mask: Node_Rect
+			masked := false
+			if any_mask {
+				if mask_tH := node_mask(n.tH); mask_tH != {} {
+					for m in nodes do if m.tH == mask_tH {
+						mask, masked = m, true
+						break
+					}
+				}
+			}
 			clear(&quads)
 			desc.populate(comp, n.rect, &quads)
 			key: Sort_Key
@@ -725,6 +780,10 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 			for q in quads {
 				if asset_guid_is_empty(q.texture) do continue
 				corners: [4][3]f32
+				clip: [4][2]f32
+				if masked {
+					for c, k in graphic_quad_corners(q, n.xform) do clip[k] = mask_clip_position(mask, c)
+				}
 				if in_world {
 					corners = graphic_quad_corners(q, canvas_xform * n.xform)
 				} else if view.kind == .Game {
@@ -745,6 +804,8 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 						uvs      = q.uvs,
 						color    = g.color * cr.tint if cr.tinted else g.color,
 						properties = q.properties,
+						clip     = clip,
+						clipped  = masked,
 					},
 				})
 			}
@@ -833,7 +894,17 @@ canvas_raycast :: proc(point: [2]f32, viewport: [2]f32) -> Transform_Handle {
 			if !node_takes_pointer(n.tH) do continue
 			corners := rect_corners(n.rect, n.xform)
 			if c.ignore_reversed && _quad_reversed(corners) do continue
-			if _point_in_quad(cp, corners) do hit = n.tH
+			if !_point_in_quad(cp, corners) do continue
+			// Outside a mask above it, the node is not there to hit. Every
+			// mask up the chain counts here.
+			clipped_away := false
+			for mask_tH := node_mask(n.tH); mask_tH != {} && !clipped_away; mask_tH = node_mask(mask_tH) {
+				for m in nodes do if m.tH == mask_tH {
+					if !_point_in_quad(cp, rect_corners(m.rect, m.xform)) do clipped_away = true
+					break
+				}
+			}
+			if !clipped_away do hit = n.tH
 		}
 	}
 	return hit

@@ -228,6 +228,15 @@ test_pointer_click_goes_to_the_button :: proc(t: ^testing.T) {
 	// Pressed on it and released off it: no click.
 	_forget()
 	_frame(_at(0, 0), down = 1)
+	testing.expect_value(t, b.state, mhgui.Selectable_State.Pressed)
+	// Dragged off it with the button still down: it looks let go.
+	_frame(_at(300, 200))
+	testing.expect(t, b.pressed, "the press is still its own")
+	testing.expect_value(t, b.state, mhgui.Selectable_State.Selected)
+	// Back over it: pressed again.
+	_frame(_at(10, 0))
+	testing.expect_value(t, b.state, mhgui.Selectable_State.Pressed)
+	_frame(_at(300, 200))
 	_frame(_at(300, 200), up = 1)
 	testing.expect(t, !b.clicked && !b.pressed, "a release off the button does not click")
 	testing.expect_value(t, _count(node, .Up), 1)

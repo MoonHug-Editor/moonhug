@@ -17,6 +17,7 @@
 layout(location = 0) in vec2 frag_uv;
 layout(location = 1) in vec4 frag_color;
 layout(location = 2) in vec3 frag_normal;
+layout(location = 4) in vec4 frag_tangent; // under a UiMask: the clip, see ui_clip
 
 layout(set = 2, binding = 0) uniform sampler2D tex;
 
@@ -31,6 +32,13 @@ layout(set = 3, binding = 1) uniform MaterialUBO {
 };
 
 layout(location = 0) out vec4 out_color;
+
+// The engine's UI clip, as in its built-in shaders (libs/gfx/shaders/world.frag.glsl).
+float ui_clip(vec4 t) {
+    if (t.w < 1.5) return 1.0;
+    vec2 d = (1.0 - abs(t.xy)) / max(fwidth(t.xy), vec2(1e-6));
+    return clamp(min(d.x, d.y) + 0.5, 0.0, 1.0);
+}
 
 void main() {
     float sd = texture(tex, frag_uv).a;
@@ -58,5 +66,6 @@ void main() {
         vec3 c = a > 0.0 ? (main_col.rgb * main_col.a + under.rgb * under.a * (1.0 - main_col.a)) / a : vec3(0.0);
         result = vec4(c, a);
     }
+    result.a *= ui_clip(frag_tangent);
     out_color = result;
 }

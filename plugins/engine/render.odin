@@ -72,6 +72,11 @@ Draw_Quad :: struct {
 	// so they merge like quads of one material. Quads with different values
 	// are separate draws.
 	properties: []Draw_Property,
+	// With `clipped`: each corner's place in the rect the quad is clipped to
+	// (a UiMask), from -1 to 1 inside it. The quad's shader does the clipping
+	// (gfx.draw_quad `clip`): the built-in unlit shader and the UI shaders do.
+	clip:     [4][2]f32,
+	clipped:  bool,
 }
 
 // One value of a custom shader's property block for a single draw: `name` is
@@ -609,15 +614,17 @@ _execute_quads :: proc(view: Render_View, commands: []Render_Command) {
 		// Quad facing for lighting shaders (quads are transform-
 		// oriented, not billboards).
 		normal := linalg.normalize0(linalg.cross(d.corners[1] - d.corners[0], d.corners[3] - d.corners[0]))
+		clip := d.clip
+		clip_ptr := &clip if d.clipped else nil
 		switch view.mode {
 		case .Shaded, .Wireframe:
-			gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal, sm.extra)
+			gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal, sm.extra, clip = clip_ptr)
 		case .Unlit:
-			gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, gfx.DEFAULT_SHADER, nil, normal)
+			gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, gfx.DEFAULT_SHADER, nil, normal, clip = clip_ptr)
 		case .Normals:
 			gfx.draw_quad(d.corners, d.uvs, {1, 1, 1, 1}, nil, gfx.NORMALS_SHADER, nil, normal)
 		case .Overdraw:
-			gfx.draw_quad(d.corners, d.uvs, OVERDRAW_LAYER, nil, gfx.DEFAULT_SHADER, nil, normal, depth_test = false)
+			gfx.draw_quad(d.corners, d.uvs, OVERDRAW_LAYER, nil, gfx.DEFAULT_SHADER, nil, normal, depth_test = false, clip = clip_ptr)
 		}
 	}
 }

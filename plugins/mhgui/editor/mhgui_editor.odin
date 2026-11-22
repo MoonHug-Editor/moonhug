@@ -105,7 +105,7 @@ ui_menu_image :: proc() {
 	engine.inspector_request_select(tH)
 }
 
-// A Shape node (RectTransform + CanvasRenderer + Shape), placed like an Image.
+// A UiShape node (RectTransform + CanvasRenderer + UiShape), placed like an Image.
 @(menu_item={path="GameObject/UI/Shape", order=51, help="Creates a UI shape drawn with no sprite: a rounded rectangle with a border, a gradient and shadows"})
 ui_menu_shape :: proc() {
 	g := undo.group_begin("Create Shape")
@@ -119,7 +119,7 @@ ui_menu_shape :: proc() {
 	if tH == _NONE do return
 	_add_comp(tH, .RectTransform)
 	_add_comp(tH, .CanvasRenderer)
-	_add_comp(tH, .Shape)
+	_add_comp(tH, .UiShape)
 	undo.group_commit(&g)
 	engine.inspector_request_select(tH)
 }

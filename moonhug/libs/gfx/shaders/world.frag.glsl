@@ -9,6 +9,7 @@ layout(location = 0) in vec2 frag_uv;
 layout(location = 1) in vec4 frag_color;
 layout(location = 2) in vec3 frag_normal; // for a normals pass only
 layout(location = 3) in vec3 frag_world_pos;
+layout(location = 4) in vec4 frag_tangent; // a UI quad under a mask: its clip, see ui_clip
 
 layout(set = 2, binding = 0) uniform sampler2D tex;
 
@@ -56,6 +57,16 @@ float fog_amount(vec3 world_pos) {
 }
 
 
+// UI clip (the engine's UiMask): a quad under a mask carries its place in the
+// mask's rect in frag_tangent.xy, from -1 to 1 inside it, with frag_tangent.w
+// set to 2, a value no real tangent has. Returns how much of the pixel is
+// inside, with an edge one pixel soft, and 1 for a quad with no mask.
+float ui_clip(vec4 t) {
+    if (t.w < 1.5) return 1.0;
+    vec2 d = (1.0 - abs(t.xy)) / max(fwidth(t.xy), vec2(1e-6));
+    return clamp(min(d.x, d.y) + 0.5, 0.0, 1.0);
+}
+
 vec3 srgb_to_linear(vec3 c) {
     return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, vec3(lessThanEqual(c, vec3(0.04045))));
 }
@@ -63,6 +74,7 @@ vec3 srgb_to_linear(vec3 c) {
 void main() {
     vec4 t = texture(tex, frag_uv);
     out_color = vec4(srgb_to_linear(t.rgb), t.a) * frag_color;
+    out_color.a *= ui_clip(frag_tangent);
     if (out_color.a < draw_params.x) discard;
     // A normals pass (gfx.pass_output_normals): the normal as the colour.
     if (draw_params.y > 0.5) {

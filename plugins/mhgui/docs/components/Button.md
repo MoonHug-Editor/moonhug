@@ -39,8 +39,9 @@ The button tints its Image as the pointer hovers and presses it. Game code polls
 ## Behavior
 
 - The button takes its node's [pointer events](/plugins/engine/docs/UICanvas.md) like any other component: it uses the left button's press, so it owns it, and the hover, the press and the click come from the events. A press selects the button, and so does `engine.ui_set_selected`.
-- The pointer hits the button through a graphic on its node or on a node under it (an Image, a Shape, a Text with `raycast_target` on), or through a HitArea. A press and a release on different parts of one button still click it.
+- The pointer hits the button through a graphic on its node or on a node under it (an Image, a UiShape, a Text with `raycast_target` on), or through a HitArea. A press and a release on different parts of one button still click it.
 - A parent that takes the drag, such as a scrolling list, cancels the press: no click follows.
+- A press dragged off the button looks let go, and a release there does not click. Dragged back over it, the button is pressed again and a release clicks.
 - The state's colour, times `color_multiplier`, multiplies the target graphic's own colour as a runtime tint on its CanvasRenderer, faded over `fade_duration`. The tint is never saved.
 - Enter, Space and the gamepad's bottom face button click the selected button.
 - The arrow keys, the d-pad and the left stick move the selection to the nearest button in that direction that is enabled and interactable. Near and straight ahead wins over far or off to the side. Buttons on overlay canvases are compared on the screen, so the selection crosses from one overlay canvas to another. A canvas in the world or before a camera keeps the selection inside it.

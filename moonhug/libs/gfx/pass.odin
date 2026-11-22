@@ -915,23 +915,38 @@ _current_vp :: proc() -> i32 {
 // by lighting shaders. Same-state consecutive quads merge into one draw —
 // distinct material slices don't merge (compared by pointer). depth_test=false
 // draws over everything (gizmo icons).
-draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture, shader := "", material: []u8 = nil, normal := [3]f32{0, 0, 1}, extra_tex: []^Texture = nil, depth_test := true) {
+//
+// `clip` clips the quad to a rect (a UI mask): each corner's place in that
+// rect, from -1 to 1 inside it. It rides in the tangent with w = 2
+// (QUAD_CLIP_MARK), which the shaders' ui_clip reads, so a clipped quad has
+// no tangent for a normal map. Clipped and unclipped quads still merge.
+draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture, shader := "", material: []u8 = nil, normal := [3]f32{0, 0, 1}, extra_tex: []^Texture = nil, depth_test := true, clip: ^[4][2]f32 = nil) {
 	c := _color_u8(color)
 	first := u32(len(_pass.vtx))
 	n := normal
 	// u runs along the bottom edge, v up the left one: the tangent is the
 	// bottom edge's direction, flipped when the uvs are mirrored.
-	t := _quad_tangent(corners, uvs, n)
+	t: [4][4]f32
+	if clip != nil {
+		for k in 0 ..< 4 do t[k] = {clip[k].x, clip[k].y, 0, QUAD_CLIP_MARK}
+	} else {
+		q := _quad_tangent(corners, uvs, n)
+		t = {q, q, q, q}
+	}
 	append(&_pass.vtx,
-		Vertex{corners[0], n, uvs[0], c, t, {}},
-		Vertex{corners[1], n, uvs[1], c, t, {}},
-		Vertex{corners[2], n, uvs[2], c, t, {}},
-		Vertex{corners[0], n, uvs[0], c, t, {}},
-		Vertex{corners[2], n, uvs[2], c, t, {}},
-		Vertex{corners[3], n, uvs[3], c, t, {}},
+		Vertex{corners[0], n, uvs[0], c, t[0], {}},
+		Vertex{corners[1], n, uvs[1], c, t[1], {}},
+		Vertex{corners[2], n, uvs[2], c, t[2], {}},
+		Vertex{corners[0], n, uvs[0], c, t[0], {}},
+		Vertex{corners[2], n, uvs[2], c, t[2], {}},
+		Vertex{corners[3], n, uvs[3], c, t[3], {}},
 	)
 	_batch_append(.Tris if depth_test else .Tris_Overlay, tex, first, 6, shader, material, extra_tex)
 }
+
+// The tangent w that marks a quad's tangent as a clip position, not a
+// tangent (draw_quad `clip`, the shaders' ui_clip).
+QUAD_CLIP_MARK :: f32(2)
 
 // A quad's tangent from its corners and uvs (bl, br, tr, tl): the bottom
 // edge's direction, with w the sign that makes cross(normal, tangent) * w

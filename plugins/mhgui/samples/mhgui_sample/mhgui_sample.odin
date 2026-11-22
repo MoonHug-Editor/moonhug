@@ -4,14 +4,16 @@ package mhgui_sample
 // assets/ui_demo.scene is one overlay canvas with a captioned panel per
 // feature. The Game window shows it without Play.
 //
-// - Shape: a card with a soft shadow, a button with a gradient and a border,
+// - UiShape: a card with a soft shadow, a button with a gradient and a border,
 //   a pill, a circle, a radius per corner, an outline with no fill, an inset
 //   field with an inner shadow and a glow. Under them, a row of twelve
 //   chips with the same values, which share one draw call.
 //
+// - UiMask: a viewport that cuts a circle, a bar and a line of text to its
+//   rect, plain and turned.
 // - Pointer events, live while the game plays: a card that the UIDemoDrag
 //   script (ui_demo.odin) drags, taking its events with
-//   @(comp_on_pointer_ui), and a Button whose graphic is a Shape.
+//   @(comp_on_pointer_ui), and a Button whose graphic is a UiShape.
 //
 // The scene is generated (the moonhug-mhgui-demo-scene skill), not edited by
 // hand.

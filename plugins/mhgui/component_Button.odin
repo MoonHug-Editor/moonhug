@@ -7,8 +7,10 @@ package mhgui
 // its target graphic's CanvasRenderer with the matching color, fading over
 // fade_duration. A click sets `clicked` for the rest of the frame, and game
 // code polls button_clicked. The pointer must be able to hit the node or a
-// node under it: a graphic with raycast_target on (Image, Shape, Text) or a
+// node under it: a graphic with raycast_target on (Image, UiShape, Text) or a
 // HitArea. A parent that takes the drag (a scroll view) cancels the press.
+// A press dragged off the button looks let go, comes back when the pointer
+// does, and does not click when released off it.
 //
 // Keyboard and gamepad act on the selected node (engine.ui_selected: the
 // last one pressed on, or the one code gave engine.ui_set_selected):
@@ -61,6 +63,9 @@ Button :: struct {
 	clicked: bool             `json:"-" inspect:"-"`, // clicked this frame, by the pointer or the submit key
 	hovered: bool             `json:"-" inspect:"-"`, // the pointer is over the node or a node under it
 	pressed: bool             `json:"-" inspect:"-"`, // the pointer's left button is down on it
+	// During a press: the pointer is still over the button. Dragged off it,
+	// the button looks let go, and a release there does not click.
+	pressed_inside: bool      `json:"-" inspect:"-"`,
 }
 
 // The Button's pointer events. It uses the left button's Down, which makes it
@@ -73,8 +78,10 @@ comp_on_pointer_ui_Button :: proc(b: ^Button, ev: ^engine.UI_Pointer_Event) {
 	case .Exit:  b.hovered = false
 	case .Down:
 		if ev.button != .Left || !b.interactable do return
-		b.pressed = true
+		b.pressed, b.pressed_inside = true, true
 		ev.used = true
+	case .Hold:
+		b.pressed_inside = ev.inside
 	case .Up:
 		if ev.button == .Left do b.pressed = false
 	case .Cancel:
@@ -245,7 +252,7 @@ ui_tick :: proc(dt: f32) {
 	it := engine.pool_iterator(buttons(w))
 	for b, _ in engine.pool_next(&it) {
 		if !b.enabled || !engine.transform_active_in_hierarchy(b.owner) {
-			b.clicked, b.hovered, b.pressed = false, false, false
+			b.clicked, b.hovered, b.pressed, b.pressed_inside = false, false, false, false
 			continue
 		}
 		chosen := selected == b.owner
@@ -254,8 +261,10 @@ ui_tick :: proc(dt: f32) {
 		if !b.interactable do b.clicked = false
 		switch {
 		case !b.interactable:       b.state = .Disabled
-		case b.pressed:             b.state = .Pressed
+		case b.pressed && b.pressed_inside: b.state = .Pressed
 		case submit_down && chosen: b.state = .Pressed
+		// Pressed and dragged off: it looks as it does with no pointer on it.
+		case b.pressed:             b.state = .Selected if chosen else .Normal
 		case b.hovered:             b.state = .Highlighted
 		case chosen:                b.state = .Selected
 		case:                       b.state = .Normal

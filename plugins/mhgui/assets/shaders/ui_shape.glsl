@@ -1,4 +1,4 @@
-// Procedural shape shader (plugins/mhgui Shape component). The quad carries no
+// Procedural shape shader (plugins/mhgui UiShape component). The quad carries no
 // picture: every pixel computes its signed distance to the shape's edge, in
 // canvas units, and is coloured from it. That keeps the edge one pixel soft
 // at any size, radius and canvas scale, and makes the border, the gradient
@@ -7,7 +7,7 @@
 // The quad may be larger than the shape, to give a drop shadow room: its uvs
 // run 0..1 over the whole quad, with v up.
 //
-// The Shape component sets every property per draw. The fill colour is the
+// The UiShape component sets every property per draw. The fill colour is the
 // vertex colour.
 //   shape_size          xy: the shape's size. zw: the quad's size
 //   shape_radii         corner radii: top left, top right, bottom right, bottom left
@@ -24,6 +24,7 @@
 layout(location = 0) in vec2 frag_uv;
 layout(location = 1) in vec4 frag_color;
 layout(location = 2) in vec3 frag_normal;
+layout(location = 4) in vec4 frag_tangent; // under a UiMask: the clip, see ui_clip
 
 layout(set = 2, binding = 0) uniform sampler2D tex;
 
@@ -47,6 +48,13 @@ float sd_round_box(vec2 p, vec2 half_size, vec4 radii) {
     float r = p.x > 0.0 ? (p.y > 0.0 ? radii.y : radii.z) : (p.y > 0.0 ? radii.x : radii.w);
     vec2 q = abs(p) - half_size + r;
     return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+}
+
+// The engine's UI clip, as in its built-in shaders (libs/gfx/shaders/world.frag.glsl).
+float ui_clip(vec4 t) {
+    if (t.w < 1.5) return 1.0;
+    vec2 d = (1.0 - abs(t.xy)) / max(fwidth(t.xy), vec2(1e-6));
+    return clamp(min(d.x, d.y) + 0.5, 0.0, 1.0);
 }
 
 // `top` drawn over `bottom`, both with straight alpha.
@@ -101,5 +109,6 @@ void main() {
         float s = 1.0 - smoothstep(-blur, blur, ds);
         result = over(result, vec4(shadow_color.rgb, shadow_color.a * s * frag_color.a));
     }
+    result.a *= ui_clip(frag_tangent);
     out_color = result;
 }

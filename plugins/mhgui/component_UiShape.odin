@@ -15,15 +15,15 @@ import "moonhug:packages/engine"
 //
 // Sizes are in canvas units. A radius is cut to half the shorter side, so a
 // large radius on every corner makes a pill or a circle.
-@(component={menu="UI/Shape"})
+@(component={menu="UI/UiShape"})
 @(typ_guid={guid = "4405f377-8e06-4b47-804a-f6ed73d030fd"})
-Shape :: struct {
+UiShape :: struct {
 	using base:     engine.CompData `inspect:"-"`,
 	// The fields every graphic shares (color, material, raycast target),
 	// serialized under "graphic", drawn flat in the inspector. An empty
 	// material draws with the package's shape material.
 	using graphic:  engine.Graphic `inline:""`,
-	kind:           Shape_Kind,
+	kind:           UiShape_Kind,
 	// Top left, top right, bottom right, bottom left.
 	corner_radius:  [4]f32 `decor:min(0) decor:tooltip(desc="The radius of each corner, in canvas units: top left, top right, bottom right, bottom left. A radius is cut to half the shorter side, so a large one makes a pill or a circle.")`,
 	border_width:   f32 `decor:min(0) decor:tooltip(desc="The border's width from the edge inward, in canvas units. 0 draws none.")`,
@@ -34,26 +34,26 @@ Shape :: struct {
 	gradient_color: [4]f32 `decor:color()`,
 	gradient_angle: f32 `decor:tooltip(desc="The gradient's direction in degrees: 0 runs left to right, 90 bottom to top.")`,
 	// Behind the shape, may reach outside the rect. It fades with the fill's alpha.
-	shadow:         Shape_Shadow `decor:tooltip(desc="A shadow behind the shape. It draws when its color has alpha.")`,
+	shadow:         UiShape_Shadow `decor:tooltip(desc="A shadow behind the shape. It draws when its color has alpha.")`,
 	// Inside the shape, on the fill.
-	inner_shadow:   Shape_Shadow `decor:tooltip(desc="A shadow inside the shape, on the fill. It draws when its color has alpha.")`,
+	inner_shadow:   UiShape_Shadow `decor:tooltip(desc="A shadow inside the shape, on the fill. It draws when its color has alpha.")`,
 }
 
-// The outline a Shape draws.
-Shape_Kind :: enum u8 {
+// The outline a UiShape draws.
+UiShape_Kind :: enum u8 {
 	Rect,
 }
 
 // A shadow of the shape: the shape moved by `offset`, grown by `spread`,
 // its edge faded over `blur`. Alpha 0 in the color draws none.
-Shape_Shadow :: struct {
+UiShape_Shadow :: struct {
 	color:  [4]f32 `decor:color()`,
 	offset: [2]f32,
 	blur:   f32 `decor:min(0)`,
 	spread: f32,
 }
 
-type_reset_Shape :: proc(s: ^Shape) {
+type_reset_UiShape :: proc(s: ^UiShape) {
 	s.color = {1, 1, 1, 1}
 	s.raycast_target = true
 	s.corner_radius = {8, 8, 8, 8}
@@ -63,32 +63,32 @@ type_reset_Shape :: proc(s: ^Shape) {
 	s.inner_shadow = {color = {0, 0, 0, 0}, offset = {0, -2}, blur = 4}
 }
 
-// The material a Shape draws with when its own is empty
-// (assets/materials/Shape.mat, meta committed with it).
-SHAPE_MATERIAL_GUID :: "346580f8-0bbf-4885-ae8e-047e54e0d471"
+// The material a UiShape draws with when its own is empty
+// (assets/materials/UiUiShape.mat, meta committed with it).
+UI_SHAPE_MATERIAL_GUID :: "346580f8-0bbf-4885-ae8e-047e54e0d471"
 
-shape_material_guid :: proc() -> engine.Asset_GUID {
+ui_shape_material_guid :: proc() -> engine.Asset_GUID {
 	@(static) guid: engine.Asset_GUID
 	if engine.asset_guid_is_empty(guid) {
-		if g, err := uuid.read(SHAPE_MATERIAL_GUID); err == nil do guid = engine.Asset_GUID(g)
+		if g, err := uuid.read(UI_SHAPE_MATERIAL_GUID); err == nil do guid = engine.Asset_GUID(g)
 	}
 	return guid
 }
 
-// How far past the rect the Shape's quad reaches on every side: the room
+// How far past the rect the UiShape's quad reaches on every side: the room
 // its drop shadow needs, 0 without one.
-shape_margin :: proc(s: ^Shape) -> f32 {
+ui_shape_margin :: proc(s: ^UiShape) -> f32 {
 	sh := s.shadow
 	if sh.color.a <= 0 do return 0
 	return math.ceil(max(abs(sh.offset.x), abs(sh.offset.y)) + max(sh.blur, 0) + max(sh.spread, 0) + 1)
 }
 
-// The Shape's geometry: one quad over the rect, grown by the shadow's
+// The UiShape's geometry: one quad over the rect, grown by the shadow's
 // margin, with the shape's values for the shader.
 @(canvas_graphic)
-canvas_populate_Shape :: proc(s: ^Shape, rect: engine.Rect, out: ^[dynamic]engine.Graphic_Quad) {
+canvas_populate_UiShape :: proc(s: ^UiShape, rect: engine.Rect, out: ^[dynamic]engine.Graphic_Quad) {
 	if rect.size.x <= 0 || rect.size.y <= 0 do return
-	m := shape_margin(s)
+	m := ui_shape_margin(s)
 	quad_size := rect.size + 2 * m
 	// The CanvasRenderer's tint (a Button's transition) reaches the fill
 	// through the quad's color. The shape's other colors take it here.
@@ -111,7 +111,7 @@ canvas_populate_Shape :: proc(s: ^Shape, rect: engine.Rect, out: ^[dynamic]engin
 		size       = quad_size,
 		uvs        = {{0, 0}, {1, 0}, {1, 1}, {0, 1}},
 		texture    = white_texture_guid(),
-		material   = shape_material_guid(),
+		material   = ui_shape_material_guid(),
 		properties = props,
 	})
 }
