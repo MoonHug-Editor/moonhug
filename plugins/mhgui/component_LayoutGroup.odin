@@ -6,7 +6,21 @@ import "moonhug:packages/engine"
 Layout_Direction :: enum u8 {
 	Horizontal, // children in a row, left to right
 	Vertical,   // children in a column, top to bottom
-	Grid,       // cells of cell_size, rows top to bottom, each row left to right
+	Grid,       // cells of cell_size, from start_corner along start_axis
+}
+
+// The corner a grid's first cell is in.
+Grid_Corner :: enum u8 {
+	Upper_Left,
+	Upper_Right,
+	Lower_Left,
+	Lower_Right,
+}
+
+// The way a grid fills: a row at a time, or a column at a time.
+Grid_Axis :: enum u8 {
+	Horizontal,
+	Vertical,
 }
 
 // Where the laid-out content sits inside the padded area when it does not
@@ -44,6 +58,8 @@ LayoutGroup :: struct {
 	cell_size:        [2]f32, // Grid
 	constraint:       Grid_Constraint, // Grid
 	constraint_count: i32, // Grid, Fixed_* constraints
+	start_corner:     Grid_Corner `decor:tooltip(desc="Grid: the corner the first child's cell is in.")`,
+	start_axis:       Grid_Axis `decor:tooltip(desc="Grid: Horizontal fills a row, then the next row. Vertical fills a column, then the next column.")`,
 	// Horizontal, Vertical: the children fill the padded area along that
 	// axis. Along the flow they share the room left over, each by its
 	// LayoutElement's flexible share (1 without one). Across it each takes
@@ -104,28 +120,44 @@ layout_arrange :: proc(g: ^LayoutGroup, rect: engine.Rect, sizes: [][2]f32, out:
 		}
 	case .Grid:
 		cell := g.cell_size
-		cols := 1
+		// How many cells fit along an axis of the padded area.
+		fit :: proc(room, cell, gap: f32) -> int {
+			if cell + gap <= 0 do return 1
+			return max(int(math.floor((room + gap) / (cell + gap))), 1)
+		}
+		cols, rows := 1, 1
+		count := max(int(g.constraint_count), 1)
+		// The fixed count, or along the start axis what fits. The other
+		// count is what the children need.
 		switch g.constraint {
 		case .Fixed_Column_Count:
-			cols = max(int(g.constraint_count), 1)
+			cols = count
+			rows = max((n + cols - 1) / cols, 1)
 		case .Fixed_Row_Count:
-			rows := max(int(g.constraint_count), 1)
+			rows = count
 			cols = max((n + rows - 1) / rows, 1)
 		case .Flexible:
-			if cell.x + g.spacing.x > 0 {
-				cols = max(int(math.floor((area.size.x + g.spacing.x) / (cell.x + g.spacing.x))), 1)
+			if g.start_axis == .Horizontal {
+				cols = fit(area.size.x, cell.x, g.spacing.x)
+				rows = max((n + cols - 1) / cols, 1)
+			} else {
+				rows = fit(area.size.y, cell.y, g.spacing.y)
+				cols = max((n + rows - 1) / rows, 1)
 			}
 		}
-		rows := (n + cols - 1) / cols
 		content := [2]f32{
 			f32(cols) * cell.x + f32(cols - 1) * g.spacing.x,
 			f32(rows) * cell.y + f32(rows - 1) * g.spacing.y,
 		}
 		origin_x := area.pos.x + (area.size.x - content.x) * align.x
 		top := area.pos.y + area.size.y - (area.size.y - content.y) * (1 - align.y)
+		from_right := g.start_corner == .Upper_Right || g.start_corner == .Lower_Right
+		from_bottom := g.start_corner == .Lower_Left || g.start_corner == .Lower_Right
 		for i in 0 ..< n {
-			c := i % cols
-			r := i / cols
+			c, r := i % cols, i / cols
+			if g.start_axis == .Vertical do c, r = i / rows, i % rows
+			if from_right do c = cols - 1 - c
+			if from_bottom do r = rows - 1 - r
 			out[i] = engine.Rect{
 				pos  = {origin_x + f32(c) * (cell.x + g.spacing.x), top - f32(r + 1) * cell.y - f32(r) * g.spacing.y},
 				size = cell,

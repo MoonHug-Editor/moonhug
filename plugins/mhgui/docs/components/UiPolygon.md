@@ -41,8 +41,18 @@ The arrow points right and stretches with its rect. The chart is a line through 
 - A [UiGradient](UiGradient.md) on the node runs a gradient across the shape, and [UiShadow](UiShadow.md) and [UiOutline](UiOutline.md) work on it as on any graphic.
 - Fewer than three points fill nothing, and fewer than two draw nothing.
 
+## Editing the points
+
+With the node selected and the Handles tool on (T), the Scene window shows the points:
+
+- A dot on each point. Drag it to move the point. A point may go outside the rect.
+- A smaller dot in the middle of each edge. Drag it to add a point there.
+- A point is removed in the inspector's `points` list.
+
+Each drag is one undo step.
+
 ## Limits
 
-- The points are edited as numbers in the inspector. The Scene window has no handles for them.
+- The Scene window does not remove a point. The inspector's list does.
 - The pointer hits the rect, not the outline.
 - No round corners or round line ends.

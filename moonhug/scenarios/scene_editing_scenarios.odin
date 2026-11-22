@@ -336,3 +336,119 @@ scene_zoom_goes_to_the_pointer :: proc(t: ^testing.T) {
 	frames(r, 3)
 	editor_quit(r)
 }
+
+// The points of a UiPolygon are handles in the Scene window, with the
+// Handles tool: a drag moves a point, and a drag from the middle of an edge
+// adds one. Each is one undo step.
+@(test)
+ui_polygon_points_drag_in_the_scene :: proc(t: ^testing.T) {
+	r := begin(t)
+	project_write(r, "assets/Main.scene", `{"root": 1, "next_local_id": 2, "transforms": [{"local_id": 1, "name": "Main", "is_active": true, "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1, "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}}, "children": [], "components": []}], "nested_scenes": [], "breadcrumbs": [], "components": []}`)
+	project_copy(r, "plugins/mhgui/assets/white.png", "assets/white.png")
+	project_copy(r, "plugins/mhgui/assets/white.png.meta", "assets/white.png.meta")
+	editor_start(r)
+	call(r, "open_scene", `{"path":"assets/Main.scene"}`)
+	frames(r, 3)
+	scene, shown := window_rect(r, "Scene")
+	if !testing.expect(t, shown, "the Scene window is open") do return
+	two_d, has := item_rect(r, "Scene", "2D")
+	if !testing.expect(t, has, "the 2D button") do return
+	click(r, two_d.x + two_d[2] / 2, two_d.y + two_d[3] / 2)
+	frames(r, 3)
+
+	// A 200 x 150 polygon whose rect spans canvas x 200 to 400 and y 125 to
+	// 275. In the Scene window a canvas unit is a world unit from the origin.
+	call(r, "invoke_menu", `{"path":"GameObject/UI/Polygon"}`)
+	frames(r, 3)
+	set :: proc(r: ^Run, path, value: string) {
+		call(r, "set_property", fmt.tprintf(`{{"name":"Polygon","component":"RectTransform","path":%q,"value":%q}}`, path, value))
+	}
+	set(r, "anchor_min", "[0, 0]")
+	set(r, "anchor_max", "[0, 0]")
+	set(r, "anchored_position", "[300, 200, 0]")
+	set(r, "size_delta", "[200, 150]")
+	frames(r, 2)
+	call(r, "run_command", `{"command":"Edit/Frame Selected"}`)
+	frames(r, 20)
+
+	// Where a world point is in the window: two objects made at known spots
+	// of the window say how the view maps.
+	ax, ay := scene.x + scene[2] * 0.2, scene.y + scene[3] * 0.25
+	bx, by := scene.x + scene[2] * 0.8, scene.y + scene[3] * 0.75
+	made_at :: proc(r: ^Run, t: ^testing.T, x, y: f64, name: string) -> ([3]f64, bool) {
+		_right_click(r, x, y)
+		create, has_create := item_rect(r, "popup", "Create Empty")
+		if !testing.expect(t, has_create, "the Scene window's menu offers Create Empty") do return {}, false
+		click(r, create.x + create[2] / 2, create.y + create[3] / 2)
+		frames(r, 4)
+		call(r, "rename_object", fmt.tprintf(`{{"name":"Transform","new_name":%q}}`, name))
+		frames(r, 2)
+		pos, _, made := _object(r, name)
+		return pos, made
+	}
+	a, a_ok := made_at(r, t, ax, ay, "A")
+	b, b_ok := made_at(r, t, bx, by, "B")
+	if !testing.expect(t, a_ok && b_ok && a.x != b.x && a.y != b.y, "two objects to map the view by") do return
+	View :: struct {
+		ax, ay, bx, by: f64,
+		a, b:           [3]f64,
+	}
+	view := View{ax, ay, bx, by, a, b}
+	screen :: proc(v: View, wx, wy: f64) -> (f64, f64) {
+		return v.ax + (wx - v.a.x) / (v.b.x - v.a.x) * (v.bx - v.ax), v.ay + (wy - v.a.y) / (v.b.y - v.a.y) * (v.by - v.ay)
+	}
+	points :: proc(r: ^Run) -> [][2]f64 {
+		list, _ := at(call(r, "get_property", `{"name":"Polygon","component":"UiPolygon","path":"points"}`), "value").(json.Array)
+		out := make([dynamic][2]f64, context.temp_allocator)
+		for p in list {
+			xy, _ := p.(json.Array)
+			if len(xy) == 2 do append(&out, [2]f64{as_f64(xy[0]), as_f64(xy[1])})
+		}
+		return out[:]
+	}
+
+	call(r, "select", `{"name":"Polygon"}`)
+	call(r, "run_command", `{"command":"Scene/Handles Tool"}`)
+	frames(r, 4)
+	before := points(r)
+	if !testing.expectf(t, len(before) == 7, "the menu's arrow has seven points: %v", before) do return
+
+	// The arrow's tip, point 3 at (1, 0.5) of the rect: world (400, 200).
+	// Dragged 50 right and 30 up it is (1.25, 0.7) of the rect.
+	x0, y0 := screen(view, 400, 200)
+	x1, y1 := screen(view, 450, 230)
+	drag_mouse(r, x0, y0, x1, y1)
+	frames(r, 3)
+	moved := points(r)
+	if testing.expectf(t, len(moved) == 7, "a drag on a point adds none: %v", moved) {
+		testing.expectf(t, abs(moved[3].x - 1.25) < 0.03 && abs(moved[3].y - 0.7) < 0.03, "the tip followed the drag: %v", moved[3])
+		testing.expectf(t, moved[2] == before[2] && moved[4] == before[4], "its neighbours stayed: %v %v", moved[2], moved[4])
+	}
+	call(r, "screenshot", `{"target":"scene","max_size":900}`)
+
+	// The middle of the first edge, (0.3, 0.3) of the rect: world (260, 170).
+	// A drag from it adds a point there and takes it 30 down: (0.3, 0.1).
+	x0, y0 = screen(view, 260, 170)
+	x1, y1 = screen(view, 260, 140)
+	drag_mouse(r, x0, y0, x1, y1)
+	frames(r, 3)
+	added := points(r)
+	if testing.expectf(t, len(added) == 8, "a drag from an edge's middle adds a point: %v", added) {
+		testing.expectf(t, abs(added[1].x - 0.3) < 0.03 && abs(added[1].y - 0.1) < 0.03, "the new point is where it was dragged to: %v", added[1])
+	}
+	call(r, "screenshot", `{"target":"scene","max_size":900}`)
+
+	// One undo for the added point, one more for the moved one.
+	call(r, "invoke_menu", `{"path":"Edit/Undo"}`)
+	frames(r, 3)
+	testing.expectf(t, len(points(r)) == 7, "undo takes the added point away: %v", points(r))
+	call(r, "invoke_menu", `{"path":"Edit/Undo"}`)
+	frames(r, 3)
+	back := points(r)
+	testing.expectf(t, len(back) == 7 && back[3] == before[3], "and then puts the tip back: %v", back)
+
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 3)
+	editor_quit(r)
+}

@@ -22,13 +22,15 @@ The slots fill a grid four columns wide, rows top to bottom. Adding a slot place
 
 | Field | Default | What it does |
 |---|---|---|
-| `direction` | Horizontal | Horizontal runs left to right, Vertical top to bottom, Grid in cells, rows top to bottom and each row left to right. |
+| `direction` | Horizontal | Horizontal runs left to right, Vertical top to bottom, Grid in cells, from `start_corner` along `start_axis`. |
 | `padding` | 0 | Space inside the rect's left, right, top and bottom edges. |
 | `spacing` | 8, 8 | Space between items: x across, y down. |
 | `child_alignment` | Upper_Left | Where the laid-out children sit in the padded rect, one of nine positions. |
 | `cell_size` | 100, 100 | Grid: every cell's size. |
-| `constraint` | Flexible | Grid: Flexible fits as many columns as the width allows, Fixed_Column_Count and Fixed_Row_Count use `constraint_count`. |
+| `constraint` | Flexible | Grid: Flexible fits as many cells as the padded rect allows along `start_axis`, columns across or rows down. Fixed_Column_Count and Fixed_Row_Count use `constraint_count`. |
 | `constraint_count` | 2 | Grid: the number of columns or rows. |
+| `start_corner` | Upper_Left | Grid: the corner the first child's cell is in. |
+| `start_axis` | Horizontal | Grid: Horizontal fills a row, then the next row. Vertical fills a column, then the next column. |
 | `expand_width` | off | Row or column: the children fill the padded rect's width, below. |
 | `expand_height` | off | Row or column: the children fill the padded rect's height. |
 
@@ -36,6 +38,8 @@ The slots fill a grid four columns wide, rows top to bottom. Adding a slot place
 
 - A laid-out child's anchors and anchored position are ignored. Its place comes from the flow.
 - In a grid every child is `cell_size`.
+- A grid fills away from its `start_corner`: from Lower_Right with a Vertical axis the first child is the bottom right cell, the next one is above it, and the next column is to the left.
+- A Flexible grid that a [ContentSizeFitter](ContentSizeFitter.md) sizes counts its columns by the width, on either axis.
 - Children without a RectTransform stay out of the layout, and so does a child whose [LayoutElement](LayoutElement.md) says `ignore_layout`.
 
 ## Sizes in a row and a column

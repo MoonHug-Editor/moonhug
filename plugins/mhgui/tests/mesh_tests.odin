@@ -239,3 +239,86 @@ test_effects_colour_and_copy_quads :: proc(t: ^testing.T) {
 	_close(t, quads[0].colors[0].a, 0, "no alpha where the quad had none")
 	_close(t, quads[0].colors[2].a, 0.5, "the shadow's where it was whole")
 }
+
+@(test)
+test_raw_image_uvs :: proc(t: ^testing.T) {
+	// The whole texture is the full quad's uvs.
+	testing.expect_value(t, mhgui.raw_image_uvs({0, 0, 1, 1}), engine.QUAD_UVS_FULL)
+	// The lower left quarter: u 0 to 0.5, and v, which runs down, 1 to 0.5.
+	uvs := mhgui.raw_image_uvs({0, 0, 0.5, 0.5})
+	testing.expect_value(t, uvs[0], [2]f32{0, 1})
+	testing.expect_value(t, uvs[2], [2]f32{0.5, 0.5})
+
+	out := make([dynamic]engine.Graphic_Quad)
+	defer delete(out)
+	r: mhgui.RawImage
+	mhgui.type_reset_RawImage(&r)
+	rect := engine.Rect{pos = {5, 6}, size = {30, 20}}
+	// No texture: the rect in the plugin's white texture, a solid colour.
+	mhgui.canvas_populate_RawImage(&r, rect, &out)
+	testing.expect_value(t, len(out), 1)
+	testing.expect_value(t, out[0].texture, mhgui.white_texture_guid())
+	clear(&out)
+	r.texture.guid = _tex()
+	r.uv_rect = {0.25, 0, 2, 1}
+	mhgui.canvas_populate_RawImage(&r, rect, &out)
+	testing.expect_value(t, out[0].texture, _tex())
+	testing.expect_value(t, out[0].size, [2]f32{30, 20})
+	_close(t, out[0].uvs[1].x, 2.25, "a uv rect wider than the texture")
+}
+
+// A grid starts in any corner and fills a row or a column at a time.
+@(test)
+test_layout_grid_start_corner_and_axis :: proc(t: ^testing.T) {
+	g: mhgui.LayoutGroup
+	mhgui.type_reset_LayoutGroup(&g)
+	g.direction = .Grid
+	g.cell_size = {50, 50}
+	g.spacing = {10, 10}
+	g.child_alignment = .Upper_Left
+	sizes := [][2]f32{{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}}
+	out := make([]engine.Rect, 5)
+	defer delete(out)
+	// 170 wide and 110 tall: three columns and two rows of cells fit.
+	area := engine.Rect{{0, 0}, {170, 110}}
+	at :: proc(r: engine.Rect) -> [2]f32 {
+		return r.pos
+	}
+
+	// Rows from the upper right: the first cell is the right one of the top row.
+	g.start_corner = .Upper_Right
+	mhgui.layout_arrange(&g, area, sizes, out)
+	testing.expect_value(t, at(out[0]), [2]f32{120, 60})
+	testing.expect_value(t, at(out[2]), [2]f32{0, 60})
+	testing.expect_value(t, at(out[3]), [2]f32{120, 0})
+	// Rows from the lower left: the first row is the bottom one.
+	g.start_corner = .Lower_Left
+	mhgui.layout_arrange(&g, area, sizes, out)
+	testing.expect_value(t, at(out[0]), [2]f32{0, 0})
+	testing.expect_value(t, at(out[3]), [2]f32{0, 60})
+
+	// Columns from the upper left: two rows fit the height, so the third
+	// child starts the second column.
+	g.start_corner = .Upper_Left
+	g.start_axis = .Vertical
+	mhgui.layout_arrange(&g, area, sizes, out)
+	testing.expect_value(t, at(out[0]), [2]f32{0, 60})
+	testing.expect_value(t, at(out[1]), [2]f32{0, 0})
+	testing.expect_value(t, at(out[2]), [2]f32{60, 60})
+	testing.expect_value(t, at(out[4]), [2]f32{120, 60})
+	// Columns from the lower right.
+	g.start_corner = .Lower_Right
+	mhgui.layout_arrange(&g, area, sizes, out)
+	testing.expect_value(t, at(out[0]), [2]f32{120, 0})
+	testing.expect_value(t, at(out[1]), [2]f32{120, 60})
+	testing.expect_value(t, at(out[2]), [2]f32{60, 0})
+	// A fixed column count holds on either axis: two columns, three rows,
+	// filled a column at a time.
+	g.start_corner = .Upper_Left
+	g.constraint = .Fixed_Column_Count
+	g.constraint_count = 2
+	area = engine.Rect{{0, 0}, {170, 170}}
+	mhgui.layout_arrange(&g, area, sizes, out)
+	testing.expect_value(t, at(out[2]), [2]f32{0, 0})
+	testing.expect_value(t, at(out[3]), [2]f32{60, 120})
+}

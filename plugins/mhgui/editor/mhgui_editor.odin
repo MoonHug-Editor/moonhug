@@ -431,6 +431,78 @@ property_drawer_Sprite_State :: proc(ctx: ^inspector.Ctx) {
 	if changed do inspector.mark_inspector_changed()
 }
 
+// --- UiPolygon points -------------------------------------------------------------------
+
+// The point being dragged was added by this drag: its index, -1 for none.
+@(private = "file") _polygon_added := -1
+@(private = "file") _polygon_edit: undo.Edit_Session
+
+@(private = "file")
+_polygon_id :: proc(tH: engine.Transform_Handle, slot: u64) -> u64 {
+	return 1 << 40 | (u64(tH.index) + 1) << 12 | slot
+}
+
+@(private = "file")
+_polygon_drag_begin :: proc(p: ^mhgui.UiPolygon, label: string) {
+	owned, _ := engine.transform_get_comp(p.owner, mhgui.UiPolygon)
+	targets := [?]undo.Edit_Target{undo.edit_target_pooled(owned.handle, &p.points, typeid_of([dynamic][2]f32))}
+	_polygon_edit = undo.edit_session_begin(targets[:], label)
+}
+
+// The points of a selected UiPolygon in the Scene window, with the Handles
+// tool: a dot on each point that drags it, and a smaller dot in the middle
+// of each edge that adds a point there and drags it. A point is removed in
+// the inspector's list.
+@(comp_on_scene_handles={component=UiPolygon})
+comp_on_scene_handles_UiPolygon :: proc(p: ^mhgui.UiPolygon, ctx: handles.Gizmo_Context) {
+	if ctx.tool != .Handles || !p.enabled do return
+	placed, ok := _placed(p.owner)
+	if !ok || placed.rect.size.x <= 0 || placed.rect.size.y <= 0 do return
+	rect, xform := placed.rect, placed.xform
+	// A point on the drag plane as a point of the polygon: a fraction of the
+	// rect, which may lie outside it.
+	fraction :: proc(r: engine.Rect, m: matrix[4, 4]f32, world: [3]f32) -> [2]f32 {
+		local := linalg.inverse(m) * [4]f32{world.x, world.y, world.z, 1}
+		return (local.xy - r.pos) / r.size
+	}
+	handles.with_snap(false)
+	n := len(p.points)
+	// The points take the pointer before the rect's corners they may sit on.
+	for i in 0 ..< n {
+		at := _rect_point(rect, xform, p.points[i])
+		d := handles.point(_polygon_id(p.owner, u64(i)), at, _PLANE_NORMAL, prio = _PRIO_PIVOT + 1)
+		handles.dot_outlined(at, _PLANE_NORMAL, handles.world_per_pixels(at, 4), handles.COLOR_HOT if d.hot else _COLOR_PIVOT)
+		if d.started do _polygon_drag_begin(p, "Move Polygon Point")
+		if d.dragging do p.points[i] = fraction(rect, xform, d.point)
+		if d.released do undo.edit_session_end(&_polygon_edit)
+	}
+	// The middle of each edge: of the closing edge too when the outline is
+	// filled or its line is closed.
+	edges := n if (p.fill || p.closed) && n >= 3 else n - 1
+	for i in 0 ..< edges {
+		// While a drag that added a point runs, its edge keeps its handle.
+		mid := (p.points[i] + p.points[(i + 1) % n]) * 0.5
+		at := _rect_point(rect, xform, mid)
+		d := handles.point(_polygon_id(p.owner, 0x800 | u64(i)), at, _PLANE_NORMAL, prio = _PRIO_PIVOT)
+		if _polygon_added < 0 || d.dragging {
+			handles.dot_outlined(at, _PLANE_NORMAL, handles.world_per_pixels(at, 2.5), handles.COLOR_HOT if d.hot else _COLOR_GUIDE)
+		}
+		if d.started {
+			_polygon_drag_begin(p, "Add Polygon Point")
+			inject_at(&p.points, i + 1, fraction(rect, xform, d.point))
+			_polygon_added = i + 1
+			break
+		}
+		if d.dragging && _polygon_added >= 0 && _polygon_added < len(p.points) {
+			p.points[_polygon_added] = fraction(rect, xform, d.point)
+		}
+		if d.released {
+			undo.edit_session_end(&_polygon_edit)
+			_polygon_added = -1
+		}
+	}
+}
+
 // --- Canvas outline --------------------------------------------------------------------
 
 // Every canvas shows its rect in the Scene window, selected or not, so the UI
