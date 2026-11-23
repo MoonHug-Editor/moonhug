@@ -56,25 +56,38 @@ shaders_if_available :: proc() -> bool {
 
 // build_editor: generate, shaders, compile. `out` is named MoonHug so macOS
 // shows that in the App Switcher and menu bar instead of the package name.
-build_editor :: proc(debug: bool) -> bool {
+build_editor :: proc(debug: bool, prof := "") -> bool {
 	if !prebuild() do return false
 	if !shaders_if_available() do return false
 	os.make_directory_all("builds")
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, "odin", "build", "moonhug/editor", IGNORE_ATTRS, COLLECTION, VET)
 	if debug do append(&cmd, "-debug")
+	if prof != "" && prof != "none" {
+		if !tracy_client() do return false
+		append(&cmd, fmt.tprintf("-define:PROF=%s", prof))
+	}
 	append(&cmd, fmt.tprintf("-out:%s", EDITOR_BIN))
 	return step("editor build", ..cmd[:])
+}
+
+// The Tracy client library moonhug/libs/prof links in a profiling build
+// (--prof=zones or --prof=all). Built once, from the tracy submodule.
+TRACY_LIB :: "builds/tracy/libtracy.a"
+
+tracy_client :: proc() -> bool {
+	if os.exists(TRACY_LIB) do return true
+	return step("tracy client", "sh", "moonhug/libs/prof/build_tracy.sh", TRACY_LIB)
 }
 
 // Build then run as a CHILD process, not `odin run`: `odin run` keeps the
 // ~1GB compiler resident for the whole life of the editor just to wait on it.
 cmd_run :: proc(args: []string) -> int {
-	return launch_editor("run")
+	return launch_editor("run", flag_value(args, "--prof"))
 }
 
 cmd_debug :: proc(args: []string) -> int {
-	return launch_editor("debug")
+	return launch_editor("debug", flag_value(args, "--prof"))
 }
 
 // The file that tells a running editor its replacement is built. Lives under
@@ -90,8 +103,8 @@ RELAUNCH_MARKER :: "builds/relaunch_ready"
 // editor to exit, removes the marker and launches the new one. A failed build
 // writes no marker, so the old editor stays up with the compiler output in
 // its terminal.
-launch_editor :: proc(mode: string) -> int {
-	if !build_editor(mode == "debug") do return 1
+launch_editor :: proc(mode: string, prof := "") -> int {
+	if !build_editor(mode == "debug", prof) do return 1
 
 	if pid_str, relaunching := os.lookup_env("MH_RELAUNCH_PID", context.temp_allocator); relaunching {
 		if pid, ok := strconv.parse_int(pid_str); ok {
@@ -126,7 +139,7 @@ launch_editor :: proc(mode: string) -> int {
 
 cmd_build :: proc(args: []string) -> int {
 	if has_flag(args, "--no-plugins") do return 0 if build_without_plugins() else 1
-	if !build_editor(has_flag(args, "--debug")) do return 1
+	if !build_editor(has_flag(args, "--debug"), flag_value(args, "--prof")) do return 1
 	fmt.printfln("mh: built %s", EDITOR_BIN)
 	return 0
 }

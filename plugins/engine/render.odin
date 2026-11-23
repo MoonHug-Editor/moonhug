@@ -7,6 +7,7 @@ package engine
 // so Game window and Scene window render identically by construction.
 
 import gfx "moonhug:libs/gfx"
+import "moonhug:libs/prof"
 import "base:runtime"
 import "core:math"
 import "core:math/linalg"
@@ -203,6 +204,7 @@ render_register_collector :: proc(c: Render_Collector) {
 // registered collector. The skinned meshes the collectors posed are skinned
 // here, all in one submit, before anything draws them.
 render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
+	prof.zone()
 	for c in _render_collectors do c(view, out)
 	gfx.skinning_flush()
 }
@@ -293,6 +295,7 @@ RENDER_ALL_PHASES :: Render_Phases{.Opaque, .Transparent}
 // look, the other modes override every material's shader and color
 // (view.mode). Sets the pass's lights, so each pass that draws calls it.
 render_execute :: proc(view: Render_View, commands: []Render_Command, phases := RENDER_ALL_PHASES) {
+	prof.zone()
 	// A command without its owner is a collector's bug: the editor could
 	// neither pick nor outline what it draws.
 	for c in commands do assert(c.owner != {}, "render_execute: a render command names no owner (its collector must set Render_Command.owner)")
@@ -563,6 +566,7 @@ render_fold_mesh :: proc(mesh: Asset_GUID, part, sub: i32) -> u32 {
 // total and deterministic regardless of sort stability).
 @(private = "file")
 _execute_quads :: proc(view: Render_View, commands: []Render_Command) {
+	prof.zone()
 	quads := make([dynamic]^Render_Command, 0, len(commands), context.temp_allocator)
 	for &cmd in commands {
 		if _, is_quad := cmd.variant.(Draw_Quad); is_quad do append(&quads, &cmd)

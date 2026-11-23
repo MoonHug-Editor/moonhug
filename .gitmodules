@@ -7,3 +7,6 @@
 [submodule "plugins/physics3d/external/CoACD"]
 	path = plugins/physics3d/external/CoACD
 	url = https://github.com/SarahWeiii/CoACD.git
+[submodule "moonhug/external/tracy"]
+	path = moonhug/external/tracy
+	url = https://github.com/wolfpld/tracy.git

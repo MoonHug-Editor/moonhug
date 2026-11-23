@@ -10,6 +10,8 @@
 # make test NAME=pkg.test_name runs a single test. make deps NAME=<plugin>
 # gathers one plugin's dependencies. make build DEBUG=1 builds with -debug,
 # make setup FORCE=1 rebuilds vendored libraries that are already built.
+# make build PROF=zones (or all) builds with the Tracy profiler, also for run
+# and debug (docs/core/Profiling.md).
 
 # mh itself is compiled once into builds/tools/ and rebuilt when its sources
 # change (Odin has no build cache, `odin run` recompiled it on every make), or
@@ -32,9 +34,9 @@ FORCE:
 
 help:      $(MH_BIN) ; @$(MH) help
 setup:     $(MH_BIN) ; @$(MH) setup $(if $(FORCE),--force,)
-run:       $(MH_BIN) ; @$(MH) run
-debug:     $(MH_BIN) ; @$(MH) debug
-build:     $(MH_BIN) ; @$(MH) build $(if $(DEBUG),--debug,) $(if $(NOPLUGINS),--no-plugins,)
+run:       $(MH_BIN) ; @$(MH) run $(if $(PROF),--prof=$(PROF),)
+debug:     $(MH_BIN) ; @$(MH) debug $(if $(PROF),--prof=$(PROF),)
+build:     $(MH_BIN) ; @$(MH) build $(if $(DEBUG),--debug,) $(if $(NOPLUGINS),--no-plugins,) $(if $(PROF),--prof=$(PROF),)
 check-noplugins: $(MH_BIN) ; @$(MH) check-noplugins
 play:      $(MH_BIN) ; @$(MH) play $(PKG) $(FLAGS)
 prebuild:  $(MH_BIN) ; @$(MH) prebuild

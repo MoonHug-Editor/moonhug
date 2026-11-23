@@ -24,6 +24,7 @@ import "base:runtime"
 import "core:hash/xxhash"
 import "core:mem"
 import "core:strings"
+import "moonhug:libs/prof"
 
 @(private = "file")
 _content_epoch: u64 = 1
@@ -129,6 +130,7 @@ canvas_kept_clear :: proc() {
 // graphic's quads with the effects run over them.
 @(private = "file")
 _kept_build :: proc(k: ^_Canvas_Kept, root: Rect) {
+	prof.zone()
 	canvas_rebuilds += 1
 	clear(&k.nodes)
 	clear(&k.drawn)
@@ -186,6 +188,7 @@ _kept_build :: proc(k: ^_Canvas_Kept, root: Rect) {
 // they hold, so text typed into the same memory still counts. Nodes under an
 // inactive one are left out, as they draw nothing.
 canvas_fingerprint :: proc(canvas_tH: Transform_Handle) -> u64 {
+	prof.zone()
 	w := ctx_world()
 	h := u64(0x9E3779B97F4A7C15)
 	stack := make([dynamic]Transform_Handle, context.temp_allocator)

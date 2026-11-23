@@ -9,6 +9,7 @@ import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
 import "moonhug:packages/engine"
+import "moonhug:libs/prof"
 
 Horizontal_Alignment :: enum u8 {
 	Left,
@@ -125,6 +126,7 @@ _Line :: struct {
 // line that an overflow mode cut away has the caret of the last line kept.
 layout_text :: proc(b: ^Backend, p: Layout_Params, text: string, rect: engine.Rect, out: ^[dynamic]Glyph_Quad, carets: ^[dynamic]Caret = nil) -> Layout_Result {
 	if b.metrics == nil || b.glyph == nil do return {}
+	prof.zone()
 	m, ok := b.metrics(p.font, p.size)
 	if !ok do return {}
 	res := Layout_Result{ok = true}

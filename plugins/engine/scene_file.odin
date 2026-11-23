@@ -9,6 +9,7 @@ import "core:slice"
 import "core:strings"
 import "base:runtime"
 import assets "moonhug:libs/assets"
+import "moonhug:libs/prof"
 
 // Walks `ptr` of type `ti` and, for every PPtr / Ref / Ref_Local / Owned found,
 // resolves its `handle` from `local_id`.
@@ -1672,6 +1673,7 @@ resolve_handle :: proc(local_id: Local_ID, id_map: map[Local_ID]Handle) -> (Hand
 // loaded scenes, else they are unloaded first. scene_load_async is the same
 // load over several frames.
 scene_load :: proc(path: string, additive := false) -> ^Scene {
+	prof.zone()
 	sf, ok := scene_file_load(path)
 	if !ok do return nil
 	defer scene_file_destroy(&sf)

@@ -18,6 +18,7 @@ import "core:slice"
 import "core:encoding/uuid"
 import "moonhug:libs/log"
 import gfx "moonhug:libs/gfx"
+import "moonhug:libs/prof"
 
 // A rectangle in canvas units: bottom-left origin, y up, the same
 // orientation as NDC.
@@ -882,6 +883,7 @@ CANVAS_SORTING_LAYER :: i32(127)
 @(render_collector)
 canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
 	if view.kind == .Preview || len(_canvas_graphics) == 0 do return
+	prof.zone()
 	w := ctx_world()
 	stacks := make(map[Transform_Handle][]gfx.Clip_Mask, context.temp_allocator)
 

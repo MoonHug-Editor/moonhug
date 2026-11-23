@@ -31,6 +31,7 @@ import assets "moonhug:libs/assets"
 import "moonhug:editor/progress"
 import crash_journal "moonhug:libs/crash_journal"
 import "moonhug:libs/log"
+import "moonhug:libs/prof"
 import "core:encoding/uuid"
 import "moonhug:editor/session"
 
@@ -239,7 +240,10 @@ main :: proc() {
         // backend owns keyboard/mouse/text/clipboard/DisplaySize/DeltaTime).
         // Waits for the next frame (frame_pacing.odin): the frame-rate cap,
         // and the idle throttle that input ends at once.
-        frame_pacing_wait(proc(e: ^sdl.Event) { im_sdl.ProcessEvent(e) })
+        {
+            prof.zone("wait for the frame")
+            frame_pacing_wait(proc(e: ^sdl.Event) { im_sdl.ProcessEvent(e) })
+        }
 
         // Unity-style Auto Refresh: re-scan assets when the editor window
         // regains focus (git checkouts, external editors). Incremental
@@ -324,7 +328,10 @@ main :: proc() {
         if v, ok := _game_gizmo_view(); ok do gizmos.set_view(v)
         input.set_app_focused(!sim_is_active() || game_window_focused)
         input.set_game_scope(true)
-        sim_tick(gfx.delta_time())
+        {
+            prof.zone("sim tick")
+            sim_tick(gfx.delta_time())
+        }
         input.set_game_scope(false)
 
         // ImGui UI. The windows are window instances, drawn with the other
@@ -347,14 +354,23 @@ main :: proc() {
         // Handles and gizmo hooks record once per frame, before any window
         // renders: every window draws the same shapes (gizmo_pass.odin).
         gizmo_pass()
-        wnd.draw("Scene")
-        scene_windows_render_hosted()
+        {
+            prof.zone("Scene windows")
+            wnd.draw("Scene")
+            scene_windows_render_hosted()
+        }
 
-        wnd.draw(GAME)
+        {
+            prof.zone("Game window")
+            wnd.draw(GAME)
+        }
         preview.restore_all()
 
         // Plugin-opened windows (editor/window, docs/core/Plugins.md).
-        wnd.draw_all()
+        {
+            prof.zone("other windows")
+            wnd.draw_all()
+        }
         command_palette.draw()
         adjust_last_draw()
 
@@ -384,6 +400,7 @@ main :: proc() {
         // into this frame's command buffer during the UI calls above; imgui's
         // copy passes (PrepareDrawData) must come BEFORE the swapchain render
         // pass, and its draw happens inside it (pass_end callback).
+        present_zone := prof.zone_begin("imgui draw and present")
         im.Render()
         dd := im.GetDrawData()
         im_sdlgpu.PrepareDrawData(dd, gfx.command_buffer())
@@ -397,6 +414,8 @@ main :: proc() {
             mcp_bridge_capture_frame()
         }
         gfx.frame_end()
+        prof.zone_end(present_zone)
+        prof.frame_mark()
         imgui_platform_windows()
         progress_overlay_frame_scope(false)
         frames_presented += 1
