@@ -97,10 +97,11 @@ scene_editing_conveniences :: proc(t: ^testing.T) {
 	hier, _ := window_rect(r, "Hierarchy")
 	if !testing.expect(t, has_row, "the Hierarchy lists the image") do return
 	locked := false
-	// The lock sits near the row's right end: its exact place follows the
-	// font, so a few places are tried until the click after it passes over.
-	for inset in ([]f64{44, 36, 52}) {
-		click(r, hier.x + hier[2] - inset, row.y + row[3] / 2)
+	// The lock sits in the gutter at the row's left end: its exact place
+	// follows the font, so a few places are tried until the click after it
+	// passes over.
+	for inset in ([]f64{18, 14, 22}) {
+		click(r, hier.x + inset, row.y + row[3] / 2)
 		frames(r, 2)
 		call(r, "select", `{"name":"Main"}`)
 		frames(r, 2)

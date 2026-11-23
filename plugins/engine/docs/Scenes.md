@@ -242,7 +242,7 @@ An object made from the Scene window's right-click menu lands where the menu was
 
 ### Pick locks
 
-The lock at the right end of a Hierarchy row locks the object against picking: the Scene window passes it and everything under it over, for clicks and for box selection. A floor or a backdrop stops catching the clicks meant for what stands on it.
+The lock in the gutter at the left end of a Hierarchy row locks the object against picking: the Scene window passes it and everything under it over, for clicks and for box selection. A floor or a backdrop stops catching the clicks meant for what stands on it.
 
 - A locked row shows a lock, a row under a locked object a dim one, and the hovered row an open lock to click.
 - A locked object still selects from the Hierarchy, and its gizmo works as before.

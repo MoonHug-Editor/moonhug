@@ -44,7 +44,7 @@ _command_palette_objects_walk :: proc(w: ^engine.World, scene: ^engine.Scene, tH
 		c := engine.pool_get(&w.transforms, engine.Handle(ch))
 		if c == nil do continue
 		if command_palette.matches(c.name, ts) && scene_object_has_components(c, tagged) {
-			icon := string(hierarchy_row_icon(sc, ch, host_ns))
+			icon := string(hierarchy_row_icon(sc, ch, host_ns[ch]))
 			append(rows, command_palette.Row{label = c.name, detail = path, icon = icon, data = new_clone(ch, context.temp_allocator)})
 		}
 		if len(c.children) > 0 do _command_palette_objects_walk(w, sc, ch, fmt.tprintf("%s/%s", path, c.name), ts, tagged, host_ns, rows)

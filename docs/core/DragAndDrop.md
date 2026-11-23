@@ -21,7 +21,7 @@ The Project window's rows drag assets and the Hierarchy's rows drag objects. A r
 | Place | What the rule gets | Where |
 |---|---|---|
 | `scene` | `Scene_Place`: the view, the pixel, and the grid point under it | the Scene window's image |
-| `hierarchy` | `Hierarchy_Place`: a parent and a child index, -1 for the end | before or after a row (its parent, at its place), on a row (its last child), below the rows (the scene's root), the window's background (no parent) |
+| `hierarchy` | `Hierarchy_Place`: a parent and a child index, -1 for the end | before or after a row (its parent, at its place), after an open row (its first child), on a row (its last child), on a scene's header or below the rows (the scene's root), the window's background (no parent) |
 | `project` | `Project_Place`: a folder's path | a folder in the tree or the list, a file (its folder), the empty part of the list (the open folder) |
 
 ## What a drop does

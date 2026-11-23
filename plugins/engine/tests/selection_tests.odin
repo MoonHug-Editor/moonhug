@@ -275,7 +275,7 @@ test_hierarchy_requests_reach_every_copy :: proc(t: ^testing.T) {
 	parent := engine.transform_new("Parent")
 	child := engine.transform_new("Child", parent)
 	session.hierarchy_reveal(child)
-	testing.expect(t, a.alt_open_pending[parent] && b.alt_open_pending[parent], "both copies unfold the object's parent")
+	testing.expect(t, a.open[parent] && b.open[parent], "both copies unfold the object's parent")
 }
 
 // The selection and an Inspector lock survive a restart: saved as scene

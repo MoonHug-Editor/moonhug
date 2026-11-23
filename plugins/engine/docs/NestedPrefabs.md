@@ -219,7 +219,7 @@ Stack frame:
 Scene_Edit_Frame { path: string, guid: Asset_GUID }   // the scene that was open before entering
 ```
 
-- **`>` button** (per nested-scene host row, `_draw_hierarchy_node`, shown where the `[nested scene]` suffix is): push the *current* scene's frame, then `scene_load(source_path)`. Selection/undo cleared on enter (as double-click open already does).
+- **`>` button** (per nested-scene host row, `_draw_object_row` in `hierarchy_rows.odin`, at the row's right end): push the *current* scene's frame, then `scene_load(source_path)`. Selection/undo cleared on enter (as double-click open already does).
 - **`<` button** (scene header, `_draw_scene_section`, left of the name; shown only when `len(stack) > 0`): pop the top frame and `scene_load(frame.path)` to restore the parent.
 - Depth is `len(stack)`; the spec's "stack > 1" = at least one entered level = `len(stack) >= 1` → show `<`.
 - Save/Discard on exit is deferred — for v1, edits are saved explicitly via the existing header **Save**, and `<` just navigates (the prefab file is the source of truth; unsaved live edits are lost on navigate, same as switching scenes today). A Save/Discard prompt on `<` is a later refinement.
