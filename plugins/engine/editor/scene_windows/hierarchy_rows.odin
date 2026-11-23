@@ -494,7 +494,7 @@ _draw_scene_row :: proc(hv: ^Hierarchy_Window, look: ^_Look, dl: ^im.DrawList, r
 		glyph := cstring(icons.ICON_MD_LOCK)
 		im.DrawList_AddText(dl, im.Vec2{rmin.x + (look.gutter_w - im.CalcTextSize(glyph).x) * 0.5, rmin.y + look.text_pad}, active_col if over_lock else im.GetColorU32ImVec4(lock_col), glyph)
 		if over_lock {
-			widgets.tooltip_unchecked("Locked: the Scene window picks no object of this scene. Click to unlock" if locked else "Lock: the Scene window stops picking every object of this scene")
+			widgets.tooltip_unchecked("Pick lock: the Scene window does not pick a locked object or what is under it. This one locks the whole scene")
 			if pressed && !scene_tools.pick_lock_set(root, !locked) do log.warning("Save the scene to keep pick locks: an unsaved scene holds none")
 		}
 	}
@@ -706,15 +706,10 @@ _draw_object_row :: proc(hv: ^Hierarchy_Window, look: ^_Look, dl: ^im.DrawList, 
 			glyph_w := im.CalcTextSize(glyph).x
 			im.DrawList_AddText(dl, im.Vec2{rmin.x + (look.gutter_w - glyph_w) * 0.5, rmin.y + look.text_pad}, im.GetColorU32ImVec4(lock_col), glyph)
 		}
-		if over_lock {
-			switch {
-			case inherited: widgets.tooltip_unchecked("Locked by an object above it")
-			case own:       widgets.tooltip_unchecked("Locked: the Scene window does not pick it or what is under it. Click to unlock")
-			case:           widgets.tooltip_unchecked("Lock: the Scene window stops picking it and what is under it")
-			}
-			if im.IsMouseClicked(.Left) {
-				if !inherited && !scene_tools.pick_lock_set(tH, !own) do log.warning("Save the scene to keep pick locks: an unsaved scene holds none")
-			}
+		// No tooltip here: the lock at the column's top, on the scene's
+		// header, says what the column does.
+		if over_lock && im.IsMouseClicked(.Left) {
+			if !inherited && !scene_tools.pick_lock_set(tH, !own) do log.warning("Save the scene to keep pick locks: an unsaved scene holds none")
 		}
 	}
 
