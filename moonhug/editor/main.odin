@@ -293,6 +293,7 @@ main :: proc() {
         // (widgets/dialog.odin).
         widgets.dialog_frame_begin()
         widgets.text_input_escape_frame() // Escape commits text fields (widgets/text_input.odin)
+        widgets.popup_escape_frame() // Escape closes the innermost menu or popup
         // Agent layout changes, before the dockspace and the windows draw
         // (mcp_window_tools.odin).
         mcp_bridge_window_ops()

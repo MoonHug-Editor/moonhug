@@ -51,3 +51,16 @@ text_input_escape_frame :: proc() {
 		im.ClearActiveID()
 	}
 }
+
+// Escape closes the innermost open menu or popup, as a click outside it
+// does. Once per frame, after text_input_escape_frame: a text field takes
+// its Escape first. The key is then spent for the frame, so a window's own
+// Escape command (clearing a filter) does not run with it. A modal popup
+// keeps its own keys.
+popup_escape_frame :: proc() {
+	if _escape_consumed || !im.IsKeyPressed(.Escape, false) do return
+	open := im.GetCurrentContext().OpenPopupStack.Size
+	if open == 0 || im.GetTopMostPopupModal() != nil do return
+	im.ClosePopupToLevel(open - 1, true)
+	im.SetKeyOwner(.Escape, 0, _INPUT_FLAGS_LOCK_THIS_FRAME)
+}

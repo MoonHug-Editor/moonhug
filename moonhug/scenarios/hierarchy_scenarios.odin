@@ -201,11 +201,10 @@ hierarchy_edit_keys_take_the_selection :: proc(t: ^testing.T) {
 	_, has_cut := item_rect(r, "popup", "Cut")
 	_, has_create := item_rect(r, "popup", "Create Empty")
 	testing.expect(t, has_cut && has_create, "the row's menu shows Cut and Create Empty after the click")
-	// A click on the window's empty space closes the menu.
-	window, _ := window_rect(r, "Hierarchy")
-	click(r, window.x + window[2] / 2, window.y + window[3] - 12)
+	// Escape closes the menu.
+	call(r, "input", `{"steps":[{"type":"key","name":"Escape"},{"type":"key","name":"Escape","down":false},{"type":"wait","frames":3}]}`)
 	_, has_cut = item_rect(r, "popup", "Cut")
-	testing.expect(t, !has_cut, "the menu is closed")
+	testing.expect(t, !has_cut, "Escape closed the menu")
 
 	// Delete on its key takes the selected objects, both of them.
 	copies := _rows(r, "Alpha_copy_copy")
