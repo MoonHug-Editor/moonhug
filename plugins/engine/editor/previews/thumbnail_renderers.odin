@@ -3,7 +3,8 @@ package previews
 // The engine's thumbnail renderers for the shell's cache (moonhug:editor/thumbnails):
 // image files (the texture drawn aspect-fit), .mat (a quad drawn with the
 // material's shader and block), .scene (the instantiated prefab framed by its
-// bounds), and a model's mesh parts and clips as sub-assets.
+// bounds), a model file (its node hierarchy framed the same way), and a
+// model's mesh parts and clips as sub-assets.
 
 import "core:math"
 import "core:math/linalg"
@@ -23,6 +24,8 @@ register_thumbnail_renderers :: proc() {
 	}
 	thumbnails.register(".scene", _thumb_render_scene)
 	thumbnails.register(".mat", _thumb_render_material)
+	thumbnails.register(".glb", _thumb_render_model)
+	thumbnails.register(".gltf", _thumb_render_model)
 	// The only rendered sub-assets are a model's parts and clips. Sprite
 	// slices preview as crops of the resident texture, no render.
 	thumbnails.register_sub(".glb", _thumb_render_model_sub)
@@ -100,6 +103,20 @@ _thumb_render_scene :: proc(path: string, guid: engine.Asset_GUID, sub: engine.L
 	// The world renders whole: a live preview's kept instance goes first.
 	preview_world_release_held()
 	spawned := engine.scene_instantiate_guid(guid, preview_world_root())
+	if spawned == {} do return false
+	defer engine.transform_destroy(spawned)
+	return _thumb_render_framed(spawned, target)
+}
+
+// A model file: its node hierarchy, as a drop into the scene makes it, built
+// in the preview world for the one frame and framed by its bounds.
+@(private = "file")
+_thumb_render_model :: proc(path: string, guid: engine.Asset_GUID, sub: engine.Local_ID, target: ^gfx.Render_Target) -> bool {
+	prev := preview_world_begin()
+	defer preview_world_end(prev)
+	// The world renders whole: a live preview's kept instance goes first.
+	preview_world_release_held()
+	spawned := scene_tools.asset_on_drop_model(engine.PPtr{guid = guid}, preview_world_root())
 	if spawned == {} do return false
 	defer engine.transform_destroy(spawned)
 	return _thumb_render_framed(spawned, target)

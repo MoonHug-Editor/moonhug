@@ -55,6 +55,8 @@ EditorSettings :: struct {
     open_scene_guids:         [dynamic]string,
     recent_scene_guids:       [dynamic]string,          // File/Recent Scenes, newest first (recent_scenes.odin)
     open_window_ids:          [dynamic]string,          // plugin editor windows open last session (window/window.odin)
+    project_pins:             [dynamic]string,          // the Project window's pinned folders (project_pins.odin)
+    project_filter_hides:     bool,                     // the Project window's filter hides folders with no match, else fades them
     has_window_state:         bool,                     // open_window_ids is saved: false on a first run
     scene_overlays:           [dynamic]Overlay_Setting, // dockable overlay placement (dock.odin)
     grid:                     Grid_Settings,            // scene grid (window_scene.odin)

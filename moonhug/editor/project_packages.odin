@@ -103,7 +103,6 @@ project_path_segments :: proc(path: string) -> []Project_Path_Segment {
 
 // A path's own name: the package name for a package root (its assets folder),
 // the last segment otherwise.
-@(private = "file")
 _project_segment_label :: proc(path: string) -> string {
 	if project_path_is_package_root(path) do return project_package_root_name(path)
 	if i := strings.last_index(path, "/"); i >= 0 do return path[i + 1:]

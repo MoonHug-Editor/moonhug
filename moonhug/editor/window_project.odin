@@ -110,6 +110,15 @@ Project_Window :: struct {
     search_count: int,  // assets in the db then: an import or a delete changes it
     search_subs: u64,   // the db's sub-asset lists then (asset_db.sub_assets_gen)
     search_hits: [dynamic]Project_Search_Hit,
+    // The search box filters in place instead of searching the project: the
+    // folder the list shows keeps its folders and shows the files that match.
+    filter_mode: bool,
+    filtering: bool, // this frame: filter_mode with words in the box
+    // What the hits say for a filter: the files that match, a file that
+    // holds a matching sub-asset among them, and every folder with one of
+    // them somewhere under it. The keys are parts of the hits' own paths.
+    filter_files: map[string]bool,
+    filter_dirs: map[string]bool,
 }
 
 // A search hit: an asset path and whether it is a folder, or a sub-asset of
@@ -169,6 +178,8 @@ _project_window_free :: proc(pv: ^Project_Window) {
     delete(pv.search_for)
     for h in pv.search_hits do delete(h.path)
     delete(pv.search_hits)
+    delete(pv.filter_files)
+    delete(pv.filter_dirs)
     pv^ = {}
 }
 
@@ -201,6 +212,7 @@ Project_Row :: struct {
     is_link: bool,
     sub:     core.Local_ID, // not 0: the sub-asset of the file at `path` with this id
     hit:     bool,          // a sub-asset found by a search: its file is beside its name
+    faded:   bool,          // a folder with no file that passes the filter under it
 }
 
 
@@ -301,6 +313,8 @@ _project_tree_request_open :: proc(path: string, open: bool) {
 // tree, so the highlighted hit doesn't vanish.
 _project_cancel_search :: proc() {
     mem.zero(&_pv.search_buf, len(_pv.search_buf))
+    // A filter never left the folder: nothing to go to.
+    if _pv.filter_mode do return
     sel := projectWindowData.selectedFile
     if sel != "" && os.exists(sel) {
         parent := filepath.dir(sel) // slice into sel — don't delete
@@ -318,8 +332,9 @@ _project_cancel_search :: proc() {
 // history.
 _project_enter_dir :: proc(full_path: string) {
     _project_set_current(full_path)
-    // Navigating to a folder leaves search mode — the list shows the folder now.
-    mem.zero(&_pv.search_buf, len(_pv.search_buf))
+    // Navigating to a folder leaves search mode: the list shows the folder
+    // now. A filter stays, it is about whatever folder is shown.
+    if !_pv.filter_mode do mem.zero(&_pv.search_buf, len(_pv.search_buf))
     _pv.tree_reveal = true
 }
 
@@ -569,6 +584,8 @@ _project_apply_rename :: proc() {
         new_meta := strings.concatenate({new_path, ".meta"}, context.temp_allocator)
         os.rename(old_meta, new_meta)
     }
+    project_record_moves({{old_path, new_path}}, "Rename")
+    project_pins_moved(old_path, new_path)
     project_dir_cache_invalidate()
     if _pv.rename_in_tree {
         // Renamed folder: if it was the current path, follow it.
@@ -793,7 +810,7 @@ _project_draw_grid_sub_cell :: proc(parent_path: string, guid: core.Asset_GUID, 
 }
 
 // One grid cell: a folder's or a file's.
-_project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool, cell: f32, is_link := false) {
+_project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool, cell: f32, is_link := false, faded := false) {
     label_h := im.GetTextLineHeightWithSpacing()
     im.PushIDStr(strings.clone_to_cstring(full_path, context.temp_allocator), nil)
     defer im.PopID()
@@ -809,7 +826,7 @@ _project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool
     }
 
     is_selected := _pv.active_pane == .List && sel_proj_is(full_path)
-    dim := (!is_dir && !is_known_extension(full_path)) || project_file_is_cut(full_path)
+    dim := faded || (!is_dir && !is_known_extension(full_path)) || project_file_is_cut(full_path)
 
     // Sub-asset fold arrow (Unity's grid expander): drawn on the art's right
     // edge via the draw list — an overlay ITEM would become the layout
@@ -1127,6 +1144,28 @@ _project_search_hits :: proc(query: string) -> []Project_Search_Hit {
         if a.path != b.path do return a.path < b.path
         return a.sub_name < b.sub_name
     })
+    // For a filter: the files that match and the folders above them. One
+    // pass over the hits, here where they change, never per frame.
+    {
+        context.allocator = runtime.default_allocator()
+        clear(&_pv.filter_files)
+        clear(&_pv.filter_dirs)
+        for h in _pv.search_hits {
+            if h.is_dir {
+                _pv.filter_dirs[h.path] = true
+            } else {
+                _pv.filter_files[h.path] = true
+            }
+            above := h.path
+            for {
+                i := strings.last_index(above, "/")
+                if i <= 0 do break
+                above = above[:i]
+                if above in _pv.filter_dirs do break
+                _pv.filter_dirs[above] = true
+            }
+        }
+    }
     return _pv.search_hits[:]
 }
 
@@ -1228,6 +1267,17 @@ _project_reveal_path :: proc(path: string, select: bool, sub: core.Local_ID = 0)
 
 _PROJECT_MIN_PANE :: f32(120)
 
+// The window menu's setting for the filter: a folder with no match under it
+// is left out of the list instead of faded.
+@(window_menu={window="Project", label="Filter Hides Folders Without Matches", checked=project_filter_hides_checked})
+project_filter_hides_toggle :: proc(window: session.Window_Ref) {
+    editor_settings.project_filter_hides = !editor_settings.project_filter_hides
+}
+
+project_filter_hides_checked :: proc(window: session.Window_Ref) -> bool {
+    return editor_settings.project_filter_hides
+}
+
 // The menu of a right click in either pane: the Edit menu's selection band
 // (Cut, Copy, Paste, Duplicate, Rename, Delete), which acts on the selected
 // files here, then the Assets menu up to its database band.
@@ -1290,11 +1340,16 @@ project_window_draw :: proc(w: ^wnd.Window) {
         im.EndPopup()
     }
     im.SameLine()
-    im.SetNextItemWidth(-(clear_btn_w + im.GetStyle().ItemSpacing.x) if query != "" else -1)
+    // Right of the box: "x" while it has words, then the mode. Searching
+    // lists the hits of the whole project. Filtering uses the same words in
+    // place: the folder shown keeps its folders and shows the files that match.
+    right := clear_btn_w + im.GetStyle().ItemSpacing.x
+    im.SetNextItemWidth(-(right * 2) if query != "" else -right)
     // NoTabStop: Tab must switch panes (the keymap), never tab-focus the
     // search box. Clicking into it still works.
     im.PushItemFlag({.NoTabStop}, true)
-    im.InputTextWithHint("##prj_search", "Search: name, t:Type, c:Component", cstring(raw_data(_pv.search_buf[:])), c.size_t(len(_pv.search_buf)), {})
+    hint := cstring("Filter: name, t:Type, c:Component") if _pv.filter_mode else cstring("Search: name, t:Type, c:Component")
+    im.InputTextWithHint("##prj_search", hint, cstring(raw_data(_pv.search_buf[:])), c.size_t(len(_pv.search_buf)), {})
     im.PopItemFlag()
     if query != "" {
         im.SameLine()
@@ -1303,6 +1358,14 @@ project_window_draw :: proc(w: ^wnd.Window) {
             query = ""
         }
     }
+    im.SameLine()
+    if _pv.filter_mode do im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
+    toggle := im.Button(icons.ICON_MD_FILTER_LIST + "###prj_filter_mode", im.Vec2{clear_btn_w, 0})
+    if _pv.filter_mode do im.PopStyleColor()
+    widgets.tooltip("Filter in place: the folder shown keeps its folders and shows only the files that match the words. Off: the words search the whole project")
+    if toggle do _pv.filter_mode = !_pv.filter_mode
+    searching := query != "" && !_pv.filter_mode
+    _pv.filtering = query != "" && _pv.filter_mode
 
     // Tree | files, split by a draggable splitter, under the toolbar.
     split_avail := im.GetContentRegionAvail()
@@ -1341,12 +1404,12 @@ project_window_draw :: proc(w: ^wnd.Window) {
     }
 
     _pv.grid_cols = 0
-    result_count := _project_list_build(query)
+    result_count := _project_list_build(query if searching else "", query if _pv.filtering else "")
 
     // Where the list is, or what the selection is: above the rows, where
     // the search box used to sit. Text height, not frame height — nothing
     // here is a widget, so the bar stays as thin as one line.
-    if query != "" {
+    if searching {
         im.TextUnformatted(strings.clone_to_cstring(fmt.tprintf("%d found", _pv.result_count), context.temp_allocator))
     } else if sel_proj_count() > 1 {
         im.TextUnformatted(strings.clone_to_cstring(fmt.tprintf("%d selected", sel_proj_count()), context.temp_allocator))
@@ -1369,17 +1432,17 @@ project_window_draw :: proc(w: ^wnd.Window) {
     im.Dummy({0, im.GetStyle().WindowPadding.y - im.GetStyle().ItemSpacing.y})
     // The zoom slider's low end is rows, anything above it a grid of
     // thumbnails scaling with the value. The packages are always rows.
-    if editor_settings.project_zoom > 0 && (query != "" || _pv.current_path != _PROJECT_PACKAGES_PATH) {
+    if editor_settings.project_zoom > 0 && (searching || _pv.current_path != _PROJECT_PACKAGES_PATH) {
         _project_list_draw_grid(40 + editor_settings.project_zoom * 56)
     } else {
         _project_list_draw_rows()
     }
     // Files dragged in from the OS land on the folder under the pointer, or
     // in the folder the list shows.
-    _project_os_drop(_pv.current_path if query == "" else "", im.GetWindowPos(), im.GetWindowPos() + im.GetWindowSize())
+    _project_os_drop(_pv.current_path if !searching else "", im.GetWindowPos(), im.GetWindowPos() + im.GetWindowSize())
     // The rest of the pane is the open folder, as a drop target. A rect of
     // its own, no item: clicks there stay the pane's.
-    if query == "" && drag.items() != nil && _pv.current_path != _PROJECT_PACKAGES_PATH {
+    if !searching && drag.items() != nil && _pv.current_path != _PROJECT_PACKAGES_PATH {
         if avail := im.GetContentRegionAvail(); avail.y > 8 && avail.x > 8 {
             from := im.GetCursorScreenPos()
             if im.BeginDragDropTargetCustom({from, from + avail}, im.GetID("##prj_open_folder_drop")) {
@@ -1437,9 +1500,9 @@ project_window_draw :: proc(w: ^wnd.Window) {
 // pane (Tree or List). The row lists are the ones the last draw built.
 
 // Adds a row to the list pane's rows, its strings in the window's row arena.
-_project_list_row_add :: proc(name, path: string, is_dir: bool, sub: core.Local_ID = 0, is_link := false, hit := false) {
+_project_list_row_add :: proc(name, path: string, is_dir: bool, sub: core.Local_ID = 0, is_link := false, hit := false, faded := false) {
     a := virtual.arena_allocator(&_pv.list_arena)
-    append(&_pv.list_rows, Project_Row{name = strings.clone(name, a), path = strings.clone(path, a), is_dir = is_dir, sub = sub, is_link = is_link, hit = hit})
+    append(&_pv.list_rows, Project_Row{name = strings.clone(name, a), path = strings.clone(path, a), is_dir = is_dir, sub = sub, is_link = is_link, hit = hit, faded = faded})
 }
 
 // The rows of an unfolded file's sub-assets follow their file's row.
@@ -1714,6 +1777,10 @@ project_keymap :: proc(km: ^keymap.Keymap) {
     keymap.bind(km, "Enter", "Project/Open", mac = "Ctrl+Down")
     keymap.bind(km, "Backspace", "Project/Up Level", mac = "Ctrl+Up")
     // Cut, Copy, Paste, Duplicate and Delete are the Edit menu's, with its
-    // keys: they act on the selection wherever it is (edit_menu.odin).
+    // keys: they act on the selection wherever it is (edit_menu.odin). The
+    // Delete key is bound per window, since other windows have a Delete of
+    // their own.
+    keymap.bind(km, "Delete", "Edit/Delete")
+    keymap.bind(km, "Ctrl+Delete", "Edit/Delete")
     keymap.bind(km, "Escape", "Project/Cancel Search")
 }

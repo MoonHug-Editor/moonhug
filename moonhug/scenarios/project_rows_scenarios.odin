@@ -33,7 +33,15 @@ _rects :: proc(r: ^Run, label: string) -> [][4]f64 {
 	matches, is_list := at(res, "matches").(json.Array)
 	if !is_list do return nil
 	out := make([dynamic][4]f64, context.temp_allocator)
-	for m in matches do append(&out, [4]f64{as_f64(at(m, "x")), as_f64(at(m, "y")), as_f64(at(m, "width")), as_f64(at(m, "height"))})
+	for m in matches {
+		// The label is a part of the text found: "Art" is in the footer's
+		// "assets/Art" too. A row's text is its name, after its glyph when
+		// the glyph is drawn with it. The path bar is one text: its first
+		// folder starts it.
+		text := as_string(at(m, "label"))
+		if text != label && !strings.has_suffix(text, fmt.tprintf("  %s", label)) && !strings.has_prefix(text, fmt.tprintf("%s ", label)) do continue
+		append(&out, [4]f64{as_f64(at(m, "x")), as_f64(at(m, "y")), as_f64(at(m, "width")), as_f64(at(m, "height"))})
+	}
 	return out[:]
 }
 
@@ -330,6 +338,158 @@ project_takes_files_dropped_from_the_os :: proc(t: ^testing.T) {
 	if !testing.expect(t, shown && len(keep) == 1, "the list shows the root") do return
 	drop(r, keep[0].x + 40, window.y + window[3] - 70, abs(r, "outside/Other.scene"))
 	testing.expect(t, os.exists(project_path(r, "assets/Other.scene")), "a drop on the list's empty space copies into the folder it shows")
+
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	editor_quit(r)
+}
+
+// A move by drag and a rename are undo steps: the file goes back with its
+// .meta, and comes again on redo.
+@(test)
+project_moves_and_renames_undo :: proc(t: ^testing.T) {
+	r := begin(t)
+	project_write(r, "assets/Rock.scene", _scene("Rock"))
+	project_write(r, "assets/Rock.scene.meta", `{"guid": "` + _ROCK_GUID + `"}`)
+	project_write(r, "assets/Art/Inside.scene", _scene("Inside"))
+	editor_start(r)
+	call(r, "ping_asset", `{"path":"assets/Rock.scene"}`)
+	frames(r, 5)
+
+	rock := _rects(r, "Rock.scene")
+	art := _rects(r, "Art")
+	if !testing.expectf(t, len(rock) == 1 && len(art) == 2, "the root lists Rock.scene and Art: %v, %v", rock, art) do return
+	drag_mouse(r, rock[0].x + 10, rock[0].y + rock[0][3] / 2, art[1].x + 10, art[1].y + art[1][3] / 2)
+	frames(r, 3)
+	if !testing.expect(t, os.exists(project_path(r, "assets/Art/Rock.scene")), "Rock.scene moved into Art") do return
+
+	call(r, "invoke_menu", `{"path":"Edit/Undo"}`)
+	frames(r, 4)
+	testing.expect(t, os.exists(project_path(r, "assets/Rock.scene")) && !os.exists(project_path(r, "assets/Art/Rock.scene")), "undo puts Rock.scene back")
+	testing.expectf(t, _guid_of(r, "assets/Rock.scene.meta") == _ROCK_GUID, "with its .meta and its id: %v", _guid_of(r, "assets/Rock.scene.meta"))
+	call(r, "invoke_menu", `{"path":"Edit/Redo"}`)
+	frames(r, 4)
+	testing.expect(t, os.exists(project_path(r, "assets/Art/Rock.scene")) && !os.exists(project_path(r, "assets/Rock.scene")), "redo moves it again")
+	call(r, "invoke_menu", `{"path":"Edit/Undo"}`)
+	frames(r, 4)
+
+	// A rename: the new name, then the old one back.
+	rock = _rects(r, "Rock.scene")
+	if !testing.expectf(t, len(rock) == 1, "Rock.scene is listed in the root again: %v", rock) do return
+	click(r, rock[0].x + 10, rock[0].y + rock[0][3] / 2)
+	call(r, "invoke_menu", `{"path":"Edit/Rename"}`)
+	frames(r, 3)
+	call(r, "input", `{"steps":[{"type":"text","text":"Boulder.scene"},{"type":"wait","frames":2},{"type":"key","name":"Enter"},{"type":"key","name":"Enter","down":false},{"type":"wait","frames":5}]}`)
+	if !testing.expect(t, os.exists(project_path(r, "assets/Boulder.scene")) && !os.exists(project_path(r, "assets/Rock.scene")), "the rename gave the file its new name") do return
+	call(r, "invoke_menu", `{"path":"Edit/Undo"}`)
+	frames(r, 4)
+	testing.expect(t, os.exists(project_path(r, "assets/Rock.scene")) && !os.exists(project_path(r, "assets/Boulder.scene")), "undo gives it the old name back")
+	testing.expectf(t, _guid_of(r, "assets/Rock.scene.meta") == _ROCK_GUID, "with the same id: %v", _guid_of(r, "assets/Rock.scene.meta"))
+
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	editor_quit(r)
+}
+
+@(private = "file")
+_right_click :: proc(r: ^Run, x, y: f64) {
+	call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":1}},{{"type":"down","button":"right"}},{{"type":"wait","frames":2}},{{"type":"up","button":"right"}},{{"type":"wait","frames":5}}]}}`, x, y))
+}
+
+// A pinned folder shows above the tree, takes the list there with a click,
+// follows its folder when that moves, and is kept in the settings.
+@(test)
+project_pinned_folders :: proc(t: ^testing.T) {
+	r := begin(t)
+	project_write(r, "assets/Keep.scene", _scene("Keep"))
+	project_write(r, "assets/Art/Inside.scene", _scene("Inside"))
+	project_write(r, "assets/Box/Lid.scene", _scene("Lid"))
+	editor_start(r)
+	call(r, "ping_asset", `{"path":"assets/Keep.scene"}`)
+	frames(r, 5)
+
+	art := _rects(r, "Art")
+	if !testing.expectf(t, len(art) == 2, "Art is in the tree and the list: %v", art) do return
+	_right_click(r, art[1].x + 10, art[1].y + art[1][3] / 2)
+	pin, offered := item_rect(r, "popup", "Pin Folder")
+	if !testing.expect(t, offered, "a folder's menu offers Pin Folder") do return
+	click(r, pin.x + 10, pin.y + pin[3] / 2)
+	frames(r, 3)
+	art = _rects(r, "Art")
+	if !testing.expectf(t, len(art) == 3, "the pinned Art shows above the tree too: %v", art) do return
+	testing.expectf(t, art[0].y < art[1].y, "above the tree's row: %v", art)
+
+	// Into Box, then the pin: the list is in Art again.
+	box := _rects(r, "Box")
+	if !testing.expectf(t, len(box) == 2, "Box is in the tree and the list: %v", box) do return
+	click(r, box[0].x + 10, box[0].y + box[0][3] / 2)
+	testing.expect(t, len(_rects(r, "Lid.scene")) == 1, "the list shows Box")
+	art = _rects(r, "Art")
+	click(r, art[0].x + 10, art[0].y + art[0][3] / 2)
+	testing.expect(t, len(_rects(r, "Inside.scene")) == 1, "a click on the pin shows Art")
+
+	// Art moves into Box: the pin follows it.
+	roots := _rects(r, "assets")
+	click(r, roots[0].x + 10, roots[0].y + roots[0][3] / 2)
+	art = _rects(r, "Art")
+	box = _rects(r, "Box")
+	if !testing.expectf(t, len(art) == 3 && len(box) == 2, "the root lists Art and Box: %v, %v", art, box) do return
+	drag_mouse(r, art[2].x + 10, art[2].y + art[2][3] / 2, box[1].x + 10, box[1].y + box[1][3] / 2)
+	frames(r, 4)
+	if !testing.expect(t, os.exists(project_path(r, "assets/Box/Art/Inside.scene")), "Art moved into Box") do return
+	art = _rects(r, "Art")
+	if !testing.expectf(t, len(art) >= 1, "the pin is still there: %v", art) do return
+	click(r, art[0].x + 10, art[0].y + art[0][3] / 2)
+	testing.expect(t, len(_rects(r, "Inside.scene")) == 1, "and still shows Art, where it is now")
+
+	editor_quit(r)
+	pins, _ := at(project_json(r, "UserSettings/editor_settings.json"), "project_pins").(json.Array)
+	testing.expectf(t, len(pins) == 1 && as_string(pins[0]) == "assets/Box/Art", "the pin is saved with the folder's new path: %v", pins)
+}
+
+// The search box's words used in place: the folder keeps its folders and
+// shows the files that match, and a folder with no match is left out when
+// the window's setting says so.
+@(test)
+project_filter_in_place :: proc(t: ^testing.T) {
+	r := begin(t)
+	project_write(r, "assets/Rock.scene", _scene("Rock"))
+	project_write(r, "assets/Stone.scene", _scene("Stone"))
+	project_write(r, "assets/Art/RockTwo.scene", _scene("RockTwo"))
+	project_write(r, "assets/Empty/Other.scene", _scene("Other"))
+	editor_start(r)
+	call(r, "ping_asset", `{"path":"assets/Stone.scene"}`)
+	frames(r, 5)
+
+	TYPE :: `{{"steps":[{{"type":"text","text":%q}},{{"type":"wait","frames":4}}]}}`
+	field, found := item_rect(r, "Project", "Search: name")
+	if !testing.expect(t, found, "the Project window has its search field") do return
+	// The field starts after the "+" button its line begins with.
+	click(r, field.x + 60, field.y + field[3] / 2)
+	call(r, "input", fmt.tprintf(TYPE, "rock"))
+
+	// Searching: the hits of the whole project, as a flat list with paths.
+	testing.expect(t, len(_rects(r, "Art/RockTwo.scene")) == 1 && len(_rects(r, "Rock.scene")) >= 1, "a search lists the hits of every folder")
+	testing.expect(t, len(_rects(r, "Stone.scene")) == 0, "and no file that does not match")
+
+	// Filtering: the same words in place.
+	mode, has_mode := item_rect(r, "Project", "\ue152")
+	if !testing.expect(t, has_mode, "the search box has its mode button") do return
+	click(r, mode.x + mode[2] / 2, mode.y + mode[3] / 2)
+	frames(r, 3)
+	testing.expect(t, len(_rects(r, "Rock.scene")) == 1 && len(_rects(r, "Stone.scene")) == 0, "the folder shows its matching file only")
+	testing.expect(t, len(_rects(r, "Art/RockTwo.scene")) == 0, "and no file of another folder")
+	// In the tree and in the list each.
+	testing.expectf(t, len(_rects(r, "Art")) == 2 && len(_rects(r, "Empty")) == 2, "its folders stay, the one with no match too: %v, %v", _rects(r, "Art"), _rects(r, "Empty"))
+
+	// Into Art: the filter stays on.
+	art := _rects(r, "Art")
+	call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":1}},{{"type":"down"}},{{"type":"up"}},{{"type":"wait","frames":1}},{{"type":"down"}},{{"type":"up"}},{{"type":"wait","frames":4}}]}}`, art[1].x + 10, art[1].y + art[1][3] / 2))
+	testing.expect(t, len(_rects(r, "RockTwo.scene")) == 1, "a folder opened under the filter shows its matching file")
+
+	// With the window's setting, a folder with no match is left out of the list.
+	call(r, "editor_setting", `{"name":"project_filter_hides","value":"true"}`)
+	roots := _rects(r, "assets")
+	click(r, roots[0].x + 10, roots[0].y + roots[0][3] / 2)
+	testing.expectf(t, len(_rects(r, "Empty")) == 1 && len(_rects(r, "Art")) == 2, "Empty is in the tree only, Art in both: %v, %v", _rects(r, "Empty"), _rects(r, "Art"))
 
 	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
 	editor_quit(r)

@@ -19,6 +19,8 @@ ICON_MD_MAX :: 0xf8ff
 ICON_MD_FOLDER      :: "\ue2c7"   // folder
 ICON_MD_FOLDER_OPEN :: "\ue2c8"   // folder_open
 ICON_MD_FOLDER_LINK :: "\ue157"   // link: a symlinked folder (plugin links in packages/)
+ICON_MD_KEEP        :: "\uf027"   // keep: a pinned folder
+ICON_MD_FILTER_LIST :: "\ue152"   // filter_list: the Project window's filter mode
 ICON_MD_DESCRIPTION :: "\ue873"   // description
 ICON_MD_IMAGE       :: "\ue3f4"   // image
 ICON_MD_MOVIE       :: "\ue684"   // movie

@@ -16,11 +16,19 @@ The project's files. A folder tree on the left, the contents of the folder it sh
 - A click on the arrow, or a double click on the row, folds the folder.
 - A right click shows the folder and opens the Assets menu for it.
 
+### Pinned folders
+
+- Assets, Pin Folder keeps the selected folder in a list above the tree. Any folder can be pinned, a package's row too. Unpin Folder takes it out.
+- A click on a pin shows that folder in the list and opens the tree to it. A pin takes dragged files as its folder does.
+- A pin follows its folder through a move or a rename. A pin whose folder is gone is not shown.
+- The pins are the developer's own, kept in `UserSettings/editor_settings.json`.
+
 ## The list
 
 - The path bar on top names the folder, each part a link to that folder. With several items selected it shows their count, and during a search the number of hits.
 - Folders first, then files. A file with sub-assets has a fold arrow, and its sub-assets are rows under it.
 - The slider in the footer picks the form: rows at its low end, a grid of thumbnails above it, larger with the value.
+- A thumbnail is the asset drawn small: an image, a material, a scene, a model with its parts together. Other files show the glyph of their type.
 - A name too long for its row or cell is cut in the middle with its extension kept. The whole name shows when the pointer rests on it.
 - The footer shows the path of the selected item.
 - `*` after a name marks a file with unsaved changes. A file of an unknown type and a cut file are dimmed.
@@ -38,6 +46,7 @@ The project's files. A folder tree on the left, the contents of the folder it sh
 - While the drag hovers, its tooltip says what the drop does. A folded folder of the tree opens when the drag rests on it, and a pane scrolls when the drag is near its top or bottom edge.
 - When a name is taken in the target folder, the editor asks: Replace moves what is there to the Trash, Keep Both gives the new item another name, Skip leaves both where they are. One answer covers every clash of the drop. A paste asks the same.
 - The roots do not move: `assets`, `packages` and a package's assets folder.
+- A move and a rename are undo steps: Edit, Undo puts the items back where they were, each with its `.meta`, and the list shows them. A copy, a new file and a delete are not. An item that Replace sent to the Trash stays there.
 - Cut and Paste move files too, and Copy and Paste copy them. A copy gets a new id, and one made beside its source gets a numbered name.
 
 ## Files from outside
@@ -57,6 +66,15 @@ The project's files. A folder tree on the left, the contents of the folder it sh
 
 The search box takes the words [Windows](/docs/core/Windows.md#search-fields) lists. Its hits are files, folders and sub-assets of the whole project, shown as rows with their paths or as cells. Escape ends the search and shows the selected hit's folder.
 
+### Filtering in place
+
+The button right of the box switches it to a filter. The same words then apply to the folder the list shows:
+
+- The folder keeps its folders and shows only its files that match. A file that holds a matching sub-asset matches.
+- The filter stays on from folder to folder, and the path bar stays.
+- A folder with no match anywhere under it is faded, in the list and in the tree. With Filter Hides Folders Without Matches in the window's menu, the list leaves it out.
+- Escape clears the words.
+
 ## Keys
 
 | Key | Command |
@@ -71,11 +89,12 @@ The search box takes the words [Windows](/docs/core/Windows.md#search-fields) li
 | Backspace, Cmd+Up on macOS | The parent folder |
 | Ctrl+X, Ctrl+C, Ctrl+V | Edit/Cut, Edit/Copy, Edit/Paste |
 | Ctrl+D | Edit/Duplicate |
-| Ctrl+Backspace, Delete | Edit/Delete |
+| Ctrl+Backspace, Delete, Ctrl+Delete | Edit/Delete |
 | Escape | End the search |
 
 ## Cost
 
 - Each pane keeps a flat list of its rows and draws only the ones on screen, in the grid a row of cells at a time. A cell or a row asks for its thumbnail and its sub-assets only while it is on screen.
 - The tree's rows are kept between frames. They are built again when a folder is opened or closed, when the editor changes files, and twice a second for changes made outside the editor. That check looks at the open folders only: a closed folder keeps its arrow from the last time it was read.
+- A filter reads two sets, the files that match and the folders above them, made from the search's hits when those change.
 - A folder's listing is cached (`project_dir_cache.odin`). Twice a second the cache checks the folder's modification time, and reads the folder again only when it moved.

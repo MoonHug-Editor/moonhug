@@ -287,14 +287,57 @@ _tree_drag_hover: u32
 @(private = "file")
 _tree_drag_since: f64
 
-// Draws the tree pane's rows.
+// The pinned folders, above the tree: a row each, a click shows the folder.
+// A pin whose folder is gone is passed over.
+@(private = "file")
+_pins_draw :: proc(look: ^_Rows_Look, dl: ^im.DrawList, dragging: bool) {
+    shown := 0
+    for path in editor_settings.project_pins {
+        if !project_is_folder(path) do continue
+        shown += 1
+        im.PushIDInt(_rows_id(path, 1))
+        clicked := im.InvisibleButton("##pin", im.Vec2{look.width, look.row_h})
+        rmin := im.GetItemRectMin()
+        rmax := im.Vec2{rmin.x + look.width, rmin.y + look.row_h}
+        hovered := im.IsItemHovered({})
+        if hovered && !dragging do im.DrawList_AddRectFilled(dl, rmin, rmax, look.hovered)
+        if hovered && _project_os_drag() do _project_os_place(path, rmin, rmax)
+        if dragging && im.BeginDragDropTarget() {
+            drag.target(drag.Project_Place{folder = path})
+            im.EndDragDropTarget()
+        }
+        x := rmin.x + look.pad_x
+        im.DrawList_AddText(dl, im.Vec2{x, rmin.y + look.text_pad}, look.dim, icons.ICON_MD_KEEP)
+        name_x := x + look.icon_w + 2
+        name := _project_segment_label(path)
+        label, cut := _project_fit_name(name, rmax.x - name_x - look.pad_x)
+        im.DrawList_AddText(dl, im.Vec2{name_x, rmin.y + look.text_pad}, look.text, label)
+        // The whole path tells two pins of one name apart.
+        if hovered && !dragging do _project_name_tooltip(path if !cut else name)
+        if clicked || (hovered && im.IsMouseClicked(.Right)) {
+            _project_set_current(path)
+            _project_set_selected(path)
+            _project_inspectors_refresh()
+            _pv.tree_reveal = true
+        }
+        im.PopID()
+    }
+    if shown == 0 do return
+    // A line between the pins and the tree.
+    at := im.GetCursorScreenPos()
+    im.DrawList_AddLine(dl, im.Vec2{at.x, at.y + 3}, im.Vec2{at.x + look.width, at.y + 3}, im.GetColorU32(.Separator))
+    im.Dummy(im.Vec2{0, 7})
+}
+
+// Draws the tree pane's rows, under the pinned folders.
 _project_tree_draw :: proc() {
     prof.zone()
     im.PushStyleVarImVec2(.ItemSpacing, im.Vec2{0, 0})
     look := _rows_look(_pv.active_pane == .Tree)
     dl := im.GetWindowDrawList()
-    origin := im.GetCursorScreenPos()
     dragging := drag.items() != nil
+    _pins_draw(&look, dl, dragging)
+    origin := im.GetCursorScreenPos()
 
     if _pv.scroll_to_tree_sel {
         _pv.scroll_to_tree_sel = false
@@ -383,7 +426,9 @@ _tree_draw_row :: proc(look: ^_Rows_Look, dl: ^im.DrawList, row: Project_Tree_Ro
     im.DrawList_AddText(dl, im.Vec2{icon_x, rmin.y + look.text_pad}, look.text, strings.clone_to_cstring(icon, context.temp_allocator))
     name_x := icon_x + look.icon_w + 2
     label, cut := _project_fit_name(row.name, rmax.x - name_x - look.pad_x)
-    im.DrawList_AddText(dl, im.Vec2{name_x, rmin.y + look.text_pad}, look.text, label)
+    // Under a filter, a folder with no match in it is faded.
+    faded := _pv.filtering && row.path != _PROJECT_PACKAGES_PATH && !(row.path in _pv.filter_dirs)
+    im.DrawList_AddText(dl, im.Vec2{name_x, rmin.y + look.text_pad}, look.dim if faded else look.text, label)
     if cut && hovered && !dragging do _project_name_tooltip(row.name)
 
     // A folder drags as a folder, to move it. The roots stay where they are.
@@ -423,10 +468,18 @@ _tree_draw_row :: proc(look: ^_Rows_Look, dl: ^im.DrawList, row: Project_Tree_Ro
 
 // Builds the list pane's rows for `query`, "" for the folder it shows.
 // Returns the search's hit count.
-_project_list_build :: proc(query: string) -> int {
+//
+// `filter` is the same words used in place: the folder the list shows keeps
+// its folders and shows only the files that match. A folder with no match
+// anywhere under it is faded, or left out with the window's setting.
+_project_list_build :: proc(query: string, filter := "") -> int {
     prof.zone()
     clear(&_pv.list_rows)
     virtual.arena_free_all(&_pv.list_arena)
+    filtering := filter != ""
+    // The hits also fill the sets a filter reads (_project_search_hits).
+    if filtering do _project_search_hits(filter)
+    hides := editor_settings.project_filter_hides
 
     if query != "" {
         hits := _project_search_hits(query)
@@ -461,7 +514,11 @@ _project_list_build :: proc(query: string) -> int {
     // The Packages node lists package roots, never the raw packages folder,
     // which would show code in the list.
     if _pv.current_path == _PROJECT_PACKAGES_PATH {
-        for pkg in project_packages_list() do _project_list_row_add(pkg.name, pkg.assets_path, true, is_link = pkg.is_link)
+        for pkg in project_packages_list() {
+            has := !filtering || pkg.assets_path in _pv.filter_dirs
+            if !has && hides do continue
+            _project_list_row_add(pkg.name, pkg.assets_path, true, is_link = pkg.is_link, faded = !has)
+        }
         return 0
     }
 
@@ -471,13 +528,16 @@ _project_list_build :: proc(query: string) -> int {
     for entry in entries {
         if !entry.is_dir do continue
         path, _ := filepath.join({_pv.current_path, entry.name}, context.temp_allocator)
-        _project_list_row_add(entry.name, path, true, is_link = entry.is_link)
+        has := !filtering || path in _pv.filter_dirs
+        if !has && hides do continue
+        _project_list_row_add(entry.name, path, true, is_link = entry.is_link, faded = !has)
     }
     for entry in entries {
         if entry.is_dir do continue
         if strings.has_prefix(entry.name, ".") do continue
         if filepath.ext(entry.name) == ".meta" do continue
         path, _ := filepath.join({_pv.current_path, entry.name}, context.temp_allocator)
+        if filtering && !(path in _pv.filter_files) do continue
         _project_list_row_add(entry.name, path, false)
         if _pv.expanded[path] {
             sub, _ := _project_sub_assets(path, false)
@@ -617,7 +677,7 @@ _list_draw_row :: proc(look: ^_Rows_Look, dl: ^im.DrawList, row: Project_Row, dr
     in_arrow := len(sub) > 0 && look.mouse.x < icon_x
     if len(sub) > 0 do _rows_arrow(dl, im.Vec2{x + look.arrow_w * 0.5, rmin.y + look.row_h * 0.5}, open, look.text)
 
-    dim := (!row.is_dir && !is_known_extension(row.path)) || project_file_is_cut(row.path)
+    dim := row.faded || (!row.is_dir && !is_known_extension(row.path)) || project_file_is_cut(row.path)
     col := look.dim if dim else look.text
     icon := _project_dir_icon(row.is_link) if row.is_dir else _project_file_icon(row.path)
     drew_thumb := false
@@ -710,7 +770,7 @@ _project_list_draw_grid :: proc(cell: f32) {
                 else do im.SetCursorPosX(im.GetCursorPosX() + lead)
                 if cl.sub == 0 {
                     // A search hit's row names its path: its cell, the file.
-                    _project_draw_grid_cell(filepath.base(cl.path) if strings.contains(cl.name, "/") else cl.name, cl.path, cl.is_dir, cell, cl.is_link)
+                    _project_draw_grid_cell(filepath.base(cl.path) if strings.contains(cl.name, "/") else cl.name, cl.path, cl.is_dir, cell, cl.is_link, cl.faded)
                     continue
                 }
                 raw_guid, known := assets.asset_db_get_guid(cl.path)

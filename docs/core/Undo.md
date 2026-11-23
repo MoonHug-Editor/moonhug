@@ -49,6 +49,7 @@ history_window focused:
   - Reparent_, Create_Subtree_, Delete_Subtree_, Add_Component_, Remove_Component_, Reorder_Components_, Remove_Unknown_Component_Command — hierarchy mutations, one command each
   - Group_Command   — multiple sub-commands under one undo step (multi-field edits)
   - Selection_Command — a selection change (before/after states), one "Selection Change" step
+  - File_Move_Command — files and folders moved or renamed in the Project window: each direction renames every item with its `.meta` (`undo_file_move.odin`)
   - Prefab_Apply_Command — a Prefab Apply: the prefab files it wrote (bytes before/after) and the instance's records (before/after). Undo and redo write one side back and re-propagate the prefab (plugins/engine/docs/NestedPrefabs.md)
 - Property_Target   — robust identifier for a field (Owner_Kind + Scene_Ref + Local_ID + Handle + offset + typeid, or asset guid for `.Asset`)
 - Edit_Session      — a bracketed transaction over N targets: before-state captured at open, one grouped action recorded at close (see "Edit sessions")

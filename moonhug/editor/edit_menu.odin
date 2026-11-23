@@ -123,7 +123,7 @@ hierarchy_rename_menu :: proc() {
 }
 
 @(menu_separator={path="Edit", order=-40})
-@(menu_item={path="Edit/Delete", order=-45, shortcut="Ctrl+Backspace, Delete", enabled=_edit_can_delete, help="Deletes the selected objects, or moves the selected files to the Trash"})
+@(menu_item={path="Edit/Delete", order=-45, shortcut="Ctrl+Backspace", enabled=_edit_can_delete, help="Deletes the selected objects, or moves the selected files to the Trash"})
 hierarchy_delete_menu :: proc() {
 	if sel_in_project() {
 		project_ops_delete()

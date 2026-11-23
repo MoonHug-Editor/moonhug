@@ -774,6 +774,9 @@ hierarchy_keymap :: proc(km: ^keymap.Keymap) {
 	keymap.bind(km, "Enter", "Hierarchy/Rename")
 	keymap.bind(km, "F2", "Hierarchy/Rename")
 	keymap.bind(km, "Escape", "Hierarchy/Clear Filter")
+	// The Edit menu's Delete on the Delete key too. Its Ctrl+Backspace, and
+	// the keys of Cut, Copy, Paste and Duplicate, are editor-wide.
+	keymap.bind(km, "Delete", "Edit/Delete")
 }
 
 // The ACTIVE selected object (inspector target, gizmo target). With a

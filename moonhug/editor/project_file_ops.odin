@@ -132,6 +132,40 @@ _project_move :: proc(src, dst: string) -> bool {
 // @(drop) in the editor's root package cannot be registered.
 project_file_ops_init :: proc() {
 	drag.drop_rule_add("file", "project", _drop_files_in_folder)
+	undo.file_moves_applied = _project_files_moved
+}
+
+// A move or a rename was undone or redone (undo.File_Move_Command): the
+// window shows the files where they are now, selected.
+@(private = "file")
+_project_files_moved :: proc(done: [][2]string) {
+	asset_pipeline.asset_db_refresh()
+	project_dir_cache_invalidate()
+	now := make([dynamic]string, context.temp_allocator)
+	for d in done {
+		project_pins_moved(d[0], d[1])
+		append(&now, d[1])
+	}
+	// The folder the list showed may have gone back to another name: the
+	// nearest one still there.
+	for _pv.current_path != projectWindowData.rootPath && _pv.current_path != _PROJECT_PACKAGES_PATH && !os.exists(_pv.current_path) {
+		parent, ok := _project_parent_dir(_pv.current_path)
+		if !ok do break
+		_project_set_current(parent)
+	}
+	if len(now) > 0 {
+		// The list shows the folder the first of them is in now.
+		_project_reveal_keep_selection(now[0])
+		_project_select_paths(now[:])
+		_project_inspectors_refresh()
+	}
+}
+
+// Records moves already made as one undo step.
+project_record_moves :: proc(pairs: [][2]string, label: string) {
+	if len(pairs) == 0 do return
+	// On the caller's allocator, as every command: the stack frees it there.
+	undo.push(undo.get(), undo.file_move_command(pairs, label), label)
 }
 
 @(private = "file")
@@ -249,6 +283,7 @@ _transfer_answer :: proc(clash: _Clash) {
 @(private = "file")
 _transfer_run :: proc(srcs: []string, folder: string, move, from_cut: bool, clash: _Clash) {
 	done := make([dynamic]string, context.temp_allocator)
+	moved := make([dynamic][2]string, context.temp_allocator)
 	for src in srcs {
 		if !os.exists(src) do continue
 		if move {
@@ -279,6 +314,8 @@ _transfer_run :: proc(srcs: []string, folder: string, move, from_cut: bool, clas
 		}
 		if move {
 			if !_project_move(src, dst) do continue
+			append(&moved, [2]string{strings.clone(src, context.temp_allocator), strings.clone(dst, context.temp_allocator)})
+			project_pins_moved(src, dst)
 			// The list pane showed the moved folder, or one under it: it follows.
 			if _pv.current_path == src {
 				_project_set_current(dst)
@@ -291,6 +328,7 @@ _transfer_run :: proc(srcs: []string, folder: string, move, from_cut: bool, clas
 		append(&done, dst)
 	}
 	if from_cut do clip.clear_files()
+	project_record_moves(moved[:], "Move" if len(moved) == 1 else fmt.tprintf("Move %d Items", len(moved)))
 	asset_pipeline.asset_db_refresh()
 	project_dir_cache_invalidate()
 	_project_select_paths(done[:])

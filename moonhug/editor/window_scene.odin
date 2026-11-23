@@ -1415,6 +1415,7 @@ scene_tools_keymap :: proc(km: ^keymap.Keymap) {
 scene_window_keymap :: proc(km: ^keymap.Keymap) {
 	keymap.bind(km, "F", "Edit/Frame Selected")
 	keymap.bind(km, "Escape", "Scene/Clear Selection")
+	keymap.bind(km, "Delete", "Edit/Delete")
 	keymap.bind(km, "Left", "Scene/Nudge Left", held = true)
 	keymap.bind(km, "Right", "Scene/Nudge Right", held = true)
 	keymap.bind(km, "Up", "Scene/Nudge Up", held = true)
