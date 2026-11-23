@@ -404,6 +404,7 @@ _hierarchy_rows_draw :: proc(hv: ^Hierarchy_Window, filtered: bool, footer_h: f3
 	// The row menu: one for the copy, on the object it was opened for. It is
 	// composed from registered items (hierarchy_menu.odin and the shared
 	// GameObject bands), so plugins add to every section.
+	row_menu := hv.ctx_open
 	if hv.ctx_open {
 		hv.ctx_open = false
 		im.OpenPopup("##NodeContext")
@@ -418,8 +419,12 @@ _hierarchy_rows_draw :: proc(hv: ^Hierarchy_Window, filtered: bool, footer_h: f3
 	}
 
 	// The background's menu: the GameObject bands, which create under the
-	// active scene's root.
-	if im.BeginPopupContextWindow("##HierarchyContextBg", im.PopupFlags_MouseButtonRight | im.PopupFlags_NoOpenOverItems) {
+	// active scene's root. Opened by hand, on the press and only when no row
+	// took it: imgui's own context popup opens on the release, by which time
+	// the row's menu is up and the pointer is over no item, so it replaced the
+	// row's menu with this one.
+	if !row_menu && im.IsWindowHovered({}) && im.IsMouseClicked(.Right) && !im.IsAnyItemHovered() do im.OpenPopup("##HierarchyContextBg")
+	if im.BeginPopup("##HierarchyContextBg") {
 		menu.draw_menu_sections({
 			menu.section("GameObject", max_order = menu.GO_SECTION_PARENTING - 1),
 			menu.section("GameObject", min_order = menu.GO_SECTION_VIEW),

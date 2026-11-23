@@ -36,9 +36,15 @@ The project's files. A folder tree on the left, the contents of the folder it sh
 
 - Drag files and folders onto a folder to move them there: a folder in the tree, in the list, or in the path bar. A file moves with its `.meta`, so it keeps its id and every reference to it.
 - While the drag hovers, its tooltip says what the drop does. A folded folder of the tree opens when the drag rests on it, and a pane scrolls when the drag is near its top or bottom edge.
-- An item whose name is taken in the target folder stays where it is, with a line in the Console.
+- When a name is taken in the target folder, the editor asks: Replace moves what is there to the Trash, Keep Both gives the new item another name, Skip leaves both where they are. One answer covers every clash of the drop. A paste asks the same.
 - The roots do not move: `assets`, `packages` and a package's assets folder.
-- Cut and paste move files too, and copy and paste copy them. A copy gets a new id.
+- Cut and Paste move files too, and Copy and Paste copy them. A copy gets a new id, and one made beside its source gets a numbered name.
+
+## Creating and editing
+
+- The `+` button creates an asset in the folder the list shows: the Assets menu's Create items.
+- A right click in either pane opens the Edit menu's Cut, Copy, Paste, Duplicate, Rename and Delete, then the Assets menu's items for the selected files and the open folder.
+- Cut, Copy, Paste, Duplicate and Delete are the Edit menu's commands. They act on the whole selection, here on the selected files and folders, and have the same keys as in the Hierarchy. While a text field has the keyboard, the keys are the field's.
 
 ## Search
 
@@ -56,10 +62,13 @@ The search box takes the words [Windows](/docs/core/Windows.md#search-fields) li
 | F2, Enter on macOS | Rename |
 | Enter, Cmd+Down on macOS | Open |
 | Backspace, Cmd+Up on macOS | The parent folder |
+| Ctrl+X, Ctrl+C, Ctrl+V | Edit/Cut, Edit/Copy, Edit/Paste |
+| Ctrl+D | Edit/Duplicate |
+| Ctrl+Backspace, Delete | Edit/Delete |
 | Escape | End the search |
 
 ## Cost
 
 - Each pane keeps a flat list of its rows and draws only the ones on screen, in the grid a row of cells at a time. A cell or a row asks for its thumbnail and its sub-assets only while it is on screen.
-- The tree's rows are kept between frames. They are built again when a folder is opened or closed, when the editor changes files, and twice a second for changes made outside the editor.
+- The tree's rows are kept between frames. They are built again when a folder is opened or closed, when the editor changes files, and twice a second for changes made outside the editor. That check looks at the open folders only: a closed folder keeps its arrow from the last time it was read.
 - A folder's listing is cached (`project_dir_cache.odin`). Twice a second the cache checks the folder's modification time, and reads the folder again only when it moved.

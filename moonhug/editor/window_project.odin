@@ -1226,6 +1226,16 @@ _project_reveal_path :: proc(path: string, select: bool, sub: core.Local_ID = 0)
 
 _PROJECT_MIN_PANE :: f32(120)
 
+// The menu of a right click in either pane: the Edit menu's selection band
+// (Cut, Copy, Paste, Duplicate, Rename, Delete), which acts on the selected
+// files here, then the Assets menu up to its database band.
+_project_context_menu :: proc() {
+    menu.draw_menu_sections({
+        menu.section("Edit", min_order = menu.EDIT_SECTION_SELECTION_MIN, max_order = menu.EDIT_SECTION_SELECTION_MAX),
+        menu.section("Assets", max_order = menu.ASSETS_SECTION_DATABASE - 1),
+    })
+}
+
 // The asset requests and the dirty files, once per frame whether or not a
 // Project copy is visible. A request acts on the copy clicked in last.
 project_frame_begin :: proc() {
@@ -1270,6 +1280,14 @@ project_window_draw :: proc(w: ^wnd.Window) {
     // non-empty query shows an "x" beside it.
     query := strings.trim_space(string(cstring(raw_data(_pv.search_buf[:]))))
     clear_btn_w := im.GetFrameHeight()
+    // "+" creates an asset in the folder the list shows.
+    if im.Button(icons.ICON_MD_ADD + "###prj_create", im.Vec2{clear_btn_w, 0}) do im.OpenPopup("##ProjectCreate")
+    widgets.tooltip("Create an asset in the open folder")
+    if im.BeginPopup("##ProjectCreate") {
+        menu.draw_menu_sections({menu.section("Assets/Create")})
+        im.EndPopup()
+    }
+    im.SameLine()
     im.SetNextItemWidth(-(clear_btn_w + im.GetStyle().ItemSpacing.x) if query != "" else -1)
     // NoTabStop: Tab must switch panes (the keymap), never tab-focus the
     // search box. Clicking into it still works.
@@ -1364,9 +1382,7 @@ project_window_draw :: proc(w: ^wnd.Window) {
         }
     }
     if im.BeginPopupContextWindow("ProjectFileListContext", im.PopupFlags_MouseButtonRight) {
-        // The Assets menu up to its database band: what acts on the selected
-        // assets and the open folder.
-        menu.draw_menu_sections({menu.section("Assets", max_order = menu.ASSETS_SECTION_DATABASE - 1)})
+        _project_context_menu()
         im.EndPopup()
     }
     im.EndChild()
@@ -1690,13 +1706,7 @@ project_keymap :: proc(km: ^keymap.Keymap) {
     keymap.bind(km, "F2", "Project/Rename", mac = "Enter")
     keymap.bind(km, "Enter", "Project/Open", mac = "Ctrl+Down")
     keymap.bind(km, "Backspace", "Project/Up Level", mac = "Ctrl+Up")
-    // The Edit menu's commands act on the project selection when it is the
-    // active one (edit_menu.odin), so the window binds them instead of its own.
-    keymap.bind(km, "Ctrl+C", "Edit/Copy")
-    keymap.bind(km, "Ctrl+X", "Edit/Cut")
-    keymap.bind(km, "Ctrl+V", "Edit/Paste")
-    keymap.bind(km, "Ctrl+D", "Edit/Duplicate")
-    keymap.bind(km, "Ctrl+Backspace", "Edit/Delete")
-    keymap.bind(km, "Ctrl+Delete", "Edit/Delete")
+    // Cut, Copy, Paste, Duplicate and Delete are the Edit menu's, with its
+    // keys: they act on the selection wherever it is (edit_menu.odin).
     keymap.bind(km, "Escape", "Project/Cancel Search")
 }

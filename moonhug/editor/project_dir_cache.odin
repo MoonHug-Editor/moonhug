@@ -71,6 +71,14 @@ project_dir_listing :: proc(path: string) -> (entries: []Project_Dir_Entry, ok: 
 	return fresh, scan_ok
 }
 
+// The listing of `path` as it was last read, however long ago, read now only
+// when there is none: for a question a stale answer serves until the folder
+// is looked at properly, as a closed folder's arrow in the Project tree.
+project_dir_listing_kept :: proc(path: string) -> (entries: []Project_Dir_Entry, ok: bool) {
+	if old, found := _dir_listings[path]; found do return old.entries, old.ok
+	return project_dir_listing(path)
+}
+
 // Counts invalidations, for caches built from the same tree (the Project
 // window's search hits): a different number means they are stale.
 _dir_cache_gen: u64

@@ -40,21 +40,44 @@ edit_redo_menu :: proc() {
 
 // --- Edit: selection ops (Cut..Delete band, mirrored to hierarchy popup) -----
 
+// Cut, Copy, Paste, Duplicate and Delete have one key each, wherever the
+// selection is. While a text field has the keyboard the keys are the field's: the
+// commands are off, which leaves the key to it.
+@(private = "file")
+_edit_typing :: proc() -> bool {
+	return keymap.key_source.text != nil && keymap.key_source.text()
+}
+
 @(private)
-_edit_can_cut :: proc() -> bool { return sel_in_project() || session.edit_can(.Cut) }
+_edit_can_cut :: proc() -> bool {
+	if _edit_typing() do return keymap.disabled("A text field has the keyboard")
+	return sel_in_project() || session.edit_can(.Cut)
+}
 @(private)
-_edit_can_copy :: proc() -> bool { return sel_in_project() || session.edit_can(.Copy) }
+_edit_can_copy :: proc() -> bool {
+	if _edit_typing() do return keymap.disabled("A text field has the keyboard")
+	return sel_in_project() || session.edit_can(.Copy)
+}
 @(private)
-_edit_can_paste :: proc() -> bool { return sel_in_project() ? project_ops_can_paste() : session.edit_can(.Paste) }
+_edit_can_paste :: proc() -> bool {
+	if _edit_typing() do return keymap.disabled("A text field has the keyboard")
+	return sel_in_project() ? project_ops_can_paste() : session.edit_can(.Paste)
+}
 @(private)
-_edit_can_duplicate :: proc() -> bool { return sel_in_project() || session.edit_can(.Duplicate) }
+_edit_can_duplicate :: proc() -> bool {
+	if _edit_typing() do return keymap.disabled("A text field has the keyboard")
+	return sel_in_project() || session.edit_can(.Duplicate)
+}
 @(private)
 _edit_can_rename :: proc() -> bool { return sel_in_project() ? _project_selection_renameable() : session.edit_can(.Rename) }
 @(private)
-_edit_can_delete :: proc() -> bool { return sel_in_project() || session.edit_can(.Delete) }
+_edit_can_delete :: proc() -> bool {
+	if _edit_typing() do return keymap.disabled("A text field has the keyboard")
+	return sel_in_project() || session.edit_can(.Delete)
+}
 
 @(menu_separator={path="Edit", order=-60})
-@(menu_item={path="Edit/Cut", order=-50, enabled=_edit_can_cut, help="Cuts the selected objects, or the selected files"})
+@(menu_item={path="Edit/Cut", order=-50, shortcut="Ctrl+X", enabled=_edit_can_cut, help="Cuts the selected objects, or the selected files"})
 hierarchy_cut_menu :: proc() {
 	if sel_in_project() {
 		project_ops_cut()
@@ -63,7 +86,7 @@ hierarchy_cut_menu :: proc() {
 	session.edit_run(.Cut)
 }
 
-@(menu_item={path="Edit/Copy", order=-49, enabled=_edit_can_copy, help="Copies the selected objects, or the selected files"})
+@(menu_item={path="Edit/Copy", order=-49, shortcut="Ctrl+C", enabled=_edit_can_copy, help="Copies the selected objects, or the selected files"})
 hierarchy_copy_menu :: proc() {
 	if sel_in_project() {
 		project_ops_copy()
@@ -72,7 +95,7 @@ hierarchy_copy_menu :: proc() {
 	session.edit_run(.Copy)
 }
 
-@(menu_item={path="Edit/Paste", order=-48, enabled=_edit_can_paste, help="Pastes the copied objects, or the copied files"})
+@(menu_item={path="Edit/Paste", order=-48, shortcut="Ctrl+V", enabled=_edit_can_paste, help="Pastes the copied objects, or the copied files"})
 hierarchy_paste_menu :: proc() {
 	if sel_in_project() {
 		project_ops_paste()
@@ -81,7 +104,7 @@ hierarchy_paste_menu :: proc() {
 	session.edit_run(.Paste)
 }
 
-@(menu_item={path="Edit/Duplicate", order=-47, enabled=_edit_can_duplicate, help="Duplicates the selected objects, or the selected files. A selected sub-asset is copied inside the file that holds it"})
+@(menu_item={path="Edit/Duplicate", order=-47, shortcut="Ctrl+D", enabled=_edit_can_duplicate, help="Duplicates the selected objects, or the selected files. A selected sub-asset is copied inside the file that holds it"})
 hierarchy_duplicate_menu :: proc() {
 	if sel_in_project() {
 		project_ops_duplicate()
@@ -100,7 +123,7 @@ hierarchy_rename_menu :: proc() {
 }
 
 @(menu_separator={path="Edit", order=-40})
-@(menu_item={path="Edit/Delete", order=-45, enabled=_edit_can_delete, help="Deletes the selected objects, or moves the selected files to the Trash"})
+@(menu_item={path="Edit/Delete", order=-45, shortcut="Ctrl+Backspace, Delete", enabled=_edit_can_delete, help="Deletes the selected objects, or moves the selected files to the Trash"})
 hierarchy_delete_menu :: proc() {
 	if sel_in_project() {
 		project_ops_delete()

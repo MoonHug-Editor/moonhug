@@ -13,6 +13,7 @@ import clip "moonhug:editor/clipboard"
 import "moonhug:editor/session"
 import undo "moonhug:packages/engine/editor/undo"
 import "moonhug:editor/keymap"
+import "base:runtime"
 
 @(private)
 _hierarchy_handle_valid :: proc(tH: engine.Transform_Handle) -> bool {
@@ -72,16 +73,20 @@ _hierarchy_has_selection :: proc() -> bool {
 // The shell's Edit menu (editor/edit_menu.odin) acts on the project selection
 // or calls these through session.Scene_Windows.
 
-// Pending Cut: pasting MOVES this subtree instead of inserting the clipboard
-// copy. Cleared by Copy, invalidated automatically if the object dies.
+// Pending Cut: pasting MOVES these objects instead of inserting the clipboard
+// copies. Cleared by Copy. One that died since is passed over.
 @(private)
-_hierarchy_cut_tH: engine.Transform_Handle
+_hierarchy_cut: [dynamic]engine.Transform_Handle
+
+@(private = "file")
+_hierarchy_cut_movable :: proc(h: engine.Transform_Handle) -> bool {
+	return _hierarchy_handle_valid(h) && !_hierarchy_handle_is_root(h) && !_hierarchy_handle_is_nested(h)
+}
 
 @(private)
 _hierarchy_cut_pending :: proc() -> bool {
-	return _hierarchy_handle_valid(_hierarchy_cut_tH) &&
-		!_hierarchy_handle_is_root(_hierarchy_cut_tH) &&
-		!_hierarchy_handle_is_nested(_hierarchy_cut_tH)
+	for h in _hierarchy_cut do if _hierarchy_cut_movable(h) do return true
+	return false
 }
 
 // Whether the Edit menu's `op` applies to the scene selection.
@@ -99,7 +104,7 @@ edit_can :: proc(op: session.Edit_Op) -> bool {
 // Runs the Edit menu's `op` on the scene selection.
 edit_run :: proc(op: session.Edit_Op) {
 	switch op {
-	case .Cut:       _hierarchy_cut()
+	case .Cut:       _hierarchy_cut_selection()
 	case .Copy:      _hierarchy_copy()
 	case .Paste:     _hierarchy_paste()
 	case .Duplicate: _duplicate_selected()
@@ -108,20 +113,22 @@ edit_run :: proc(op: session.Edit_Op) {
 	}
 }
 
+// Cut and Copy take the selection's top-level objects: one selected under
+// another selected one goes with it.
 @(private = "file")
-_hierarchy_cut :: proc() {
-	active := session.active()
-	if !_hierarchy_handle_valid(active) do return
-	if _hierarchy_handle_is_root(active) || _hierarchy_handle_is_nested(active) do return
-	_hierarchy_cut_tH = active
+_hierarchy_cut_selection :: proc() {
+	context.allocator = runtime.default_allocator()
+	clear(&_hierarchy_cut)
+	for h in session.top_level() do if _hierarchy_cut_movable(h) do append(&_hierarchy_cut, h)
 }
 
 @(private = "file")
 _hierarchy_copy :: proc() {
-	active := session.active()
-	if !_hierarchy_handle_valid(active) do return
-	_hierarchy_cut_tH = _HANDLE_NONE
-	clip.copy_hierarchy(engine.scene_copy_subtree(active))
+	subtrees := make([dynamic][]byte, context.temp_allocator)
+	for h in session.top_level() do if _hierarchy_handle_valid(h) do append(&subtrees, engine.scene_copy_subtree(h))
+	if len(subtrees) == 0 do return
+	clear(&_hierarchy_cut)
+	clip.copy_hierarchy(..subtrees[:])
 }
 
 @(private)
@@ -130,7 +137,10 @@ _hierarchy_can_paste :: proc() -> bool {
 	if target == _HANDLE_NONE do return keymap.disabled("No scene is open")
 	if _hierarchy_handle_is_nested(target) do return keymap.disabled("Objects cannot be pasted inside a nested scene")
 	if _hierarchy_cut_pending() {
-		if target == _hierarchy_cut_tH || _is_ancestor(_hierarchy_cut_tH, target) do return keymap.disabled("A cut object cannot be pasted into itself")
+		for h in _hierarchy_cut {
+			if !_hierarchy_cut_movable(h) do continue
+			if target == h || _is_ancestor(h, target) do return keymap.disabled("A cut object cannot be pasted into itself")
+		}
 		return true
 	}
 	return clip.has_hierarchy() || keymap.disabled("No objects were copied")
@@ -140,18 +150,31 @@ _hierarchy_can_paste :: proc() -> bool {
 _hierarchy_paste :: proc() {
 	if !_hierarchy_can_paste() do return
 	target := _hierarchy_active_or_root()
-	// The pasted or moved object becomes the selection. The tracker attaches
-	// that to the paste's own undo step, so one undo also restores what was
-	// selected before.
+	// The pasted or moved objects become the selection, all in one undo step.
+	// The tracker attaches the selection to it, so one undo also restores what
+	// was selected before.
+	g := undo.group_begin("Paste")
+	defer undo.group_end(&g)
+	results := make([dynamic]engine.Transform_Handle, context.temp_allocator)
 	if _hierarchy_cut_pending() {
-		undo.record_reparent_to(_hierarchy_cut_tH, target)
-		session.select_only(_hierarchy_cut_tH)
-		_hierarchy_cut_tH = _HANDLE_NONE
+		for h in _hierarchy_cut {
+			if !_hierarchy_cut_movable(h) do continue
+			undo.record_reparent_to(h, target)
+			append(&results, h)
+		}
+		clear(&_hierarchy_cut)
 	} else {
-		result := _paste_subtree_with_undo(clip.paste_hierarchy(), target)
-		engine._transform_append_name_suffix(result, "_copy")
-		if result != _HANDLE_NONE do session.select_only(result)
+		for data in clip.paste_hierarchy() {
+			result := _paste_subtree_with_undo(data, target)
+			if result == _HANDLE_NONE do continue
+			engine._transform_append_name_suffix(result, "_copy")
+			append(&results, result)
+		}
 	}
+	if len(results) == 0 do return
+	undo.group_commit(&g)
+	session.select_clear()
+	for h in results do session.select_add(h)
 	_hierarchy_reveal_open(target)
 }
 
@@ -174,8 +197,9 @@ _hierarchy_delete :: proc() {
 	if _hv.rename_target != _HANDLE_NONE && session.is_selected(_hv.rename_target) {
 		_hv.rename_target = _HANDLE_NONE
 	}
-	if _hierarchy_cut_tH != _HANDLE_NONE && session.is_selected(_hierarchy_cut_tH) {
-		_hierarchy_cut_tH = _HANDLE_NONE
+	// A cut object that is deleted is no longer waiting for a paste.
+	for i := len(_hierarchy_cut) - 1; i >= 0; i -= 1 {
+		if session.is_selected(_hierarchy_cut[i]) do ordered_remove(&_hierarchy_cut, i)
 	}
 	_delete_selected()
 }

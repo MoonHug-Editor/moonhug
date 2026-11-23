@@ -22,7 +22,6 @@ import "core:time"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "drag"
-import "menu"
 import "subassets"
 import "moonhug:editor/icons"
 import "moonhug:editor/thumbnails"
@@ -208,18 +207,29 @@ _project_tree_build :: proc() {
 
 @(private = "file")
 _tree_add :: proc(path, name: string, depth: int, is_link: bool) {
-    has_sub := _project_dir_has_subdir(path)
-    open := has_sub && _tree_is_open(path)
     // The list pane went somewhere: the folders above it open.
-    if has_sub && !open && _pv.tree_reveal && _project_path_is_ancestor(path, _pv.current_path) {
-        open = true
-        _project_tree_set_open(path, true)
+    revealed := _pv.tree_reveal && _project_path_is_ancestor(path, _pv.current_path)
+    want_open := _tree_is_open(path) || revealed
+    // An open folder's listing is checked for changes. A closed one only
+    // needs to know whether it has subfolders, for its arrow: the listing
+    // kept from before answers that, with no check.
+    entries: []Project_Dir_Entry
+    ok: bool
+    if want_open {
+        entries, ok = project_dir_listing(path)
+    } else {
+        entries, ok = project_dir_listing_kept(path)
     }
+    has_sub := false
+    if ok do for entry in entries do if entry.is_dir {
+        has_sub = true
+        break
+    }
+    open := has_sub && want_open
+    if open && revealed && !_tree_is_open(path) do _project_tree_set_open(path, true)
     a := virtual.arena_allocator(&_pv.tree_arena)
     append(&_pv.tree_rows, Project_Tree_Row{path = strings.clone(path, a), name = strings.clone(name, a), depth = depth, has_sub = has_sub, is_link = is_link, open = open})
     if !open do return
-    entries, ok := project_dir_listing(path)
-    if !ok do return
     for entry in entries {
         if !entry.is_dir do continue
         full, _ := filepath.join({path, entry.name}, context.temp_allocator)
@@ -284,10 +294,9 @@ _project_tree_draw :: proc() {
         _tree_drag_since = im.GetTime()
     }
 
-    // The menu of the folder the tree shows: the Assets menu up to its
-    // database band, as the list pane's.
+    // The menu of the folder the tree shows, the same as the list pane's.
     if im.BeginPopupContextWindow("ProjectTreeContext", im.PopupFlags_MouseButtonRight) {
-        menu.draw_menu_sections({menu.section("Assets", max_order = menu.ASSETS_SECTION_DATABASE - 1)})
+        _project_context_menu()
         im.EndPopup()
     }
 }

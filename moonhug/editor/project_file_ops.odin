@@ -127,8 +127,8 @@ _project_move :: proc(src, dst: string) -> bool {
 }
 
 // Files and folders dragged onto a folder move into it, each with its .meta,
-// so it keeps its id and what refers to it. One whose name is taken there
-// stays where it is. A rule of the drag package, added here by a call: a
+// so it keeps its id and what refers to it. A name taken there is asked
+// about (_project_transfer). A rule of the drag package, added here by a call: a
 // @(drop) in the editor's root package cannot be registered.
 project_file_ops_init :: proc() {
 	drag.drop_rule_add("file", "project", _drop_files_in_folder)
@@ -164,27 +164,130 @@ _drop_files_in_folder :: proc(d: ^drag.Drop) -> bool {
 		}
 		return true
 	}
-	moved := make([dynamic]string, context.temp_allocator)
-	for src in moving {
+	_project_transfer(moving[:], folder, move = true)
+	return true
+}
+
+// What a name already taken in the target folder becomes.
+@(private = "file")
+_Clash :: enum {
+	Replace,   // the one there goes to the Trash
+	Keep_Both, // the new one gets another name
+	Skip,      // both stay where they are
+}
+
+// A move or a copy waiting for the answer to a name clash. Default
+// allocator: it lives across frames.
+@(private = "file")
+_transfer: struct {
+	srcs:     [dynamic]string,
+	folder:   string,
+	move:     bool,
+	from_cut: bool,
+}
+
+@(private = "file")
+_transfer_clear :: proc() {
+	context.allocator = runtime.default_allocator()
+	for p in _transfer.srcs do delete(p)
+	delete(_transfer.srcs)
+	delete(_transfer.folder)
+	_transfer = {}
+}
+
+// Moves or copies `srcs` into `folder`. When a name is taken there by another
+// item, it asks first: replace it, keep both, or skip. A copy beside its own
+// source needs no question: it gets another name.
+@(private = "file")
+_project_transfer :: proc(srcs: []string, folder: string, move: bool, from_cut := false) {
+	clashes := 0
+	first := ""
+	for src in srcs {
+		dst, _ := filepath.join({folder, filepath.base(src)}, context.temp_allocator)
+		if dst == src || !os.exists(src) || !os.exists(dst) do continue
+		if clashes == 0 do first = filepath.base(src)
+		clashes += 1
+	}
+	if clashes == 0 {
+		_transfer_run(srcs, folder, move, from_cut, .Keep_Both)
+		return
+	}
+	_transfer_clear()
+	{
+		context.allocator = runtime.default_allocator()
+		for src in srcs do append(&_transfer.srcs, strings.clone(src))
+		_transfer.folder = strings.clone(folder)
+		_transfer.move = move
+		_transfer.from_cut = from_cut
+	}
+	where_ := filepath.base(folder)
+	widgets.dialog_open({
+		title       = fmt.tprintf("%s already has %s", where_, first) if clashes == 1 else fmt.tprintf("%s already has %d of these items", where_, clashes),
+		description = "Replace moves what is there to the Trash. Keep Both gives the new item another name. Skip leaves both where they are.",
+		icon        = icons.ICON_MD_WARNING,
+		buttons     = {
+			{label = "Keep Both", action = proc() { _transfer_answer(.Keep_Both) }, is_default = true},
+			{label = "Replace", action = proc() { _transfer_answer(.Replace) }},
+			{label = "Skip", action = proc() { _transfer_answer(.Skip) }, is_cancel = true},
+		},
+	})
+}
+
+@(private = "file")
+_transfer_answer :: proc(clash: _Clash) {
+	_transfer_run(_transfer.srcs[:], _transfer.folder, _transfer.move, _transfer.from_cut, clash)
+	_transfer_clear()
+}
+
+@(private = "file")
+_transfer_run :: proc(srcs: []string, folder: string, move, from_cut: bool, clash: _Clash) {
+	done := make([dynamic]string, context.temp_allocator)
+	for src in srcs {
+		if !os.exists(src) do continue
+		if move {
+			// A folder into itself or what is under it would be lost.
+			if folder == src || strings.has_prefix(folder, strings.concatenate({src, "/"}, context.temp_allocator)) {
+				log.warning(fmt.tprintf("Move: %s cannot go into itself", src))
+				continue
+			}
+			if filepath.dir(src) == folder do continue // already there
+		}
 		dst, _ := filepath.join({folder, filepath.base(src)}, context.temp_allocator)
 		if os.exists(dst) {
-			log.warning(fmt.tprintf("Move: %s already has %s, it stays where it is", folder, filepath.base(src)))
+			which := clash
+			if dst == src do which = .Keep_Both // a copy beside its source
+			switch which {
+			case .Skip:
+				continue
+			case .Keep_Both:
+				dst = _project_unique_dest(folder, filepath.base(src))
+			case .Replace:
+				meta := strings.concatenate({dst, ".meta"}, context.temp_allocator)
+				if !file_move_to_trash(dst) {
+					log.warning(fmt.tprintf("Replace: %s could not go to the Trash, the new item stays where it is", dst))
+					continue
+				}
+				if os.exists(meta) && move do file_move_to_trash(meta)
+			}
+		}
+		if move {
+			if !_project_move(src, dst) do continue
+			// The list pane showed the moved folder, or one under it: it follows.
+			if _pv.current_path == src {
+				_project_set_current(dst)
+			} else if strings.has_prefix(_pv.current_path, strings.concatenate({src, "/"}, context.temp_allocator)) {
+				_project_set_current(strings.concatenate({dst, _pv.current_path[len(src):]}, context.temp_allocator))
+			}
+		} else if !_project_copy_recursive(src, dst) {
 			continue
 		}
-		if !_project_move(src, dst) do continue
-		append(&moved, dst)
-		// The list pane showed the moved folder, or one under it: it follows.
-		if _pv.current_path == src {
-			_project_set_current(dst)
-		} else if strings.has_prefix(_pv.current_path, strings.concatenate({src, "/"}, context.temp_allocator)) {
-			_project_set_current(strings.concatenate({dst, _pv.current_path[len(src):]}, context.temp_allocator))
-		}
+		append(&done, dst)
 	}
+	if from_cut do clip.clear_files()
 	asset_pipeline.asset_db_refresh()
 	project_dir_cache_invalidate()
-	_project_select_paths(moved[:])
+	_project_select_paths(done[:])
 	_project_inspectors_refresh()
-	return true
 }
 
 @(private = "file")
@@ -319,30 +422,9 @@ project_ops_paste :: proc() {
 		return
 	}
 
-	pasted := make([dynamic]string, context.temp_allocator)
-	cut := clip.files_cut()
-	for src in clip.files() {
-		if !os.exists(src) do continue
-		if cut {
-			// Moving a folder into itself/its subtree would orphan it.
-			prefix := strings.concatenate({src, "/"}, context.temp_allocator)
-			if dst_dir == src || strings.has_prefix(dst_dir, prefix) {
-				fmt.printf("[Editor] Paste: can't move %s into itself\n", src)
-				continue
-			}
-			if filepath.dir(src) == dst_dir do continue // no-op move
-			dst := _project_unique_dest(dst_dir, filepath.base(src))
-			if _project_move(src, dst) do append(&pasted, dst)
-		} else {
-			dst := _project_unique_dest(dst_dir, filepath.base(src))
-			if _project_copy_recursive(src, dst) do append(&pasted, dst)
-		}
-	}
-	// A cut clipboard is one-shot (Finder/Explorer semantics).
-	if cut do clip.clear_files()
-	asset_pipeline.asset_db_refresh()
-	project_dir_cache_invalidate()
-	_project_select_paths(pasted[:])
+	// A cut clipboard is one-shot (Finder/Explorer semantics): it is emptied
+	// once the files moved.
+	_project_transfer(clip.files(), dst_dir, clip.files_cut(), from_cut = clip.files_cut())
 }
 
 project_ops_duplicate :: proc() {
@@ -645,21 +727,6 @@ project_menu_open :: proc() {
 	sel := projectWindowData.selectedFile
 	if sel == "" do return
 	file_open_in_os(sel)
-}
-
-@(menu_item = {path = "Assets/Delete", order = -67, enabled = _project_has_selection, help = "Asks, then moves the selected files to the Trash and removes the selected sub-assets from their files"})
-project_menu_delete :: proc() {
-	project_ops_delete()
-}
-
-@(menu_item = {path = "Assets/Rename", order = -66, enabled = _project_selection_renameable, help = "Renames the selected file or sub-asset"})
-project_menu_rename :: proc() {
-	_project_begin_rename_selected()
-}
-
-@(menu_item = {path = "Assets/Duplicate", order = -66, enabled = _project_has_selection, help = "Copies the selected files beside them. A selected sub-asset is copied inside the file that holds it"})
-project_menu_duplicate :: proc() {
-	project_ops_duplicate()
 }
 
 @(menu_item = {path = "Assets/Duplicate as Asset", order = -66, enabled = _project_can_duplicate_as_asset, visible = _project_sub_asset_is_document, help = "Copies the selected sub-asset into a file of its own, beside the file that holds it"})

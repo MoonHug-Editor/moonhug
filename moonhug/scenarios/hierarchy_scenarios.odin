@@ -114,6 +114,124 @@ hierarchy_rows_reorder_reparent_and_fold :: proc(t: ^testing.T) {
 	editor_quit(r)
 }
 
+// A key with the command modifier down: Cmd on macOS, Ctrl elsewhere, the
+// keymap's "Ctrl" either way.
+@(private = "file")
+_chord :: proc(r: ^Run, key: string) {
+	mod := "cmd" when ODIN_OS == .Darwin else "ctrl"
+	call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"key","name":%q}},{{"type":"key","name":%q}},{{"type":"key","name":%q,"down":false}},{{"type":"key","name":%q,"down":false}},{{"type":"wait","frames":4}}]}}`, mod, key, key, mod))
+}
+
+// Every row named `name`.
+@(private = "file")
+_rows :: proc(r: ^Run, name: string) -> [][4]f64 {
+	res, code, _ := call_raw(r, "item_rect", fmt.tprintf(`{{"window":"Hierarchy","label":%q}}`, name))
+	if code != "" do return nil
+	matches, is_list := at(res, "matches").(json.Array)
+	if !is_list do return nil
+	out := make([dynamic][4]f64, context.temp_allocator)
+	for m in matches {
+		// The label is a part of the text found: "Alpha" is in "Alpha_copy" too.
+		if as_string(at(m, "label")) != name do continue
+		append(&out, [4]f64{as_f64(at(m, "x")), as_f64(at(m, "y")), as_f64(at(m, "width")), as_f64(at(m, "height"))})
+	}
+	return out[:]
+}
+
+// Copy, Cut, Paste and Duplicate take the whole selection, on one key each.
+@(test)
+hierarchy_edit_keys_take_the_selection :: proc(t: ^testing.T) {
+	r := begin(t)
+	// Top > Alpha, Beta, Holder.
+	project_write(r, "assets/Main.scene", fmt.tprintf(`{{"root": 1, "next_local_id": 5, "transforms": [%s, %s, %s, %s], "nested_scenes": [], "breadcrumbs": [], "components": []}}`,
+		_object(1, "Top", _ZERO, fmt.tprintf("%s, %s, %s", _ref(2), _ref(3), _ref(4))),
+		_object(2, "Alpha", _ref(1), ""), _object(3, "Beta", _ref(1), ""), _object(4, "Holder", _ref(1), "")))
+	project_write(r, "assets/Main.scene.meta", `{"guid": "5ce4e000-0000-4000-8000-0000000000c2"}`)
+	editor_start(r)
+	call(r, "open_scene", `{"path":"assets/Main.scene"}`)
+	window_open(r, "Hierarchy")
+	frames(r, 5)
+
+	alpha, a_shown := _row(r, "Alpha")
+	beta, b_shown := _row(r, "Beta")
+	holder, h_shown := _row(r, "Holder")
+	if !testing.expect(t, a_shown && b_shown && h_shown, "the three objects are listed") do return
+	mid :: proc(rect: [4]f64) -> (f64, f64) { return rect.x + 10, rect.y + rect[3] / 2 }
+	shift_click :: proc(r: ^Run, x, y: f64) {
+		call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":1}},{{"type":"key","name":"shift"}},{{"type":"down"}},{{"type":"up"}},{{"type":"key","name":"shift","down":false}},{{"type":"wait","frames":3}}]}}`, x, y))
+	}
+
+	// Alpha and Beta copied, pasted under Holder: a copy of each.
+	click(r, mid(alpha))
+	shift_click(r, mid(beta))
+	_chord(r, "C")
+	click(r, mid(holder))
+	_chord(r, "V")
+	testing.expectf(t, len(_rows(r, "Alpha_copy")) == 1 && len(_rows(r, "Beta_copy")) == 1, "the paste made a copy of both: %v, %v", _rows(r, "Alpha_copy"), _rows(r, "Beta_copy"))
+	holder, _ = _row(r, "Holder")
+	if copies := _rows(r, "Alpha_copy"); len(copies) == 1 do testing.expectf(t, copies[0].x > holder.x + 5 && copies[0].y > holder.y, "under Holder: %v against %v", copies[0], holder)
+
+	// Duplicate takes the pasted pair, which the paste left selected.
+	_chord(r, "D")
+	testing.expectf(t, len(_rows(r, "Alpha_copy_copy")) == 1 && len(_rows(r, "Beta_copy_copy")) == 1, "Duplicate copied both selected objects: %v, %v", _rows(r, "Alpha_copy_copy"), _rows(r, "Beta_copy_copy"))
+
+	// Alpha and Beta cut, pasted under Holder: both move, in one undo step.
+	alpha, _ = _row(r, "Alpha")
+	beta, _ = _row(r, "Beta")
+	click(r, mid(alpha))
+	shift_click(r, mid(beta))
+	_chord(r, "X")
+	holder, _ = _row(r, "Holder")
+	click(r, mid(holder))
+	_chord(r, "V")
+	alpha, _ = _row(r, "Alpha")
+	beta, _ = _row(r, "Beta")
+	holder, _ = _row(r, "Holder")
+	testing.expectf(t, alpha.x > holder.x + 5 && beta.x > holder.x + 5 && alpha.y > holder.y && beta.y > holder.y, "Alpha and Beta moved under Holder: %v, %v against %v", alpha, beta, holder)
+	call(r, "invoke_menu", `{"path":"Edit/Undo"}`)
+	frames(r, 3)
+	alpha, _ = _row(r, "Alpha")
+	beta, _ = _row(r, "Beta")
+	holder, _ = _row(r, "Holder")
+	testing.expectf(t, _same_depth(alpha, holder) && _same_depth(beta, holder), "one undo puts both back beside Holder: %v, %v against %v", alpha, beta, holder)
+
+	// A right click on a row: its menu has the Edit band and stays up after
+	// the button is let go.
+	call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":1}},{{"type":"down","button":"right"}},{{"type":"wait","frames":2}},{{"type":"up","button":"right"}},{{"type":"wait","frames":6}}]}}`, alpha.x + 10, alpha.y + alpha[3] / 2))
+	_, has_cut := item_rect(r, "popup", "Cut")
+	_, has_create := item_rect(r, "popup", "Create Empty")
+	testing.expect(t, has_cut && has_create, "the row's menu shows Cut and Create Empty after the click")
+	// A click on the window's empty space closes the menu.
+	window, _ := window_rect(r, "Hierarchy")
+	click(r, window.x + window[2] / 2, window.y + window[3] - 12)
+	_, has_cut = item_rect(r, "popup", "Cut")
+	testing.expect(t, !has_cut, "the menu is closed")
+
+	// Delete on its key takes the selected objects, both of them.
+	copies := _rows(r, "Alpha_copy_copy")
+	more := _rows(r, "Beta_copy_copy")
+	if !testing.expect(t, len(copies) == 1 && len(more) == 1, "the duplicates are still listed") do return
+	click(r, mid(copies[0]))
+	shift_click(r, mid(more[0]))
+	call(r, "input", `{"steps":[{"type":"key","name":"Delete"},{"type":"key","name":"Delete","down":false},{"type":"wait","frames":4}]}`)
+	testing.expectf(t, len(_rows(r, "Alpha_copy_copy")) == 0 && len(_rows(r, "Beta_copy_copy")) == 0, "Delete removed both selected objects: %v, %v", _rows(r, "Alpha_copy_copy"), _rows(r, "Beta_copy_copy"))
+	alpha, _ = _row(r, "Alpha")
+
+	// While a text field has the keyboard the keys are the field's.
+	field, found := item_rect(r, "Hierarchy", "Filter: name")
+	if !testing.expect(t, found, "the Hierarchy has its filter field") do return
+	click(r, mid(alpha))
+	click(r, field.x + 40, field.y + field[3] / 2)
+	_chord(r, "D")
+	testing.expectf(t, len(_rows(r, "Alpha")) == 1 && len(_rows(r, "Alpha_copy")) == 1, "Duplicate does nothing while the filter field is typed in: %v", _rows(r, "Alpha"))
+
+	call(r, "input", `{"steps":[{"type":"key","name":"Escape"},{"type":"key","name":"Escape","down":false},{"type":"wait","frames":3}]}`)
+	call(r, "invoke_menu", `{"path":"File/Save"}`)
+	frames(r, 3)
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	editor_quit(r)
+}
+
 // Two names that start at the same indent. A name's rectangle is measured
 // from its glyphs, so it differs by a fraction of a point between names.
 @(private = "file")

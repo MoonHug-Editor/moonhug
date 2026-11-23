@@ -177,7 +177,7 @@ sub_asset_is_deleted_renamed_and_created :: proc(t: ^testing.T) {
 	// Delete removes the selected sub-asset, not its scene. Undo brings it back.
 	call(r, "ping_asset", select_marble)
 	frames(r, 3)
-	asked := call(r, "invoke_menu", `{"path":"Assets/Delete"}`)
+	asked := call(r, "invoke_menu", `{"path":"Edit/Delete"}`)
 	testing.expectf(t, as_string(at(asked, "dialog")) == "Delete selected sub-asset?", "Delete asks first, about the sub-asset, got %q", as_string(at(asked, "dialog")))
 	_, still, _ := call_raw(r, "asset_document", marble_doc)
 	testing.expectf(t, still == "", "nothing is removed before the answer")
@@ -195,7 +195,7 @@ sub_asset_is_deleted_renamed_and_created :: proc(t: ^testing.T) {
 	// Rename names it in place, in the Project window.
 	call(r, "ping_asset", select_marble)
 	frames(r, 3)
-	call(r, "invoke_menu", `{"path":"Assets/Rename"}`)
+	call(r, "invoke_menu", `{"path":"Edit/Rename"}`)
 	frames(r, 3)
 	call(r, "input", `{"steps":[{"type":"text","text":"Stone"},{"type":"wait","frames":2},{"type":"key","name":"Enter"},{"type":"key","name":"Enter","down":false},{"type":"wait","frames":3}]}`)
 	call(r, "invoke_menu", `{"path":"File/Save"}`)
@@ -205,7 +205,7 @@ sub_asset_is_deleted_renamed_and_created :: proc(t: ^testing.T) {
 	// Duplicate copies the selected sub-asset inside its scene, an undo step.
 	call(r, "ping_asset", select_marble)
 	frames(r, 3)
-	call(r, "invoke_menu", `{"path":"Assets/Duplicate"}`)
+	call(r, "invoke_menu", `{"path":"Edit/Duplicate"}`)
 	frames(r, 3)
 	call(r, "invoke_menu", `{"path":"File/Save"}`)
 	frames(r, 3)
@@ -396,14 +396,14 @@ sub_assets_of_a_closed_scene_are_managed_like_files :: proc(t: ^testing.T) {
 
 	// Rename.
 	select(r, marble)
-	call(r, "invoke_menu", `{"path":"Assets/Rename"}`)
+	call(r, "invoke_menu", `{"path":"Edit/Rename"}`)
 	frames(r, 3)
 	call(r, "input", fmt.tprintf(TYPE_AND_ENTER, "Stone"))
 	testing.expectf(t, as_int(at(_sub_asset_record(r, SCENE, "Stone"), "local_id")) == marble, "Rename writes the name into the file")
 
 	// Duplicate.
 	select(r, marble)
-	call(r, "invoke_menu", `{"path":"Assets/Duplicate"}`)
+	call(r, "invoke_menu", `{"path":"Edit/Duplicate"}`)
 	frames(r, 4)
 	copied := _sub_asset_record(r, SCENE, "Stone 1")
 	copy_id := as_int(at(copied, "local_id"))
@@ -421,7 +421,7 @@ sub_assets_of_a_closed_scene_are_managed_like_files :: proc(t: ^testing.T) {
 
 	// Delete asks, and says undo does not restore it.
 	select(r, copy_id)
-	asked := call(r, "invoke_menu", `{"path":"Assets/Delete"}`)
+	asked := call(r, "invoke_menu", `{"path":"Edit/Delete"}`)
 	testing.expectf(t, as_string(at(asked, "dialog")) == "Delete selected sub-asset?", "Delete asks first, got %q", as_string(at(asked, "dialog")))
 	testing.expectf(t, strings.contains(as_string(at(call(r, "dialog"), "description")), "undo does not restore"), "and says undo does not restore it, as its file is not open")
 	call(r, "dialog", `{"press":"Delete"}`)

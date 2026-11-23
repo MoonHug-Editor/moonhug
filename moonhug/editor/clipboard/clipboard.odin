@@ -16,7 +16,7 @@ import "moonhug:libs/log"
 Clipboard :: struct {
 	json_data:      [dynamic]byte,
 	json_tid:       typeid,
-	hierarchy_data: []byte,
+	hierarchy:      [dynamic][]byte, // the copied objects, a serialized subtree each, owned
 	files:          [dynamic]string, // owned clones
 	files_cut:      bool,            // the files move on paste instead of copying
 }
@@ -41,8 +41,8 @@ shutdown :: proc() {
 clear_all :: proc() {
 	clear(&_clipboard.json_data)
 	_clipboard.json_tid = nil
-	delete(_clipboard.hierarchy_data)
-	_clipboard.hierarchy_data = nil
+	for data in _clipboard.hierarchy do delete(data)
+	clear(&_clipboard.hierarchy)
 	clear_files()
 }
 
@@ -119,18 +119,21 @@ paste :: proc(dst: any) -> bool {
 	return true
 }
 
-// Takes ownership of `data`.
-copy_hierarchy :: proc(data: []byte) {
+// The copied scene objects, a serialized subtree each. Takes ownership of
+// every one.
+copy_hierarchy :: proc(subtrees: ..[]byte) {
+	context.allocator = runtime.default_allocator()
 	clear_all()
-	_clipboard.hierarchy_data = data
+	for data in subtrees do if len(data) > 0 do append(&_clipboard.hierarchy, data)
 }
 
-paste_hierarchy :: proc() -> []byte {
-	return _clipboard.hierarchy_data
+// The copied objects, in the order they were copied. The clipboard's own.
+paste_hierarchy :: proc() -> [][]byte {
+	return _clipboard.hierarchy[:]
 }
 
 has_hierarchy :: proc() -> bool {
-	return len(_clipboard.hierarchy_data) > 0
+	return len(_clipboard.hierarchy) > 0
 }
 
 // Project files to paste, by path: `cut` moves them on paste, else they copy.

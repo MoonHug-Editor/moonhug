@@ -44,6 +44,7 @@ A scene's rows open as they were left: after another scene, and after a restart.
 - Drag objects onto a Project folder to make prefabs of them there ([Scene](../assets/Scene.md#making-a-prefab-of-objects)).
 - While a drag hovers, its tooltip says what a drop there does ([Drag and drop](/docs/core/DragAndDrop.md)).
 - The `+` button and a right click on empty space open the GameObject menu's create items. A new object becomes the selection in the same undo step.
+- Cut, Copy, Paste, Duplicate and Delete are the Edit menu's commands, and take the whole selection: every selected object, one selected under another going with it. Paste puts the copies, or the cut objects, under the selected object, in one undo step, and selects them. The keys are the same in the Project window, where the commands act on the selected files. While a text field has the keyboard, the keys are the field's.
 - GameObject, Create Prefab writes each selected object to a new scene file and puts an instance of it in its place ([Scene](../assets/Scene.md#making-a-prefab-of-objects)).
 - A scene's header menu has Save, Save As, Discard, which reloads the scene from its file, and Unload.
 - The Filter field shows only the objects that match every word in it, as a flat list. The selected object's path shows under the list. A word matches inside an object's name. A word that starts with `c:` matches part of a component type's name: `c:sprite` shows the objects with a Sprite or a SpriteRenderer. A `$` at the end marks the end of the name: `c:sprite$` shows the objects with a Sprite only. `c:mesh enemy` shows the objects named like "enemy" that have a mesh component. The Project window's search takes the same words ([Windows](../../../../docs/core/Windows.md#search-fields)).
@@ -57,5 +58,8 @@ A scene's rows open as they were left: after another scene, and after a restart.
 | Right, Left | Hierarchy/Expand, Hierarchy/Collapse: open or close the children, or step into or out of them |
 | Alt+Right, Alt+Left | Open or close every descendant |
 | F | Edit/Frame Selected |
+| Ctrl+X, Ctrl+C, Ctrl+V | Edit/Cut, Edit/Copy, Edit/Paste |
+| Ctrl+D | Edit/Duplicate |
+| Ctrl+Backspace, Delete | Edit/Delete |
 | Enter, F2 | Hierarchy/Rename |
 | Escape | Hierarchy/Clear Filter |

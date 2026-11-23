@@ -804,6 +804,7 @@ hierarchy_toggle_active_menu :: proc() {
 }
 
 shutdown_hierarchy_windows :: proc() {
+	delete(_hierarchy_cut)
 	_hierarchy_window_free(&_hv_none)
 	delete(_inspector_comp_open)
 }
