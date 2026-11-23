@@ -184,18 +184,36 @@ console_window_draw :: proc(w: ^wnd.Window) {
 
 	filter_terms := widgets.search_terms(string(cstring(raw_data(_cv.filter[:]))))
 
-	// Ids of rows drawn this frame, in draw order.
-	visible_ids := make([dynamic]u64, 0, len(log.entries), context.temp_allocator)
+	// The entries the filter and the level toggles let through, in order.
+	// Every row has one height, so only the rows on screen are drawn.
+	shown := make([dynamic]int, 0, len(log.entries), context.temp_allocator)
+	for entry, i in log.entries do if _console_entry_shown(_cv, entry, filter_terms) do append(&shown, i)
 
-	visible_row := 0
-	for entry in log.entries {
-		if !_console_entry_shown(_cv, entry, filter_terms) do continue
+	row_h := im.GetTextLineHeightWithSpacing() * 2
+	// From one row's top to the next: the row and the gap under it.
+	pitch := row_h + im.GetStyle().ItemSpacing.y
+	sel_visible := false
+	for i, k in shown do if log.entries[i].id == _cv.selected_id {
+		sel_visible = true
+		// The keys moved the selection: its row comes into view.
+		if _cv.scroll_to_sel {
+			top, scroll, view_h := f32(k) * pitch, im.GetScrollY(), im.GetWindowHeight()
+			if top < scroll || top + row_h > scroll + view_h do im.SetScrollY(max(top - (view_h - row_h) * 0.5, 0))
+		}
+		break
+	}
+	_cv.scroll_to_sel = false
 
-		// Unity-style row: a large level icon spanning both text rows in a
-		// left column, then "[hh:mm:ss] message" and a dimmed source line.
-		// Alternate rows are the live window bg darkened by ALT_ROW_MUL,
-		// keyed off the theme so it tracks whatever background is in use.
-		row_h := im.GetTextLineHeightWithSpacing() * 2
+	clipper: im.ListClipper
+	im.ListClipper_Begin(&clipper, i32(len(shown)), pitch)
+	for im.ListClipper_Step(&clipper) do for visible_row in clipper.DisplayStart ..< clipper.DisplayEnd {
+		if int(visible_row) >= len(shown) do break
+		entry := log.entries[shown[visible_row]]
+
+		// A large level icon spanning both text rows in a left column, then
+		// "[hh:mm:ss] message" and a dimmed source line. Alternate rows are
+		// the live window bg darkened by ALT_ROW_MUL, keyed off the theme so
+		// it tracks whatever background is in use.
 		row_start := im.GetCursorScreenPos()
 		is_row_selected := entry.id == _cv.selected_id
 		if is_row_selected {
@@ -264,31 +282,19 @@ console_window_draw :: proc(w: ^wnd.Window) {
 		}
 		// One item needs no badge: the row's click and double click
 		// cover it.
-		if len(entry.items) > 1 {
-			_console_items_badge(entry, row_start, row_w, row_h)
-			im.SetCursorScreenPos(im.Vec2{row_start.x, row_start.y + row_h})
-		}
-		if is_row_selected && _cv.scroll_to_sel {
-			im.SetScrollHereY()
-			_cv.scroll_to_sel = false
-		}
-		append(&visible_ids, entry.id)
-		visible_row += 1
+		if len(entry.items) > 1 do _console_items_badge(entry, row_start, row_w, row_h)
+		// The next row starts exactly one pitch down, whatever this one drew.
+		// The empty item is what tells imgui the window reaches that far.
+		im.SetCursorScreenPos(im.Vec2{row_start.x, row_start.y + row_h})
+		im.Dummy(im.Vec2{0, 0})
 	}
-
-	sel_visible := false
-	for id in visible_ids {
-		if id == _cv.selected_id {
-			sel_visible = true
-			break
-		}
-	}
+	im.ListClipper_End(&clipper)
 
 	// Follow new entries only while nothing is selected — otherwise the
 	// auto-scroll fights keyboard navigation. Esc deselects to resume.
 	n := len(log.entries)
 	if n > _cv.last_count && n > 0 && !sel_visible {
-		im.SetScrollHereY(1)
+		im.SetScrollY(f32(len(shown)) * pitch)
 	}
 	_cv.last_count = n
 

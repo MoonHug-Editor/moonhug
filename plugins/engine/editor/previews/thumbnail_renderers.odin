@@ -1,8 +1,8 @@
 package previews
 
 // The engine's thumbnail renderers for the shell's cache (moonhug:editor/thumbnails):
-// image files (the texture drawn aspect-fit), .mat (a quad drawn with the
-// material's shader and block), .scene (the instantiated prefab framed by its
+// image files (the texture drawn aspect-fit), .mat (a sphere drawn with the
+// material, material_sphere.odin), .scene (the instantiated prefab framed by its
 // bounds), a model file (its node hierarchy framed the same way), and a
 // model's mesh parts and clips as sub-assets.
 
@@ -75,20 +75,6 @@ _thumb_render_image :: proc(path: string, guid: engine.Asset_GUID, sub: engine.L
 	gfx.pass_begin_target(target, [4]f32{0, 0, 0, 0})
 	gfx.set_view_proj(linalg.MATRIX4F32_IDENTITY)
 	gfx.draw_quad(corners, _THUMB_UVS, {1, 1, 1, 1}, t2d.gfx)
-	gfx.pass_end()
-	return true
-}
-
-// A full-cell quad drawn with the material's shader, block and textures — a
-// flat swatch (no preview mesh exists yet).
-@(private = "file")
-_thumb_render_material :: proc(path: string, guid: engine.Asset_GUID, sub: engine.Local_ID, target: ^gfx.Render_Target) -> bool {
-	shader, tex, color, data, extra := engine.material_resolve_draw(guid)
-	corners := [4][3]f32{{-0.9, -0.9, 0}, {0.9, -0.9, 0}, {0.9, 0.9, 0}, {-0.9, 0.9, 0}}
-
-	gfx.pass_begin_target(target, [4]f32{0.16, 0.16, 0.18, 1})
-	gfx.set_view_proj(linalg.MATRIX4F32_IDENTITY)
-	gfx.draw_quad(corners, _THUMB_UVS, color, tex, shader, data, {0, 0, 1}, extra)
 	gfx.pass_end()
 	return true
 }

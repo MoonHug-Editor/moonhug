@@ -481,6 +481,19 @@ _project_list_build :: proc(query: string, filter := "") -> int {
     if filtering do _project_search_hits(filter)
     hides := editor_settings.project_filter_hides
 
+    // One column: the whole tree, folders and files, as far as it is open.
+    if query == "" && editor_settings.project_one_column {
+        reveal := _pv.tree_reveal
+        _pv.tree_reveal = false
+        if reveal do _pv.scroll_to_list_sel = true
+        _one_column_add(projectWindowData.rootPath, filepath.base(projectWindowData.rootPath), 0, false, filtering, hides, reveal)
+        pkgs := project_packages_list()
+        open := len(pkgs) > 0 && (_tree_is_open(_PROJECT_PACKAGES_PATH) || (reveal && _project_path_is_ancestor(_PROJECT_PACKAGES_PATH, _pv.current_path)))
+        _project_list_row_add("packages", _PROJECT_PACKAGES_PATH, true, has_sub = len(pkgs) > 0, open = open)
+        if open do for pkg in pkgs do _one_column_add(pkg.assets_path, pkg.name, 1, pkg.is_link, filtering, hides, reveal)
+        return 0
+    }
+
     if query != "" {
         hits := _project_search_hits(query)
         prefix := strings.concatenate({projectWindowData.rootPath, "/"}, context.temp_allocator)
@@ -547,6 +560,51 @@ _project_list_build :: proc(query: string, filter := "") -> int {
     return 0
 }
 
+// One folder of the one-column layout, and under it, when it is open, its
+// folders and then its files. `reveal`: the folders above the one the window
+// is at open, and that one too, so what was asked for shows.
+@(private = "file")
+_one_column_add :: proc(path, name: string, depth: int, is_link: bool, filtering, hides, reveal: bool) {
+    has_match := !filtering || path in _pv.filter_dirs
+    if !has_match && hides && depth > 0 do return
+    revealed := reveal && (path == _pv.current_path || _project_path_is_ancestor(path, _pv.current_path))
+    want_open := _tree_is_open(path) || revealed
+    entries: []Project_Dir_Entry
+    ok: bool
+    if want_open {
+        entries, ok = project_dir_listing(path)
+    } else {
+        entries, ok = project_dir_listing_kept(path)
+    }
+    shown :: proc(entry: Project_Dir_Entry) -> bool {
+        return entry.is_dir || !(strings.has_prefix(entry.name, ".") || filepath.ext(entry.name) == ".meta")
+    }
+    has_sub := false
+    if ok do for entry in entries do if shown(entry) {
+        has_sub = true
+        break
+    }
+    open := has_sub && want_open
+    if open && revealed && !_tree_is_open(path) do _project_tree_set_open(path, true)
+    _project_list_row_add(name, path, true, is_link = is_link, faded = !has_match, depth = depth, has_sub = has_sub, open = open)
+    if !open do return
+    for entry in entries {
+        if !entry.is_dir do continue
+        full, _ := filepath.join({path, entry.name}, context.temp_allocator)
+        _one_column_add(full, entry.name, depth + 1, entry.is_link, filtering, hides, reveal)
+    }
+    for entry in entries {
+        if entry.is_dir || !shown(entry) do continue
+        full, _ := filepath.join({path, entry.name}, context.temp_allocator)
+        if filtering && !(full in _pv.filter_files) do continue
+        _project_list_row_add(entry.name, full, false, depth = depth + 1)
+        if _pv.expanded[full] {
+            sub, _ := _project_sub_assets(full, false)
+            _project_list_rows_add_subs(full, sub, depth + 1)
+        }
+    }
+}
+
 // The index in the list of the row a ping flashes, -1 for none.
 @(private = "file")
 _list_ping_index :: proc() -> int {
@@ -582,6 +640,8 @@ _project_list_draw_rows :: proc() {
     }
 
     dragging := drag.items() != nil
+    // One column has no tree pane: the pins are above its rows.
+    if editor_settings.project_one_column && _pv.search_buf[0] == 0 do _pins_draw(&look, dl, dragging)
     clipper: im.ListClipper
     im.ListClipper_Begin(&clipper, i32(len(_pv.list_rows)), look.row_h)
     for im.ListClipper_Step(&clipper) {
@@ -600,12 +660,13 @@ _list_draw_row :: proc(look: ^_Rows_Look, dl: ^im.DrawList, row: Project_Row, dr
     im.PushIDInt(_rows_id(row.path, row.sub))
     defer im.PopID()
     is_sub := row.sub != 0
-    depth := 1 if is_sub && !row.hit else 0
+    depth := 0 if row.hit else row.depth
+    one_column := editor_settings.project_one_column
 
     // Being renamed: the field where the name is.
     if _pv.rename_active && !_pv.rename_in_tree && _pv.rename_path == row.path && _pv.rename_sub == row.sub {
         rmin := im.GetCursorScreenPos()
-        name_x := rmin.x + look.pad_x + f32(depth) * look.indent * 2 + look.arrow_w + look.icon_w + 2
+        name_x := rmin.x + look.pad_x + f32(depth) * look.indent + look.arrow_w + look.icon_w + 2
         im.SetCursorScreenPos(im.Vec2{name_x, rmin.y + (look.row_h - im.GetFrameHeight()) * 0.5})
         _project_rename_input(max(rmin.x + look.width - name_x, 40))
         im.SetCursorScreenPos(im.Vec2{rmin.x, rmin.y + look.row_h})
@@ -629,7 +690,7 @@ _list_draw_row :: proc(look: ^_Rows_Look, dl: ^im.DrawList, row: Project_Row, dr
     }
     _project_item_ping_flash(row.path, row.sub)
 
-    x := rmin.x + look.pad_x + f32(depth) * look.indent * 2
+    x := rmin.x + look.pad_x + f32(depth) * look.indent
     icon_x := x + look.arrow_w
     name_x := icon_x + look.icon_w + 2
     box := look.row_h - 4
@@ -671,15 +732,18 @@ _list_draw_row :: proc(look: ^_Rows_Look, dl: ^im.DrawList, row: Project_Row, dr
     }
 
     // The fold arrow of a file with sub-assets, in a column every row keeps
-    // so the names line up.
+    // so the names line up. In one column a folder has one too: it unfolds
+    // in place.
     sub, _ := _project_sub_assets(row.path, row.is_dir)
-    open := len(sub) > 0 && _pv.expanded[row.path]
-    in_arrow := len(sub) > 0 && look.mouse.x < icon_x
-    if len(sub) > 0 do _rows_arrow(dl, im.Vec2{x + look.arrow_w * 0.5, rmin.y + look.row_h * 0.5}, open, look.text)
+    folds := one_column && row.is_dir
+    open := row.open if folds else len(sub) > 0 && _pv.expanded[row.path]
+    has_arrow := row.has_sub if folds else len(sub) > 0
+    in_arrow := has_arrow && look.mouse.x < icon_x
+    if has_arrow do _rows_arrow(dl, im.Vec2{x + look.arrow_w * 0.5, rmin.y + look.row_h * 0.5}, open, look.text)
 
     dim := row.faded || (!row.is_dir && !is_known_extension(row.path)) || project_file_is_cut(row.path)
     col := look.dim if dim else look.text
-    icon := _project_dir_icon(row.is_link) if row.is_dir else _project_file_icon(row.path)
+    icon := _project_dir_icon(row.is_link, folds && open) if row.is_dir else _project_file_icon(row.path)
     drew_thumb := false
     if !row.is_dir {
         if tid, tok := thumbnails.get(row.path); tok {
@@ -699,6 +763,10 @@ _list_draw_row :: proc(look: ^_Rows_Look, dl: ^im.DrawList, row: Project_Row, dr
     _project_item_extras(row.path, row.is_dir, fmt.ctprintf("%s%s", icon, row.name))
 
     if hovered && im.IsMouseClicked(.Left) && in_arrow {
+        if folds {
+            _project_tree_set_open(row.path, !open)
+            return
+        }
         // Keys are owned clones: folding keeps the entry for the next unfold.
         if row.path in _pv.expanded {
             _pv.expanded[row.path] = !open
@@ -707,7 +775,27 @@ _list_draw_row :: proc(look: ^_Rows_Look, dl: ^im.DrawList, row: Project_Row, dr
         }
         return
     }
-    if (clicked || double) && !in_arrow do _project_item_clicked(row.path, row.is_dir)
+    if in_arrow do return
+    if one_column {
+        // One column has no folder of its own to show: the window is at the
+        // folder clicked, or at a clicked file's, for a paste or a new asset.
+        // A double click folds a folder where the two panes would enter it.
+        if folds && double {
+            if row.has_sub do _project_tree_set_open(row.path, !open)
+            return
+        }
+        if clicked || double {
+            if row.path == _PROJECT_PACKAGES_PATH {
+                _project_set_current(row.path)
+                return
+            }
+            _project_item_clicked(row.path, row.is_dir)
+            where_ := row.path if row.is_dir else filepath.dir(row.path)
+            if where_ != _pv.current_path do _project_set_current(where_)
+        }
+        return
+    }
+    if clicked || double do _project_item_clicked(row.path, row.is_dir)
 }
 
 // A small picture where a row's glyph goes, fitted to a square box.

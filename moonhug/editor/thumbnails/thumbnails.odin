@@ -49,7 +49,8 @@ _THUMB_FILE_MAGIC :: u32(0x4254484D) // "MHTB"
 // until its file changes, so without the bump a wrong one outlives its fix.
 // v2: mesh-part thumbs lit. v3: a scene's thumbnail holds only that scene (a
 // live preview's kept instance was drawn into it).
-_THUMB_FILE_VERSION :: u32(3)
+// v4: a material on a sphere.
+_THUMB_FILE_VERSION :: u32(4)
 
 _Thumb :: struct {
 	tex:   ^gfx.Texture, // nil = generation produced nothing, keep the icon

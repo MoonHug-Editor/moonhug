@@ -28,10 +28,20 @@ The project's files. A folder tree on the left, the contents of the folder it sh
 - The path bar on top names the folder, each part a link to that folder. With several items selected it shows their count, and during a search the number of hits.
 - Folders first, then files. A file with sub-assets has a fold arrow, and its sub-assets are rows under it.
 - The slider in the footer picks the form: rows at its low end, a grid of thumbnails above it, larger with the value.
-- A thumbnail is the asset drawn small: an image, a material, a scene, a model with its parts together. Other files show the glyph of their type.
+- A thumbnail is the asset drawn small: an image, a material on a sphere, a scene, a model with its parts together. Other files show the glyph of their type.
 - A name too long for its row or cell is cut in the middle with its extension kept. The whole name shows when the pointer rests on it.
 - The footer shows the path of the selected item.
 - `*` after a name marks a file with unsaved changes. A file of an unknown type and a cut file are dimmed.
+
+## One column
+
+One Column Layout in the window's menu makes the window one list, for a narrow window:
+
+- The folders and the files are in one tree. A folder's arrow, or a double click on it, unfolds it in place to its folders and then its files.
+- Right and Left unfold and fold the selected folder. Left on a folded one steps to the folder it is in.
+- The pinned folders are above the list, and a click on one opens the tree to it.
+- The window is at the folder clicked last, or at the folder of the file clicked last: a new asset and a paste go there. The path bar names it.
+- The list is rows only, with no size slider. A search shows its hits as in two panes, and a filter applies to the whole tree.
 
 ## Selecting
 

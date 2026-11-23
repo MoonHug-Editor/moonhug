@@ -1,8 +1,8 @@
 package previews
 
 // Inspector Preview pane drawers for the engine's visual assets — textures
-// (the real texture, sharp at any size), models, scenes and materials (their
-// thumbnail, scaled). A selected SUB-asset previews itself: a sprite slice
+// (the real texture, sharp at any size), models, scenes (their thumbnail,
+// scaled) and materials (a sphere, orbited). A selected SUB-asset previews itself: a sprite slice
 // shows its crop, a mesh part its rendered thumb — resolved through the same
 // subassets registry + thumbnail cache the project window uses. Audio's
 // waveform preview registers from its own package the same way.
@@ -31,7 +31,7 @@ _register_asset_previews :: proc() {
 		inspector.mapAssetPreview[ext] = _preview_model
 	}
 	inspector.mapAssetPreview[".scene"] = _preview_scene
-	inspector.mapAssetPreview[".mat"] = _preview_thumb
+	inspector.mapAssetPreview[".mat"] = _preview_material
 }
 
 // Before the editor's own shutdown (order 0), which tears down the scene
@@ -55,6 +55,7 @@ asset_previews_shutdown :: proc() {
 		_mesh_pv_rt = nil
 	}
 	_pv_drawn = {}
+	material_sphere_shutdown()
 }
 
 // The active selection's sub-asset for `path`, when one is selected. The
@@ -135,6 +136,7 @@ _Pv_Kind :: enum u8 {
 	Model,
 	Scene,
 	Clip,
+	Material,
 }
 
 // Everything a live preview's picture depends on.
@@ -450,17 +452,26 @@ _preview_clip :: proc(path: string, owner: engine.Asset_GUID, clip_id: engine.Lo
 	_pv_image_orbit(_mesh_pv_rt, avail)
 }
 
-// Scenes and materials draw their thumbnail scaled.
-_preview_thumb :: proc(path: string) {
-	if s, sok := _preview_selected_sub(path); sok {
-		if tid, uv0, uv1, tok := thumbnails.get_sub(path, s); tok {
-			w := s.size.x > 0 ? s.size.x : 1
-			h := s.size.y > 0 ? s.size.y : 1
-			_preview_draw_region(tid, uv0, uv1, w, h)
-		}
-		return
+// The inspector's preview of a material file: the sphere at the pane's size,
+// orbited by a drag and zoomed by the wheel, drawn again when the material
+// or the view changes (_pv_needs_draw).
+_preview_material :: proc(path: string) {
+	raw_guid, known := engine.asset_db_get_guid(path)
+	if !known do return
+	guid := engine.Asset_GUID(raw_guid)
+	avail := im.GetContentRegionAvail()
+	if avail.x < 32 || avail.y < 32 do return
+	if _mesh_pv_rt == nil do _mesh_pv_rt = gfx.rt_create(1, 1)
+	gfx.rt_resize(_mesh_pv_rt, i32(avail.x), i32(avail.y))
+
+	if _pv_needs_draw({kind = .Material, guid = guid, size = {i32(avail.x), i32(avail.y)}}) {
+		rv, forward := _pv_view([3]f32{}, 1, avail)
+		gfx.set_lights([]gfx.Light{{kind = .Directional, direction = forward, color = {1, 1, 1}, intensity = 1, culling_mask = ~u32(0)}}, 0.35)
+		gfx.pass_begin_target(_mesh_pv_rt, [4]f32{0.16, 0.16, 0.18, 1})
+		gfx.set_view_proj(rv.view_proj, rv.cam_pos)
+		_material_sphere_draw(guid)
+		gfx.pass_end()
+		gfx.set_lights_default() // the headlight must not leak into later passes
 	}
-	if tid, tok := thumbnails.get(path); tok {
-		_preview_draw_region(tid, {0, 0}, {1, 1}, 1, 1)
-	}
+	_pv_image_orbit(_mesh_pv_rt, avail)
 }

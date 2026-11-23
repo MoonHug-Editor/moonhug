@@ -494,3 +494,55 @@ project_filter_in_place :: proc(t: ^testing.T) {
 	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
 	editor_quit(r)
 }
+
+// One column: the tree and the files in one list, a folder unfolding in
+// place.
+@(test)
+project_one_column_layout :: proc(t: ^testing.T) {
+	r := begin(t)
+	project_write(r, "assets/Keep.scene", _scene("Keep"))
+	project_write(r, "assets/Art/Inside.scene", _scene("Inside"))
+	project_write(r, "assets/Art/Deep/Far.scene", _scene("Far"))
+	editor_start(r)
+	call(r, "editor_setting", `{"name":"project_one_column","value":"true"}`)
+	call(r, "ping_asset", `{"path":"assets/Keep.scene"}`)
+	frames(r, 5)
+
+	// One list: the root open to its folder and its file, Art folded.
+	art := _rects(r, "Art")
+	keep := _rects(r, "Keep.scene")
+	if !testing.expectf(t, len(art) == 1 && len(keep) == 1, "Art and Keep.scene are in the one list, once each: %v, %v", art, keep) do return
+	testing.expect(t, len(_rects(r, "Inside.scene")) == 0, "Art is folded")
+
+	// A double click unfolds Art in place: its folder and its file under it,
+	// a step in.
+	call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"move","x":%v,"y":%v}},{{"type":"wait","frames":1}},{{"type":"down"}},{{"type":"up"}},{{"type":"wait","frames":1}},{{"type":"down"}},{{"type":"up"}},{{"type":"wait","frames":4}}]}}`, art[0].x + 10, art[0].y + art[0][3] / 2))
+	inside := _rects(r, "Inside.scene")
+	deep := _rects(r, "Deep")
+	art = _rects(r, "Art")
+	if !testing.expectf(t, len(inside) == 1 && len(deep) == 1 && len(art) == 1, "Art shows Deep and Inside.scene under it: %v, %v", deep, inside) do return
+	testing.expectf(t, inside[0].x > art[0].x + 5 && inside[0].y > art[0].y && deep[0].y < inside[0].y, "a step in, folders first: %v, %v against %v", deep[0], inside[0], art[0])
+	testing.expect(t, len(_rects(r, "Keep.scene")) == 1, "the root's own file is still listed")
+
+	// A file dragged onto a folder's row moves into it, as with two panes.
+	keep = _rects(r, "Keep.scene")
+	drag_mouse(r, keep[0].x + 10, keep[0].y + keep[0][3] / 2, deep[0].x + 10, deep[0].y + deep[0][3] / 2)
+	frames(r, 4)
+	testing.expect(t, os.exists(project_path(r, "assets/Art/Deep/Keep.scene")), "Keep.scene moved into Deep")
+
+	// The arrow keys: Left on the open Art folds it.
+	art = _rects(r, "Art")
+	click(r, art[0].x + 10, art[0].y + art[0][3] / 2)
+	call(r, "input", `{"steps":[{"type":"key","name":"LeftArrow"},{"type":"key","name":"LeftArrow","down":false},{"type":"wait","frames":4}]}`)
+	testing.expect(t, len(_rects(r, "Inside.scene")) == 0, "Left folds the selected folder")
+	call(r, "input", `{"steps":[{"type":"key","name":"RightArrow"},{"type":"key","name":"RightArrow","down":false},{"type":"wait","frames":4}]}`)
+	testing.expect(t, len(_rects(r, "Inside.scene")) == 1, "Right unfolds it")
+
+	// Another window asks for a file two folders down: the folders above it open.
+	call(r, "ping_asset", `{"path":"assets/Art/Deep/Far.scene"}`)
+	frames(r, 5)
+	testing.expect(t, len(_rects(r, "Far.scene")) == 1, "a file asked for shows, its folders opened")
+
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	editor_quit(r)
+}

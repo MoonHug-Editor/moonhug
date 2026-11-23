@@ -213,6 +213,10 @@ Project_Row :: struct {
     sub:     core.Local_ID, // not 0: the sub-asset of the file at `path` with this id
     hit:     bool,          // a sub-asset found by a search: its file is beside its name
     faded:   bool,          // a folder with no file that passes the filter under it
+    depth:   int,           // steps in from the pane's left edge
+    // The one-column layout, where a folder's row unfolds in place:
+    has_sub: bool,          // the folder has something to show: a fold arrow
+    open:    bool,          // it shows it
 }
 
 
@@ -331,6 +335,8 @@ _project_cancel_search :: proc() {
 // way a file manager keeps it while you browse, and nothing lands in the
 // history.
 _project_enter_dir :: proc(full_path: string) {
+    // In one column a folder opens where it is.
+    if editor_settings.project_one_column do _project_tree_set_open(full_path, true)
     _project_set_current(full_path)
     // Navigating to a folder leaves search mode: the list shows the folder
     // now. A filter stays, it is about whatever folder is shown.
@@ -1278,6 +1284,19 @@ project_filter_hides_checked :: proc(window: session.Window_Ref) -> bool {
     return editor_settings.project_filter_hides
 }
 
+// The window menu's layout: one list, a folder unfolding in place to its
+// folders and files, for a narrow window. Off: the folder tree and the list
+// of the folder it shows, side by side.
+@(window_menu={window="Project", label="One Column Layout", checked=project_one_column_checked})
+project_one_column_toggle :: proc(window: session.Window_Ref) {
+    editor_settings.project_one_column = !editor_settings.project_one_column
+    _pv.tree_reveal = true
+}
+
+project_one_column_checked :: proc(window: session.Window_Ref) -> bool {
+    return editor_settings.project_one_column
+}
+
 // The menu of a right click in either pane: the Edit menu's selection band
 // (Cut, Copy, Paste, Duplicate, Rename, Delete), which acts on the selected
 // files here, then the Assets menu up to its database band.
@@ -1376,7 +1395,10 @@ project_window_draw :: proc(w: ^wnd.Window) {
     list_w := split_total - tree_w
 
 
-    // Left pane: Tree view
+    one_column := editor_settings.project_one_column
+    if one_column do _pv.active_pane = .List
+    // Left pane: Tree view. One column has none: the list is the tree.
+    if !one_column {
     im.BeginChild("TreeView", im.Vec2{tree_w, 0}, {.Borders})
     // Clicking anywhere in the tree makes it the active pane.
     if im.IsWindowHovered({}) && im.IsMouseClicked(.Left) {
@@ -1395,6 +1417,7 @@ project_window_draw :: proc(w: ^wnd.Window) {
         _pv.split_ratio = tree_w / split_total
     }
     im.SameLine(0, 0)
+    }
 
     // Right pane: File list
     im.BeginChild("FileList", im.Vec2{0, 0}, {.Borders})
@@ -1432,7 +1455,7 @@ project_window_draw :: proc(w: ^wnd.Window) {
     im.Dummy({0, im.GetStyle().WindowPadding.y - im.GetStyle().ItemSpacing.y})
     // The zoom slider's low end is rows, anything above it a grid of
     // thumbnails scaling with the value. The packages are always rows.
-    if editor_settings.project_zoom > 0 && (searching || _pv.current_path != _PROJECT_PACKAGES_PATH) {
+    if editor_settings.project_zoom > 0 && !one_column && (searching || _pv.current_path != _PROJECT_PACKAGES_PATH) {
         _project_list_draw_grid(40 + editor_settings.project_zoom * 56)
     } else {
         _project_list_draw_rows()
@@ -1479,8 +1502,13 @@ project_window_draw :: proc(w: ^wnd.Window) {
         if cut && im.IsItemHovered({}) do _project_name_tooltip(where_)
         im.SameLine()
     }
-    im.SetCursorPosX(zoom_x)
-    widgets.slider_float("##prj_zoom", &editor_settings.project_zoom, 0, 1, "%.2f", zoom_w)
+    // One column is rows only: no size to pick.
+    if one_column {
+        im.NewLine()
+    } else {
+        im.SetCursorPosX(zoom_x)
+        widgets.slider_float("##prj_zoom", &editor_settings.project_zoom, 0, 1, "%.2f", zoom_w)
+    }
     im.PopStyleVar()
     // The row count the header shows, from THIS frame's draw.
     _pv.result_count = result_count
@@ -1500,14 +1528,15 @@ project_window_draw :: proc(w: ^wnd.Window) {
 // pane (Tree or List). The row lists are the ones the last draw built.
 
 // Adds a row to the list pane's rows, its strings in the window's row arena.
-_project_list_row_add :: proc(name, path: string, is_dir: bool, sub: core.Local_ID = 0, is_link := false, hit := false, faded := false) {
+_project_list_row_add :: proc(name, path: string, is_dir: bool, sub: core.Local_ID = 0, is_link := false, hit := false, faded := false, depth := 0, has_sub := false, open := false) {
     a := virtual.arena_allocator(&_pv.list_arena)
-    append(&_pv.list_rows, Project_Row{name = strings.clone(name, a), path = strings.clone(path, a), is_dir = is_dir, sub = sub, is_link = is_link, hit = hit, faded = faded})
+    append(&_pv.list_rows, Project_Row{name = strings.clone(name, a), path = strings.clone(path, a), is_dir = is_dir, sub = sub, is_link = is_link, hit = hit, faded = faded, depth = depth, has_sub = has_sub, open = open})
 }
 
-// The rows of an unfolded file's sub-assets follow their file's row.
-_project_list_rows_add_subs :: proc(path: string, sub: []subassets.Sub_Asset) {
-    for s in sub do _project_list_row_add(s.name, path, false, s.id)
+// The rows of an unfolded file's sub-assets follow their file's row, two
+// steps in from it.
+_project_list_rows_add_subs :: proc(path: string, sub: []subassets.Sub_Asset, depth := 0) {
+    for s in sub do _project_list_row_add(s.name, path, false, s.id, depth = depth + 2)
 }
 
 // The row index of the shown folder in the tree, -1 for none.
@@ -1601,11 +1630,26 @@ _project_list_foldable :: proc() -> (cur: int, path: string, on_sub: bool, open:
     return cur, row.path, row.sub != 0, _pv.expanded[row.path], true
 }
 
+// The selected row when it is a folder of the one-column layout.
+@(private = "file")
+_project_one_column_folder :: proc() -> (row: Project_Row, ok: bool) {
+    if !editor_settings.project_one_column do return
+    cur := _project_list_index()
+    if cur == -1 do return
+    row = _pv.list_rows[cur]
+    return row, row.is_dir && row.sub == 0
+}
+
 // Unfolds the selected file's sub-assets. False when there is nothing to
 // unfold: the row is a folder, a sub-asset, a file without sub-assets, or a
 // file already unfolded.
 @(private = "file")
 _project_list_unfold :: proc() -> bool {
+    if row, is_folder := _project_one_column_folder(); is_folder {
+        if !row.has_sub || row.open do return false
+        _project_tree_set_open(row.path, true)
+        return true
+    }
     _, path, on_sub, open, ok := _project_list_foldable()
     if !ok || on_sub || open do return false
     _project_unfold_sub_assets(path)
@@ -1617,6 +1661,18 @@ _project_list_unfold :: proc() -> bool {
 // or a file already folded.
 @(private = "file")
 _project_list_fold :: proc() -> bool {
+    if row, is_folder := _project_one_column_folder(); is_folder {
+        if row.open {
+            _project_tree_set_open(row.path, false)
+            return true
+        }
+        // A closed folder steps to the one it is in.
+        parent, has_parent := _project_parent_dir(row.path)
+        if !has_parent do return false
+        _project_set_selected(parent)
+        _pv.scroll_to_list_sel = true
+        return true
+    }
     _, path, on_sub, open, ok := _project_list_foldable()
     if !ok do return false
     if on_sub {
@@ -1714,6 +1770,7 @@ project_grid_active :: proc() -> bool {
 // Tab into the list selects its first row when nothing there is selected.
 @(command={name="Project/Switch Pane", palette=false, help="Moves the keyboard between the folder tree and the file list"})
 project_switch_pane :: proc() {
+    if editor_settings.project_one_column do return // one pane
     switch _pv.active_pane {
     case .Tree:
         _pv.active_pane = .List
