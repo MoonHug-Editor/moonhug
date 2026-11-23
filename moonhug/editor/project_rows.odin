@@ -150,6 +150,49 @@ _project_name_tooltip :: proc(name: string) {
     widgets.tooltip_unchecked(strings.clone_to_cstring(name, context.temp_allocator))
 }
 
+// --- Files dragged in from the OS ------------------------------------------------
+
+// The folder a drag from the OS file browser is over, set while the panes
+// draw: the row or cell under the pointer when it is a folder, else the
+// folder the list shows. A frame marks it, and a drop copies the files there
+// (os_drop.odin).
+@(private = "file")
+_os_target: struct {
+    folder: string, // temp
+    lo, hi: im.Vec2,
+}
+
+// A drag from the OS is over the window, or its files were just dropped.
+_project_os_drag :: proc() -> bool {
+    return os_drop_hovering() || os_drop_files() != nil
+}
+
+// The folder of the row or cell under the pointer, for that drag.
+_project_os_place :: proc(folder: string, lo, hi: im.Vec2) {
+    if folder == "" || folder == _PROJECT_PACKAGES_PATH do return
+    _os_target = {folder = folder, lo = lo, hi = hi}
+}
+
+// After a pane drew, with its rect: the place gets its frame, and the files
+// of a drop go there. `fallback` is the pane's own folder, "" for none (the
+// tree, and the list during a search).
+_project_os_drop :: proc(fallback: string, pane_lo, pane_hi: im.Vec2) {
+    defer _os_target = {}
+    if !_project_os_drag() do return
+    mouse := im.GetIO().MousePos
+    if mouse.x < pane_lo.x || mouse.x >= pane_hi.x || mouse.y < pane_lo.y || mouse.y >= pane_hi.y do return
+    target := _os_target
+    if target.folder == "" {
+        if fallback == "" || fallback == _PROJECT_PACKAGES_PATH do return
+        target = {folder = fallback, lo = pane_lo, hi = pane_hi}
+    }
+    im.DrawList_AddRect(im.GetForegroundDrawList(), target.lo, target.hi, im.GetColorU32ImVec4(im.GetStyleColorVec4(.DragDropTarget)^), 0, 2)
+    if files := os_drop_files(); files != nil {
+        os_drop_take()
+        project_import_files(files, target.folder)
+    }
+}
+
 // --- The folder tree -----------------------------------------------------------
 
 // Whether the folder shows its subfolders. The roots start open.
@@ -323,6 +366,8 @@ _tree_draw_row :: proc(look: ^_Rows_Look, dl: ^im.DrawList, row: Project_Tree_Ro
     rmin := im.GetItemRectMin()
     rmax := im.Vec2{rmin.x + look.width, rmin.y + look.row_h}
     hovered := im.IsItemHovered({})
+
+    if hovered && _project_os_drag() do _project_os_place(row.path, rmin, rmax)
 
     // The folder the list pane shows is always marked.
     if _pv.current_path == row.path {
@@ -513,6 +558,8 @@ _list_draw_row :: proc(look: ^_Rows_Look, dl: ^im.DrawList, row: Project_Row, dr
     rmax := im.Vec2{rmin.x + look.width, rmin.y + look.row_h}
     hovered := im.IsItemHovered({})
     double := hovered && im.IsMouseDoubleClicked(.Left)
+
+    if hovered && row.is_dir && _project_os_drag() do _project_os_place(row.path, rmin, rmax)
 
     selected := sel_proj_is_sub(row.path, row.sub) if is_sub else sel_proj_is(row.path)
     if selected {

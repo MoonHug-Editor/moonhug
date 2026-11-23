@@ -221,6 +221,7 @@ init_project_window :: proc() {
 
 shutdown_project_window :: proc() {
     project_file_ops_shutdown()
+    os_drop_shutdown()
     project_package_samples_shutdown()
     project_dir_cache_shutdown()
     delete(projectWindowData.rootPath)
@@ -844,6 +845,7 @@ _project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool
         im.SetScrollHereY()
         _pv.scroll_to_list_sel = false
     }
+    if is_dir && im.IsItemHovered({}) && _project_os_drag() do _project_os_place(full_path, rect_min, im.Vec2{rect_min.x + cell, rect_min.y + cell + label_h})
     _project_item_ping_flash(full_path)
     icon := _project_dir_icon(is_link) if is_dir else _project_file_icon(full_path)
     drag_label := strings.clone_to_cstring(fmt.tprintf("%s%s", icon, display), context.temp_allocator)
@@ -1320,6 +1322,8 @@ project_window_draw :: proc(w: ^wnd.Window) {
 
     _project_tree_build()
     _project_tree_draw()
+    // Files dragged in from the OS land on the folder under the pointer.
+    _project_os_drop("", im.GetWindowPos(), im.GetWindowPos() + im.GetWindowSize())
 
     im.EndChild()
 
@@ -1370,6 +1374,9 @@ project_window_draw :: proc(w: ^wnd.Window) {
     } else {
         _project_list_draw_rows()
     }
+    // Files dragged in from the OS land on the folder under the pointer, or
+    // in the folder the list shows.
+    _project_os_drop(_pv.current_path if query == "" else "", im.GetWindowPos(), im.GetWindowPos() + im.GetWindowSize())
     // The rest of the pane is the open folder, as a drop target. A rect of
     // its own, no item: clicks there stay the pane's.
     if query == "" && drag.items() != nil && _pv.current_path != _PROJECT_PACKAGES_PATH {

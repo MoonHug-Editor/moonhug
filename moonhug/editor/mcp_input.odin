@@ -52,10 +52,11 @@ _Input_Kind :: enum u8 {
 	Wait,
 	Wheel,
 	Touch,
+	Drop,
 }
 
 @(private = "file")
-_INPUT_KIND_NAMES := [_Input_Kind]string{.Move = "move", .Down = "down", .Up = "up", .Key = "key", .Text = "text", .Wait = "wait", .Wheel = "wheel", .Touch = "touch"}
+_INPUT_KIND_NAMES := [_Input_Kind]string{.Move = "move", .Down = "down", .Up = "up", .Key = "key", .Text = "text", .Wait = "wait", .Wheel = "wheel", .Touch = "touch", .Drop = "drop"}
 
 @(private = "file")
 _Input_Step :: struct {
@@ -65,7 +66,7 @@ _Input_Step :: struct {
 	key:    im.Key, // Key: the key as imgui names it
 	mod:    im.Key, // Key: the modifier flag a modifier key sets as well, None otherwise
 	down:   bool,   // Key
-	text:   string, // Text, owned
+	text:   string, // Text, owned. Drop: the files, a path a line
 	frames: int,    // Wait
 	finger: u64,    // Touch: the finger's id
 	phase:  sdl.EventType, // Touch: FINGER_DOWN, FINGER_MOTION or FINGER_UP
@@ -212,8 +213,20 @@ _input_parse :: proc(raw: json.Array) -> (steps: [dynamic]_Input_Step, err: Mcp_
 			case:        err = {"bad_request", fmt.tprintf("step %d: touch needs phase down, move or up", i)}
 			}
 			if !has_x || !has_y do err = {"bad_request", fmt.tprintf("step %d: touch needs x and y", i)}
+		case "drop":
+			// A drag from the OS file browser: over a point, or released
+			// there with its files.
+			x, has_x := mcp.json_f32(obj, "x")
+			y, has_y := mcp.json_f32(obj, "y")
+			if !has_x || !has_y do err = {"bad_request", fmt.tprintf("step %d: drop needs x and y", i)}
+			step = {kind = .Drop, pos = {x, y}}
+			if files, has := obj["files"].(json.Array); has {
+				paths := make([dynamic]string, context.temp_allocator)
+				for f in files do if path, is_path := f.(json.String); is_path do append(&paths, path)
+				step.text = strings.join(paths[:], "\n", runtime.default_allocator())
+			}
 		case:
-			err = {"bad_request", fmt.tprintf("step %d: type must be move, down, up, key, text, wheel, touch or wait (got %q)", i, kind)}
+			err = {"bad_request", fmt.tprintf("step %d: type must be move, down, up, key, text, wheel, touch, drop or wait (got %q)", i, kind)}
 		}
 		if err.code != "" {
 			delete(step.text, runtime.default_allocator())
@@ -228,7 +241,7 @@ _input_parse :: proc(raw: json.Array) -> (steps: [dynamic]_Input_Step, err: Mcp_
 }
 
 @(mcp_tool={
-	description="Drive the editor's widgets with real mouse and keyboard input: a script of steps played one per frame into imgui, the way the OS feeds it. Steps are objects with a type: move {x, y} (points from the editor's top-left, item_rect and window_list use the same frame), down {button} and up {button} (left, right, middle, default left), key {name, down} (an imgui key name, or ctrl, shift, alt, cmd for the physical modifier keys, down defaults to true, a press needs a down and an up), text {text} (characters typed into the focused field), wheel {x, y} (a scroll at the mouse, in wheel notches, y up and x across), touch {id, x, y, phase} (a finger on a touch screen going down, move or up, for a game in Play only), wait {frames}. A drag is move, down, a few moves, up. Answers when the script is done, with what each step's frame saw: the mouse position, the window under it, whether an item was hovered or active. The mouse, key and text steps also reach a game in Play (the Game window focused, as with real input). The script's position holds until the real cursor moves. One script at a time, and not in a batch.",
+	description="Drive the editor's widgets with real mouse and keyboard input: a script of steps played one per frame into imgui, the way the OS feeds it. Steps are objects with a type: move {x, y} (points from the editor's top-left, item_rect and window_list use the same frame), down {button} and up {button} (left, right, middle, default left), key {name, down} (an imgui key name, or ctrl, shift, alt, cmd for the physical modifier keys, down defaults to true, a press needs a down and an up), text {text} (characters typed into the focused field), wheel {x, y} (a scroll at the mouse, in wheel notches, y up and x across), touch {id, x, y, phase} (a finger on a touch screen going down, move or up, for a game in Play only), drop {x, y, files} (a drag from the OS file browser over a point, released there when files, a list of paths, is given), wait {frames}. A drag is move, down, a few moves, up. Answers when the script is done, with what each step's frame saw: the mouse position, the window under it, whether an item was hovered or active. The mouse, key and text steps also reach a game in Play (the Game window focused, as with real input). The script's position holds until the real cursor moves. One script at a time, and not in a batch.",
 	param_steps="object[]!:The steps, in order, at most 500 and 3000 frames",
 })
 mcp_tool_input :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
@@ -338,6 +351,16 @@ mcp_bridge_input_feed :: proc() {
 		e.tfinger.fingerID = sdl.FingerID(step.finger)
 		e.tfinger.x, e.tfinger.y = step.pos.x / max(vp.Size.x, 1), step.pos.y / max(vp.Size.y, 1)
 		input.apply_event(&e)
+	case .Drop:
+		// As SDL's drop events arrive: the position, then on a release each
+		// file and the end of the drop (os_drop.odin).
+		_input.mouse = step.pos
+		_input.has_mouse = true
+		os_drop_over({vp.Pos.x + step.pos.x, vp.Pos.y + step.pos.y})
+		if step.text != "" {
+			for path in strings.split(step.text, "\n", context.temp_allocator) do os_drop_add_file(path)
+			os_drop_complete()
+		}
 	case .Wait:
 		// This frame is the first of them.
 		_input.wait = step.frames - 1

@@ -168,6 +168,13 @@ _drop_files_in_folder :: proc(d: ^drag.Drop) -> bool {
 	return true
 }
 
+// Copies files and folders from anywhere on disk into `folder`: what a drop
+// from the OS file browser does. Each is a new asset. A name taken there is
+// asked about.
+project_import_files :: proc(files: []string, folder: string) {
+	_project_transfer(files, folder, move = false)
+}
+
 // What a name already taken in the target folder becomes.
 @(private = "file")
 _Clash :: enum {

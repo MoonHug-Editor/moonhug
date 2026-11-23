@@ -40,6 +40,13 @@ The project's files. A folder tree on the left, the contents of the folder it sh
 - The roots do not move: `assets`, `packages` and a package's assets folder.
 - Cut and Paste move files too, and Copy and Paste copy them. A copy gets a new id, and one made beside its source gets a numbered name.
 
+## Files from outside
+
+- Drag files and folders from the OS file browser onto the window to copy them into the project: onto a folder in the tree or the list, or onto the list's empty space for the folder it shows. A frame marks the folder while the drag is over it.
+- Each copy is a new asset. The source stays where it was.
+- A name taken in the folder asks the same question as a move.
+- What the drag carries is known only on the release, so the frame is all the drag shows. Files dropped on another window are not taken, with a line in the Console.
+
 ## Creating and editing
 
 - The `+` button creates an asset in the folder the list shows: the Assets menu's Create items.

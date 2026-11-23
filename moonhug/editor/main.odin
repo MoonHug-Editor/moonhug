@@ -242,7 +242,10 @@ main :: proc() {
         // and the idle throttle that input ends at once.
         {
             prof.zone("wait for the frame")
-            frame_pacing_wait(proc(e: ^sdl.Event) { im_sdl.ProcessEvent(e) })
+            frame_pacing_wait(proc(e: ^sdl.Event) {
+                im_sdl.ProcessEvent(e)
+                os_drop_event(e) // files dragged in from the OS (os_drop.odin)
+            })
         }
 
         // Unity-style Auto Refresh: re-scan assets when the editor window
@@ -396,6 +399,7 @@ main :: proc() {
         // that their hosts have begun this frame.
         tab_menu_draw_floating()
         maximize_after_windows()
+        os_drop_frame_end() // dropped files no window took are let go
 
         // Render. Scene/Game windows already encoded their offscreen passes
         // into this frame's command buffer during the UI calls above; imgui's

@@ -8,6 +8,8 @@ package scenarios
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
+import "core:strings"
 import "core:testing"
 import "core:time"
 
@@ -269,6 +271,66 @@ project_rows_scroll_under_a_drag :: proc(t: ^testing.T) {
 	call(r, "input", `{"steps":[{"type":"up"},{"type":"wait","frames":3}]}`)
 	testing.expect(t, reached, "the drag held near the bottom edge scrolled to the last row")
 	testing.expect(t, os.exists(project_path(r, "assets/Many/F01.scene")), "and the release over a file of the same folder moved nothing")
+	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
+	editor_quit(r)
+}
+
+// Files dragged in from the OS file browser are copied into the folder under
+// the pointer, or into the folder the list shows.
+@(test)
+project_takes_files_dropped_from_the_os :: proc(t: ^testing.T) {
+	r := begin(t)
+	project_write(r, "assets/Keep.scene", _scene("Keep"))
+	project_write(r, "assets/Art/Inside.scene", _scene("Inside"))
+	// Outside the assets folder: files of the disk, not of the project.
+	project_write(r, "outside/New.scene", _scene("New"))
+	project_write(r, "outside/Other.scene", _scene("Other"))
+	project_write(r, "outside/Pack/Deep.scene", _scene("Deep"))
+	abs :: proc(r: ^Run, rel: string) -> string {
+		path, _ := filepath.abs(project_path(r, rel), context.temp_allocator)
+		return path
+	}
+	editor_start(r)
+	call(r, "ping_asset", `{"path":"assets/Keep.scene"}`)
+	frames(r, 5)
+
+	art := _rects(r, "Art")
+	keep := _rects(r, "Keep.scene")
+	if !testing.expectf(t, len(art) == 2 && len(keep) == 1, "the root lists Art and Keep.scene: %v, %v", art, keep) do return
+	drop :: proc(r: ^Run, x, y: f64, files: ..string) {
+		list := strings.builder_make(context.temp_allocator)
+		for f, i in files do fmt.sbprintf(&list, "%s%q", "," if i > 0 else "", f)
+		// The drag rests on the place for a few frames, then lets go.
+		call(r, "input", fmt.tprintf(`{{"steps":[{{"type":"drop","x":%v,"y":%v}},{{"type":"wait","frames":2}},{{"type":"drop","x":%v,"y":%v}},{{"type":"wait","frames":2}},{{"type":"drop","x":%v,"y":%v,"files":[%s]}},{{"type":"wait","frames":5}}]}}`, x, y, x, y, x, y, strings.to_string(list)))
+	}
+
+	// A file and a folder onto the list's Art row: copies of both in Art,
+	// the sources where they were.
+	drop(r, art[1].x + 10, art[1].y + art[1][3] / 2, abs(r, "outside/New.scene"), abs(r, "outside/Pack"))
+	testing.expect(t, os.exists(project_path(r, "assets/Art/New.scene")) && os.exists(project_path(r, "assets/Art/Pack/Deep.scene")), "the dropped file and folder are copied into Art")
+	testing.expect(t, os.exists(project_path(r, "outside/New.scene")), "the source stays where it was")
+	testing.expect(t, os.exists(project_path(r, "assets/Art/New.scene.meta")), "the copy is an asset with an id of its own")
+
+	// Onto the tree's Art row, where the name is taken now: the editor asks.
+	roots := _rects(r, "assets")
+	if !testing.expect(t, len(roots) > 0, "the tree shows the assets root") do return
+	click(r, roots[0].x + 10, roots[0].y + roots[0][3] / 2)
+	art = _rects(r, "Art")
+	if !testing.expectf(t, len(art) == 2, "Art is in the tree and the list: %v", art) do return
+	drop(r, art[0].x + 10, art[0].y + art[0][3] / 2, abs(r, "outside/New.scene"))
+	asked := call(r, "dialog")
+	testing.expectf(t, as_bool(at(asked, "open")) && as_string(at(asked, "title")) == "Art already has New.scene", "a taken name is asked about: %v", asked)
+	call(r, "dialog", `{"press":"Skip"}`)
+	frames(r, 3)
+	testing.expect(t, !os.exists(project_path(r, "assets/Art/New 1.scene")), "Skip copies nothing")
+
+	// Onto the list's empty space, under its rows: the folder it shows.
+	window, shown := window_rect(r, "Project")
+	keep = _rects(r, "Keep.scene")
+	if !testing.expect(t, shown && len(keep) == 1, "the list shows the root") do return
+	drop(r, keep[0].x + 40, window.y + window[3] - 70, abs(r, "outside/Other.scene"))
+	testing.expect(t, os.exists(project_path(r, "assets/Other.scene")), "a drop on the list's empty space copies into the folder it shows")
+
 	for message in log_errors(r) do testing.expectf(t, false, "the editor reported: %s", message)
 	editor_quit(r)
 }
