@@ -10,6 +10,7 @@ import "core:math"
 import "core:math/linalg"
 import "core:slice"
 import "core:time"
+import "moonhug:libs/prof"
 import sdl "vendor:sdl3"
 
 // An offscreen color + depth pair. Both are sampleable after the pass that
@@ -526,6 +527,7 @@ rt_snapshot :: proc(rt: ^Render_Target) -> ^Texture {
 // kind (LDR to LDR, HDR to HDR). Recorded on the frame command buffer between
 // passes, so it reads what the passes before it drew.
 rt_copy :: proc(dst, src: ^Render_Target) {
+	prof.zone()
 	assert(!_pass.active, "rt_copy must run between passes")
 	assert(dst.format != .Depth && src.format != .Depth, "rt_copy copies color: a Depth target has none")
 	if _gfx.cmd == nil || dst == nil || src == nil do return
@@ -722,6 +724,7 @@ _decode_clear :: proc(clear: Maybe([4]f32)) -> Maybe([4]f32) {
 // scratch encoded at pass_end, as pass_begin_target does. A depth-less pass
 // and a `raw` one draw the window's bytes as given (imgui, display_blit).
 pass_begin_swapchain :: proc(clear: Maybe([4]f32), depth := true, raw := false) -> bool {
+	prof.zone()
 	assert(!_pass.active, "gfx pass already active")
 	swap_tex: ^sdl.GPUTexture
 	w, h: u32
@@ -1273,6 +1276,7 @@ _apply_shadows :: proc(light: ^_Light_Uniform, cluster: ^_Cluster_Uniform) {
 // camera), a directional light everywhere.
 @(private = "file")
 _cluster_bin :: proc(c: ^_Cluster_Uniform, count: int, v: _View) {
+	prof.zone()
 	c.tile_bits = {}
 	rect := v.viewport == {} ? [4]f32{0, 0, _pass.target_w, _pass.target_h} : v.viewport
 	tw, th := max(_pass.target_w, 1), max(_pass.target_h, 1)
@@ -1352,6 +1356,7 @@ _frustum_planes :: proc(vp: matrix[4, 4]f32) -> (planes: [6][4]f32) {
 // Encodes the pass's render pass from its recorded draws and resets it.
 @(private = "file")
 _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURenderPass)) {
+	prof.zone()
 	_upload_batch()
 
 	color_info := sdl.GPUColorTargetInfo{

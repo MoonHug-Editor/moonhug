@@ -4,6 +4,7 @@ package prof
 //
 //   prof.zone()                // this proc, until it returns
 //   prof.zone("sort quads")    // a named scope, until the scope ends
+//   prof.zone_call(step.name)  // around one call of a proc from a table
 //   prof.frame_mark()          // once a frame
 //   prof.plot("draw calls", f64(n))
 //   prof.message("scene loaded")
@@ -38,6 +39,17 @@ when ENABLED {
 	@(deferred_out = zone_end, no_instrumentation)
 	zone :: proc "contextless" (name := "", loc := #caller_location) -> Zone {
 		return zone_begin(name, loc)
+	}
+
+	// A zone around one call of a proc, for code that calls procs by a
+	// table. Skipped in the all mode, where the called proc is a zone itself.
+	@(deferred_out = zone_end, no_instrumentation)
+	zone_call :: proc "contextless" (name: string, loc := #caller_location) -> Zone {
+		when MODE == "all" {
+			return {}
+		} else {
+			return zone_begin(name, loc)
+		}
 	}
 
 	@(no_instrumentation)
@@ -128,6 +140,8 @@ when ENABLED {
 
 	@(deferred_out = zone_end)
 	zone :: #force_inline proc "contextless" (name := "", loc := #caller_location) -> Zone { return {} }
+	@(deferred_out = zone_end)
+	zone_call :: #force_inline proc "contextless" (name: string, loc := #caller_location) -> Zone { return {} }
 	zone_begin :: #force_inline proc "contextless" (name := "", loc := #caller_location) -> Zone { return {} }
 	zone_end :: #force_inline proc "contextless" (z: Zone) {}
 	frame_mark :: #force_inline proc "contextless" () {}

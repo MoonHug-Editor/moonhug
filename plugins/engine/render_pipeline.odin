@@ -35,6 +35,7 @@ import "core:os"
 import "core:strings"
 import gfx "moonhug:libs/gfx"
 import "moonhug:libs/log"
+import "moonhug:libs/prof"
 import "moonhug:libs/serialization"
 
 // The slot a camera renders through when it names none, and the slot the
@@ -553,7 +554,10 @@ render_pipeline_run :: proc(slot: string, ctx: ^Render_Ctx) -> bool {
 		}
 		frame_ctx := Render_Ctx{view = ctx.view, pool = render_frame_pool(), step = inst.step, settings = inst.settings, reads = inst.reads, writes = inst.writes}
 		if inspect_frame do _inspect_step_begins(inst.id)
-		inst.step.run(&frame_ctx)
+		{
+			prof.zone_call(inst.step.name)
+			inst.step.run(&frame_ctx)
+		}
 		if inspect_frame do _inspect_step_ends(inst.id, frame_ctx.pool)
 	}
 	return _lane_run(slot, lane[:], ctx, inspect = true)
@@ -591,7 +595,10 @@ _lane_run :: proc(slot: string, lane: []Pipeline_Instance, ctx: ^Render_Ctx, ins
 		ctx.reads = inst.reads
 		ctx.writes = inst.writes
 		if inspect do _inspect_step_begins(inst.id)
-		inst.step.run(ctx)
+		{
+			prof.zone_call(inst.step.name)
+			inst.step.run(ctx)
+		}
 		if inspect do _inspect_step_ends(inst.id, ctx.pool)
 	}
 	ctx.step = nil

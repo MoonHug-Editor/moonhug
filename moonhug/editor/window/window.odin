@@ -38,6 +38,7 @@ import im "moonhug:external/odin-imgui"
 import "moonhug:libs/assets"
 import core "moonhug:libs/core"
 import "moonhug:libs/log"
+import "moonhug:libs/prof"
 import "moonhug:editor/session"
 
 // One open instance of a registered window.
@@ -781,7 +782,10 @@ _draw_instance :: proc(w: ^Window) {
 			_focused = w
 			_focused_frame = im.GetFrameCount()
 		}
-		r.draw(w)
+		{
+			prof.zone_call(w.id)
+			r.draw(w)
+		}
 		if im.IsWindowHovered(im.HoveredFlags_RootAndChildWindows) && (im.IsMouseClicked(.Left) || im.IsMouseClicked(.Right) || im.IsMouseClicked(.Middle)) {
 			_use_count += 1
 			w.used = _use_count

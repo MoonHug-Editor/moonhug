@@ -10,6 +10,7 @@ package gfx
 // bottleneck and cpu_ms when the CPU is.
 
 import "core:time"
+import "moonhug:libs/prof"
 
 Frame_Stats :: struct {
 	draw_calls: int, // draw commands encoded
@@ -78,6 +79,15 @@ _stats_frame_end :: proc() {
 	total := time.tick_since(_stats.begin)
 	_stats.current.cpu_ms = f32(time.duration_milliseconds(total - _stats.wait))
 	_stats.current.wait_ms = f32(time.duration_milliseconds(_stats.wait))
+	// The same numbers as graphs in the profiler (libs/prof).
+	if prof.connected() {
+		prof.plot("draw calls", f64(_stats.current.draw_calls))
+		prof.plot("instances", f64(_stats.current.instances))
+		prof.plot("triangles", f64(_stats.current.triangles))
+		prof.plot("render passes", f64(_stats.current.passes))
+		prof.plot("frame cpu ms", f64(_stats.current.cpu_ms))
+		prof.plot("gpu wait ms", f64(_stats.current.wait_ms))
+	}
 	_stats.ring[_stats.next] = _stats.current
 	_stats.next = (_stats.next + 1) % STATS_FRAMES
 	_stats.count = min(_stats.count + 1, STATS_FRAMES)

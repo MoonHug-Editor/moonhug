@@ -252,7 +252,13 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, l
 	for p in imports {
 		fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", p.pkg, p.path[len(_PACKAGES_PREFIX):])
 	}
-	strings.write_string(&b, "import core \"moonhug:libs/core\"\n\n")
+	strings.write_string(&b, "import core \"moonhug:libs/core\"\n")
+	strings.write_string(&b, "import \"moonhug:libs/prof\"\n\n")
+
+	// A row's name as a profiler zone (libs/prof): its package and proc.
+	_zone_name :: proc(e: _UpdateRow) -> string {
+		return fmt.tprintf("%s.%s", e.pkg, e.name)
+	}
 
 	// A system is called where it lives, a per-item proc through its wrapper.
 	_call_name :: proc(e: _UpdateRow, host: string, kind: Update_Kind) -> string {
@@ -269,7 +275,7 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, l
 		fmt.sbprintf(b, "%s :: proc(dt: f32) {{\n", name)
 		for e in rows {
 			if !_included(e, host, runnables) do continue
-			fmt.sbprintf(b, "\t%s(dt)\n", _call_name(e, host, kind))
+			fmt.sbprintf(b, "\t{{ prof.zone_call(%q); %s(dt) }}\n", _zone_name(e), _call_name(e, host, kind))
 		}
 		strings.write_string(b, "}\n\n")
 	}
@@ -284,9 +290,9 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, l
 	for e in fixed_rows {
 		if !_included(e, host.name, runnables) do continue
 		if e.divisor > 1 {
-			fmt.sbprintf(&b, "\tif engine.fixed_tick_index() %% %d == 0 do %s(fixed_dt * %d)\n", e.divisor, _call_name(e, host.name, .Fixed), e.divisor)
+			fmt.sbprintf(&b, "\tif engine.fixed_tick_index() %% %d == 0 {{ prof.zone_call(%q); %s(fixed_dt * %d) }}\n", e.divisor, _zone_name(e), _call_name(e, host.name, .Fixed), e.divisor)
 		} else {
-			fmt.sbprintf(&b, "\t%s(fixed_dt)\n", _call_name(e, host.name, .Fixed))
+			fmt.sbprintf(&b, "\t{{ prof.zone_call(%q); %s(fixed_dt) }}\n", _zone_name(e), _call_name(e, host.name, .Fixed))
 		}
 	}
 	strings.write_string(&b, "}\n\n")

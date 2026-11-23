@@ -24,6 +24,7 @@ make build PROF=zones
 
 - Use `zones` for numbers to trust and for daily work.
 - Use `all` for a short capture when it is not known where the time goes. It marks very small procs, so their own times are inflated and the trace grows by about 9 MB a second.
+- A time from `all` is a hint, not a result. Confirm it with a zone in the `zones` mode before acting on it.
 - A profiling build records nothing until a viewer connects.
 - The client listens on this machine only, on port 8086.
 - The Relaunch button of the editor builds in the `none` mode.
@@ -55,6 +56,7 @@ collect :: proc() {
 | --- | --- |
 | `zone(name)` | A zone that ends with the scope it is called in. With no name it shows as the calling proc. |
 | `zone_begin(name)`, `zone_end(z)` | A zone over statements that do not form a scope. |
+| `zone_call(name)` | A zone around one call of a proc that is called from a table. Skipped in the `all` mode, where the called proc is a zone itself. |
 | `frame_mark()` | The end of a frame. The editor calls it once a frame. |
 | `plot(name, value)` | One point of a graph under the timeline. `name` is a literal. |
 | `message(text)` | A line on the timeline. |
@@ -62,6 +64,15 @@ collect :: proc() {
 | `connected()` | True while a viewer is connected. |
 
 A zone costs tens of nanoseconds while a viewer is connected and one check when none is. Keep zones out of loops that run thousands of times a frame.
+
+## What is marked
+
+- The stages of the editor's frame, each window by its id, the gizmo pass.
+- Every `@(phase)` subscriber and every update, late update and fixed update proc, by package and proc name. The generators write these zones, so a package gets them with no code of its own.
+- Every render step by its name, and every render pass (`_pass_flush`).
+- The canvas collector, its rebuild and its fingerprint, the text layout, the quad draw, a scene load.
+
+The render counters are graphs under the timeline: draw calls, instances, triangles, render passes, frame cpu ms and gpu wait ms.
 
 ## The all mode
 
@@ -87,6 +98,7 @@ tracy-csvexport trace.tracy
 
 - `tracy-capture` records for the given number of seconds. Start it after the editor: it does not wait for a program that is not running yet.
 - `tracy-csvexport` prints one row per zone with its call count and its mean, minimum and maximum time.
+- `tracy-csvexport -e trace.tracy` prints self times: the time of a zone without the zones inside it.
 - `tracy trace.tracy` opens a saved trace in the viewer.
 
 ## Limits

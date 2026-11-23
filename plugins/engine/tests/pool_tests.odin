@@ -161,3 +161,73 @@ test_pool_iter :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, nil_count, 0)
 }
+
+// Iteration walks the slots in use only: nothing in an empty pool, every
+// alive component after the pool emptied and filled again, and one created
+// or destroyed while the walk runs does not break it.
+@(test)
+test_pool_iter_range :: proc(t: ^testing.T) {
+	pool := new(engine.Pool(int))
+	defer free(pool)
+	engine.pool_init(pool)
+
+	count :: proc(pool: ^engine.Pool(int)) -> (n, sum: int) {
+		it := engine.pool_iterator(pool)
+		for data, _ in engine.pool_next(&it) {
+			n += 1
+			sum += data^
+		}
+		return
+	}
+
+	n, sum := count(pool)
+	testing.expect_value(t, n, 0)
+
+	handles: [5]engine.Handle
+	for i in 0 ..< 5 {
+		h, data := engine.pool_create(pool)
+		data^ = i + 1
+		handles[i] = h
+	}
+	n, sum = count(pool)
+	testing.expect_value(t, n, 5)
+	testing.expect_value(t, sum, 15)
+
+	for h in handles do engine.pool_destroy(pool, h)
+	n, _ = count(pool)
+	testing.expect_value(t, n, 0)
+
+	for _ in 0 ..< 3 {
+		_, data := engine.pool_create(pool)
+		data^ = 10
+	}
+	n, sum = count(pool)
+	testing.expect_value(t, n, 3)
+	testing.expect_value(t, sum, 30)
+
+	// Destroying everything from inside the walk ends it.
+	visited := 0
+	it := engine.pool_iterator(pool)
+	for _, h in engine.pool_next(&it) {
+		visited += 1
+		engine.pool_destroy(pool, h)
+	}
+	testing.expect_value(t, visited, 3)
+	testing.expect_value(t, pool.count, 0)
+
+	// One created from inside the walk is alive afterwards, visited or not.
+	_, first := engine.pool_create(pool)
+	first^ = 1
+	created := false
+	it = engine.pool_iterator(pool)
+	for _, _ in engine.pool_next(&it) {
+		if !created {
+			created = true
+			_, d := engine.pool_create(pool)
+			d^ = 2
+		}
+	}
+	n, sum = count(pool)
+	testing.expect_value(t, n, 2)
+	testing.expect_value(t, sum, 3)
+}

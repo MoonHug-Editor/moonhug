@@ -43,6 +43,10 @@ Pool :: struct($T: typeid, $N: int = MAX) {
     _freelist:  [N]u32,
     _free_head: int,
     count:      int,
+    // The slots handed out since the pool was last empty lie in [_lo, _hi).
+    // Iteration walks this range only, so an empty pool costs nothing.
+    _lo:        int,
+    _hi:        int,
 }
 
 pool_init :: proc(p: ^Pool($T, $N)) {
@@ -51,6 +55,8 @@ pool_init :: proc(p: ^Pool($T, $N)) {
         p._slots[i].generation = 1
     }
     p._free_head = N - 1
+    p._lo = N
+    p._hi = 0
 }
 
 pool_create :: proc(p: ^Pool($T, $N)) -> (Handle, ^T) {
@@ -63,6 +69,8 @@ pool_create :: proc(p: ^Pool($T, $N)) -> (Handle, ^T) {
     idx := p._freelist[p._free_head]
     p._free_head -= 1
     p.count += 1
+    p._lo = min(p._lo, int(idx))
+    p._hi = max(p._hi, int(idx) + 1)
     slot := &p._slots[idx]
     slot.alive = true
     // A recycled slot keeps the destroyed instance's bytes. Hand out zeroed
@@ -82,6 +90,10 @@ pool_destroy :: proc(p: ^Pool($T, $N), h: Handle) {
     p._free_head += 1
     p._freelist[p._free_head] = h.index
     p.count -= 1
+    if p.count == 0 {
+        p._lo = N
+        p._hi = 0
+    }
 }
 
 pool_get :: proc(pool: ^Pool($T, $N), handle: Handle) -> ^T {
@@ -120,7 +132,9 @@ pool_iterator :: proc(p: ^Pool($T, $N)) -> Pool_Iterator(T, N) {
 
 pool_next :: proc(it: ^Pool_Iterator($T, $N)) -> (data: ^T, h: Handle, ok: bool) {
     if it.pool == nil do return
-    for it.index < N {
+    // _hi is read on every step: a component created mid-iteration can raise it.
+    if it.index < it.pool._lo do it.index = it.pool._lo
+    for it.index < it.pool._hi {
         i := it.index
         it.index += 1
         slot := &it.pool._slots[i]

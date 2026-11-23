@@ -27,6 +27,7 @@ import "moonhug:editor/handles"
 import "moonhug:editor/viewport"
 import "moonhug:editor/session"
 import "moonhug:libs/gizmos"
+import "moonhug:libs/prof"
 
 // Draws gizmos for every enabled instance of a component, each frame, in the
 // Scene window.
@@ -37,6 +38,7 @@ import "moonhug:libs/gizmos"
 // belongs in @(comp_on_scene_handles).
 @(extension_point={attribute="comp_on_draw_gizmos", target="proc", fields="component"})
 gizmo_pass :: proc() {
+	prof.zone()
 	sel_scene_prune()
 	viewport.marks_rebuild()
 	_scene_handles_update()
