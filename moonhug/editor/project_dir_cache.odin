@@ -11,7 +11,8 @@ package editor
 // and cached per path. Invalidation: explicitly after editor-side file
 // mutations (rename, file ops, asset refresh on focus), plus a short TTL so
 // external changes still show up quickly — same "no file watcher" stance as
-// the asset db, at 2 Hz instead of 120 Hz.
+// the asset db, at 2 Hz instead of 120 Hz. At the TTL a folder is read again
+// only when its modification time moved.
 
 import "core:os"
 import "core:path/filepath"
@@ -30,6 +31,9 @@ _Dir_Listing :: struct {
 	entries: []Project_Dir_Entry, // owned; sorted case-insensitive, dirs mixed
 	ok:      bool,                // false = the scan itself failed
 	scan_ns: i64,
+	// The folder's own modification time at the scan: it changes when an
+	// entry is added, removed or renamed, which is what a listing shows.
+	mtime:   i64,
 }
 
 @(private = "file")
@@ -40,18 +44,29 @@ _DIR_CACHE_TTL_NS :: i64(500_000_000)
 
 // Sorted listing of `path` (500ms freshness). The slice is owned by the
 // cache — use it within the frame, don't hold it.
+//
+// A listing older than that is checked, not read again: the folder is read
+// only when its modification time moved. The check is one stat, so a tree of
+// unchanged folders costs a stat each twice a second.
 project_dir_listing :: proc(path: string) -> (entries: []Project_Dir_Entry, ok: bool) {
 	now := time.now()._nsec
-	if l, found := _dir_listings[path]; found && now - l.scan_ns < _DIR_CACHE_TTL_NS {
-		return l.entries, l.ok
+	old, found := _dir_listings[path]
+	if found && now - old.scan_ns < _DIR_CACHE_TTL_NS {
+		return old.entries, old.ok
+	}
+	mtime := project_dir_mtime_ns(path)
+	if found && old.ok && mtime != 0 && mtime == old.mtime {
+		old.scan_ns = now
+		_dir_listings[path] = old
+		return old.entries, old.ok
 	}
 
 	fresh, scan_ok := _dir_scan(path)
-	if old, found := _dir_listings[path]; found {
+	if found {
 		_listing_free(old)
-		_dir_listings[path] = _Dir_Listing{entries = fresh, ok = scan_ok, scan_ns = now}
+		_dir_listings[path] = _Dir_Listing{entries = fresh, ok = scan_ok, scan_ns = now, mtime = mtime}
 	} else {
-		_dir_listings[strings.clone(path)] = _Dir_Listing{entries = fresh, ok = scan_ok, scan_ns = now}
+		_dir_listings[strings.clone(path)] = _Dir_Listing{entries = fresh, ok = scan_ok, scan_ns = now, mtime = mtime}
 	}
 	return fresh, scan_ok
 }

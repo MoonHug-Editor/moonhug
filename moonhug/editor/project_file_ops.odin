@@ -36,6 +36,8 @@ import "moonhug:editor/keymap"
 import "moonhug:editor/inspector"
 import "moonhug:editor/subassets"
 import "moonhug:editor/undo"
+import "moonhug:editor/drag"
+import "moonhug:libs/log"
 
 // --- File clipboard -----------------------------------------------------------
 // Cut and Copy put the selected files on the editor's clipboard (clipboard
@@ -121,6 +123,67 @@ _project_move :: proc(src, dst: string) -> bool {
 		new_meta := strings.concatenate({dst, ".meta"}, context.temp_allocator)
 		os.rename(old_meta, new_meta)
 	}
+	return true
+}
+
+// Files and folders dragged onto a folder move into it, each with its .meta,
+// so it keeps its id and what refers to it. One whose name is taken there
+// stays where it is. A rule of the drag package, added here by a call: a
+// @(drop) in the editor's root package cannot be registered.
+project_file_ops_init :: proc() {
+	drag.drop_rule_add("file", "project", _drop_files_in_folder)
+}
+
+@(private = "file")
+_drop_files_in_folder :: proc(d: ^drag.Drop) -> bool {
+	folder := d.place.(drag.Project_Place).folder
+	if folder == "" || folder == _PROJECT_PACKAGES_PATH do return false
+	moving := make([dynamic]string, 0, len(d.items), context.temp_allocator)
+	for it in d.items {
+		src: string
+		#partial switch v in it {
+		case drag.Folder:
+			src = v.path
+		case core.PPtr:
+			path, known := assets.asset_db_get_path(uuid.Identifier(v.guid))
+			if !known do continue
+			src = path
+		}
+		if src == "" || project_path_is_protected(src) do continue
+		// Already there, or a folder into itself or what is under it.
+		if filepath.dir(src) == folder || src == folder do continue
+		if strings.has_prefix(folder, strings.concatenate({src, "/"}, context.temp_allocator)) do continue
+		append(&moving, strings.clone(src, context.temp_allocator))
+	}
+	if len(moving) == 0 do return false
+	if !d.perform {
+		if len(moving) == 1 {
+			d.hint = fmt.tprintf("Move %s to %s", filepath.base(moving[0]), filepath.base(folder))
+		} else {
+			d.hint = fmt.tprintf("Move %d items to %s", len(moving), filepath.base(folder))
+		}
+		return true
+	}
+	moved := make([dynamic]string, context.temp_allocator)
+	for src in moving {
+		dst, _ := filepath.join({folder, filepath.base(src)}, context.temp_allocator)
+		if os.exists(dst) {
+			log.warning(fmt.tprintf("Move: %s already has %s, it stays where it is", folder, filepath.base(src)))
+			continue
+		}
+		if !_project_move(src, dst) do continue
+		append(&moved, dst)
+		// The list pane showed the moved folder, or one under it: it follows.
+		if _pv.current_path == src {
+			_project_set_current(dst)
+		} else if strings.has_prefix(_pv.current_path, strings.concatenate({src, "/"}, context.temp_allocator)) {
+			_project_set_current(strings.concatenate({dst, _pv.current_path[len(src):]}, context.temp_allocator))
+		}
+	}
+	asset_pipeline.asset_db_refresh()
+	project_dir_cache_invalidate()
+	_project_select_paths(moved[:])
+	_project_inspectors_refresh()
 	return true
 }
 

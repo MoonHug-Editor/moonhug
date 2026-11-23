@@ -48,6 +48,11 @@ Project_Window :: struct {
     // visible rows in draw order, and the keymap's commands walk them before
     // the next draw, so index math matches what is on screen.
     tree_rows: [dynamic]Project_Tree_Row,
+    // When the tree's rows were built, and what makes them stale
+    // (_project_tree_build).
+    tree_dirty: bool,
+    tree_gen: u64,
+    tree_built_ns: i64,
     // Folder open state, keyed by full path (persistent, owned clones).
     // Written after each TreeNodeEx, read next frame to pick the open/closed
     // folder icon.
@@ -57,9 +62,6 @@ Project_Window :: struct {
     // rows stay valid between draws, where the keymap's commands read them.
     tree_arena: virtual.Arena,
     list_arena: virtual.Arena,
-    // One-shot fold command for a tree node (applied next frame via SetNextItemOpen).
-    tree_set_open_path: string, // owned clone; "" = no pending command
-    tree_set_open_val: bool,
     // When the right pane navigates, open the ancestor chain in the tree so
     // the highlighted folder is visible.
     tree_reveal: bool,
@@ -148,9 +150,6 @@ _project_window_init :: proc(pv: ^Project_Window) {
     pv.active_pane = .List
     pv.path_hovered = -1
     pv.split_ratio = 0.5
-    // Start with the root folder expanded (one-shot; consumed on first draw).
-    pv.tree_set_open_path = strings.clone("assets")
-    pv.tree_set_open_val = true
 }
 
 @(private = "file")
@@ -164,7 +163,6 @@ _project_window_free :: proc(pv: ^Project_Window) {
     delete(pv.tree_open_state)
     for k in pv.expanded do delete(k)
     delete(pv.expanded)
-    delete(pv.tree_set_open_path)
     delete(pv.rename_path)
     delete(pv.ping_path)
     delete(pv.range_pending)
@@ -188,16 +186,23 @@ project_window_closed :: proc(w: ^wnd.Window) {
 // and list_rows). Their strings live in the window's row arenas until the next
 // draw rebuilds them.
 Project_Tree_Row :: struct {
-    path: string, // full path
-    open: bool,   // imgui tree node open state at the last draw
+    path:    string, // full path
+    name:    string, // what the row shows: the folder's name, a package's
+    depth:   int,
+    has_sub: bool,   // it has subfolders: a fold arrow
+    is_link: bool,
+    open:    bool,   // it shows its subfolders
 }
 Project_Row :: struct {
-    name:   string, // display text
-    path:   string, // full path; drives selection/rename/activation (display
-                    // names collide across folders in search results)
-    is_dir: bool,
-    sub:    core.Local_ID, // not 0: the sub-asset of the file at `path` with this id
+    name:    string, // display text
+    path:    string, // full path; drives selection/rename/activation (display
+                     // names collide across folders in search results)
+    is_dir:  bool,
+    is_link: bool,
+    sub:     core.Local_ID, // not 0: the sub-asset of the file at `path` with this id
+    hit:     bool,          // a sub-asset found by a search: its file is beside its name
 }
+
 
 // Which pane the keymap's commands act on. Tracked here rather than through
 // imgui child focus (SetWindowFocus/IsWindowFocused are unreliable for child
@@ -210,6 +215,7 @@ init_project_window :: proc() {
     // The asset DB is rooted at "assets" (relative to the normalized moonhug/
     // cwd); the project window mirrors it so paths line up with asset lookups.
     projectWindowData.rootPath = strings.clone("assets")
+    project_file_ops_init()
     _project_window_init(&_pv_plain)
 }
 
@@ -286,11 +292,7 @@ _project_path_is_ancestor :: proc(ancestor, path: string) -> bool {
 }
 
 _project_tree_request_open :: proc(path: string, open: bool) {
-    if _pv.tree_set_open_path != "" {
-        delete(_pv.tree_set_open_path)
-    }
-    _pv.tree_set_open_path = strings.clone(path)
-    _pv.tree_set_open_val = open
+    _project_tree_set_open(path, open)
 }
 
 // Cancel an active search: clear the query and navigate to the selected item —
@@ -578,14 +580,6 @@ _project_apply_rename :: proc() {
     asset_pipeline.asset_db_refresh()
 }
 
-// Draws the rename InputText in place of the row/node whose full path is being
-// renamed. Returns true if it did (caller skips the normal row).
-_project_draw_rename_row :: proc(full_path: string) -> bool {
-    if !_pv.rename_active || _pv.rename_sub != 0 || _pv.rename_path != full_path do return false
-    _project_rename_input(im.GetContentRegionAvail().x)
-    return true
-}
-
 // The rename InputText plus its focus/commit/cancel state machine, at the
 // given width — the row form and the grid cell form share it.
 _project_rename_input :: proc(width: f32) {
@@ -657,100 +651,6 @@ _project_file_icon :: proc(path: string) -> string {
     }
 }
 
-// Draw one folder node (icon, selection, keyboard row, open-state) and, if
-// open, recurse into its subfolders. `name` is the label; `full_path` its path.
-_project_draw_tree_node :: proc(full_path: string, name: string, is_link := false) {
-    // Scope the imgui ID to this path so the "###node" constant IDs below stay
-    // unique per folder (and never shift with the display label / icon).
-    im.PushID(strings.clone_to_cstring(full_path, context.temp_allocator))
-    defer im.PopID()
-
-    // Folder being renamed: swap the node for an inline input. Still recorded in
-    // the nav list so keyboard indices stay consistent; children are hidden for
-    // the duration of the edit.
-    if _pv.rename_active && _pv.rename_in_tree && _pv.rename_path == full_path {
-        _project_tree_row_add(full_path, false)
-        im.Indent(im.GetTreeNodeToLabelSpacing())
-        _project_draw_rename_row(full_path)
-        im.Unindent(im.GetTreeNodeToLabelSpacing())
-        return
-    }
-
-    // Selection highlight only shows while the tree is the active pane, so focus
-    // visibly moves with Tab. currentPath still drives the file list.
-    is_selected := _pv.active_pane == .Tree && _pv.current_path == full_path
-    // No fold toggle for folders with no subfolders (only dirs are shown in the
-    // tree, so an empty subfolder set means nothing to expand).
-    is_leaf := !_project_dir_has_subdir(full_path)
-
-    // Folder icon (open when expanded) prefixed to the label; merged icon font
-    // draws it inline. Open state is from last frame (see map below).
-    // CRITICAL: the icon glyph is part of the label, and TreeNodeEx derives the
-    // node ID from the label text. If the ID changed with the icon, imgui would
-    // lose the open state every frame and the node would strobe open/closed.
-    // Append a stable "##<full_path>" so the ID stays fixed while the icon varies.
-    // Icon + name shown in the label. The icon glyph changes with open state,
-    // but this imgui build derives the node ID from the WHOLE label string
-    // (the "##id" split isn't honored the way it is in stock Dear ImGui) — so a
-    // changing icon would change the ID, imgui would drop the open state, and
-    // the node would strobe. Pin the ID explicitly with PushIDStr(full_path) and
-    // give TreeNodeEx a constant display+id via "###" so the icon can vary freely.
-    expanded := !is_leaf && _pv.tree_open_state[full_path]
-    folder_icon := _project_dir_icon(is_link, expanded)
-    node_label := strings.clone_to_cstring(fmt.tprintf("%s%s###node", folder_icon, name), context.temp_allocator)
-
-    node_flags: im.TreeNodeFlags = {.OpenOnArrow, .OpenOnDoubleClick}
-    if is_selected {
-        node_flags += {.Selected}
-    }
-    if is_leaf {
-        node_flags += {.Leaf, .NoTreePushOnOpen}
-    }
-
-    if !is_leaf {
-        if _pv.tree_set_open_path != "" && _pv.tree_set_open_path == full_path {
-            im.SetNextItemOpen(_pv.tree_set_open_val)
-            delete(_pv.tree_set_open_path)
-            _pv.tree_set_open_path = ""
-        } else if _pv.tree_reveal && _project_path_is_ancestor(full_path, _pv.current_path) {
-            im.SetNextItemOpen(true)
-        }
-    }
-
-    node_open := im.TreeNodeEx(node_label, node_flags)
-    _project_folder_drop_target(full_path)
-    // A leaf reports open==true but can't be collapsed; record it as closed so
-    // Left-arrow skips straight to the parent.
-    open := node_open && !is_leaf
-    _project_tree_row_add(full_path, open)
-    // Remember open state for next frame's folder icon. Keys are cloned once and
-    // overwritten in place (freed on shutdown); the map is bounded by the number
-    // of folders ever drawn.
-    if _, seen := _pv.tree_open_state[full_path]; seen {
-        _pv.tree_open_state[full_path] = open
-    } else {
-        _pv.tree_open_state[strings.clone(full_path)] = open
-    }
-    if is_selected && _pv.scroll_to_tree_sel {
-        im.SetScrollHereY()
-        _pv.scroll_to_tree_sel = false
-    }
-
-    // A click in the tree selects the folder and shows it, as a click on a
-    // file row selects the file. The Project Inspector shows the selection,
-    // so a package root opens the package inspector.
-    if im.IsItemClicked() {
-        _project_set_current(full_path)
-        _project_set_selected(full_path)
-        _project_inspectors_refresh()
-    }
-
-    if node_open && !is_leaf {
-        draw_directory_tree(full_path)
-        im.TreePop()
-    }
-}
-
 // The current folder as a clickable path bar: each segment navigates there,
 // the last one is the folder itself and is drawn plain. Separators are inert.
 @(private = "file")
@@ -784,20 +684,10 @@ _project_draw_path_bar :: proc() {
             } else if hovered_last {
                 _pv.path_hovered = -1
             }
+            // A folder above the shown one, as a place for a drag.
+            _project_folder_drop_target(c.path)
         }
         if i < len(segments) - 1 do im.SameLine(0, 0)
-    }
-}
-
-// Draw the subfolders of `path` as tree nodes (sorted). Does not draw `path`
-// itself — the caller decides whether the parent gets a node.
-draw_directory_tree :: proc(path: string, level: int = 0) {
-    entries, ok := project_dir_listing(path)
-    if !ok do return
-    for entry in entries {
-        if !entry.is_dir do continue
-        full_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
-        _project_draw_tree_node(full_path, entry.name, entry.is_link)
     }
 }
 
@@ -834,81 +724,8 @@ is_known_extension :: proc(filename: string) -> bool {
     return asset_pipeline.is_importable_extension(ext)
 }
 
-draw_file_list :: proc(path: string) {
-    entries, ok := project_dir_listing(path)
-    if !ok {
-        im.Text("Failed to read directory")
-        return
-    }
-
-    // Directories first, files below them.
-    items := make([dynamic]_Project_List_Item, 0, len(entries), context.temp_allocator)
-    for entry in entries {
-        if !entry.is_dir do continue
-        entry_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
-        append(&items, _Project_List_Item{display = entry.name, path = entry_path, is_dir = true, is_link = entry.is_link})
-    }
-    for entry in entries {
-        if entry.is_dir do continue
-        if strings.has_prefix(entry.name, ".") do continue
-        if filepath.ext(entry.name) == ".meta" do continue
-        entry_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
-        append(&items, _Project_List_Item{display = entry.name, path = entry_path})
-    }
-    _project_draw_rows(items[:])
-}
-
-// Unity's grid mode: a cell per item — thumbnail or scaled type glyph with the
-// name below — laid out in columns. Same order (directories first) and same
-// row list as the list form, so keyboard navigation and range select carry
-// over unchanged.
-_project_draw_grid :: proc(path: string, cell: f32) {
-    entries, ok := project_dir_listing(path)
-    if !ok {
-        im.Text("Failed to read directory")
-        return
-    }
-    pad := im.GetStyle().ItemSpacing.x
-    // Selectables expand their rect by half the item spacing on both sides —
-    // lead each row by that much so the first column's highlight and art stay
-    // inside the pane instead of clipping on its left border.
-    lead := pad * 0.5
-    cols := max(int((im.GetContentRegionAvail().x - lead + pad) / (cell + pad)), 1)
-    _pv.grid_cols = cols
-    col := 0
-    for pass in 0 ..< 2 {
-        for entry in entries {
-            if entry.is_dir != (pass == 0) do continue
-            if !entry.is_dir {
-                if strings.has_prefix(entry.name, ".") do continue
-                if filepath.ext(entry.name) == ".meta" do continue
-            }
-            if col > 0 do im.SameLine()
-            else do im.SetCursorPosX(im.GetCursorPosX() + lead)
-            entry_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
-            _project_draw_grid_cell(entry.name, entry_path, entry.is_dir, cell, entry.is_link)
-            col = (col + 1) % cols
-
-            // Unity's expander strip: an unfolded asset's sub-assets follow
-            // as their own cells.
-            if !entry.is_dir && _pv.expanded[entry_path] {
-                sub, provider := _project_sub_assets(entry_path, false)
-                if len(sub) > 0 {
-                    if raw_guid, gok := assets.asset_db_get_guid(entry_path); gok {
-                        guid := core.Asset_GUID(raw_guid)
-                        _project_list_rows_add_subs(entry_path, sub)
-                        for s, si in sub {
-                            if col > 0 do im.SameLine()
-                            else do im.SetCursorPosX(im.GetCursorPosX() + lead)
-                            _project_draw_grid_sub_cell(entry_path, guid, s, si, provider, cell)
-                            col = (col + 1) % cols
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+// The grid: a cell per row of the list pane, a thumbnail or the scaled type
+// glyph with the name below (_project_list_draw_grid).
 
 _project_draw_grid_sub_cell :: proc(parent_path: string, guid: core.Asset_GUID, s: subassets.Sub_Asset, index: int, provider: subassets.Provider, cell: f32) {
     label_h := im.GetTextLineHeightWithSpacing()
@@ -929,7 +746,10 @@ _project_draw_grid_sub_cell :: proc(parent_path: string, guid: core.Asset_GUID, 
         _project_sub_asset_right_click(parent_path, s)
         _project_sub_asset_drag(parent_path, guid, s, fmt.ctprintf("%s%s", icons.ICON_MD_IMAGE, s.name))
         _project_item_ping_flash(parent_path, s.id)
-        _project_sub_scroll_to_selection(is_selected)
+        if is_selected && _pv.scroll_to_list_sel {
+            im.SetScrollHereY()
+            _pv.scroll_to_list_sel = false
+        }
     }
 
     dl := im.GetWindowDrawList()
@@ -963,21 +783,16 @@ _project_draw_grid_sub_cell :: proc(parent_path: string, guid: core.Asset_GUID, 
         _project_rename_input(cell)
         return
     }
-    cdisplay := strings.clone_to_cstring(s.name, context.temp_allocator)
+    cdisplay, cut := _project_fit_name(s.name, cell)
     tsize := im.CalcTextSize(cdisplay)
-    im.DrawList_PushClipRect(dl,
-        rect_min, im.Vec2{rect_min.x + cell, rect_min.y + cell + label_h}, true)
     im.DrawList_AddText(dl,
         im.Vec2{rect_min.x + max((cell - tsize.x) * 0.5, 0), rect_min.y + cell},
         im.GetColorU32(.Text), cdisplay)
-    im.DrawList_PopClipRect(dl)
+    if cut && im.IsItemHovered({}) && drag.items() == nil do _project_name_tooltip(s.name)
 }
 
-// One grid cell. `listed`: the caller already put it in list_rows, the
-// keyboard navigation list (the search results' grid).
-_project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool, cell: f32, is_link := false, listed := false) {
-    if !listed do _project_list_row_add(display, full_path, is_dir)
-
+// One grid cell: a folder's or a file's.
+_project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool, cell: f32, is_link := false) {
     label_h := im.GetTextLineHeightWithSpacing()
     im.PushIDStr(strings.clone_to_cstring(full_path, context.temp_allocator), nil)
     defer im.PopID()
@@ -1047,18 +862,21 @@ _project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool
             im.GetColorU32(.Text), aglyph)
     }
 
-    // Name centered under the art, clipped to the cell.
+    // Name centered under the art. One too long for the cell is cut in the
+    // middle, and the whole name shows when the pointer rests on the cell.
     dl := im.GetWindowDrawList()
-    cdisplay := strings.clone_to_cstring(fmt.tprintf("%s%s", display, _project_dirty_star(full_path)), context.temp_allocator)
+    star := _project_dirty_star(full_path)
+    cdisplay, cut := _project_fit_name(display, cell - im.CalcTextSize(strings.clone_to_cstring(star, context.temp_allocator)).x)
+    if star != "" do cdisplay = fmt.ctprintf("%s%s", cdisplay, star)
     tsize := im.CalcTextSize(cdisplay)
     text_col := im.GetStyleColorVec4(im.Col.Text)^
     if dim do text_col = {text_col.x * 0.6, text_col.y * 0.6, text_col.z * 0.6, text_col.w}
-    im.DrawList_PushClipRect(dl,
-        rect_min, im.Vec2{rect_min.x + cell, rect_min.y + cell + label_h}, true)
     im.DrawList_AddText(dl,
         im.Vec2{rect_min.x + max((cell - tsize.x) * 0.5, 0), rect_min.y + cell},
         im.GetColorU32ImVec4(text_col), cdisplay)
-    im.DrawList_PopClipRect(dl)
+    if cut && mouse.x >= rect_min.x && mouse.x < rect_min.x + cell && mouse.y >= rect_min.y && mouse.y < rect_min.y + cell + label_h && im.IsWindowHovered({}) && drag.items() == nil {
+        _project_name_tooltip(display)
+    }
 }
 
 // The cell's art: the asset's thumbnail when the service has one, the type
@@ -1096,94 +914,10 @@ _project_grid_cell_art :: proc(full_path: string, is_dir: bool, rect_min: im.Vec
 _project_dirty_paths: map[string]bool
 
 // " *" for a file with unsaved changes, the same mark its window's tab shows.
-@(private = "file")
 _project_dirty_star :: proc(path: string) -> string {
     if len(_project_dirty_paths) == 0 do return ""
     clean, _ := filepath.clean(path, context.temp_allocator)
     return " *" if clean in _project_dirty_paths else ""
-}
-
-// One list row. `listed`: the caller already put it in list_rows, the
-// keyboard navigation list (_project_draw_rows).
-_project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool, is_link := false, listed := false) {
-    if !listed do _project_list_row_add(display, full_path, is_dir)
-    if !_pv.rename_in_tree && _project_draw_rename_row(full_path) do return
-
-    icon := _project_dir_icon(is_link) if is_dir else _project_file_icon(full_path)
-    label := strings.clone_to_cstring(fmt.tprintf("%s%s%s", icon, display, _project_dirty_star(full_path)), context.temp_allocator)
-
-    is_selected := _pv.active_pane == .List && sel_proj_is(full_path)
-
-    // Sub-asset gutter: every row reserves the expander column so names align
-    // (Unity's layout); rows with sub-assets put the fold arrow in it.
-    sub, sub_provider := _project_sub_assets(full_path, is_dir)
-    arrow_w := im.GetFontSize() + 4
-    if len(sub) > 0 {
-        open := _pv.expanded[full_path]
-        im.PushStyleColorImVec4(.Button, {})
-        im.PushStyleVarImVec2(.FramePadding, {0, 0})
-        arrow: cstring = open ? icons.ICON_MD_EXPAND_MORE : icons.ICON_MD_CHEVRON_RIGHT
-        if im.Button(fmt.ctprintf("%s##exp_%s", arrow, full_path), {arrow_w, 0}) {
-            // Keys are owned clones; collapsing keeps the entry (key reused on
-            // the next unfold) instead of freeing through delete_key.
-            if full_path in _pv.expanded {
-                _pv.expanded[full_path] = !open
-            } else {
-                _pv.expanded[strings.clone(full_path)] = true
-            }
-        }
-        im.PopStyleVar()
-        im.PopStyleColor()
-    } else {
-        im.Dummy({arrow_w, 0})
-    }
-    im.SameLine(0, 0)
-
-    dim_unknown := (!is_dir && !is_known_extension(full_path)) || project_file_is_cut(full_path)
-    if dim_unknown {
-        text_col := im.GetStyleColorVec4(im.Col.Text)
-        dimmed: im.Vec4 = {text_col[0] * 0.6, text_col[1] * 0.6, text_col[2] * 0.6, text_col[3]}
-        im.PushStyleColorImVec4(im.Col.Text, dimmed)
-    }
-
-    if im.Selectable(label, is_selected, {.AllowDoubleClick}) {
-        _project_item_clicked(full_path, is_dir)
-    }
-    if is_selected && _pv.scroll_to_list_sel {
-        im.SetScrollHereY()
-        _pv.scroll_to_list_sel = false
-    }
-    _project_item_ping_flash(full_path)
-    _project_item_extras(full_path, is_dir, label)
-    if !is_dir {
-        if tid, tok := thumbnails.get(full_path); tok {
-            _project_row_preview(tid, {0, 0}, {1, 1}, 1, 1)
-        }
-    }
-    if dim_unknown {
-        im.PopStyleColor()
-    }
-
-    if len(sub) > 0 && _pv.expanded[full_path] {
-        if !listed do _project_list_rows_add_subs(full_path, sub)
-        _project_draw_sub_asset_rows(full_path, sub, sub_provider, arrow_w)
-    }
-}
-
-// Small preview drawn over the LAST row item's icon glyph (Unity's list mini
-// thumbnails). The label keeps its glyph underneath, so a row's imgui ID is
-// the same whether or not the preview has arrived yet.
-_project_row_preview :: proc(id: rawptr, uv0, uv1: [2]f32, w, h: f32) {
-    rmin := im.GetItemRectMin()
-    box := im.GetTextLineHeight()
-    scale := min(box / max(w, 1), box / max(h, 1))
-    dw, dh := w * scale, h * scale
-    if w <= 1 && h <= 1 do dw, dh = box, box // square thumbs fill the box
-    p0 := im.Vec2{rmin.x + (box - dw) * 0.5, rmin.y + (box - dh) * 0.5}
-    p1 := im.Vec2{p0.x + dw, p0.y + dh}
-    dl := im.GetWindowDrawList()
-    im.DrawList_AddRectFilled(dl, im.Vec2{rmin.x, rmin.y}, im.Vec2{rmin.x + box, rmin.y + box}, im.GetColorU32(.WindowBg))
-    im.DrawList_AddImage(dl, im.TextureRef{_TexID = im.TextureID(uintptr(id))}, p0, p1, im.Vec2{uv0.x, uv0.y}, im.Vec2{uv1.x, uv1.y})
 }
 
 // --- Sub-assets -----------------------------------------------------------------
@@ -1239,77 +973,35 @@ _project_sub_asset_drag :: proc(parent_path: string, guid: core.Asset_GUID, s: s
     }
 }
 
-// What a drag from a Project row carries: the selection's assets when the
-// row is selected, else the row's own asset `own`.
+// What a drag from a Project row carries: the selection's files, folders and
+// sub-assets when the row is selected, else the row's own item `own`.
 @(private = "file")
-_project_drag_items :: proc(path: string, sub_id: core.Local_ID, own: core.PPtr) -> []drag.Item {
+_project_drag_items :: proc(path: string, sub_id: core.Local_ID, own: drag.Item) -> []drag.Item {
     out := make([dynamic]drag.Item, context.temp_allocator)
     selected := sub_id == 0 ? sel_proj_is(path) : sel_proj_is_sub(path, sub_id)
     if selected && len(_sel_proj) > 1 {
         for e in _sel_proj {
+            if e.sub_id == 0 && assets.asset_db_is_dir(e.path) {
+                if !project_path_is_protected(e.path) do append(&out, drag.Item(drag.Folder{path = e.path}))
+                continue
+            }
             guid, ok := assets.asset_db_get_guid(e.path)
             if !ok do continue
             append(&out, drag.Item(core.PPtr{guid = core.Asset_GUID(guid), local_id = e.sub_id}))
         }
     }
-    if len(out) == 0 do append(&out, drag.Item(own))
+    if len(out) == 0 && own != nil do append(&out, own)
     return out[:]
 }
 
+
 // A folder of the Project window as a drop target: the drag's items go to
 // the rules for a Project folder.
-@(private = "file")
 _project_folder_drop_target :: proc(folder: string) {
     if folder == "" || folder == _PROJECT_PACKAGES_PATH do return
     if drag.items() == nil || !im.BeginDragDropTarget() do return
     drag.target(drag.Project_Place{folder = folder})
     im.EndDragDropTarget()
-}
-
-_project_draw_sub_asset_rows :: proc(parent_path: string, sub: []subassets.Sub_Asset, provider: subassets.Provider, indent: f32) {
-    raw_guid, gok := assets.asset_db_get_guid(parent_path)
-    if !gok do return
-    guid := core.Asset_GUID(raw_guid)
-
-    im.Indent(indent * 2)
-    // ID scope by parent + list INDEX — never by the sub-asset id, which is
-    // data (pre-heal metas carry id 0 on every slice).
-    im.PushIDStr(strings.clone_to_cstring(parent_path, context.temp_allocator), nil)
-    for s, i in sub {
-        im.PushIDInt(c.int(i))
-        _project_draw_sub_asset_row(parent_path, guid, s, provider, fmt.ctprintf("%s%s", icons.ICON_MD_IMAGE, s.name))
-        im.PopID()
-    }
-    im.PopID()
-    im.Unindent(indent * 2)
-}
-
-// After a sub-asset's row or cell, the LAST item: the keys moved the selection
-// onto it, so it scrolls into view, as a file's row does.
-@(private = "file")
-_project_sub_scroll_to_selection :: proc(selected: bool) {
-    if !selected || !_pv.scroll_to_list_sel do return
-    im.SetScrollHereY()
-    _pv.scroll_to_list_sel = false
-}
-
-// One sub-asset's row: under its unfolded file, or as a search hit. The
-// caller pushes an id of its own around it.
-_project_draw_sub_asset_row :: proc(parent_path: string, guid: core.Asset_GUID, s: subassets.Sub_Asset, provider: subassets.Provider, label: cstring) {
-    if _project_renaming_sub(parent_path, s.id) {
-        _project_rename_input(im.GetContentRegionAvail().x)
-        return
-    }
-    selected := sel_proj_is_sub(parent_path, s.id)
-    pressed := im.Selectable(label, selected, {.AllowDoubleClick})
-    if pressed do _project_sub_asset_clicked(parent_path, guid, s, provider)
-    _project_sub_scroll_to_selection(_pv.active_pane == .List && selected)
-    _project_sub_asset_right_click(parent_path, s)
-    _project_sub_asset_drag(parent_path, guid, s, label)
-    _project_item_ping_flash(parent_path, s.id)
-    if tid, uv0, uv1, tok := thumbnails.get_sub(parent_path, s); tok {
-        _project_row_preview(tid, uv0, uv1, s.size.x, s.size.y)
-    }
 }
 
 // Single click selects (and loads .asset/import settings for files); double
@@ -1364,14 +1056,10 @@ _project_item_ping_flash :: proc(full_path: string, sub: core.Local_ID = 0) {
     im.DrawList_AddRectFilled(im.GetWindowDrawList(), im.GetItemRectMin(), im.GetItemRectMax(), flash)
 }
 
-// Right-click select and the drag source, on the LAST item (files only),
-// and the item as a drop target: a folder, or the folder of a file.
+// Right-click select and the drag source, on the LAST item, and the item as
+// a drop place: a folder, or the folder of a file.
 _project_item_extras :: proc(full_path: string, is_dir: bool, drag_label: cstring) {
-    if is_dir {
-        _project_folder_drop_target(full_path)
-        return
-    }
-    defer _project_folder_drop_target(filepath.dir(full_path))
+    _project_folder_drop_target(full_path if is_dir else filepath.dir(full_path))
     // Right-click also selects, so the context menu (which acts on the
     // selected asset) targets the item under the cursor, not whatever was
     // previously selected. Inside an existing multi-selection it only
@@ -1384,178 +1072,29 @@ _project_item_extras :: proc(full_path: string, is_dir: bool, drag_label: cstrin
         } else {
             _project_set_selected(full_path)
         }
+        _project_inspectors_refresh()
     }
+    if project_path_is_protected(full_path) do return
     if im.BeginDragDropSource({}) {
-        if guid, ok := assets.asset_db_get_guid(full_path); ok {
-            items := _project_drag_items(full_path, 0, core.PPtr{guid = core.Asset_GUID(guid)})
-            drag.source(items, len(items) > 1 ? fmt.tprintf("%d assets", len(items)) : string(drag_label))
-        }
+        items := _project_drag_items(full_path, 0, _project_drag_item(full_path, is_dir))
+        if len(items) > 0 do drag.source(items, len(items) > 1 ? fmt.tprintf("%d items", len(items)) : string(drag_label))
         im.EndDragDropSource()
     }
 }
 
-// The search results as a grid: a cell per file hit, the cells of its
-// sub-assets after an unfolded one, then a cell per sub-asset hit. Every cell
-// joins the keyboard navigation list, and only the rows of cells on screen
-// are drawn: a cell asks for its thumbnail, and a sub-asset's asks its file's
-// provider for the sub-asset, which may load the file (a texture's sprites).
+// What a file or a folder drags as: a file its asset, a folder itself. nil
+// for a file the database does not know.
 @(private = "file")
-_project_draw_search_grid :: proc(hits: []Project_Search_Hit, cell: f32) {
-    Cell :: struct {
-        path:   string,
-        is_dir: bool,
-        sub:    subassets.Sub_Asset, // id 0: a file's or a folder's cell
-        hit:    bool,                // a sub-asset hit: its entry is the database's until it is drawn
-    }
-    cells := make([dynamic]Cell, 0, len(hits), context.temp_allocator)
-    for h in hits {
-        if h.sub != 0 do continue
-        append(&cells, Cell{path = h.path, is_dir = h.is_dir})
-        if !h.is_dir && _pv.expanded[h.path] {
-            sub, _ := _project_sub_assets(h.path, false)
-            for s in sub do append(&cells, Cell{path = h.path, sub = s})
-        }
-    }
-    unfolded := len(cells)
-    for h in hits {
-        if h.sub == 0 do continue
-        // Once: an unfolded file hit has its cell already.
-        listed := false
-        if _pv.expanded[h.path] {
-            for cl in cells[:unfolded] do if cl.sub.id == h.sub && cl.path == h.path {
-                listed = true
-                break
-            }
-        }
-        if !listed do append(&cells, Cell{path = h.path, sub = {id = h.sub, name = h.sub_name, kind = h.sub_kind}, hit = true})
-    }
-    for cl in cells {
-        if cl.sub.id != 0 do _project_list_row_add(cl.sub.name, cl.path, false, cl.sub.id)
-        else do _project_list_row_add(filepath.base(cl.path), cl.path, cl.is_dir)
-    }
-    if len(cells) == 0 do return
-
-    pad := im.GetStyle().ItemSpacing.x
-    lead := pad * 0.5
-    cols := max(int((im.GetContentRegionAvail().x - lead + pad) / (cell + pad)), 1)
-    _pv.grid_cols = cols
-    rows := (len(cells) + cols - 1) / cols
-    clipper: im.ListClipper
-    im.ListClipper_Begin(&clipper, i32(rows))
-    if _pv.scroll_to_list_sel && _pv.active_pane == .List {
-        for cl, i in cells {
-            selected := cl.sub.id != 0 ? sel_proj_is_sub(cl.path, cl.sub.id) : sel_proj_is(cl.path)
-            if selected do im.ListClipper_IncludeItemByIndex(&clipper, i32(i / cols))
-        }
-    }
-    for im.ListClipper_Step(&clipper) {
-        for row in clipper.DisplayStart ..< clipper.DisplayEnd {
-            for col in 0 ..< cols {
-                i := int(row) * cols + col
-                if i >= len(cells) do break
-                cl := cells[i]
-                if col > 0 do im.SameLine()
-                else do im.SetCursorPosX(im.GetCursorPosX() + lead)
-                if cl.sub.id == 0 {
-                    _project_draw_grid_cell(filepath.base(cl.path), cl.path, cl.is_dir, cell, listed = true)
-                    continue
-                }
-                raw_guid, known := assets.asset_db_get_guid(cl.path)
-                provider, has := subassets.find(strings.to_lower(filepath.ext(cl.path), context.temp_allocator))
-                if !known || !has {
-                    im.Dummy(im.Vec2{cell, cell + im.GetTextLineHeightWithSpacing()})
-                    continue
-                }
-                entry := cl.sub
-                if cl.hit {
-                    for s in provider.list(cl.path, context.temp_allocator) do if s.id == cl.sub.id {
-                        entry = s
-                        break
-                    }
-                }
-                _project_draw_grid_sub_cell(cl.path, core.Asset_GUID(raw_guid), entry, i, provider, cell)
-            }
-        }
-    }
+_project_drag_item :: proc(path: string, is_dir: bool) -> drag.Item {
+    if is_dir do return drag.Folder{path = path}
+    if guid, ok := assets.asset_db_get_guid(path); ok do return core.PPtr{guid = core.Asset_GUID(guid)}
+    return nil
 }
 
-// Search results: what asset_search finds (asset_search.odin has the query's
-// words), files first, then sub-assets. Rows with root-relative paths, or a
-// grid of cells with the zoom slider above its low end.
-// Returns the match count for the status line.
-_project_draw_search_results :: proc(query: string) -> int {
-    hits := _project_search_hits(query)
-    // The zoom slider picks rows or a grid for the results, as for a folder.
-    if editor_settings.project_zoom > 0 {
-        _project_draw_search_grid(hits, 40 + editor_settings.project_zoom * 56)
-        return len(hits)
-    }
-    prefix := strings.concatenate({projectWindowData.rootPath, "/"}, context.temp_allocator)
-    items := make([dynamic]_Project_List_Item, 0, len(hits), context.temp_allocator)
-    for h in hits {
-        if h.sub != 0 do continue
-        display := h.path
-        if strings.has_prefix(h.path, prefix) do display = h.path[len(prefix):]
-        append(&items, _Project_List_Item{display = display, path = h.path, is_dir = h.is_dir})
-    }
-    _project_draw_rows(items[:])
-
-    // Sub-asset hits: the row a file's unfolded sub-asset has, with its file
-    // beside its name. Every one joins the keyboard navigation list, and only
-    // the ones on screen are drawn: a row asks its file's provider for the
-    // sub-asset, which may load the file (a texture's sprites).
-    subs := make([dynamic]Project_Search_Hit, 0, len(hits), context.temp_allocator)
-    for h in hits do if h.sub != 0 {
-        append(&subs, h)
-        // Once in the navigation list: an unfolded file hit listed it already.
-        listed := false
-        if _pv.expanded[h.path] {
-            for r in _pv.list_rows do if r.sub == h.sub && r.path == h.path {
-                listed = true
-                break
-            }
-        }
-        if !listed do _project_list_row_add(h.sub_name, h.path, false, h.sub)
-    }
-    if len(subs) == 0 do return len(hits)
-    im.PushIDStr("##sub_hits", nil)
-    clipper: im.ListClipper
-    im.ListClipper_Begin(&clipper, i32(len(subs)))
-    if _pv.scroll_to_list_sel && _pv.active_pane == .List {
-        for h, i in subs do if sel_proj_is_sub(h.path, h.sub) do im.ListClipper_IncludeItemByIndex(&clipper, i32(i))
-    }
-    for im.ListClipper_Step(&clipper) {
-        for i in clipper.DisplayStart ..< clipper.DisplayEnd {
-            h := subs[i]
-            raw_guid, known := assets.asset_db_get_guid(h.path)
-            provider, has := subassets.find(strings.to_lower(filepath.ext(h.path), context.temp_allocator))
-            display := h.path
-            if strings.has_prefix(h.path, prefix) do display = h.path[len(prefix):]
-            label := fmt.ctprintf("%s%s  (%s)", icons.ICON_MD_IMAGE, h.sub_name, display)
-            if !known || !has {
-                im.TextDisabled("%s", label)
-                continue
-            }
-            // The provider's own entry, with its preview. The database's when
-            // the provider does not list it now.
-            entry := subassets.Sub_Asset{id = h.sub, name = h.sub_name, kind = h.sub_kind}
-            for s in provider.list(h.path, context.temp_allocator) do if s.id == h.sub {
-                entry = s
-                break
-            }
-            im.PushIDInt(c.int(i))
-            _project_draw_sub_asset_row(h.path, core.Asset_GUID(raw_guid), entry, provider, label)
-            im.PopID()
-        }
-    }
-    im.PopID()
-    return len(hits)
-}
 
 // The assets that match `query`, files sorted by path and then sub-assets.
 // Found once per query and kept while the files and the sub-asset lists stay
 // the same, since a search draws every frame.
-@(private = "file")
 _project_search_hits :: proc(query: string) -> []Project_Search_Hit {
     gen := project_dir_cache_gen()
     count := len(assets.asset_db.path_to_guid)
@@ -1589,55 +1128,19 @@ _project_search_hits :: proc(query: string) -> []Project_Search_Hit {
     return _pv.search_hits[:]
 }
 
-// A row of the list pane, for _project_draw_rows.
+// The path of the one selected item, for the list pane's footer: a file or a
+// folder, or a sub-asset as its file's path and its own name. "" with none or
+// several selected.
 @(private = "file")
-_Project_List_Item :: struct {
-    display: string,
-    path:    string,
-    is_dir:  bool,
-    is_link: bool,
-}
-
-// Draws the list pane's rows, the ones on screen only. Every row joins the
-// keyboard navigation list (list_rows), but a row off screen costs nothing
-// more: drawing a row asks for its thumbnail and its sub-assets, which may
-// load the asset, so a long folder or result list costs what its visible rows
-// cost. A row that has to scroll into view (the selection, a ping) draws
-// wherever it is. Rows of different heights (one unfolded to its sub-assets,
-// one being renamed) all draw.
-@(private = "file")
-_project_draw_rows :: proc(items: []_Project_List_Item) {
-    for it in items {
-        _project_list_row_add(it.display, it.path, it.is_dir)
-        if _pv.expanded[it.path] {
-            sub, _ := _project_sub_assets(it.path, it.is_dir)
-            _project_list_rows_add_subs(it.path, sub)
-        }
+_project_selected_where :: proc() -> string {
+    entries := sel_proj_entries()
+    if len(entries) != 1 do return ""
+    e := entries[0]
+    if e.sub_id == 0 do return e.path
+    if ref, _, ok := _project_sub_ref(e.path, e.sub_id); ok {
+        if s, found := subassets.get(ref); found do return fmt.tprintf("%s / %s", e.path, s.name)
     }
-    uneven := _pv.rename_active && !_pv.rename_in_tree
-    if !uneven {
-        for it in items do if _pv.expanded[it.path] {
-            uneven = true
-            break
-        }
-    }
-    if uneven {
-        for it in items do _project_draw_list_row(it.display, it.path, it.is_dir, it.is_link, listed = true)
-        return
-    }
-    clipper: im.ListClipper
-    im.ListClipper_Begin(&clipper, i32(len(items)))
-    for it, i in items {
-        scroll_sel := _pv.scroll_to_list_sel && _pv.active_pane == .List && sel_proj_is(it.path)
-        scroll_ping := _pv.scroll_to_ping && it.path == _pv.ping_path
-        if scroll_sel || scroll_ping do im.ListClipper_IncludeItemByIndex(&clipper, i32(i))
-    }
-    for im.ListClipper_Step(&clipper) {
-        for i in clipper.DisplayStart ..< clipper.DisplayEnd {
-            it := items[i]
-            _project_draw_list_row(it.display, it.path, it.is_dir, it.is_link, listed = true)
-        }
-    }
+    return e.path
 }
 
 // Create a prefab variant of the scene at `base_path`, written alongside it as
@@ -1797,18 +1300,8 @@ project_window_draw :: proc(w: ^wnd.Window) {
         _pv.active_pane = .Tree
     }
 
-    clear(&_pv.tree_rows)
-    virtual.arena_free_all(&_pv.tree_arena)
-
-    // The real assets root folder is the top node (it recurses into its own
-    // contents). It's a genuine on-disk folder, but renaming it is blocked in
-    // the rename entry points (it's the project root).
-    _project_draw_tree_node(projectWindowData.rootPath, filepath.base(projectWindowData.rootPath))
-    // Installed packages: additional roots under a Packages node
-    // (docs/core/Plugins.md — label = package name, path = its assets dir).
-    _project_draw_packages_tree()
-    // Reveal requests from the right pane were consumed by this draw.
-    _pv.tree_reveal = false
+    _project_tree_build()
+    _project_tree_draw()
 
     im.EndChild()
 
@@ -1825,9 +1318,8 @@ project_window_draw :: proc(w: ^wnd.Window) {
         _pv.active_pane = .List
     }
 
-    clear(&_pv.list_rows)
-    virtual.arena_free_all(&_pv.list_arena)
     _pv.grid_cols = 0
+    result_count := _project_list_build(query)
 
     // Where the list is, or what the selection is: above the rows, where
     // the search box used to sit. Text height, not frame height — nothing
@@ -1842,28 +1334,23 @@ project_window_draw :: proc(w: ^wnd.Window) {
 
     // Rows scroll in their own child so the zoom strip below stays fixed
     // at the bottom of the pane.
-    result_count := 0
     // Reserve exactly the strip: the slider's own height (text plus the
     // trimmed 1px frame padding, top and bottom) and one item spacing.
     zoom_h := im.GetTextLineHeight() + 2 + im.GetStyle().ItemSpacing.y
+    // No background of its own: the pane's shows through, as in the tree.
+    im.PushStyleColorImVec4(.ChildBg, {})
     im.BeginChild("FileRows", im.Vec2{0, -zoom_h}, {})
+    im.PopStyleColor()
     // The child insets its contents on the left by the window padding;
     // match it above the first row, so the list does not touch the top
     // edge (imgui applies no padding on the scrolling axis).
     im.Dummy({0, im.GetStyle().WindowPadding.y - im.GetStyle().ItemSpacing.y})
-    if query != "" {
-        result_count = _project_draw_search_results(query)
-    } else if _pv.current_path == _PROJECT_PACKAGES_PATH {
-        // The Packages node lists package roots, never the raw packages/
-        // folder (which would expose code to the file list).
-        _project_draw_packages_list()
-    } else if editor_settings.project_zoom > 0 {
-        // Unity's zoom model: the slider's low end is the list, anything
-        // above it a thumbnail grid scaling with the value.
-        cell := 40 + editor_settings.project_zoom * 56
-        _project_draw_grid(_pv.current_path, cell)
+    // The zoom slider's low end is rows, anything above it a grid of
+    // thumbnails scaling with the value. The packages are always rows.
+    if editor_settings.project_zoom > 0 && (query != "" || _pv.current_path != _PROJECT_PACKAGES_PATH) {
+        _project_list_draw_grid(40 + editor_settings.project_zoom * 56)
     } else {
-        draw_file_list(_pv.current_path)
+        _project_list_draw_rows()
     }
     // The rest of the pane is the open folder, as a drop target. A rect of
     // its own, no item: clicks there stay the pane's.
@@ -1896,7 +1383,17 @@ project_window_draw :: proc(w: ^wnd.Window) {
     // padding keeps the strip close to the track's own height.
     im.PushStyleVarImVec2(.FramePadding, im.Vec2{im.GetStyle().FramePadding.x, 1})
     zoom_w := widgets.slider_width_for_track(90)
-    im.SetCursorPosX(max(im.GetCursorPosX(), im.GetWindowWidth() - zoom_w - im.GetStyle().WindowPadding.x))
+    zoom_x := max(im.GetCursorPosX(), im.GetWindowWidth() - zoom_w - im.GetStyle().WindowPadding.x)
+    // Left of it, where the selected item is: its path, or its file's and
+    // its own name for a sub-asset.
+    if where_ := _project_selected_where(); where_ != "" {
+        shown, cut := _project_fit_name(where_, zoom_x - im.GetCursorPosX() - im.GetStyle().ItemSpacing.x)
+        im.AlignTextToFramePadding()
+        im.TextDisabled("%s", shown)
+        if cut && im.IsItemHovered({}) do _project_name_tooltip(where_)
+        im.SameLine()
+    }
+    im.SetCursorPosX(zoom_x)
     widgets.slider_float("##prj_zoom", &editor_settings.project_zoom, 0, 1, "%.2f", zoom_w)
     im.PopStyleVar()
     // The row count the header shows, from THIS frame's draw.
@@ -1916,35 +1413,24 @@ project_window_draw :: proc(w: ^wnd.Window) {
 // act on _pv, which is the last clicked copy outside a draw, and on its active
 // pane (Tree or List). The row lists are the ones the last draw built.
 
-// Adds a navigation row, its strings in the window's row arena.
-@(private = "file")
-_project_tree_row_add :: proc(path: string, open: bool) {
-    a := virtual.arena_allocator(&_pv.tree_arena)
-    append(&_pv.tree_rows, Project_Tree_Row{path = strings.clone(path, a), open = open})
-}
-
-@(private = "file")
-_project_list_row_add :: proc(name, path: string, is_dir: bool, sub: core.Local_ID = 0) {
+// Adds a row to the list pane's rows, its strings in the window's row arena.
+_project_list_row_add :: proc(name, path: string, is_dir: bool, sub: core.Local_ID = 0, is_link := false, hit := false) {
     a := virtual.arena_allocator(&_pv.list_arena)
-    append(&_pv.list_rows, Project_Row{name = strings.clone(name, a), path = strings.clone(path, a), is_dir = is_dir, sub = sub})
+    append(&_pv.list_rows, Project_Row{name = strings.clone(name, a), path = strings.clone(path, a), is_dir = is_dir, sub = sub, is_link = is_link, hit = hit})
 }
 
-// The rows of an unfolded file's sub-assets join the keyboard navigation
-// list after their file's row, in the order they are drawn.
-@(private = "file")
+// The rows of an unfolded file's sub-assets follow their file's row.
 _project_list_rows_add_subs :: proc(path: string, sub: []subassets.Sub_Asset) {
     for s in sub do _project_list_row_add(s.name, path, false, s.id)
 }
 
 // The row index of the shown folder in the tree, -1 for none.
-@(private = "file")
 _project_tree_index :: proc() -> int {
     for r, i in _pv.tree_rows do if r.path == _pv.current_path do return i
     return -1
 }
 
 // The row index of the active selection in the list, -1 for none.
-@(private = "file")
 _project_list_index :: proc() -> int {
     _, sub, _ := _project_selected_sub()
     for r, i in _pv.list_rows do if r.path == projectWindowData.selectedFile && r.sub == sub do return i

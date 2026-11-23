@@ -12,9 +12,10 @@ Every drag of content between the editor's windows goes through one package, `mo
 A list of items, each one of:
 
 - **an asset**: a file, or a sub-asset of a file, as a `PPtr` (local id 0 for the file);
-- **a scene object**: a `Transform_Handle`.
+- **a scene object**: a `Transform_Handle`;
+- **a folder of the project**: a `Folder` with its path, since a folder has no asset id.
 
-The Project window's rows drag assets and the Hierarchy's rows drag objects. A row that is part of the selection drags the whole selection: the selected assets, or the top-level selected objects.
+The Project window's rows drag assets and folders, and the Hierarchy's rows drag objects. A row that is part of the selection drags the whole selection: the selected assets and folders, or the top-level selected objects.
 
 ## Where it lands
 
@@ -22,11 +23,11 @@ The Project window's rows drag assets and the Hierarchy's rows drag objects. A r
 |---|---|---|
 | `scene` | `Scene_Place`: the view, the pixel, and the grid point under it | the Scene window's image |
 | `hierarchy` | `Hierarchy_Place`: a parent and a child index, -1 for the end | before or after a row (its parent, at its place), after an open row (its first child), on a row (its last child), on a scene's header or below the rows (the scene's root), the window's background (no parent) |
-| `project` | `Project_Place`: a folder's path | a folder in the tree or the list, a file (its folder), the empty part of the list (the open folder) |
+| `project` | `Project_Place`: a folder's path | a folder in the tree, the list or the path bar, a file (its folder), the empty part of the list (the open folder) |
 
 ## What a drop does
 
-A rule is a proc with `@(drop={what, on})`, named `drop_<name>`. `what` is what every item is: `object`, `asset`, or `asset:<kind>`, the kind of a file (its extension) or of a sub-asset, as the Project search's `t:` knows it. `on` is the place. The rules of one place are asked in order, a kind before plain `asset`, and the first that takes the items does the drop.
+A rule is a proc with `@(drop={what, on})`, named `drop_<name>`. `what` is what every item is: `object`, `asset`, or `asset:<kind>`, the kind of a file (its extension) or of a sub-asset, as the Project search's `t:` knows it. A rule added by a call to `drag.drop_rule_add` can also name `file`: every item is a file of the project or a folder of it. `on` is the place. The rules of one place are asked in order, a kind before plain `asset`, and the first that takes the items does the drop.
 
 The editor's rules:
 
@@ -37,6 +38,7 @@ The editor's rules:
 | scenes | hierarchy, background | opens them beside the loaded scenes | `drop_scenes_in_hierarchy` |
 | assets | hierarchy | an object of each under the place's parent ([Asset drop](/plugins/engine/docs/attributes/AssetDrop.md)) | `drop_assets_in_hierarchy` |
 | objects | project | a prefab of each in the folder, the objects becoming its instances ([Scene](/plugins/engine/docs/assets/Scene.md#making-a-prefab-of-objects)) | `drop_objects_in_project` |
+| files and folders | project | moves them into the folder, each file with its `.meta`, so it keeps its id ([Project](/docs/core/ProjectWindow.md)) | `_drop_files_in_folder` |
 
 The reference page of `@(drop)` lists every rule the installed plugins add.
 

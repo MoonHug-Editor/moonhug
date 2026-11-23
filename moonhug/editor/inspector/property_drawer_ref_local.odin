@@ -107,6 +107,8 @@ picker_field_row :: proc(label: cstring, display: string, has_value: bool, value
 					dropped_pptr^ = v
 					if dropped_pptr_ok != nil do dropped_pptr_ok^ = true
 				}
+			case drag.Folder:
+				// No reference field takes a folder.
 			}
 		}
 		im.EndDragDropTarget()
@@ -138,6 +140,7 @@ _field_takes :: proc(file, sub_asset, object: bool) -> (item: drag.Item, ok: boo
 	switch v in its[0] {
 	case core.Transform_Handle: ok = object
 	case core.PPtr:             ok = v.local_id == 0 ? file : sub_asset
+	case drag.Folder:           ok = false
 	}
 	return its[0], ok
 }

@@ -6,6 +6,7 @@ package editor
 // `explorer /select` for reveal.
 
 import "core:fmt"
+import "core:os"
 
 file_move_to_trash :: proc(path: string) -> bool {
 	fmt.printf("[Editor] Move to trash: not implemented on this OS (%s)\n", path)
@@ -20,4 +21,13 @@ file_open_in_os :: proc(path: string) -> bool {
 file_reveal_in_os :: proc(path: string) -> bool {
 	fmt.printf("[Editor] Show in file manager: not implemented on this OS (%s)\n", path)
 	return false
+}
+
+// A folder's modification time in nanoseconds, 0 when it cannot be read
+// (project_dir_cache.odin).
+project_dir_mtime_ns :: proc(path: string) -> i64 {
+	info, err := os.stat(path, context.temp_allocator)
+	if err != nil do return 0
+	defer os.file_info_delete(info, context.temp_allocator)
+	return info.modification_time._nsec
 }

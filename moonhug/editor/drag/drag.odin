@@ -29,6 +29,14 @@ import core "moonhug:libs/core"
 Item :: union {
 	core.PPtr, // an asset: a file (local id 0) or a sub-asset
 	core.Transform_Handle, // a scene object
+	Folder, // a folder of the project
+}
+
+// A folder of the project: it has no asset id, so it drags as its path. The
+// path is the source's when given to `source`, and the drag's own copy in
+// `items`.
+Folder :: struct {
+	path: string,
 }
 
 // The imgui payload type of every drag that carries items.
@@ -170,8 +178,15 @@ _place_kind :: proc(p: Place) -> _Place_Kind {
 // target would do with them.
 source :: proc(items: []Item, label: string) {
 	context.allocator = runtime.default_allocator()
+	for it in _items do if f, is_folder := it.(Folder); is_folder do delete(f.path)
 	clear(&_items)
-	append(&_items, ..items)
+	for it in items {
+		if f, is_folder := it.(Folder); is_folder {
+			append(&_items, Folder{path = strings.clone(f.path)})
+		} else {
+			append(&_items, it)
+		}
+	}
 	frame := im.GetFrameCount()
 	im.SetDragDropPayload(PAYLOAD, &frame, size_of(frame))
 	im.TextUnformatted(strings.clone_to_cstring(label, context.temp_allocator))
@@ -220,15 +235,21 @@ run :: proc(items: []Item, place: Place, perform: bool) -> (hint: string, taken:
 	return "", false
 }
 
-// Whether every item is what `what` names: "object", "asset" or
-// "asset:<kind>".
+// Whether every item is what `what` names: "object", "asset",
+// "asset:<kind>", or "file": a file of the project or a folder of it.
 matches :: proc(what: string, items: []Item) -> bool {
 	if len(items) == 0 do return false
 	for it in items {
 		switch v in it {
 		case core.Transform_Handle:
 			if what != "object" do return false
+		case Folder:
+			if what != "file" do return false
 		case core.PPtr:
+			if what == "file" {
+				if v.local_id != 0 do return false
+				continue
+			}
 			if what == "asset" do continue
 			if !strings.has_prefix(what, "asset:") || asset_kind(v) != what[len("asset:"):] do return false
 		}

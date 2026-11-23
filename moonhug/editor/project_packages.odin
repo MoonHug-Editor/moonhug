@@ -9,8 +9,6 @@ package editor
 
 import "core:fmt"
 import "core:strings"
-import im "moonhug:external/odin-imgui"
-import "moonhug:editor/icons"
 import "moonhug:editor/inspector"
 import assets "moonhug:libs/assets"
 
@@ -110,81 +108,6 @@ _project_segment_label :: proc(path: string) -> string {
 	if project_path_is_package_root(path) do return project_package_root_name(path)
 	if i := strings.last_index(path, "/"); i >= 0 do return path[i + 1:]
 	return path
-}
-
-// Tree: the Packages top node with one child node per package root. Reuses
-// the regular folder-node drawing for the roots — label is the package name,
-// path is the real assets dir, so everything below is ordinary.
-_project_draw_packages_tree :: proc() {
-	pkgs := project_packages_list()
-
-	im.PushID("##packages_root")
-	defer im.PopID()
-
-	is_selected := _pv.active_pane == .Tree && _pv.current_path == _PROJECT_PACKAGES_PATH
-	// DefaultOpen: installed packages are visible from the first frame, like
-	// the Assets root.
-	node_flags: im.TreeNodeFlags = {.OpenOnArrow, .OpenOnDoubleClick, .DefaultOpen}
-	if is_selected do node_flags += {.Selected}
-	if len(pkgs) == 0 do node_flags += {.Leaf, .NoTreePushOnOpen}
-
-	if len(pkgs) > 0 {
-		if _pv.tree_set_open_path == _PROJECT_PACKAGES_PATH {
-			im.SetNextItemOpen(_pv.tree_set_open_val)
-			delete(_pv.tree_set_open_path)
-			_pv.tree_set_open_path = ""
-		} else if _pv.tree_reveal && _project_path_is_ancestor(_PROJECT_PACKAGES_PATH, _pv.current_path) {
-			im.SetNextItemOpen(true)
-		}
-	}
-
-	expanded := len(pkgs) > 0 && _pv.tree_open_state[_PROJECT_PACKAGES_PATH]
-	icon := icons.ICON_MD_FOLDER_OPEN if expanded else icons.ICON_MD_FOLDER
-	label := strings.clone_to_cstring(fmt.tprintf("%spackages###node", icon), context.temp_allocator)
-
-	node_open := im.TreeNodeEx(label, node_flags)
-	open := node_open && len(pkgs) > 0
-	append(&_pv.tree_rows, Project_Tree_Row{path = _PROJECT_PACKAGES_PATH, open = open})
-	if _, seen := _pv.tree_open_state[_PROJECT_PACKAGES_PATH]; seen {
-		_pv.tree_open_state[_PROJECT_PACKAGES_PATH] = open
-	} else {
-		_pv.tree_open_state[strings.clone(_PROJECT_PACKAGES_PATH)] = open
-	}
-	if is_selected && _pv.scroll_to_tree_sel {
-		im.SetScrollHereY()
-		_pv.scroll_to_tree_sel = false
-	}
-	if im.IsItemClicked() {
-		_project_set_current(_PROJECT_PACKAGES_PATH)
-	}
-	if node_open && len(pkgs) > 0 {
-		for pkg in pkgs {
-			_project_draw_tree_node(pkg.assets_path, pkg.name, pkg.is_link)
-		}
-		im.TreePop()
-	}
-}
-
-// File list when browsing the Packages node: one row per package. Selecting
-// opens the package inspector, double-click enters the package root.
-_project_draw_packages_list :: proc() {
-	for pkg in project_packages_list() {
-		append(&_pv.list_rows, Project_Row{name = pkg.name, path = pkg.assets_path, is_dir = true})
-		label := strings.clone_to_cstring(fmt.tprintf("%s%s", _project_dir_icon(pkg.is_link), pkg.name), context.temp_allocator)
-		is_selected := _pv.active_pane == .List && sel_proj_is(pkg.assets_path)
-		if im.Selectable(label, is_selected, {.AllowDoubleClick}) {
-			_project_set_selected(pkg.assets_path)
-			_project_inspectors_refresh()
-			if im.IsMouseDoubleClicked(.Left) {
-				_project_enter_dir(pkg.assets_path)
-			}
-		}
-		if is_selected && _pv.scroll_to_list_sel {
-			im.SetScrollHereY()
-			_pv.scroll_to_list_sel = false
-		}
-		_project_item_ping_flash(pkg.assets_path)
-	}
 }
 
 _project_package_asset_count :: proc(assets_path: string) -> int {
