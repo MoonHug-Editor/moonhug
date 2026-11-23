@@ -1,3 +1,37 @@
+## [0.171.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.170.0...v0.171.0) (2026-11-23)
+
+### Features
+
+* a UiMask cuts with a radius per corner and every mask above a node keeps its own shape, shaders get the clip by themselves or by hand as the project's UiMask setting says ([3818309](https://github.com/MoonHug-Editor/moonhug/commit/38183099fad67e84ffecb2de941d0adc6e6bef5c))
+* LayoutElement and expand for LayoutGroup, ContentSizeFitter, AspectRatioFitter and CanvasGroup ([d28571e](https://github.com/MoonHug-Editor/moonhug/commit/d28571e1bb36940fd77d73e06ebd78ecca4c2d92))
+* mhgui InputField and Dropdown, and the bridge's keys and text reach a game in Play ([2577ee4](https://github.com/MoonHug-Editor/moonhug/commit/2577ee4dcbf615c5d5924ae847beb4293ece4fad))
+* mhgui RawImage, a grid's start corner and axis, and UiPolygon points dragged in the Scene window ([426eb2f](https://github.com/MoonHug-Editor/moonhug/commit/426eb2f73066fd34242c75af92ab4e3585824a86))
+* mhgui ScrollRect and Scrollbar, with a Scroll View menu item and a scroll view in the sample scene ([b0f0801](https://github.com/MoonHug-Editor/moonhug/commit/b0f080160f59de20700871586870d354799cbd34))
+* mhgui Shape draws a rounded rectangle with a border, a gradient and shadows with no sprite, a UI quad carries its own shader values and equal ones share a draw call, and a mhgui sample scene ([f0d7af4](https://github.com/MoonHug-Editor/moonhug/commit/f0d7af484ed6c57486b5edde71620896e775c895))
+* mhgui Toggle, ToggleGroup and Slider, and Button shares one Selectable part with them ([25e1a64](https://github.com/MoonHug-Editor/moonhug/commit/25e1a64e602ed7d191a9ad070bf9cdf7ab50e5e5))
+* one comp_on_pointer proc for UI nodes and for colliders, found by a raycaster on a camera ([e6fe1b0](https://github.com/MoonHug-Editor/moonhug/commit/e6fe1b095e8a41b4b55221d31b4cf5f2edf0928d))
+* rich text tags on a Text: bold, italic, underline, strikethrough, colour and size for parts of one string ([7a75ff1](https://github.com/MoonHug-Editor/moonhug/commit/7a75ff1c58892a3e3639fe39c2aaf261c9f9c745))
+* the Hierarchy draws only its visible rows, with a lock gutter, scene header rows, override marks and drop lines that show depth ([38b5149](https://github.com/MoonHug-Editor/moonhug/commit/38b5149b6b146bfd67256da255583013d5e7f66f))
+* the pointer hits UI by shape and by a sprite's alpha, and each finger on a touch screen is a pointer ([bf9a51c](https://github.com/MoonHug-Editor/moonhug/commit/bf9a51c87f8ea14ccba50fa086a8def127b9c88f))
+* the Scene view zooms toward the pointer, with the wheel and with the zoom drag ([190e7ae](https://github.com/MoonHug-Editor/moonhug/commit/190e7ae8844dffa309c8486c7a834c600d9fcadf))
+* Tracy profiling behind a build switch, PROF=none, zones or all ([ea5f36d](https://github.com/MoonHug-Editor/moonhug/commit/ea5f36d25202541306bab1d104fa8a831f68ae47))
+* UI pointer events for any component with comp_on_pointer_ui, HitArea, Button written with them, a Button tints its whole Shape, and the bridge's mouse input reaches the game in Play ([3e03663](https://github.com/MoonHug-Editor/moonhug/commit/3e03663cb882999d061f3139044445a1b184b0f1))
+* UI quads take free corners and a colour per corner, with a Filled Image, UiPolygon and gradient, shadow and outline effects ([c50cdb5](https://github.com/MoonHug-Editor/moonhug/commit/c50cdb5e9d10cb01279a49b65c641830286dc5d7))
+* UiMask clips by a sprite's alpha, and controls name their navigation neighbours ([577fa6b](https://github.com/MoonHug-Editor/moonhug/commit/577fa6bdfdfee7389bd36a74c7699834dc29adc5))
+* UiMask clips the UI nodes under it in the shader with no extra draw call, mhgui Shape is UiShape, a Button dragged off while pressed looks released, the bridge keeps the mouse position between input scripts ([c1d3507](https://github.com/MoonHug-Editor/moonhug/commit/c1d3507c27c66302b0df6cf78f2fde21437b4ca1))
+* UiMask has round corners with a choice of corners and a soft edge, and a node is cut by every mask above it ([902c869](https://github.com/MoonHug-Editor/moonhug/commit/902c86970c0cb696c66368e6f45f9e3925425488))
+* UiShape draws an ellipse, a polygon or a star, and controls show their state by a sprite swap or an animation ([cce290e](https://github.com/MoonHug-Editor/moonhug/commit/cce290e80a610ec462c4d27518814f49fd640d41))
+
+### Bug Fixes
+
+* performance fixes ([a135653](https://github.com/MoonHug-Editor/moonhug/commit/a1356535726f8716ce096910ce0fab88a84a1ec1))
+* the slot row names the transform type through core, so the shell builds with no plugins ([0fe9d62](https://github.com/MoonHug-Editor/moonhug/commit/0fe9d621de7cebedbf389d920e5049d74913e7e6))
+
+### Performance Improvements
+
+* a canvas keeps its rects and quads until something under it changes ([ec2b7a1](https://github.com/MoonHug-Editor/moonhug/commit/ec2b7a1c6481934d417b49d07b17b93a93e4b749))
+* profiler zones from the generators and plots of the render counters, and a pool walks only its slots in use ([04b92e0](https://github.com/MoonHug-Editor/moonhug/commit/04b92e06dea52e6dd0907f0879bc48c9c157e371))
+
 ## [0.170.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.169.0...v0.170.0) (2026-11-19)
 
 ### Features
