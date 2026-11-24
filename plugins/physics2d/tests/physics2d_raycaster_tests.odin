@@ -1,13 +1,12 @@
-package physics2d_mhgui_tests
+package physics2d_tests
 
-// Physics2DRaycaster (physics2d/mhgui): a 2D collider under the pointer is
+// Physics2DRaycaster: a 2D collider under the pointer is
 // found where the camera's ray crosses the XY plane.
 
 import "core:testing"
 import "moonhug:packages/engine"
-import mhgui "moonhug:packages/mhgui"
+import pointer "moonhug:packages/engine/pointer"
 import physics2d "moonhug:packages/physics2d"
-import physics2d_mhgui "moonhug:packages/physics2d/mhgui"
 import common "moonhug:tests/common"
 
 @(test)
@@ -28,8 +27,8 @@ test_pointer_finds_a_2d_collider :: proc(t: ^testing.T) {
 	engine.type_reset_Camera(cam)
 	cam.enabled = true
 	_, rraw := engine.transform_add_comp(cam_node, .Physics2DRaycaster)
-	caster := cast(^physics2d_mhgui.Physics2DRaycaster)rraw
-	physics2d_mhgui.type_reset_Physics2DRaycaster(caster)
+	caster := cast(^physics2d.Physics2DRaycaster)rraw
+	physics2d.type_reset_Physics2DRaycaster(caster)
 	caster.enabled = true
 	// Back along its own view, so the plane is 10 in front of it.
 	forward := engine.camera_screen_ray(cam, centre, viewport).direction
@@ -48,16 +47,16 @@ test_pointer_finds_a_2d_collider :: proc(t: ^testing.T) {
 	box.layers = 1
 	physics2d.physics_step(1.0 / 60.0) // builds the bodies
 
-	hit, found := physics2d_mhgui.pointer_raycast(centre, viewport)
+	hit, found := physics2d.pointer_raycast(centre, viewport)
 	testing.expect(t, found && hit.node == crate, "the raycaster finds the crate under the pointer")
-	testing.expect_value(t, hit.source, mhgui.Pointer_Source.World_2D)
+	testing.expect_value(t, hit.source, pointer.Pointer_Source.World_2D)
 	testing.expectf(t, abs(hit.point.x - at.x) < 0.01 && abs(hit.point.y - at.y) < 0.01 && hit.point.z == 0, "on the plane, under the pointer: %v", hit.point)
 
 	// A corner of the screen is far from the crate.
-	_, found = physics2d_mhgui.pointer_raycast({5, 5}, viewport)
+	_, found = physics2d.pointer_raycast({5, 5}, viewport)
 	testing.expect(t, !found, "nothing under the corner")
 	// A layer the raycaster does not look at.
 	caster.layers = 2
-	_, found = physics2d_mhgui.pointer_raycast(centre, viewport)
+	_, found = physics2d.pointer_raycast(centre, viewport)
 	testing.expect(t, !found, "the crate is on another layer")
 }

@@ -15,7 +15,7 @@ UI has two halves. The canvas tree is engine vocabulary, in `plugins/engine/ui_c
 - [CanvasRenderer](components/CanvasRenderer.md) marks a node as drawing its graphic.
 - [CanvasGroup](components/CanvasGroup.md) fades a whole subtree and turns it off for the pointer.
 
-The rest of UI is the [mhgui](/plugins/mhgui/docs/_index.md) plugin's, built on these: the graphics and controls, [CanvasScaler](/plugins/mhgui/docs/components/CanvasScaler.md), [UiMask](/plugins/mhgui/docs/components/UiMask.md), [GraphicRaycaster](/plugins/mhgui/docs/components/GraphicRaycaster.md), HitArea and [the pointer](/plugins/mhgui/docs/concepts/Pointer.md).
+The rest of UI is the [mhgui](/plugins/mhgui/docs/_index.md) plugin's, built on these: the graphics and controls, [CanvasScaler](/plugins/mhgui/docs/components/CanvasScaler.md), [UiMask](/plugins/mhgui/docs/components/UiMask.md), [GraphicRaycaster](/plugins/mhgui/docs/components/GraphicRaycaster.md), HitArea and the selected node. A node takes the pointer with the engine's [pointer events](Pointer.md).
 
 ## What a plugin installs
 

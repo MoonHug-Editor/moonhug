@@ -1,25 +1,22 @@
-package physics2d_mhgui
+package physics2d
 
 // Physics2DRaycaster: lets the pointer reach 2D colliders. It goes on a
-// camera. Each frame the mhgui plugin's pointer pass asks it what is under
-// the pointer: it finds where the camera's ray through the pointer crosses
+// camera. Each frame the pointer pass (plugins/engine/pointer) asks it what
+// is under the pointer: it finds where the camera's ray through the pointer crosses
 // the XY plane the 2D bodies live in, and answers with a collider that
 // holds that point. The object with that collider then gets pointer events
 // like a UI node does: a component on it, or on a parent, takes them with
 // @(comp_on_pointer).
 //
 // - UI comes first: a pointer over a canvas's graphic hits nothing behind it.
+// - With several raycasters the nearest hit wins.
 // - Where colliders overlap, which one answers is not defined.
 // - Triggers are passed through, as for every query.
 // - Colliders exist while the game runs, so nothing is hit in edit mode.
-//
-// This folder is what physics2d adds with the mhgui plugin installed.
-// physics2d itself builds without it.
 
 import "base:runtime"
 import "moonhug:packages/engine"
-import mhgui "moonhug:packages/mhgui"
-import physics2d "moonhug:packages/physics2d"
+import pointer "moonhug:packages/engine/pointer"
 
 @(component={menu="Physics2D/Physics2DRaycaster"})
 @(typ_guid={guid = "7f1c3e59-8a2d-4b06-a4e7-0d9b5c3f6e28"})
@@ -37,14 +34,14 @@ type_reset_Physics2DRaycaster :: proc(r: ^Physics2DRaycaster) {
 POINTER_RADIUS :: f32(0.001)
 
 @(init)
-_register :: proc "contextless" () {
+_register_pointer_raycaster :: proc "contextless" () {
 	context = runtime.default_context()
-	mhgui.pointer_raycaster_register(pointer_raycast)
+	pointer.raycaster_register(pointer_raycast)
 }
 
 // A collider under a viewport point, over every enabled Physics2DRaycaster
 // whose camera is enabled: the nearest camera plane crossing wins.
-pointer_raycast :: proc(position: [2]f32, viewport: [2]f32) -> (best: mhgui.Pointer_Hit, ok: bool) {
+pointer_raycast :: proc(position: [2]f32, viewport: [2]f32) -> (best: pointer.Pointer_Hit, ok: bool) {
 	w := engine.ctx_world()
 	if w == nil do return
 	pool := physics2_d_raycasters(w)
@@ -60,7 +57,7 @@ pointer_raycast :: proc(position: [2]f32, viewport: [2]f32) -> (best: mhgui.Poin
 		t := -ray.origin.z / ray.direction.z
 		if t < 0 || (ok && t >= best.distance) do continue
 		point := ray.origin + ray.direction * t
-		touched := physics2d.overlap_circle(point.xy, POINTER_RADIUS, r.layers)
+		touched := overlap_circle(point.xy, POINTER_RADIUS, r.layers)
 		if len(touched) == 0 do continue
 		best = {node = touched[0], source = .World_2D, point = {point.x, point.y, 0}, normal = {0, 0, 1}, distance = t}
 		ok = true

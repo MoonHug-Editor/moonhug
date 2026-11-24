@@ -1,8 +1,8 @@
-package physics3d_mhgui
+package physics3d
 
 // PhysicsRaycaster: lets the pointer reach 3D colliders. It goes on a camera.
-// Each frame the mhgui plugin's pointer pass asks it what is under the
-// pointer: it casts a ray from its camera through the pointer and answers
+// Each frame the pointer pass (plugins/engine/pointer) asks it what is under
+// the pointer: it casts a ray from its camera through the pointer and answers
 // with the first collider hit. The object with that collider then gets
 // pointer events like a UI node does: a component on it, or on a parent,
 // takes them with @(comp_on_pointer).
@@ -11,14 +11,10 @@ package physics3d_mhgui
 // - With several raycasters the nearest hit wins.
 // - Triggers are passed through, as for every raycast.
 // - Colliders exist while the game runs, so nothing is hit in edit mode.
-//
-// This folder is what physics3d adds with the mhgui plugin installed.
-// physics3d itself builds without it.
 
 import "base:runtime"
 import "moonhug:packages/engine"
-import mhgui "moonhug:packages/mhgui"
-import physics3d "moonhug:packages/physics3d"
+import pointer "moonhug:packages/engine/pointer"
 
 @(component={menu="Physics/PhysicsRaycaster"})
 @(typ_guid={guid = "d2a4f6c8-1b3e-4a57-9c80-6e2f4b8d0a13"})
@@ -35,14 +31,14 @@ type_reset_PhysicsRaycaster :: proc(r: ^PhysicsRaycaster) {
 }
 
 @(init)
-_register :: proc "contextless" () {
+_register_pointer_raycaster :: proc "contextless" () {
 	context = runtime.default_context()
-	mhgui.pointer_raycaster_register(pointer_raycast)
+	pointer.raycaster_register(pointer_raycast)
 }
 
 // The nearest collider under a viewport point, over every enabled
 // PhysicsRaycaster whose camera is enabled.
-pointer_raycast :: proc(position: [2]f32, viewport: [2]f32) -> (best: mhgui.Pointer_Hit, ok: bool) {
+pointer_raycast :: proc(position: [2]f32, viewport: [2]f32) -> (best: pointer.Pointer_Hit, ok: bool) {
 	w := engine.ctx_world()
 	if w == nil do return
 	pool := physics_raycasters(w)
@@ -53,7 +49,7 @@ pointer_raycast :: proc(position: [2]f32, viewport: [2]f32) -> (best: mhgui.Poin
 		_, cam := engine.transform_get_comp(r.owner, engine.Camera)
 		if cam == nil || !cam.enabled do continue
 		ray := engine.camera_screen_ray(cam, position, viewport)
-		hit, found := physics3d.raycast(ray.origin, ray.direction, r.max_distance, r.layers)
+		hit, found := raycast(ray.origin, ray.direction, r.max_distance, r.layers)
 		if !found || (ok && hit.distance >= best.distance) do continue
 		best = {node = hit.object, source = .World_3D, point = hit.point, normal = hit.normal, distance = hit.distance}
 		ok = true

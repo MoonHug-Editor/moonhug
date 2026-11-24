@@ -3,11 +3,14 @@ package mhgui
 // What the pointer hits: the engine.canvases that take it (GraphicRaycaster), the
 // nodes that take it (a graphic with raycast_target, or a HitArea), the test
 // a graphic may add to its rect (@(canvas_hit)), and the raycast itself. The
-// pointer pass that sends events from it is pointer.odin.
+// pointer pass that sends events from it is the engine's pointer package
+// (plugins/engine/pointer), where this plugin registers the raycast.
 
+import "base:runtime"
 import "core:math/linalg"
 import "core:slice"
 import "moonhug:packages/engine"
+import pointer "moonhug:packages/engine/pointer"
 
 // Makes a canvas receive pointer events: the pointer pass (canvas_raycast)
 // only looks at engine.canvases carrying one. GameObject > UI > engine.Canvas adds it.
@@ -23,7 +26,7 @@ type_reset_GraphicRaycaster :: proc(r: ^GraphicRaycaster) {
 }
 
 // A node the pointer can hit that draws nothing: its rect takes pointer
-// events (pointer.odin) as a graphic with raycast_target does. For an
+// events as a graphic with raycast_target does. For an
 // invisible button over a picture, a drag surface, or a larger touch area
 // around a small icon. It needs no engine.CanvasRenderer.
 @(component={menu="UI/HitArea"})
@@ -83,39 +86,34 @@ node_hit :: proc(tH: engine.Transform_Handle, rect: engine.Rect, point: [2]f32) 
 	return true
 }
 
-// The event system's pointer pass. Every frame canvas_pointer_update reads the
-// mouse (viewport coordinates, see libs/input) and raycasts the engine.canvases
-// that carry a GraphicRaycaster: the topmost graphic with raycast_target under
-// the pointer is `hovered`. The left button's press remembers its target
-// (`pressed`, also `selected`: a press selects what it lands on), and a
-// release over that same target is a `clicked`, for one frame. Code selects
-// a node with ui_set_selected, which is where keyboard and gamepad
-// navigation starts from (the mhgui package's Button moves it).
-// Components read the state (ui_pointer) instead of receiving events; the
-// mhgui package's Button is the first reader. Nothing while the application
-// has no focus.
+// The selected node: the one keyboard and gamepad input acts on, where
+// navigation starts from. A press with the left button selects the UI node
+// it lands on, and a press on the world or on nothing clears it (ui_tick
+// reads the press from the pointer package). Code selects a node with
+// ui_set_selected.
+@(private) _selected: engine.Transform_Handle
 
-UI_Pointer :: struct {
-	position: [2]f32, // viewport pixels, y down
-	hovered:  engine.Transform_Handle,
-	pressed:  engine.Transform_Handle, // where the left button went down, until it comes up
-	selected: engine.Transform_Handle, // the last node pressed on or given to ui_set_selected; pressing on nothing clears it
-	clicked:  engine.Transform_Handle, // released this frame over the node it was pressed on
-}
-
-@(private) _ui_pointer: UI_Pointer
-
-ui_pointer :: proc() -> UI_Pointer {
-	return _ui_pointer
-}
-
-// Selects `node`, {} for none: the node keyboard and gamepad input acts on.
+// Selects `node`, {} for none.
 ui_set_selected :: proc(node: engine.Transform_Handle) {
-	_ui_pointer.selected = node
+	_selected = node
 }
 
 ui_selected :: proc() -> engine.Transform_Handle {
-	return _ui_pointer.selected
+	return _selected
+}
+
+// The UI's raycaster for the pointer package: the canvas node under the
+// pointer. Its priority is above the world's, so a pointer over UI hits
+// nothing behind it.
+@(init)
+_register_canvas_raycaster :: proc "contextless" () {
+	context = runtime.default_context()
+	pointer.raycaster_register(canvas_pointer_raycast, pointer.PRIORITY_UI)
+}
+
+canvas_pointer_raycast :: proc(position: [2]f32, viewport: [2]f32) -> (hit: pointer.Pointer_Hit, ok: bool) {
+	node := canvas_raycast(position, viewport)
+	return {node = node, source = .UI}, node != {}
 }
 
 // The topmost raycast-target graphic under a viewport point (pixels, y

@@ -62,6 +62,7 @@ Attributes are the main way to extend the engine. A proc or a struct declares on
 - [Lifecycle](attributes/Lifecycle.md): `@(comp_awake)`, `@(comp_on_enable)`, `@(comp_on_disable)` and `@(comp_on_destroy)`.
 - [Updates](attributes/Updates.md): `@(update)`, `@(fixed_update)` and `@(late_update)`, as systems or per component.
 - [Physics callbacks](attributes/PhysicsCallbacks.md): collision and trigger enter and exit.
+- [Pointer events](Pointer.md): `@(comp_on_pointer)`, a component takes the pointer events of its object, on UI or in the world.
 - [Rendering](attributes/Rendering.md): `@(render_step)` and `@(render_collector)`.
 - [UI canvas](attributes/UICanvas.md): `@(canvas_graphic)` and `@(canvas_layout)`.
 - [Asset drop](attributes/AssetDrop.md): `@(asset_on_drop)`, what an asset dragged into the Scene window or the Hierarchy becomes.

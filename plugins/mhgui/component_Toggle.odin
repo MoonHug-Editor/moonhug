@@ -9,6 +9,7 @@ package mhgui
 // pointer, as a Button does.
 
 import "moonhug:packages/engine"
+import pointer "moonhug:packages/engine/pointer"
 
 @(component={menu="UI/Toggle"})
 @(typ_guid={guid = "cd4cc473-9feb-4b44-9bd4-cc5e3f5164ce"})
@@ -73,7 +74,7 @@ _toggle_show :: proc(t: ^Toggle) {
 }
 
 @(comp_on_pointer={component=Toggle})
-comp_on_pointer_Toggle :: proc(t: ^Toggle, ev: ^Pointer_Event) {
+comp_on_pointer_Toggle :: proc(t: ^Toggle, ev: ^pointer.Pointer_Event) {
 	selectable_pointer(&t.selectable, ev)
 	if ev.kind == .Click && ev.button == .Left && selectable_usable(&t.selectable, t.owner) {
 		toggle_set(t, !t.is_on)

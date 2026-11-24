@@ -26,6 +26,7 @@ package text
 import "base:runtime"
 import "core:strings"
 import "moonhug:packages/engine"
+import pointer "moonhug:packages/engine/pointer"
 import "moonhug:libs/input"
 import "moonhug:libs/time"
 import mhgui "moonhug:packages/mhgui"
@@ -237,7 +238,7 @@ _under :: proc(tH, root: engine.Transform_Handle) -> bool {
 // --- Pointer -----------------------------------------------------------------------
 
 @(comp_on_pointer={component=Dropdown})
-comp_on_pointer_Dropdown :: proc(d: ^Dropdown, ev: ^mhgui.Pointer_Event) {
+comp_on_pointer_Dropdown :: proc(d: ^Dropdown, ev: ^pointer.Pointer_Event) {
 	mhgui.selectable_pointer(&d.selectable, ev)
 	if ev.kind == .Click && ev.button == .Left && mhgui.selectable_usable(&d.selectable, d.owner) {
 		d.clicked = true
@@ -246,7 +247,7 @@ comp_on_pointer_Dropdown :: proc(d: ^Dropdown, ev: ^mhgui.Pointer_Event) {
 }
 
 @(comp_on_pointer={component=DropdownItem})
-comp_on_pointer_DropdownItem :: proc(item: ^DropdownItem, ev: ^mhgui.Pointer_Event) {
+comp_on_pointer_DropdownItem :: proc(item: ^DropdownItem, ev: ^pointer.Pointer_Event) {
 	mhgui.selectable_pointer(&item.selectable, ev)
 	if ev.kind == .Click && ev.button == .Left && mhgui.selectable_usable(&item.selectable, item.owner) {
 		item.clicked = true

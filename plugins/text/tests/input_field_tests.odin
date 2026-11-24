@@ -6,6 +6,7 @@ package text_tests
 
 import "core:testing"
 import "moonhug:packages/engine"
+import pointer "moonhug:packages/engine/pointer"
 import "moonhug:libs/input"
 import mhgui "moonhug:packages/mhgui"
 import text "moonhug:packages/text"
@@ -101,6 +102,8 @@ _field :: proc(canvas: engine.Transform_Handle) -> (f: _Field) {
 
 @(private = "file")
 _tick :: proc() {
+	mhgui.ui_frame_begin(0)
+	pointer.pointer_update(0)
 	mhgui.ui_tick(0)
 	text.input_field_tick(0)
 	text.dropdown_tick(0)
@@ -179,7 +182,7 @@ _begin :: proc(fx: ^_Fixture) -> engine.Transform_Handle {
 	text.backend_set(text.Backend{name = "fake", metrics = _fake_metrics, glyph = _fake_glyph})
 	input.set_app_focused(true)
 	input.set_viewport({0, 0}, {800, 600})
-	mhgui.ui_pointer_reset()
+	pointer.reset()
 	mhgui.ui_set_selected({})
 	canvas := engine.transform_new("Canvas")
 	_add(canvas, .Canvas)
@@ -192,7 +195,7 @@ _end :: proc(fx: ^_Fixture) {
 	context.user_ptr = &fx.tc.uc
 	mhgui.ui_keys_capture({})
 	mhgui.ui_set_selected({})
-	mhgui.ui_pointer_reset()
+	pointer.reset()
 	input.set_app_focused(false)
 	input.frame_reset()
 	text.backend_set(fx.prev)

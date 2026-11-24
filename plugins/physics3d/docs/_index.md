@@ -12,6 +12,7 @@ The physics3d plugin simulates 3D physics with box3d. Add a Rigidbody and collid
 
 - [Rigidbody](components/Rigidbody.md) makes an object a dynamic or kinematic body.
 - [CharacterController](components/CharacterController.md) moves an object by code without going through colliders: walls, slopes, steps, ground.
+- [PhysicsRaycaster](components/PhysicsRaycaster.md) lets the pointer reach colliders, so an object is clicked like a UI node.
 - [BoxCollider](components/BoxCollider.md), [SphereCollider](components/SphereCollider.md) and [CapsuleCollider](components/CapsuleCollider.md): primitive shapes.
 - [MeshCollider](components/MeshCollider.md): a mesh's own shape, as one convex hull, a convex decomposition, or its triangles.
 - [HingeJoint](components/HingeJoint.md), [DistanceJoint](components/DistanceJoint.md) and [FixedJoint](components/FixedJoint.md): joints between two bodies or a body and the world.
@@ -32,7 +33,6 @@ The physics3d plugin simulates 3D physics with box3d. Add a Rigidbody and collid
 **Extends**
 
 - essentials: [Physics primitives](extends/essentials/concepts/PhysicsPrimitives.md), a cube, sphere or capsule with a Rigidbody and a matching collider.
-- mhgui: [PhysicsRaycaster](extends/mhgui/components/PhysicsRaycaster.md) lets the pointer reach colliders, so an object is clicked like a UI node.
 
 [Roadmap](Roadmap.md): joints, effectors, faster decompositions and what does not re-sync yet.
 

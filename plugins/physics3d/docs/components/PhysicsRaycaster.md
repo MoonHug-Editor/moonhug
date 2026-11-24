@@ -2,10 +2,10 @@
 title: "PhysicsRaycaster"
 description: "Lets the pointer reach 3D colliders: an object with a collider gets the pointer events a UI node gets"
 weight: 10
-tags: ["physics3d", "mhgui", "components", "pointer", "click"]
+tags: ["physics3d", "components", "pointer", "click"]
 ---
 
-Lets the pointer reach 3D colliders. It goes on a Camera. An object with a collider under the pointer then gets pointer events as a UI node does: enter, exit, down, up, click, hold, drag and scroll. Needs the mhgui plugin.
+Lets the pointer reach 3D colliders. It goes on a Camera. An object with a collider under the pointer then gets pointer events as a UI node does: enter, exit, down, up, click, hold, drag and scroll.
 
 ## Example
 
@@ -16,7 +16,7 @@ Door           BoxCollider, Door (a component with a @(comp_on_pointer) proc)
 
 ```odin
 @(comp_on_pointer={component=Door})
-comp_on_pointer_Door :: proc(d: ^Door, ev: ^mhgui.Pointer_Event) {
+comp_on_pointer_Door :: proc(d: ^Door, ev: ^pointer.Pointer_Event) {
 	#partial switch ev.kind {
 	case .Enter: d.highlighted = true
 	case .Exit:  d.highlighted = false
@@ -36,10 +36,10 @@ The door lights up under the pointer and a click opens it. The same proc on a UI
 
 ## Behavior
 
-- Each frame it casts a ray from its camera through the pointer and answers with the first collider hit. The rules of the events are [the pointer](/plugins/mhgui/docs/concepts/Pointer.md)'s, the same as for UI.
+- Each frame it casts a ray from its camera through the pointer and answers with the first collider hit. The rules of the events are [the pointer](/plugins/engine/docs/Pointer.md)'s, the same as for UI.
 - The event goes to the object with the collider and then up its parents.
 - `ev.source` is `World_3D`. `ev.world_position` and `ev.world_normal` are where the collider is hit.
-- UI comes first: a pointer over a canvas's graphic hits nothing behind it. `mhgui.ui_pointer_over_ui()` stays false over a collider.
+- UI comes first: a pointer over a canvas's graphic hits nothing behind it. `pointer.over(.UI)` stays false over a collider.
 - With several cameras that have one, the nearest hit wins.
 - Triggers are passed through, as for every raycast.
 - A finger on a touch screen works as the mouse does.

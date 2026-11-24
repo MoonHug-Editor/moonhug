@@ -2,10 +2,10 @@
 title: "Physics2DRaycaster"
 description: "Lets the pointer reach 2D colliders: an object with a collider gets the pointer events a UI node gets"
 weight: 10
-tags: ["physics2d", "mhgui", "components", "pointer", "click"]
+tags: ["physics2d", "components", "pointer", "click"]
 ---
 
-Lets the pointer reach 2D colliders. It goes on a Camera. An object with a 2D collider under the pointer then gets pointer events as a UI node does: enter, exit, down, up, click, hold, drag and scroll. Needs the mhgui plugin.
+Lets the pointer reach 2D colliders. It goes on a Camera. An object with a 2D collider under the pointer then gets pointer events as a UI node does: enter, exit, down, up, click, hold, drag and scroll.
 
 ## Example
 
@@ -24,7 +24,7 @@ A click on the coin sends `Click` to the Coin component's proc, the same proc a 
 
 ## Behavior
 
-- Each frame it finds where its camera's ray through the pointer crosses the XY plane, where the 2D bodies live, and answers with a collider that holds that point. The rules of the events are [the pointer](/plugins/mhgui/docs/concepts/Pointer.md)'s, the same as for UI.
+- Each frame it finds where its camera's ray through the pointer crosses the XY plane, where the 2D bodies live, and answers with a collider that holds that point. The rules of the events are [the pointer](/plugins/engine/docs/Pointer.md)'s, the same as for UI.
 - The event goes to the object with the collider and then up its parents.
 - `ev.source` is `World_2D`. `ev.world_position` is the point on the plane.
 - UI comes first: a pointer over a canvas's graphic hits nothing behind it.

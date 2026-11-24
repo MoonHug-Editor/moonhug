@@ -30,7 +30,7 @@ The mhgui plugin draws UI. It adds the Image and UiShape graphics, the Button co
 
 **Concepts**
 
-- [The pointer](concepts/Pointer.md): what the pointer hits, touch, and how a component takes pointer events.
+- [The pointer on UI](concepts/Pointer.md): what the pointer hits on a canvas, hit tests by shape, and the selected node.
 - [Editing UI](concepts/EditingUI.md): the UI menus, picking in the Scene window and the rect tool.
 
 [Roadmap](Roadmap.md): the controls and features that come next.
@@ -52,10 +52,11 @@ Plain object and component creation: `transform_new`, then `transform_add_comp` 
 
 ## Extending
 
-The plugin declares two attributes, both in [The pointer](concepts/Pointer.md):
+The plugin declares one attribute, in [The pointer on UI](concepts/Pointer.md):
 
-- `@(comp_on_pointer={component=T})`: a component takes its node's pointer events.
 - `@(canvas_hit)`: a graphic says whether a point of its rect hits it.
+
+Its controls take the pointer with the engine's `@(comp_on_pointer)` ([Pointer events](/plugins/engine/docs/Pointer.md)), and so does a control another plugin or a game adds.
 
 It uses the engine's for drawing and layout: its graphics declare `@(canvas_graphic)`, its effects `@(canvas_effect)`, LayoutGroup `@(canvas_layout)` and the two fitters `@(canvas_rect)`, which is how another plugin adds a graphic or a container ([UI canvas](/plugins/engine/docs/UICanvas.md), "Graphics").
 

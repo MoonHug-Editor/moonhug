@@ -1,7 +1,7 @@
 package mhgui
 
 // Button: a clickable graphic with a selectable's colour transition. It takes
-// the pointer events of its node (mhgui pointer.odin) like any other
+// the pointer events of its node (the engine pointer package) like any other
 // component: it uses Down, so it owns the press, and Enter, Exit, Up, Cancel
 // and Click set its hover, press and click state. From that state it tints
 // its target graphic's CanvasRenderer with the matching color, fading over
@@ -28,6 +28,7 @@ package mhgui
 
 import "core:math/linalg"
 import "moonhug:packages/engine"
+import pointer "moonhug:packages/engine/pointer"
 import "moonhug:libs/input"
 import "moonhug:libs/time"
 
@@ -46,7 +47,7 @@ Button :: struct {
 // the press's owner: Up and Click come back to it, and Cancel when a parent
 // takes the drag.
 @(comp_on_pointer={component=Button})
-comp_on_pointer_Button :: proc(b: ^Button, ev: ^Pointer_Event) {
+comp_on_pointer_Button :: proc(b: ^Button, ev: ^pointer.Pointer_Event) {
 	selectable_pointer(&b.selectable, ev)
 	if ev.kind == .Click && ev.button == .Left && selectable_usable(&b.selectable, b.owner) {
 		b.clicked = true
@@ -224,21 +225,25 @@ button_find_in_direction :: proc(from: engine.Transform_Handle, dir: [2]f32) -> 
 	return best
 }
 
-// The pointer pass, which sends this frame's pointer events, the keyboard and
-// gamepad pass, then every Button's state and tint. Before the game's updates
-// so they see this frame's clicks.
+// Last frame's clicks and changes are over before the pointer pass
+// (the pointer package's update, order -110) sets this frame's.
+@(update={order=-120})
+ui_frame_begin :: proc(dt: f32) {
+	it := engine.pool_iterator(buttons(engine.ctx_world()))
+	for b, _ in engine.pool_next(&it) do b.clicked = false
+	toggles_frame_begin()
+	sliders_frame_begin()
+}
+
+// After the pointer pass has sent this frame's pointer events: the selection
+// a press makes, the keyboard and gamepad pass, then every Button's state
+// and tint. Before the game's updates so they see this frame's clicks.
 @(update={order=-100})
 ui_tick :: proc(dt: f32) {
 	w := engine.ctx_world()
-	// Last frame's clicks and changes are over before the pointer pass sets
-	// this frame's.
-	{
-		it := engine.pool_iterator(buttons(w))
-		for b, _ in engine.pool_next(&it) do b.clicked = false
-		toggles_frame_begin()
-		sliders_frame_begin()
-	}
-	canvas_pointer_update()
+	// A press selects the UI node it lands on. On the world, or on nothing,
+	// it clears the selection.
+	if press := pointer.state(); press.began do ui_set_selected(press.began_on if press.began_source == .UI else {})
 	submit, submit_down: bool
 	if _navigation && engine.application_is_focused() && !ui_keys_captured() {
 		selected := ui_selected()

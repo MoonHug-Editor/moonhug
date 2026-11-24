@@ -33,6 +33,7 @@ import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
 import "moonhug:packages/engine"
+import pointer "moonhug:packages/engine/pointer"
 import "moonhug:libs/input"
 import "moonhug:libs/time"
 import mhgui "moonhug:packages/mhgui"
@@ -402,7 +403,7 @@ _keys :: proc(f: ^InputField) {
 // --- Pointer -----------------------------------------------------------------------
 
 @(comp_on_pointer={component=InputField})
-comp_on_pointer_InputField :: proc(f: ^InputField, ev: ^mhgui.Pointer_Event) {
+comp_on_pointer_InputField :: proc(f: ^InputField, ev: ^pointer.Pointer_Event) {
 	mhgui.selectable_pointer(&f.selectable, ev)
 	#partial switch ev.kind {
 	case .Down:
@@ -475,14 +476,14 @@ _carets :: proc(f: ^InputField) -> []Caret {
 // The caret index under the event's pointer: on the nearest line, the
 // nearest caret.
 @(private = "file")
-_index_at :: proc(f: ^InputField, ev: ^mhgui.Pointer_Event) -> (at: int, ok: bool) {
+_index_at :: proc(f: ^InputField, ev: ^pointer.Pointer_Event) -> (at: int, ok: bool) {
 	tx, text_tH, area_tH := _parts(f)
 	if tx == nil do return
 	text_node, _, found := _rects(f, text_tH, area_tH)
 	if !found do return
 	carets := text_carets(tx, text_node.rect)
 	if len(carets) == 0 do return
-	p := mhgui.ui_pointer_canvas_position(ev) or_return
+	p := pointer.canvas_position(ev) or_return
 	local := (linalg.inverse(text_node.xform) * [4]f32{p.x, p.y, 0, 1}).xy
 	// The line: the one the pointer's y is in, or the nearest.
 	line, line_d := 0, max(f32)

@@ -12,6 +12,7 @@ The physics2d plugin simulates 2D physics with box2d. Add a Rigidbody2D and coll
 
 - [Rigidbody2D](components/Rigidbody2D.md) makes an object a simulated body.
 - [CharacterController2D](components/CharacterController2D.md) moves an object by code without going through colliders: walls, slopes, steps, ground.
+- [Physics2DRaycaster](components/Physics2DRaycaster.md) lets the pointer reach colliders, so an object is clicked like a UI node.
 - [BoxCollider2D](components/BoxCollider2D.md), [CircleCollider2D](components/CircleCollider2D.md) and [CapsuleCollider2D](components/CapsuleCollider2D.md): primitive shapes.
 - [PolygonCollider2D](components/PolygonCollider2D.md): any simple polygon, concave included, taken from a sprite's outline when it has one.
 - [EdgeCollider2D](components/EdgeCollider2D.md): an open line, for ground.
@@ -32,7 +33,6 @@ The physics2d plugin simulates 2D physics with box2d. Add a Rigidbody2D and coll
 **Extends**
 
 - sprites: [Sprite outline](extends/sprites/concepts/SpriteOutline.md), a PolygonCollider2D on a sprite starts as its outline.
-- mhgui: [Physics2DRaycaster](extends/mhgui/components/Physics2DRaycaster.md) lets the pointer reach colliders, so an object is clicked like a UI node.
 
 [Roadmap](Roadmap.md): joints, effectors and what does not re-sync yet.
 

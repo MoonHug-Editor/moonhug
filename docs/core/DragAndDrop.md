@@ -3,6 +3,7 @@ title: "Drag and drop"
 description: "What a drag carries between the editor's windows, where it can land, and the rules that say what a drop does there"
 weight: 45
 tags: ["editor", "drag and drop"]
+path: editor/editing
 ---
 
 Every drag of content between the editor's windows goes through one package, `moonhug/editor/drag`. A drag carries items, lands on a place, and a rule says what the drop does there. While the drag hovers, the same rule says what a release would do, and the drag's tooltip shows it: "Make prefab Tank.scene", "Move Turret under Tank".

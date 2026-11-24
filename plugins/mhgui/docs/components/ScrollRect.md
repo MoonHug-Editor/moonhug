@@ -48,7 +48,7 @@ Content smaller than the viewport does not scroll: it sits at the viewport's lef
 
 ## The pointer
 
-The ScrollRect takes the [pointer events](../concepts/Pointer.md) of its node, as every component does. The pointer has to hit something on the node or under it: a row, the panel's graphic, or a HitArea.
+The ScrollRect takes the [pointer events](/plugins/engine/docs/Pointer.md) of its node, as every component does. The pointer has to hit something on the node or under it: a row, the panel's graphic, or a HitArea.
 
 - **A drag** along an axis it scrolls is its own. What was pressed, a Button in a row, gets Cancel and does not click.
 - **A drag along an axis it does not scroll** is left alone and reaches what is above. A list that scrolls across inside one that scrolls up and down works this way: each takes the drags along its own axis.

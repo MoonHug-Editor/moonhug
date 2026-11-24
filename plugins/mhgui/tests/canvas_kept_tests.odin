@@ -7,6 +7,7 @@ package mhgui_tests
 import "core:math/linalg"
 import "core:testing"
 import "moonhug:packages/engine"
+import pointer "moonhug:packages/engine/pointer"
 import mhgui "moonhug:packages/mhgui"
 import common "moonhug:tests/common"
 
@@ -151,8 +152,8 @@ test_canvas_fingerprint_holds_while_controls_rest :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
-	mhgui.ui_pointer_reset()
-	defer mhgui.ui_pointer_reset()
+	pointer.reset()
+	defer pointer.reset()
 
 	canvas := engine.transform_new("Canvas")
 	_kadd(canvas, .Canvas)
@@ -172,6 +173,8 @@ test_canvas_fingerprint_holds_while_controls_rest :: proc(t: ^testing.T) {
 	for _ in 0 ..< 3 do mhgui.ui_tick(0.016)
 	rest := engine.canvas_fingerprint(canvas)
 	for frame in 0 ..< 5 {
+		mhgui.ui_frame_begin(0.016)
+		pointer.pointer_update(0.016)
 		mhgui.ui_tick(0.016)
 		testing.expectf(t, engine.canvas_fingerprint(canvas) == rest, "frame %d at rest changed something under the canvas", frame)
 	}

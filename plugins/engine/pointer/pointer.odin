@@ -1,12 +1,15 @@
-package mhgui
+package engine_pointer
 
 // Pointer events: one mechanism for every component, on a canvas node or on
-// an object in the world.
+// an object in the world. The mouse and each finger of a touch screen are
+// pointers.
 //
 // A component takes them with one proc:
 //
+//   import pointer "moonhug:packages/engine/pointer"
+//
 //   @(comp_on_pointer={component=MyWidget})
-//   comp_on_pointer_MyWidget :: proc(w: ^MyWidget, ev: ^Pointer_Event) {
+//   comp_on_pointer_MyWidget :: proc(w: ^MyWidget, ev: ^pointer.Pointer_Event) {
 //       #partial switch ev.kind {
 //       case .Click: ...
 //       }
@@ -15,16 +18,20 @@ package mhgui
 // What it works on:
 // - Any object a raycaster finds under the pointer. The proc is the same
 //   whatever found it: the attribute names the reaction, not the source.
-// - UI: a node inside a canvas that has a GraphicRaycaster, with a graphic
-//   whose raycast_target is on, or a HitArea.
-// - Objects in the world: a collider, found by a raycaster a physics plugin
-//   adds for a camera (pointer_raycaster_register). `ev.source` says which,
-//   and `ev.world_position` and `ev.world_normal` where the collider was hit.
+// - A raycaster is a proc a plugin registers (raycaster_register): the UI
+//   plugin's finds canvas nodes, a physics plugin's finds colliders through
+//   a camera that has its raycaster component. `ev.source` says which, and
+//   `ev.world_position` and `ev.world_normal` where a collider was hit.
 // - An event starts at the object that was hit and then goes to its
-//   parents, which need no graphic or collider of their own.
-// - UI is asked first: a pointer over UI hits nothing in the world behind
-//   it. Among world raycasters the nearest hit wins.
+//   parents, which need nothing of their own to be hit.
+// - A raycaster registers with a priority. The highest priority that hits
+//   wins, and among raycasters of one priority the nearest hit: the UI's is
+//   above the world's, so a pointer over UI hits nothing behind it.
 // - Not inactive objects or disabled components.
+//
+// The package is in a build when something imports it, which a
+// @(comp_on_pointer) proc does for its event type. Its own @(update) proc
+// runs the pointer pass, so nothing else calls it.
 //
 // The rules, the same for every component:
 // - Routing. The topmost hit node gets the event first, then each parent. A
@@ -48,7 +55,7 @@ package mhgui
 //   the hit node up, so a parent stays entered over its child. The chain
 //   holds still while a button is down.
 // - Cancel. A node that loses the pointer always hears it: a parent took the
-//   drag, the application lost focus, or code called ui_pointer_cancel.
+//   drag, the application lost focus, or code called cancel.
 //
 // Keyboard and gamepad are not pointers and send none of these.
 
@@ -101,7 +108,7 @@ Pointer_Proc :: proc(comp: rawptr, ev: ^Pointer_Event)
 
 // What found the object under the pointer.
 Pointer_Source :: enum u8 {
-	UI,       // a canvas with a GraphicRaycaster
+	UI,       // a canvas node
 	World_3D, // a 3D collider, through a camera's raycaster
 	World_2D, // a 2D collider
 }
@@ -119,25 +126,51 @@ Pointer_Hit :: struct {
 Pointer_Raycaster :: proc(position: [2]f32, viewport: [2]f32) -> (hit: Pointer_Hit, ok: bool)
 
 @(private = "file")
-_raycasters: [dynamic]Pointer_Raycaster
-
-// Adds a way to find objects under the pointer, asked when no UI is there.
-// A physics plugin registers one from an @(init) proc: it casts a ray from
-// each camera that has its raycaster component.
-pointer_raycaster_register :: proc(fn: Pointer_Raycaster) {
-	context.allocator = runtime.default_allocator()
-	append(&_raycasters, fn)
+_Raycaster :: struct {
+	fn:       Pointer_Raycaster,
+	priority: int,
 }
 
-// The object under a viewport point: UI first, else the nearest that a
-// registered raycaster finds. A zero hit for none.
-pointer_hit :: proc(position: [2]f32, viewport: [2]f32) -> Pointer_Hit {
-	if node := canvas_raycast(position, viewport); node != {} do return {node = node, source = .UI}
+// Highest priority first.
+@(private = "file")
+_raycasters: [dynamic]_Raycaster
+
+// The priority of a raycaster that finds objects in the world, and of one
+// that finds UI, which is in front of the world.
+PRIORITY_WORLD :: 0
+PRIORITY_UI :: 100
+
+// Adds a way to find objects under the pointer, from an @(init) proc. The
+// raycasters of the highest priority are asked first, and a lower priority
+// only when none of them hits.
+raycaster_register :: proc(fn: Pointer_Raycaster, priority := PRIORITY_WORLD) {
+	context.allocator = runtime.default_allocator()
+	at := len(_raycasters)
+	for r, i in _raycasters do if priority > r.priority {
+		at = i
+		break
+	}
+	inject_at(&_raycasters, at, _Raycaster{fn, priority})
+}
+
+// Takes a raycaster out again: tests.
+raycaster_unregister :: proc(fn: Pointer_Raycaster) {
+	for r, i in _raycasters do if r.fn == fn {
+		ordered_remove(&_raycasters, i)
+		return
+	}
+}
+
+// The object under a viewport point: the nearest hit of the highest
+// priority that hits anything. A zero hit for none.
+hit_at :: proc(position: [2]f32, viewport: [2]f32) -> Pointer_Hit {
 	best: Pointer_Hit
-	for fn in _raycasters {
-		hit, ok := fn(position, viewport)
-		if !ok || hit.node == {} do continue
-		if best.node == {} || hit.distance < best.distance do best = hit
+	for r, i in _raycasters {
+		// A lower priority is asked only when the one above found nothing.
+		if best.node != {} && i > 0 && r.priority != _raycasters[i - 1].priority do break
+		found, ok := r.fn(position, viewport)
+		if !ok || found.node == {} do continue
+		if best.node == {} || found.distance < best.distance do best = found
 	}
 	return best
 }
@@ -149,18 +182,18 @@ pointer_hit :: proc(position: [2]f32, viewport: [2]f32) -> Pointer_Hit {
 // `comp_on_pointer_<T>`. A type has at most one. See the top of this file
 // for what it works on.
 @(extension_point={attribute="comp_on_pointer", target="proc", fields="component"})
-ui_pointer_procs: [engine.TypeKey]Pointer_Proc
+procs: [engine.TypeKey]Pointer_Proc
 
-ui_pointer_register :: proc(key: engine.TypeKey, fn: Pointer_Proc) {
-	ui_pointer_procs[key] = fn
+register :: proc(key: engine.TypeKey, fn: Pointer_Proc) {
+	procs[key] = fn
 }
 
 // How far the pointer moves from the press before it is a drag, in viewport
 // pixels.
-ui_drag_threshold: f32 = 8
+drag_threshold: f32 = 8
 
 // Two clicks on one node within this many seconds are a double click.
-UI_DOUBLE_CLICK_TIME :: 0.4
+DOUBLE_CLICK_TIME :: 0.4
 
 @(private = "file")
 _Press :: struct {
@@ -178,7 +211,7 @@ _Press :: struct {
 }
 
 // The most pointers at once: the mouse and the fingers of a touch screen.
-UI_MAX_POINTERS :: 1 + input.MAX_TOUCHES
+MAX_POINTERS :: 1 + input.MAX_TOUCHES
 
 // One pointer's state. Each pointer has its own press, hover chain and
 // double click, so two fingers press two buttons at once.
@@ -200,7 +233,7 @@ _Pointer :: struct {
 }
 
 @(private = "file")
-_pointers: [UI_MAX_POINTERS]_Pointer
+_pointers: [MAX_POINTERS]_Pointer
 // The pointer whose events are being sent.
 @(private = "file")
 _cur: ^_Pointer
@@ -215,20 +248,42 @@ _Pointer_In :: struct {
 	released: [input.Mouse_Button]bool,
 }
 
-// Whether the pointer is over UI, or holds a press that began on it: game
-// code checks it so a click on a button is not also a click in the world.
-ui_pointer_over_ui :: proc() -> bool {
+// Whether a pointer is over something `source` found, or holds a press that
+// began on it. Game code checks over(.UI) so a click on a button is not also
+// a click in the world.
+over :: proc(source: Pointer_Source) -> bool {
 	for ptr in _pointers {
-		if ptr.hovered != {} && ptr.found.source == .UI do return true
-		if ptr.press.down && ptr.press.owner != {} && ptr.press.source == .UI do return true
+		if ptr.hovered != {} && ptr.found.source == source do return true
+		if ptr.press.down && ptr.press.owner != {} && ptr.press.source == source do return true
 	}
 	return false
+}
+
+// What the pointers did this frame, for code that asks instead of taking
+// events. With several pointers the fields are of the last one that set them.
+State :: struct {
+	position: [2]f32, // viewport pixels, y down
+	hovered:  engine.Transform_Handle,
+	pressed:  engine.Transform_Handle, // the owner of a press, until it comes up or becomes a drag
+	clicked:  engine.Transform_Handle, // clicked this frame, with the left button
+	// The left button went down this frame: on what, {} for nothing, and
+	// what found it.
+	began:        bool,
+	began_on:     engine.Transform_Handle,
+	began_source: Pointer_Source,
+}
+
+@(private = "file")
+_state: State
+
+state :: proc() -> State {
+	return _state
 }
 
 // The pointer's position on the canvas of the event's node, in canvas units
 // with y up: what a control compares with its rect. False off the canvas's
 // plane.
-ui_pointer_canvas_position :: proc(ev: ^Pointer_Event) -> ([2]f32, bool) {
+canvas_position :: proc(ev: ^Pointer_Event) -> ([2]f32, bool) {
 	canvas := engine.canvas_of(ev.node)
 	if canvas == {} do return {}, false
 	return engine.canvas_point_at(canvas, ev.position, input.viewport_size())
@@ -236,7 +291,7 @@ ui_pointer_canvas_position :: proc(ev: ^Pointer_Event) -> ([2]f32, bool) {
 
 // The event's movement in the canvas units of its node, y up: what a drag
 // adds to an anchored position, whatever the canvas scale or render mode.
-ui_pointer_canvas_delta :: proc(ev: ^Pointer_Event) -> [2]f32 {
+canvas_delta :: proc(ev: ^Pointer_Event) -> [2]f32 {
 	canvas := engine.canvas_of(ev.node)
 	if canvas == {} do return {}
 	viewport := input.viewport_size()
@@ -248,7 +303,7 @@ ui_pointer_canvas_delta :: proc(ev: ^Pointer_Event) -> [2]f32 {
 
 // Takes the pointer from the node that owns it: the owner gets Cancel, and
 // the press ends with no Up and no Click.
-ui_pointer_cancel :: proc() {
+cancel :: proc() {
 	for &ptr in _pointers {
 		if !ptr.press.down do continue
 		_cur = &ptr
@@ -259,7 +314,7 @@ ui_pointer_cancel :: proc() {
 		_cur.press = {}
 	}
 	_cur = &_pointers[0]
-	_ui_pointer.pressed = {}
+	_state.pressed = {}
 }
 
 @(private = "file")
@@ -293,7 +348,7 @@ _deliver :: proc(node: engine.Transform_Handle, ev: ^Pointer_Event) {
 	ev.node = node
 	ev.inside = _cur.hovered != {} && engine.transform_is_under(_cur.hovered, node)
 	for h in owned {
-		fn := ui_pointer_procs[h.type_key]
+		fn := procs[h.type_key]
 		if fn == nil do continue
 		c := engine.world_pool_get(w, h)
 		if c == nil || !(cast(^engine.CompData)c).enabled do continue
@@ -367,20 +422,25 @@ _hover_update :: proc(hit: engine.Transform_Handle) {
 	}
 }
 
-// The pointer pass, once a frame before the game's updates (the mhgui
-// package's ui_tick runs it): reads the mouse, finds the node under it and
-// sends the events above. It also keeps the polled record (ui_pointer).
+// The pointer pass, once a frame before the game's updates: reads the mouse
+// and the fingers, finds the object under each and sends the events above.
+// It also keeps the polled record (state).
 //
 // The mouse is pointer 0. Each finger on a touch screen is a pointer of its
 // own, with the left button: it goes down, drags and clicks like the mouse,
 // hovers only while it is down, and two fingers work two controls at once.
 // While the system moves the mouse with a finger, the mouse is left out, so
 // a finger's press arrives once.
-canvas_pointer_update :: proc() {
-	p := &_ui_pointer
+//
+// A component's own update that reads what its pointer proc set runs after
+// this: an order above -110.
+@(update={order=-110})
+pointer_update :: proc(dt: f32) {
+	p := &_state
 	p.clicked = {}
+	p.began, p.began_on, p.began_source = false, {}, {}
 	if !engine.application_is_focused() {
-		ui_pointer_cancel()
+		cancel()
 		p.hovered = {}
 		for &ptr in _pointers {
 			_cur = &ptr
@@ -399,7 +459,7 @@ canvas_pointer_update :: proc() {
 		mouse.pressed[button] = input.mouse_pressed(button) && !finger_mouse
 		mouse.released[button] = input.mouse_released(button)
 	}
-	_pointer_step(mouse, over = !finger_mouse)
+	_pointer_step(mouse, present = !finger_mouse)
 
 	// The fingers.
 	for t in input.touches() {
@@ -423,7 +483,7 @@ canvas_pointer_update :: proc() {
 		finger := _Pointer_In{position = t.position, delta = t.delta}
 		finger.pressed[.Left] = t.began
 		finger.released[.Left] = t.ended
-		_pointer_step(finger, over = true)
+		_pointer_step(finger, present = true)
 		if t.ended {
 			// A finger that is up is over nothing.
 			_cur.hovered = {}
@@ -436,15 +496,15 @@ canvas_pointer_update :: proc() {
 }
 
 // One pointer's frame: finds the node under it and sends its events. With
-// `over` off the pointer is over nothing.
+// `present` off the pointer is over nothing.
 @(private = "file")
-_pointer_step :: proc(input_now: _Pointer_In, over: bool) {
-	p := &_ui_pointer
+_pointer_step :: proc(input_now: _Pointer_In, present: bool) {
+	p := &_state
 	w := engine.ctx_world()
 	_cur.position = input_now.position
 	p.position = input_now.position
 	found: Pointer_Hit
-	if over do found = pointer_hit(input_now.position, input.viewport_size())
+	if present do found = hit_at(input_now.position, input.viewport_size())
 	hit := found.node
 	_cur.found = found
 	_cur.hovered = hit
@@ -475,9 +535,7 @@ _pointer_step :: proc(input_now: _Pointer_In, over: bool) {
 			_cur.press.owner_used = taker != {}
 			_cur.press.own_drag = taker != {} && ev.own_drag
 		}
-		// A press selects the UI node it lands on. On the world, or on
-		// nothing, it clears the selection.
-		if button == .Left do p.selected = _cur.press.owner if found.source == .UI else engine.Transform_Handle{}
+		if button == .Left do p.began, p.began_on, p.began_source = true, _cur.press.owner, found.source
 		if _cur.press.own_drag {
 			begin := _event(.Drag_Begin, _cur.press.owner)
 			_deliver(_cur.press.owner, &begin)
@@ -488,7 +546,7 @@ _pointer_step :: proc(input_now: _Pointer_In, over: bool) {
 	if _cur.press.down && _cur.press.owner != {} {
 		delta := input_now.delta
 		moved := p.position - _cur.press.position
-		if !_cur.press.dragging && !_cur.press.drag_refused && linalg.length(moved) > ui_drag_threshold {
+		if !_cur.press.dragging && !_cur.press.drag_refused && linalg.length(moved) > drag_threshold {
 			ev := _event(.Drag_Begin, _cur.press.hit)
 			ev.delta = moved
 			taker := _bubble(_cur.press.hit, &ev)
@@ -547,7 +605,7 @@ _pointer_step :: proc(input_now: _Pointer_In, over: bool) {
 			}
 			if start != {} {
 				now := time.now(.Unscaled)
-				again := _cur.last_click.node == start && now - _cur.last_click.time <= UI_DOUBLE_CLICK_TIME
+				again := _cur.last_click.node == start && now - _cur.last_click.time <= DOUBLE_CLICK_TIME
 				_cur.last_click = {node = start, time = now, count = _cur.last_click.count + 1 if again else 1}
 				ev := _event(.Click, start)
 				ev.button = press.button
@@ -568,12 +626,12 @@ _pointer_step :: proc(input_now: _Pointer_In, over: bool) {
 }
 
 // Forgets the pointer's state: tests, and a world that was replaced.
-ui_pointer_reset :: proc() {
+reset :: proc() {
 	for &ptr, i in _pointers {
 		hover := ptr.hover
 		if hover != nil do clear(&hover)
 		ptr = {id = i, hover = hover}
 	}
 	_cur = &_pointers[0]
-	_ui_pointer = {}
+	_state = {}
 }

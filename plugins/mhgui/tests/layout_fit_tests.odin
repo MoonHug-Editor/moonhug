@@ -8,6 +8,7 @@ package mhgui_tests
 import "core:math/linalg"
 import "core:testing"
 import "moonhug:packages/engine"
+import pointer "moonhug:packages/engine/pointer"
 import "moonhug:libs/input"
 import sdl "vendor:sdl3"
 import mhgui "moonhug:packages/mhgui"
@@ -232,8 +233,8 @@ test_canvas_group_fades_and_turns_off :: proc(t: ^testing.T) {
 	input.set_app_focused(true)
 	defer input.set_app_focused(false)
 	input.set_viewport({0, 0}, {800, 600})
-	mhgui.ui_pointer_reset()
-	defer mhgui.ui_pointer_reset()
+	pointer.reset()
+	defer pointer.reset()
 	screen := [2]f32{800, 600}
 	engine.canvas_set_game_viewport(screen)
 
@@ -296,6 +297,8 @@ test_canvas_group_fades_and_turns_off :: proc(t: ^testing.T) {
 		b.button.button, b.button.down = 1, down
 		b.button.x, b.button.y = 400, 300
 		input.apply_event(&b)
+		mhgui.ui_frame_begin(0)
+		pointer.pointer_update(0)
 		mhgui.ui_tick(0)
 	}
 	press(true)

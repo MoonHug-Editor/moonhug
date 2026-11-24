@@ -11,6 +11,7 @@ package mhgui
 
 import "core:math/linalg"
 import "moonhug:packages/engine"
+import pointer "moonhug:packages/engine/pointer"
 import "moonhug:libs/input"
 
 Scrollbar_Direction :: enum u8 {
@@ -104,7 +105,7 @@ _scrollbar_place :: proc(b: ^Scrollbar) {
 // A press on the handle holds it where it was grabbed. A press on the track
 // brings the handle's middle there.
 @(comp_on_pointer={component=Scrollbar})
-comp_on_pointer_Scrollbar :: proc(b: ^Scrollbar, ev: ^Pointer_Event) {
+comp_on_pointer_Scrollbar :: proc(b: ^Scrollbar, ev: ^pointer.Pointer_Event) {
 	#partial switch ev.kind {
 	case .Down:
 		if ev.button != .Left do return
@@ -133,10 +134,10 @@ comp_on_pointer_Scrollbar :: proc(b: ^Scrollbar, ev: ^Pointer_Event) {
 // Where the pointer is along the track, 0 to 1 from its start, and the
 // handle's share of it.
 @(private = "file")
-_pointer_along :: proc(b: ^Scrollbar, ev: ^Pointer_Event) -> (at, share: f32, ok: bool) {
+_pointer_along :: proc(b: ^Scrollbar, ev: ^pointer.Pointer_Event) -> (at, share: f32, ok: bool) {
 	node, length, has := _track(b)
 	if !has || length <= 0 do return
-	p := ui_pointer_canvas_position(ev) or_return
+	p := pointer.canvas_position(ev) or_return
 	local := (linalg.inverse(node.xform) * [4]f32{p.x, p.y, 0, 1}).xy
 	along := (local.y - node.rect.pos.y) if _vertical(b) else (local.x - node.rect.pos.x)
 	return along / length, _handle_share(b, length), true

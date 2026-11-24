@@ -6,6 +6,7 @@ import "core:math"
 import "core:math/linalg"
 import "core:testing"
 import "moonhug:packages/engine"
+import pointer "moonhug:packages/engine/pointer"
 import "moonhug:libs/gizmos"
 import "moonhug:libs/input"
 import sdl "vendor:sdl3"
@@ -927,6 +928,8 @@ _ui_key :: proc(k: input.Key, down: bool) {
 _ui_tap :: proc(k: input.Key) {
 	input.frame_reset()
 	_ui_key(k, true)
+	mhgui.ui_frame_begin(0)
+	pointer.pointer_update(0)
 	mhgui.ui_tick(0)
 	_ui_key(k, false)
 	input.frame_reset()
@@ -984,14 +987,20 @@ test_button_keyboard_navigation :: proc(t: ^testing.T) {
 	// Enter clicks the selected button, for that frame.
 	input.frame_reset()
 	_ui_key(.RETURN, true)
+	mhgui.ui_frame_begin(0)
+	pointer.pointer_update(0)
 	mhgui.ui_tick(0)
 	testing.expect(t, options_b.clicked && !play_b.clicked, "Enter clicks the selected button")
 	testing.expect_value(t, options_b.state, mhgui.Selectable_State.Pressed)
 	input.frame_reset()
+	mhgui.ui_frame_begin(0)
+	pointer.pointer_update(0)
 	mhgui.ui_tick(0)
 	testing.expect(t, !options_b.clicked, "a held key clicks once")
 	_ui_key(.RETURN, false)
 	input.frame_reset()
+	mhgui.ui_frame_begin(0)
+	pointer.pointer_update(0)
 	mhgui.ui_tick(0)
 	testing.expect_value(t, options_b.state, mhgui.Selectable_State.Selected)
 
@@ -1002,6 +1011,8 @@ test_button_keyboard_navigation :: proc(t: ^testing.T) {
 	testing.expect_value(t, mhgui.ui_selected(), options)
 	input.frame_reset()
 	_ui_key(.SPACE, true)
+	mhgui.ui_frame_begin(0)
+	pointer.pointer_update(0)
 	mhgui.ui_tick(0)
 	testing.expect(t, !options_b.clicked, "no click while navigation is off")
 	_ui_key(.SPACE, false)
