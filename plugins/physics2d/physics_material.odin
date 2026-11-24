@@ -103,15 +103,15 @@ asset_on_changed_physics_material :: proc(guid: engine.Asset_GUID, path: string,
 material_apply :: proc(s: ^b2.SurfaceMaterial, m: PhysicsMaterial2D) {
 	s.friction = m.friction
 	s.restitution = m.bounciness
-	s.userMaterialId = i32(1 + int(m.friction_combine) + int(m.bounce_combine) * 16)
+	s.userMaterialId = u64(1 + int(m.friction_combine) + int(m.bounce_combine) * 16)
 }
 
 // Combines two values with the higher-ranked of the two modes their shapes'
 // user material ids carry, the friction modes or the bounce modes.
-material_combine :: proc "contextless" (a: f32, id_a: i32, b: f32, id_b: i32, bounce: bool) -> f32 {
-	mode :: proc "contextless" (id: i32, bounce: bool) -> Material_Combine2D {
+material_combine :: proc "contextless" (a: f32, id_a: u64, b: f32, id_b: u64, bounce: bool) -> f32 {
+	mode :: proc "contextless" (id: u64, bounce: bool) -> Material_Combine2D {
 		// A shape box2d made itself mixes as box2d does.
-		if id <= 0 do return .Maximum if bounce else .Mean
+		if id == 0 do return .Maximum if bounce else .Mean
 		v := int(id) - 1
 		return Material_Combine2D((v / 16) & 0xf) if bounce else Material_Combine2D(v & 0xf)
 	}
@@ -125,10 +125,10 @@ material_combine :: proc "contextless" (a: f32, id_a: i32, b: f32, id_b: i32, bo
 	return (a + b) * 0.5
 }
 
-_combine_friction :: proc "c" (a: f32, id_a: i32, b: f32, id_b: i32) -> f32 {
+_combine_friction :: proc "c" (a: f32, id_a: u64, b: f32, id_b: u64) -> f32 {
 	return material_combine(a, id_a, b, id_b, false)
 }
 
-_combine_bounce :: proc "c" (a: f32, id_a: i32, b: f32, id_b: i32) -> f32 {
+_combine_bounce :: proc "c" (a: f32, id_a: u64, b: f32, id_b: u64) -> f32 {
 	return material_combine(a, id_a, b, id_b, true)
 }

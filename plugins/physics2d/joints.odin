@@ -182,11 +182,6 @@ _owner_name :: proc(w: ^engine.World, tH: engine.Transform_Handle) -> string {
 	return t != nil ? t.name : fmt.tprintf("%v", tH)
 }
 
-@(private = "file")
-_body_angle :: proc(body: b2.BodyId) -> f32 {
-	return b2.Rot_GetAngle(b2.Body_GetRotation(body))
-}
-
 // Builds missing joints, removes those of disabled components and pushes the
 // live fields. Before the world step.
 _sync_joints :: proc(w: ^engine.World) {
@@ -207,9 +202,10 @@ _sync_joints :: proc(w: ^engine.World) {
 				def := b2.DefaultRevoluteJointDef()
 				def.bodyIdA = b
 				def.bodyIdB = a
-				def.localAnchorA = b2.Body_GetLocalPoint(b, pivot)
-				def.localAnchorB = b2.Body_GetLocalPoint(a, pivot)
-				def.referenceAngle = _body_angle(a) - _body_angle(b)
+				// Both frames point the same way in the world now, so the
+				// joint's angle starts at zero.
+				def.localFrameA = {p = b2.Body_GetLocalPoint(b, pivot), q = b2.Rot_identity}
+				def.localFrameB = {p = b2.Body_GetLocalPoint(a, pivot), q = b2.InvMulRot(b2.Body_GetRotation(a), b2.Body_GetRotation(b))}
 				def.collideConnected = j.enable_collision
 				j.joint = b2.CreateRevoluteJoint(_state.world, def)
 			}
@@ -233,8 +229,8 @@ _sync_joints :: proc(w: ^engine.World) {
 				def := b2.DefaultDistanceJointDef()
 				def.bodyIdA = a
 				def.bodyIdB = b
-				def.localAnchorA = b2.Body_GetLocalPoint(a, from)
-				def.localAnchorB = b2.Body_GetLocalPoint(b, to)
+				def.localFrameA.p = b2.Body_GetLocalPoint(a, from)
+				def.localFrameB.p = b2.Body_GetLocalPoint(b, to)
 				def.length = max(j.distance, 0.005)
 				def.collideConnected = j.enable_collision
 				j.joint = b2.CreateDistanceJoint(_state.world, def)
@@ -257,9 +253,10 @@ _sync_joints :: proc(w: ^engine.World) {
 			def := b2.DefaultWeldJointDef()
 			def.bodyIdA = a
 			def.bodyIdB = b
-			def.localAnchorA = b2.Body_GetLocalPoint(a, at)
-			def.localAnchorB = b2.Body_GetLocalPoint(b, at)
-			def.referenceAngle = _body_angle(b) - _body_angle(a)
+			// Both frames point the same way in the world now: the weld
+			// keeps the bodies' turn relative to each other as it is.
+			def.localFrameA = {p = b2.Body_GetLocalPoint(a, at), q = b2.Rot_identity}
+			def.localFrameB = {p = b2.Body_GetLocalPoint(b, at), q = b2.InvMulRot(b2.Body_GetRotation(b), b2.Body_GetRotation(a))}
 			def.collideConnected = j.enable_collision
 			j.joint = b2.CreateWeldJoint(_state.world, def)
 		}
@@ -286,8 +283,8 @@ _push_hinge :: proc(j: ^HingeJoint2D) {
 		changed = true
 	}
 	speed := math.to_radians(j.motor_speed)
-	if b2.RevoluteJoint_GetMotorSpeed(id) != speed {
-		b2.RevoluteJoint_SetMotorSpeed(id, speed)
+	if b2.RevoluteJoint_GetTargetMotorSpeed(id) != speed {
+		b2.RevoluteJoint_SetTargetMotorSpeed(id, speed)
 		changed = true
 	}
 	if b2.RevoluteJoint_GetMaxMotorTorque(id) != j.max_motor_torque {
@@ -317,16 +314,16 @@ _push_distance :: proc(j: ^DistanceJoint2D) {
 		changed = true
 	}
 	length := max(j.distance, 0.005)
-	if b2.DistanceJoint_GetLength(id) != length {
-		b2.DistanceJoint_SetLength(id, length)
+	if b2.DistanceJoint_GetRestLength(id) != length {
+		b2.DistanceJoint_SetRestLength(id, length)
 		changed = true
 	}
 	if b2.DistanceJoint_IsLimitEnabled(id) != j.max_distance_only {
 		b2.DistanceJoint_EnableLimit(id, j.max_distance_only)
 		changed = true
 	}
-	if j.max_distance_only && b2.DistanceJoint_GetMaxLength(id) != length {
-		b2.DistanceJoint_SetLengthRange(id, 0, length)
+	if j.max_distance_only && b2.DistanceJoint_GetUpperLimit(id) != length {
+		b2.DistanceJoint_SetLimits(id, 0, length)
 		changed = true
 	}
 	if changed do b2.Joint_WakeBodies(id)

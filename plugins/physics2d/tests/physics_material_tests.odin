@@ -11,7 +11,7 @@ import physics2d ".."
 import b2 "vendor:box2d"
 
 @(private = "file")
-_id :: proc(friction_combine, bounce_combine: physics2d.Material_Combine2D) -> i32 {
+_id :: proc(friction_combine, bounce_combine: physics2d.Material_Combine2D) -> u64 {
 	s: b2.SurfaceMaterial
 	physics2d.material_apply(&s, {friction_combine = friction_combine, bounce_combine = bounce_combine})
 	return s.userMaterialId

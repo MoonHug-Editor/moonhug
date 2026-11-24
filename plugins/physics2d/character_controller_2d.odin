@@ -193,7 +193,7 @@ _slide2 :: proc(m: ^_Move2, pos: ^[2]f32, delta: [2]f32, mode: _Mode2) {
 			case:                           m.touched += {.Sides}
 			}
 		}
-		step := _cast2(m, pos^, res.translation)
+		step := _cast2(m, pos^, res.delta)
 		pos^ += step
 		if linalg.length(step) < 0.0001 do break
 	}
@@ -203,7 +203,7 @@ _slide2 :: proc(m: ^_Move2, pos: ^[2]f32, delta: [2]f32, mode: _Mode2) {
 _cast2 :: proc(m: ^_Move2, pos: [2]f32, delta: [2]f32) -> [2]f32 {
 	if delta == {} do return {}
 	mover := b2.Capsule{center1 = pos + m.a, center2 = pos + m.b, radius = m.radius}
-	f := b2.World_CastMover(_state.world, mover, delta, m.filter)
+	f := b2.World_CastMover(_state.world, {}, mover, delta, m.filter)
 	return delta * clamp(f, 0, 1)
 }
 
@@ -224,7 +224,7 @@ _planes2 :: proc(m: ^_Move2, pos: [2]f32, mode: _Mode2, inflate := _SKIN2) {
 	m.count = 0
 	m.inflate = inflate
 	mover := b2.Capsule{center1 = pos + m.a, center2 = pos + m.b, radius = m.radius + inflate}
-	b2.World_CollideMover(_state.world, mover, m.filter, _plane_fcn2, m)
+	b2.World_CollideMover(_state.world, {}, mover, m.filter, _plane_fcn2, m)
 	for &p, i in m.planes[:m.count] {
 		p.plane.offset -= inflate
 		n := p.plane.normal
@@ -278,7 +278,7 @@ _sync_controllers :: proc(w: ^engine.World, fixed_dt: f32) {
 			sdef.filter.maskBits = u64(mask)
 			sdef.enableContactEvents = true
 			capsule := b2.Capsule{center1 = a, center2 = b, radius = radius}
-			cc.shape = b2.CreateCapsuleShape(cc.body, sdef, &capsule)
+			cc.shape = b2.CreateCapsuleShape(cc.body, sdef, capsule)
 			_register_shape(cc.shape, cc.owner)
 			continue
 		}

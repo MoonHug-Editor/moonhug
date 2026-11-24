@@ -19,6 +19,8 @@ import "moonhug:libs/slots"
 import "moonhug:libs/time"
 
 register_layout_marshalers :: proc() {
+	json.register_user_marshaler(f32, float_fixed_marshal)
+	json.register_user_marshaler(f64, float_fixed_marshal)
 	json.register_user_marshaler([2]f32, array_one_line_marshal)
 	json.register_user_marshaler([3]f32, array_one_line_marshal)
 	json.register_user_marshaler([4]f32, array_one_line_marshal)
@@ -34,6 +36,19 @@ register_layout_marshalers :: proc() {
 	json.register_user_unmarshaler(slots.Slot, slot_unmarshal)
 }
 
+// A float with fixed fraction digits, 8 for an f32 and 16 for an f64. Every
+// asset file holds floats in this text (trailing zeros trimmed by
+// core.json_canonicalize_floats), and an override compares a saved value to
+// a live one after both went through it. The plain writer picks the shortest
+// text that reads back the same, which is other text for the same value.
+float_fixed_marshal :: proc(w: io.Writer, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
+	switch f in v {
+	case f32: io.write_f32(w, f) or_return
+	case f64: io.write_f64(w, f) or_return
+	}
+	return nil
+}
+
 // A fixed array on one line. Each element goes through the writer, so an
 // element type with a marshaler of its own keeps it.
 array_one_line_marshal :: proc(w: io.Writer, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
@@ -42,7 +57,7 @@ array_one_line_marshal :: proc(w: io.Writer, v: any, opt: ^json.Marshal_Options)
 	for i in 0 ..< info.count {
 		if i > 0 do _separator(w, opt) or_return
 		elem := any{rawptr(uintptr(v.data) + uintptr(i * info.elem_size)), info.elem.id}
-		json.marshal_to_writer(w, elem, opt) or_return
+		json.marshal_to_writer(w, elem, opt^) or_return
 	}
 	io.write_byte(w, ']') or_return
 	return nil
@@ -65,10 +80,10 @@ struct_one_line_marshal :: proc(w: io.Writer, v: any, opt: ^json.Marshal_Options
 		}
 		if written > 0 do _separator(w, opt) or_return
 		written += 1
-		json.marshal_to_writer(w, name, opt) or_return
+		json.marshal_to_writer(w, name, opt^) or_return
 		io.write_string(w, opt.pretty ? ": " : ":") or_return
 		field := any{rawptr(uintptr(v.data) + info.offsets[i]), info.types[i].id}
-		json.marshal_to_writer(w, field, opt) or_return
+		json.marshal_to_writer(w, field, opt^) or_return
 	}
 	io.write_byte(w, '}') or_return
 	return nil

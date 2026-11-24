@@ -649,7 +649,7 @@ _channel_lanes_marshal :: proc(w: io.Writer, v: any, opt: ^json.Marshal_Options)
 	off := (cast(^Channel_Lanes_Off)v.data)^
 	on: [4]bool
 	for l in 0 ..< 4 do on[l] = l not_in off
-	return json.marshal_to_writer(w, on, opt)
+	return json.marshal_to_writer(w, on, opt^)
 }
 
 // Reads up to four bools. A lane the array does not reach animates.
@@ -669,7 +669,7 @@ _channel_lanes_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Erro
 _channel_values_marshal :: proc(w: io.Writer, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
 	tid := reflect.union_variant_typeid(v)
 	assert(tid != nil, "animation: Channel_Values is #no_nil")
-	return json.marshal_to_writer(w, any{v.data, tid}, opt)
+	return json.marshal_to_writer(w, any{v.data, tid}, opt^)
 }
 
 // Peeks the first element on a copy of the parser to pick the variant, then

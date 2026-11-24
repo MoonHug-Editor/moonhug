@@ -18,7 +18,7 @@ asset_guid_marshal :: proc(w: io.Stream, v: any, opt: ^json.Marshal_Options) -> 
 	guid := (cast(^core.Asset_GUID)v.data)^
 	buf: [uuid.EXPECTED_LENGTH]byte
 	s := uuid.to_string(uuid.Identifier(guid), buf[:])
-	if err := json.marshal_to_writer(w, s, opt); err != nil do return err
+	if err := json.marshal_to_writer(w, s, opt^); err != nil do return err
 	return nil
 }
 
@@ -65,7 +65,7 @@ union_marshal :: proc(w: io.Stream, v: any, opt: ^json.Marshal_Options) -> json.
     if e != .None do return .Unsupported_Type
     _, e = io.write_string(w, "\":")
     if e != .None do return .Unsupported_Type
-    if err := json.marshal_to_writer(w, tag, opt); err != nil do return err
+    if err := json.marshal_to_writer(w, tag, opt^); err != nil do return err
 
     // A struct variant's fields sit next to the tag. Any other value, a
     // number, an array, a struct its marshaler writes as a string, is the

@@ -44,14 +44,14 @@ _Added_Object_File :: struct {
 _added_component_marshal :: proc(w: io.Writer, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
 	ac := cast(^Added_Component)v.data
 	file := _Added_Component_File{owner = ac.owner, local_id = ac.local_id, type_guid = ac.type_guid, json = _payload_value(ac.json)}
-	return json.marshal_to_writer(w, file, opt)
+	return json.marshal_to_writer(w, file, opt^)
 }
 
 @(private = "file")
 _added_object_marshal :: proc(w: io.Writer, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
 	ao := cast(^Added_Object)v.data
 	file := _Added_Object_File{parent = ao.parent, local_id = ao.local_id, json = _payload_value(ao.json)}
-	return json.marshal_to_writer(w, file, opt)
+	return json.marshal_to_writer(w, file, opt^)
 }
 
 // The payload parsed on the temp allocator. Text that is not JSON writes as

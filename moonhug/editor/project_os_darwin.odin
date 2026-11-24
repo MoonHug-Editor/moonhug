@@ -34,8 +34,8 @@ file_move_to_trash :: proc(path: string) -> bool {
 	// Project paths are cwd-relative; AppKit path APIs need absolute ones.
 	abs, abs_err := filepath.abs(path, context.temp_allocator)
 	if abs_err != nil do return false
-	ns_path := NS.String_initWithOdinString(NS.String_alloc(), abs)
-	url := NS.URL_initFileURLWithPath(NS.URL_alloc(), ns_path)
+	ns_path := _ns_string(abs)
+	url := msgSend(^NS.URL, NS.URL, "fileURLWithPath:", ns_path)
 	if url == nil do return false
 	return bool(msgSend(NS.BOOL, fm, "trashItemAtURL:resultingItemURL:error:", url, rawptr(nil), rawptr(nil)))
 }
@@ -46,7 +46,7 @@ file_open_in_os :: proc(path: string) -> bool {
 	if ws == nil do return false
 	abs, abs_err := filepath.abs(path, context.temp_allocator)
 	if abs_err != nil do return false
-	ns_path := NS.String_initWithOdinString(NS.String_alloc(), abs)
+	ns_path := _ns_string(abs)
 	return bool(msgSend(NS.BOOL, ws, "openFile:", ns_path))
 }
 
@@ -58,8 +58,8 @@ file_reveal_in_os :: proc(path: string) -> bool {
 	// Finder falls back to an arbitrary window.
 	abs, abs_err := filepath.abs(path, context.temp_allocator)
 	if abs_err != nil do return false
-	ns_path := NS.String_initWithOdinString(NS.String_alloc(), abs)
-	empty := NS.String_initWithOdinString(NS.String_alloc(), "")
+	ns_path := _ns_string(abs)
+	empty := _ns_string("")
 	return bool(msgSend(NS.BOOL, ws, "selectFile:inFileViewerRootedAtPath:", ns_path, empty))
 }
 

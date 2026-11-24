@@ -750,8 +750,8 @@ _mcp_finish_shot :: proc(shot: _Mcp_Shot, pixels: []u8, w, h: int) {
 		iw = max(int(f32(w) * scale), 1)
 		ih = max(int(f32(h) * scale), 1)
 		scaled := make([]u8, iw * ih * 4, context.temp_allocator)
-		if stbi.resize_uint8(raw_data(pixels), c.int(w), c.int(h), c.int(w * 4),
-			raw_data(scaled), c.int(iw), c.int(ih), c.int(iw * 4), 4) == 0 {
+		if stbi.resize_uint8_linear(raw_data(pixels), i64(w), i64(h), i64(w * 4),
+			raw_data(scaled), i64(iw), i64(ih), i64(iw * 4), .CHANNEL_4) == nil {
 			_mcp_respond_error(shot.id, "encode_failed", "downscale failed")
 			return
 		}

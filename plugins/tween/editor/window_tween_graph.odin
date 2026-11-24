@@ -1211,13 +1211,15 @@ _holds_tweens :: proc(ti: ^runtime.Type_Info) -> (holds, pending: bool) {
 	if ti == nil do return false, false
 	if ti.id == typeid_of(tween.Authored) do return true, false
 	if h, ok := _holds[ti.id]; ok do return h, false
-	if ti.id in _holds_pending do return false, true
+	if _holds_pending[ti.id] do return false, true
 	if _holds.allocator.procedure == nil {
 		_holds.allocator = runtime.default_allocator()
 		_holds_pending.allocator = runtime.default_allocator()
 	}
 	_holds_pending[ti.id] = true
-	defer delete_key(&_holds_pending, ti.id)
+	// Set to false and not removed: delete_key on a map keyed by typeid stalls
+	// the compiler in an optimized build (odin-lang/Odin issue 7839).
+	defer _holds_pending[ti.id] = false
 
 	elem := proc(ti: ^runtime.Type_Info, holds, pending: ^bool) {
 		h, p := _holds_tweens(ti)

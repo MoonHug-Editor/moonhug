@@ -147,7 +147,7 @@ _overlap :: proc(s: ^b2.ShapeProxy, layers: u32, ignore: engine.Transform_Handle
 	if !_state.world_ready do return nil
 	q := _Overlap_Query{ctx = context, ignore = ignore, found = make([dynamic]engine.Transform_Handle, allocator)}
 	filter := b2.QueryFilter{categoryBits = ~u64(0), maskBits = u64(layers)}
-	_ = b2.World_OverlapShape(_state.world, s^, filter, _overlap_fcn, &q)
+	_ = b2.World_OverlapShape(_state.world, {}, s^, filter, _overlap_fcn, &q)
 	return q.found[:]
 }
 
@@ -204,7 +204,7 @@ _cast_shape :: proc(s: ^b2.ShapeProxy, direction: [2]f32, max_distance: f32, lay
 	if dir == {} do return
 	q := _Ray_Query{ctx = context, ignore = ignore, fraction = 2}
 	filter := b2.QueryFilter{categoryBits = ~u64(0), maskBits = u64(layers)}
-	_ = b2.World_CastShape(_state.world, s^, dir * max_distance, filter, _ray_hit_fcn, &q)
+	_ = b2.World_CastShape(_state.world, {}, s^, dir * max_distance, filter, _ray_hit_fcn, &q)
 	if q.fraction > 1 do return
 	return {object = q.object, point = q.point, normal = q.normal, distance = q.fraction * max_distance}, true
 }

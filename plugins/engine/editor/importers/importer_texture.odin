@@ -61,7 +61,7 @@ _texture_scale_down :: proc(data: []u8, max_size: u16, srgb: bool, out: ^[dynami
 		defer stbi.image_free(src)
 		dst := make([]f32, int(size.x * size.y * 4))
 		defer delete(dst)
-		if stbi.resize_float(src, w, h, 0, raw_data(dst), size.x, size.y, 0, 4) == 0 do return false, false
+		if stbi.resize_float_linear(src, i64(w), i64(h), 0, raw_data(dst), i64(size.x), i64(size.y), 0, .CHANNEL_4) == nil do return false, false
 		if stbi.write_hdr_to_func(_append_bytes, out, size.x, size.y, 4, raw_data(dst)) == 0 do return false, false
 		return true, true
 	}
@@ -70,13 +70,14 @@ _texture_scale_down :: proc(data: []u8, max_size: u16, srgb: bool, out: ^[dynami
 	defer stbi.image_free(src)
 	dst := make([]u8, int(size.x * size.y * 4))
 	defer delete(dst)
-	resized: c.int
+	// sRGB colour is resized with its alpha as a weight, data as four plain channels.
+	resized: [^]u8
 	if srgb {
-		resized = stbi.resize_uint8_srgb(src, w, h, 0, raw_data(dst), size.x, size.y, 0, 4, 3, 0)
+		resized = stbi.resize_uint8_srgb(src, i64(w), i64(h), 0, raw_data(dst), i64(size.x), i64(size.y), 0, .RGBA)
 	} else {
-		resized = stbi.resize_uint8(src, w, h, 0, raw_data(dst), size.x, size.y, 0, 4)
+		resized = stbi.resize_uint8_linear(src, i64(w), i64(h), 0, raw_data(dst), i64(size.x), i64(size.y), 0, .CHANNEL_4)
 	}
-	if resized == 0 do return false, false
+	if resized == nil do return false, false
 	if stbi.write_png_to_func(_append_bytes, out, size.x, size.y, 4, raw_data(dst), size.x * 4) == 0 do return false, false
 	return true, true
 }

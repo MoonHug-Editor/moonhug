@@ -155,7 +155,7 @@ _sync_bodies :: proc(w: ^engine.World, fixed_dt: f32) {
 			def.gravityScale = rb.gravity_scale
 			def.linearDamping = rb.linear_damping
 			def.angularDamping = rb.angular_damping
-			def.fixedRotation = rb.fixed_rotation
+			def.motionLocks.angularZ = rb.fixed_rotation
 			def.isBullet = rb.continuous
 			rb.body = b2.CreateBody(_state.world, def)
 			continue
@@ -306,7 +306,7 @@ _sync_mass :: proc(w: ^engine.World) {
 		if rb.body_type != .Dynamic || !b2.Body_IsValid(rb.body) do continue
 		if rb.use_auto_mass {
 			if rb.mass_set {
-				b2.Body_ApplyMassFromShapes(rb.body)
+				b2.Body_UpdateMassFromShapes(rb.body)
 				rb.mass_set = false
 			}
 			continue
@@ -408,7 +408,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			if !ok do continue
 			def := _shape_def(c.density, _collider_material(w, c.owner, c.material), c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 			box := b2.MakeOffsetBox(size.x * 0.5, size.y * 0.5, target.center, b2.MakeRot(target.angle))
-			c.shape = b2.CreatePolygonShape(target.body, def, &box)
+			c.shape = b2.CreatePolygonShape(target.body, def, box)
 			_register_shape(c.shape, c.owner)
 		}
 	}
@@ -426,7 +426,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			if !ok do continue
 			def := _shape_def(c.density, _collider_material(w, c.owner, c.material), c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 			circle := b2.Circle{center = target.center, radius = radius}
-			c.shape = b2.CreateCircleShape(target.body, def, &circle)
+			c.shape = b2.CreateCircleShape(target.body, def, circle)
 			_register_shape(c.shape, c.owner)
 		}
 	}
@@ -460,7 +460,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 				center2 = target.center + axis * half,
 				radius  = radius,
 			}
-			c.shape = b2.CreateCapsuleShape(target.body, def, &capsule)
+			c.shape = b2.CreateCapsuleShape(target.body, def, capsule)
 			_register_shape(c.shape, c.owner)
 		}
 	}
@@ -500,7 +500,7 @@ _sync_polygon_colliders :: proc(w: ^engine.World) {
 			hull := b2.ComputeHull(local)
 			if hull.count < 3 do continue // a sliver with no area
 			polygon := b2.MakePolygon(hull, 0)
-			shape := b2.CreatePolygonShape(target.body, def, &polygon)
+			shape := b2.CreatePolygonShape(target.body, def, polygon)
 			append(&c.shapes, shape)
 			_register_shape(shape, c.owner)
 		}
@@ -533,7 +533,7 @@ _sync_edge_colliders :: proc(w: ^engine.World) {
 					point1 = target.center + _rotate2(c.points[i] * scale, target.angle),
 					point2 = target.center + _rotate2(c.points[i + 1] * scale, target.angle),
 				}
-				sh := b2.CreateSegmentShape(target.body, def, &seg)
+				sh := b2.CreateSegmentShape(target.body, def, seg)
 				append(&c.segments, sh)
 				_register_shape(sh, c.owner)
 			}
@@ -546,16 +546,18 @@ _sync_edge_colliders :: proc(w: ^engine.World) {
 		local[n + 1] = local[n] + (local[n] - local[n - 1])
 		material := def.material
 		cdef := b2.DefaultChainDef()
-		cdef.points = raw_data(local)
-		cdef.count = i32(len(local))
+		cdef.points = raw_data(local[1:])
+		cdef.pointCount = i32(n)
+		cdef.ghost1 = local[0]
+		cdef.ghost2 = local[n + 1]
 		cdef.materials = &material
 		cdef.materialCount = 1
 		cdef.filter = def.filter
 		cdef.enableSensorEvents = true
 		c.chain = b2.CreateChain(target.body, cdef)
 		resize(&c.segments, int(b2.Chain_GetSegmentCount(c.chain)))
-		got := b2.Chain_GetSegments(c.chain, raw_data(c.segments), i32(len(c.segments)))
-		resize(&c.segments, int(got))
+		got := b2.Chain_GetSegments(c.chain, c.segments[:])
+		resize(&c.segments, len(got))
 		for sh in c.segments do _register_shape(sh, c.owner)
 	}
 }
