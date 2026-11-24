@@ -1,3 +1,23 @@
+## [0.172.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.171.0...v0.172.0) (2026-11-24)
+
+### Features
+
+* Cut, Copy, Paste, Duplicate and Delete act on the whole selection in the Hierarchy and the Project window on one key each, and a move onto a taken name asks first ([612be0a](https://github.com/MoonHug-Editor/moonhug/commit/612be0ab3bed23f9017005fbd829688372ca39e3))
+* files dragged in from the OS file browser are copied into the Project folder under the pointer ([09b6e59](https://github.com/MoonHug-Editor/moonhug/commit/09b6e59673bdec935f54d823a5be40bad27c469e))
+* the Project window draws only its visible rows, moves files and folders by drag, and selects cells with a band ([82994b6](https://github.com/MoonHug-Editor/moonhug/commit/82994b66cb5ac3a17ba67adab33e7a7b42d770d3))
+* the Project window has a one-column layout, a material shows on a sphere in its thumbnail and its preview, and the Console draws only its visible rows ([cee9fed](https://github.com/MoonHug-Editor/moonhug/commit/cee9fed054ee4276534fa15fd8fa13dc21eef7f0))
+* the Project window pins folders, filters in place with the search words, shows a thumbnail for a model, and a move or a rename is an undo step ([1e3a59f](https://github.com/MoonHug-Editor/moonhug/commit/1e3a59fbc87545bd0f92bbd0600bd39ae982a0e3))
+
+### Bug Fixes
+
+* Escape closes the innermost open menu or popup ([69bb79f](https://github.com/MoonHug-Editor/moonhug/commit/69bb79f525f9de561aefde8a235f09e91cae0eff))
+* lock tooltip ([8f3a366](https://github.com/MoonHug-Editor/moonhug/commit/8f3a366e95c305445403f6b2525062ea52ba8b33))
+
+### Performance Improvements
+
+* a bound clip's rows are slot numbers in a running game, with no path lookup per row per frame ([6563efa](https://github.com/MoonHug-Editor/moonhug/commit/6563efad8422ac1c91421d7a1d085b0b7410174f))
+* an animation output binds once in a running game, a skeleton's joints are computed in one pass, and the sprite collector skips a scene with no sprites ([253f202](https://github.com/MoonHug-Editor/moonhug/commit/253f202fbcc278e6d9a5b25f963b5cd7b01f224e))
+
 ## [0.171.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.170.0...v0.171.0) (2026-11-23)
 
 ### Features
