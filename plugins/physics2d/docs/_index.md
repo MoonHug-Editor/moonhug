@@ -81,6 +81,7 @@ Open `physics2d_sample.scene` from the `physics2d_sample` plugin and press Play.
 | Cannon and bell | A shell with continuous collision, a set mass and no gravity, a collision hook on the bell, and a distance joint as a spring |
 | Elevator | A kinematic [Rigidbody2D](components/Rigidbody2D.md) of two colliders, moved and tipped by its script |
 | Fan and balloons | `overlap_box`, a force on a body from `body_of`, gravity scale, damping, fixed rotation, and a layer a body leaves out ([Collision layers](concepts/CollisionLayers.md)) |
+| Clicking a balloon | A [Physics2DRaycaster](components/Physics2DRaycaster.md) on the camera lets the pointer reach colliders: a balloon lights under the pointer and a click pushes it up, through `@(comp_on_pointer)` ([Pointer events](/plugins/engine/docs/Pointer.md)) |
 
 The scripts are in the sample's `machine.odin`, one component per station. When the elevator tips the marble out, a lap ends and every station goes back to its start.
 

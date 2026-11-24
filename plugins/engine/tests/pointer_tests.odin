@@ -1,8 +1,8 @@
 package engine_tests
 
-// The pointer package's raycaster registry (plugins/engine/pointer): a
-// higher priority is asked first and hides the ones below, and among
-// raycasters of one priority the nearest hit wins. The events themselves are
+// The pointer package's raycasters (plugins/engine/pointer): an earlier
+// order is asked first and hides the ones after it, and among raycasters of
+// one order the nearest hit wins. The events themselves are
 // tested where the raycasters are: mhgui's and physics3d's tests.
 
 import "core:testing"
@@ -29,7 +29,7 @@ _cast_far :: proc(position: [2]f32, viewport: [2]f32) -> (pointer.Pointer_Hit, b
 }
 
 @(test)
-test_pointer_raycaster_priority :: proc(t: ^testing.T) {
+test_pointer_raycaster_order :: proc(t: ^testing.T) {
 	// A world: other plugins' raycasters are asked too, and they look into it.
 	tc := new(common.TestCtx)
 	defer free(tc)
@@ -42,14 +42,14 @@ test_pointer_raycaster_priority :: proc(t: ^testing.T) {
 	// Registered lowest first: the order of registration does not matter.
 	pointer.raycaster_register(_cast_far)
 	pointer.raycaster_register(_cast_near)
-	pointer.raycaster_register(_cast_front, pointer.PRIORITY_UI)
+	pointer.raycaster_register(_cast_front, pointer.ORDER_UI)
 	defer pointer.raycaster_unregister(_cast_far)
 	defer pointer.raycaster_unregister(_cast_near)
 	defer pointer.raycaster_unregister(_cast_front)
 
 	_front_hits = true
 	hit := pointer.hit_at({10, 10}, {800, 600})
-	testing.expect(t, hit.node == _front && hit.source == .UI, "the higher priority wins, however near the world's hit is")
+	testing.expect(t, hit.node == _front && hit.source == .UI, "the earlier order wins, however near the world's hit is")
 
 	_front_hits = false
 	hit = pointer.hit_at({10, 10}, {800, 600})

@@ -9,6 +9,8 @@ package physics2d_sample
 // - An actor reads the MachineSwitch on its own object: MachineMotor,
 //   MachineCannon, MachineWalker, MachineElevator and MachineFan.
 // - MachineRope only draws: a line from a hook to the body a joint holds.
+// - MachinePoke takes the pointer: a click pushes its body. The camera's
+//   Physics2DRaycaster is what lets the pointer reach a collider.
 // - The elevator ends a lap. `machine_lap` goes up by one, and every script
 //   puts its object back to how the scene starts: MachineReset does it for a
 //   plain rigidbody.
@@ -16,6 +18,7 @@ package physics2d_sample
 import "core:math"
 import b2 "vendor:box2d"
 import "moonhug:packages/engine"
+import pointer "moonhug:packages/engine/pointer"
 import physics2d "moonhug:packages/physics2d"
 import sprites "moonhug:packages/sprites"
 
@@ -444,6 +447,52 @@ comp_fixed_update_MachineElevator :: proc(dt: f32, c: ^MachineElevator) {
 	}
 	engine.transform_set_world_position(c.owner, pos)
 	engine.transform_set_world_rotation(c.owner, engine.quat_from_euler_xyz(0, 0, c.angle))
+}
+
+// --- The pointer ---------------------------------------------------------------
+
+// On a body with a collider: the pointer over it lights `look`, and a click
+// gives the body a velocity. The camera needs a Physics2DRaycaster.
+@(component={menu="Demo/MachinePoke"})
+@(typ_guid={guid = "5f0c7c2e-3b0f-4a52-9d53-2d4f1c1a7e0d"})
+MachinePoke :: struct {
+	using base:  engine.CompData `inspect:"-"`,
+	// Meters per second.
+	push:        [2]f32,
+	look:        engine.Ref_Local `ref:"SpriteRenderer"`,
+	hover_color: [4]f32 `decor:color()`,
+
+	rest_color: [4]f32 `json:"-" inspect:"-"`,
+	hovered:    bool `json:"-" inspect:"-"`,
+}
+
+type_reset_MachinePoke :: proc(c: ^MachinePoke) {
+	engine.comp_zero(c)
+	c.push = {0, 4}
+	c.hover_color = {1, 1, 1, 1}
+}
+
+@(comp_on_pointer={component=MachinePoke})
+comp_on_pointer_MachinePoke :: proc(c: ^MachinePoke, ev: ^pointer.Pointer_Event) {
+	#partial switch ev.kind {
+	case .Enter, .Exit:
+		sprite := cast(^sprites.SpriteRenderer)engine.world_pool_get(engine.ctx_world(), c.look.handle)
+		if sprite == nil do return
+		if ev.kind == .Enter && !c.hovered {
+			c.hovered = true
+			c.rest_color = sprite.color
+			sprite.color = c.hover_color
+		} else if ev.kind == .Exit && c.hovered {
+			c.hovered = false
+			sprite.color = c.rest_color
+		}
+	case .Click:
+		if body, ok := _dynamic_body(c.owner); ok {
+			b2.Body_SetLinearVelocity(body, c.push)
+			b2.Body_SetAwake(body, true)
+		}
+		ev.used = true
+	}
 }
 
 // --- Looks ---------------------------------------------------------------------

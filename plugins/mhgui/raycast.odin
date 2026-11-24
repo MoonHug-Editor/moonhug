@@ -6,7 +6,6 @@ package mhgui
 // pointer pass that sends events from it is the engine's pointer package
 // (plugins/engine/pointer), where this plugin registers the raycast.
 
-import "base:runtime"
 import "core:math/linalg"
 import "core:slice"
 import "moonhug:packages/engine"
@@ -103,14 +102,9 @@ ui_selected :: proc() -> engine.Transform_Handle {
 }
 
 // The UI's raycaster for the pointer package: the canvas node under the
-// pointer. Its priority is above the world's, so a pointer over UI hits
-// nothing behind it.
-@(init)
-_register_canvas_raycaster :: proc "contextless" () {
-	context = runtime.default_context()
-	pointer.raycaster_register(canvas_pointer_raycast, pointer.PRIORITY_UI)
-}
-
+// pointer. Its order is ORDER_UI, before the world's, so a pointer over UI
+// hits nothing behind it.
+@(pointer_raycaster={order=-100})
 canvas_pointer_raycast :: proc(position: [2]f32, viewport: [2]f32) -> (hit: pointer.Pointer_Hit, ok: bool) {
 	node := canvas_raycast(position, viewport)
 	return {node = node, source = .UI}, node != {}

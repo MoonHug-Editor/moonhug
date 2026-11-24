@@ -14,7 +14,6 @@ package physics2d
 // - Triggers are passed through, as for every query.
 // - Colliders exist while the game runs, so nothing is hit in edit mode.
 
-import "base:runtime"
 import "moonhug:packages/engine"
 import pointer "moonhug:packages/engine/pointer"
 
@@ -33,14 +32,9 @@ type_reset_Physics2DRaycaster :: proc(r: ^Physics2DRaycaster) {
 // How near the pointer's point a collider must be: the point itself.
 POINTER_RADIUS :: f32(0.001)
 
-@(init)
-_register_pointer_raycaster :: proc "contextless" () {
-	context = runtime.default_context()
-	pointer.raycaster_register(pointer_raycast)
-}
-
 // A collider under a viewport point, over every enabled Physics2DRaycaster
 // whose camera is enabled: the nearest camera plane crossing wins.
+@(pointer_raycaster)
 pointer_raycast :: proc(position: [2]f32, viewport: [2]f32) -> (best: pointer.Pointer_Hit, ok: bool) {
 	w := engine.ctx_world()
 	if w == nil do return

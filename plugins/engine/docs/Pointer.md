@@ -43,9 +43,15 @@ comp_on_pointer_Chest :: proc(c: ^Chest, ev: ^pointer.Pointer_Event) {
 - A door with a collider and a component that has a `@(comp_on_pointer)` proc opens on `Click`, with a PhysicsRaycaster on the camera. The same component on a UI node works unchanged.
 - The event goes to the object that was hit and then up its parents, so a collider on a child clicks its parent's component.
 - `ev.source` says what found the object: `UI`, `World_3D` or `World_2D`. `ev.world_position` and `ev.world_normal` are where the collider under the pointer is hit, and zero over UI.
-- A plugin adds its own way to find objects with `pointer.raycaster_register(proc, priority)`, from an `@(init)` proc. The proc takes a viewport point and answers with the object there and how far it is.
-- The raycasters of the highest priority are asked first, and a lower priority only when none of them hits. The UI's priority is `PRIORITY_UI`, above the world's `PRIORITY_WORLD`: a pointer over a canvas's graphic hits nothing in the world behind it.
-- Among raycasters of one priority the nearest hit wins.
+- A plugin adds its own way to find objects with `@(pointer_raycaster)` on a proc that takes a viewport point and answers with the object there and how far it is. The proc usually walks a component of its own that says where to look.
+- `order` says when a raycaster is asked, the lowest first, 0 when left out. A later order is asked only when no raycaster of the earlier ones hits.
+- The UI's order is -100 (`pointer.ORDER_UI`), before the world's 0: a pointer over a canvas's graphic hits nothing in the world behind it.
+- Among raycasters of one order the nearest hit wins.
+
+```odin
+@(pointer_raycaster)
+pointer_raycast :: proc(position: [2]f32, viewport: [2]f32) -> (hit: pointer.Pointer_Hit, ok: bool) { ... }
+```
 
 ## Touch
 

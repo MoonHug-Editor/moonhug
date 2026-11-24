@@ -69,7 +69,8 @@
 
       ],
       "components": [
-        {"local_id": 3}
+        {"local_id": 3},
+        {"local_id": 301}
       ]
     },
     {
@@ -1543,7 +1544,8 @@
       ],
       "components": [
         {"local_id": 209},
-        {"local_id": 210}
+        {"local_id": 210},
+        {"local_id": 302}
       ]
     },
     {
@@ -1576,7 +1578,8 @@
       ],
       "components": [
         {"local_id": 214},
-        {"local_id": 215}
+        {"local_id": 215},
+        {"local_id": 303}
       ]
     },
     {
@@ -1609,7 +1612,8 @@
       ],
       "components": [
         {"local_id": 219},
-        {"local_id": 220}
+        {"local_id": 220},
+        {"local_id": 304}
       ]
     },
     {
@@ -1642,7 +1646,8 @@
       ],
       "components": [
         {"local_id": 224},
-        {"local_id": 225}
+        {"local_id": 225},
+        {"local_id": 305}
       ]
     },
     {
@@ -4222,6 +4227,94 @@
       "order_in_layer": 3,
       "sorting_layer": 0,
       "sprite": "0596178d-5584-4abf-b30b-bee54e04dff9"
+    },
+    {
+      "__type": "7f1c3e59-8a2d-4b06-a4e7-0d9b5c3f6e28",
+      "base": {
+        "enabled": true,
+        "local_id": 301
+      },
+      "layers": 4294967295
+    },
+    {
+      "__type": "5f0c7c2e-3b0f-4a52-9d53-2d4f1c1a7e0d",
+      "base": {
+        "enabled": true,
+        "local_id": 302
+      },
+      "hover_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "look": {
+        "local_id": 212
+      },
+      "push": [
+        0.0,
+        4.5
+      ]
+    },
+    {
+      "__type": "5f0c7c2e-3b0f-4a52-9d53-2d4f1c1a7e0d",
+      "base": {
+        "enabled": true,
+        "local_id": 303
+      },
+      "hover_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "look": {
+        "local_id": 217
+      },
+      "push": [
+        0.0,
+        4.5
+      ]
+    },
+    {
+      "__type": "5f0c7c2e-3b0f-4a52-9d53-2d4f1c1a7e0d",
+      "base": {
+        "enabled": true,
+        "local_id": 304
+      },
+      "hover_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "look": {
+        "local_id": 222
+      },
+      "push": [
+        0.0,
+        4.5
+      ]
+    },
+    {
+      "__type": "5f0c7c2e-3b0f-4a52-9d53-2d4f1c1a7e0d",
+      "base": {
+        "enabled": true,
+        "local_id": 305
+      },
+      "hover_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "look": {
+        "local_id": 227
+      },
+      "push": [
+        0.0,
+        4.5
+      ]
     }
   ]
 }

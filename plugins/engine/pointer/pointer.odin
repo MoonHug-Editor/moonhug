@@ -18,15 +18,16 @@ package engine_pointer
 // What it works on:
 // - Any object a raycaster finds under the pointer. The proc is the same
 //   whatever found it: the attribute names the reaction, not the source.
-// - A raycaster is a proc a plugin registers (raycaster_register): the UI
-//   plugin's finds canvas nodes, a physics plugin's finds colliders through
-//   a camera that has its raycaster component. `ev.source` says which, and
-//   `ev.world_position` and `ev.world_normal` where a collider was hit.
+// - A raycaster is a proc a plugin declares with @(pointer_raycaster): the
+//   UI plugin's finds canvas nodes, a physics plugin's finds colliders
+//   through a camera that has its raycaster component. `ev.source` says
+//   which, and `ev.world_position` and `ev.world_normal` where a collider
+//   was hit.
 // - An event starts at the object that was hit and then goes to its
 //   parents, which need nothing of their own to be hit.
-// - A raycaster registers with a priority. The highest priority that hits
-//   wins, and among raycasters of one priority the nearest hit: the UI's is
-//   above the world's, so a pointer over UI hits nothing behind it.
+// - Raycasters are asked in their `order`. The first order that hits wins,
+//   and among raycasters of one order the nearest hit: the UI's is before
+//   the world's, so a pointer over UI hits nothing behind it.
 // - Not inactive objects or disabled components.
 //
 // The package is in a build when something imports it, which a
@@ -122,35 +123,45 @@ Pointer_Hit :: struct {
 	distance: f32,    // world: from the camera, to pick the nearest
 }
 
-// Finds the object under a viewport point (pixels, y down), false for none.
+// Declares a raycaster: a proc that finds the object under a viewport point
+// (pixels, y down), false for none. A plugin writes one for what it can
+// find, and it usually walks a component of its own that says where to look:
+// a GraphicRaycaster on a canvas, a physics raycaster on a camera.
+//
+//   @(pointer_raycaster)
+//   pointer_raycast :: proc(position: [2]f32, viewport: [2]f32) -> (hit: pointer.Pointer_Hit, ok: bool) { ... }
+//
+// `order` says when it is asked, the lowest first, 0 when left out. A later
+// order is asked only when no raycaster of the earlier ones hits, and among
+// raycasters of one order the nearest hit wins. The UI's is ORDER_UI, before
+// the world's at 0, so a pointer over UI hits nothing behind it.
+@(extension_point={attribute="pointer_raycaster", target="proc", fields="order"})
 Pointer_Raycaster :: proc(position: [2]f32, viewport: [2]f32) -> (hit: Pointer_Hit, ok: bool)
 
 @(private = "file")
 _Raycaster :: struct {
-	fn:       Pointer_Raycaster,
-	priority: int,
+	fn:    Pointer_Raycaster,
+	order: int,
 }
 
-// Highest priority first.
+// Lowest order first.
 @(private = "file")
 _raycasters: [dynamic]_Raycaster
 
-// The priority of a raycaster that finds objects in the world, and of one
-// that finds UI, which is in front of the world.
-PRIORITY_WORLD :: 0
-PRIORITY_UI :: 100
+// The order of a raycaster that finds objects in the world, and of one that
+// finds UI, which is in front of the world.
+ORDER_WORLD :: 0
+ORDER_UI :: -100
 
-// Adds a way to find objects under the pointer, from an @(init) proc. The
-// raycasters of the highest priority are asked first, and a lower priority
-// only when none of them hits.
-raycaster_register :: proc(fn: Pointer_Raycaster, priority := PRIORITY_WORLD) {
+// What the generated code of a @(pointer_raycaster) proc calls.
+raycaster_register :: proc(fn: Pointer_Raycaster, order := ORDER_WORLD) {
 	context.allocator = runtime.default_allocator()
 	at := len(_raycasters)
-	for r, i in _raycasters do if priority > r.priority {
+	for r, i in _raycasters do if order < r.order {
 		at = i
 		break
 	}
-	inject_at(&_raycasters, at, _Raycaster{fn, priority})
+	inject_at(&_raycasters, at, _Raycaster{fn, order})
 }
 
 // Takes a raycaster out again: tests.
@@ -161,13 +172,13 @@ raycaster_unregister :: proc(fn: Pointer_Raycaster) {
 	}
 }
 
-// The object under a viewport point: the nearest hit of the highest
-// priority that hits anything. A zero hit for none.
+// The object under a viewport point: the nearest hit of the first order
+// that hits anything. A zero hit for none.
 hit_at :: proc(position: [2]f32, viewport: [2]f32) -> Pointer_Hit {
 	best: Pointer_Hit
 	for r, i in _raycasters {
-		// A lower priority is asked only when the one above found nothing.
-		if best.node != {} && i > 0 && r.priority != _raycasters[i - 1].priority do break
+		// A later order is asked only when the ones before found nothing.
+		if best.node != {} && i > 0 && r.order != _raycasters[i - 1].order do break
 		found, ok := r.fn(position, viewport)
 		if !ok || found.node == {} do continue
 		if best.node == {} || found.distance < best.distance do best = found
