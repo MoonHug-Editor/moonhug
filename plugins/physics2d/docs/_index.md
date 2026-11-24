@@ -65,6 +65,25 @@ The plugin declares no attributes and has no registries.
 - `raycast` asks what a ray hits, `circle_cast`, `box_cast` and `capsule_cast` what a moving shape hits, and `overlap_circle`, `overlap_box` and `overlap_capsule` what a shape touches ([Queries](concepts/Queries.md)).
 - `body_of(handle)` returns an object's live box2d body, and `world()` the box2d world, so forces and the rest of box2d work from game code.
 
+## Sample
+
+Open `physics2d_sample.scene` from the `physics2d_sample` plugin and press Play. A marble goes around a machine, and each station shows one part of the plugin. In the running game, F3 shows every collider's outline.
+
+| Station | What it shows |
+|---|---|
+| Ice chute | A one-sided [EdgeCollider2D](components/EdgeCollider2D.md) with a frictionless [Physics Material 2D](assets/PhysicsMaterial2D.md) |
+| Trampoline | A bouncy material on a [BoxCollider2D](components/BoxCollider2D.md) |
+| Funnel | Two [PolygonCollider2D](components/PolygonCollider2D.md) wedges |
+| Roller | A [HingeJoint2D](components/HingeJoint2D.md) motor turning a [CircleCollider2D](components/CircleCollider2D.md) |
+| Eye and trapdoor | `raycast` sees the marble, and a hinge with limits opens a [CapsuleCollider2D](components/CapsuleCollider2D.md) door by its motor |
+| Weak bridge | A [FixedJoint2D](components/FixedJoint2D.md) that breaks under the marble, and a [DistanceJoint2D](components/DistanceJoint2D.md) rope that keeps the plank |
+| Pit and walker | A two-sided edge, a trigger collider with a trigger hook, and a [CharacterController2D](components/CharacterController2D.md) that finds the marble with `circle_cast` and kicks it |
+| Cannon and bell | A shell with continuous collision, a set mass and no gravity, a collision hook on the bell, and a distance joint as a spring |
+| Elevator | A kinematic [Rigidbody2D](components/Rigidbody2D.md) of two colliders, moved and tipped by its script |
+| Fan and balloons | `overlap_box`, a force on a body from `body_of`, gravity scale, damping, fixed rotation, and a layer a body leaves out ([Collision layers](concepts/CollisionLayers.md)) |
+
+The scripts are in the sample's `machine.odin`, one component per station. When the elevator tips the marble out, a lap ends and every station goes back to its start.
+
 ## Limits
 
 - No effectors, and no slider or wheel joints ([Roadmap](Roadmap.md)).
@@ -73,4 +92,3 @@ The plugin declares no attributes and has no registries.
 ## Reference
 
 - [API reference](/docs/reference/packages/physics2d/physics2d.md) of the `physics2d` package.
-- Sample: `physics2d_sample`, `physics2d_sample.scene`: bodies falling onto a ground and a ramp. In the running game, F3 shows every collider's outline.
