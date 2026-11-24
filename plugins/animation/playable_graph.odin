@@ -340,6 +340,11 @@ Animation_Binding :: struct {
 	// binds nothing (_graph_bind).
 	bound_for:  u64,
 	bound_all:  bool,
+	// For a running game: each bound clip's channels as slot numbers, a
+	// transform row's place in `slots` and a property row's in `prop_slots`,
+	// -1 for a row with no slot. Keyed by the clip's channel list. A frame
+	// then reads a number where it looked the row's path up by its text.
+	clip_slots: map[rawptr][]i32,
 }
 
 animation_binding_init :: proc(b: ^Animation_Binding, owner: engine.Transform_Handle) {
@@ -360,7 +365,35 @@ animation_binding_destroy :: proc(b: ^Animation_Binding) {
 	}
 	delete(b.prop_slots)
 	delete(b.by_prop)
+	_clip_slots_clear(b)
+	delete(b.clip_slots)
 	b^ = {}
+}
+
+@(private = "file")
+_clip_slots_clear :: proc(b: ^Animation_Binding) {
+	for _, slots in b.clip_slots do delete(slots)
+	clear(&b.clip_slots)
+}
+
+// Fills clip_slots for the clips just bound.
+@(private = "file")
+_clip_slots_fill :: proc(b: ^Animation_Binding, clips: []^AnimationClip) {
+	_clip_slots_clear(b)
+	for clip in clips {
+		key := rawptr(raw_data(clip.channels))
+		if key == nil || key in b.clip_slots do continue
+		slots := make([]i32, len(clip.channels))
+		for &ch, i in clip.channels {
+			slots[i] = -1
+			if animation_channel_is_property(&ch) {
+				if idx, found := b.by_prop[_prop_key(ch.target, ch.component, ch.field)]; found do slots[i] = idx
+			} else if idx, found := b.by_path[ch.target]; found {
+				slots[i] = idx
+			}
+		}
+		b.clip_slots[key] = slots
+	}
 }
 
 @(private = "file")
@@ -627,6 +660,12 @@ _graph_bind :: proc(g: ^Playable_Graph, root: Playable_Handle, b: ^Animation_Bin
 	for s in b.prop_slots do if !s.resolved do all = false
 	b.bound_for = bound_for
 	b.bound_all = all
+	// The editor keeps none: a clip's rows can change under it.
+	if engine.game_running() {
+		_clip_slots_fill(b, clips[:])
+	} else if len(b.clip_slots) > 0 {
+		_clip_slots_clear(b)
+	}
 }
 
 // Pull the pose for the subtree at `root` at the nodes' current local times.
@@ -691,12 +730,23 @@ _eval_node :: proc(
 		// rule), allocated on the first transform row, so a clip of property
 		// rows alone allocates nothing.
 		trs: []Clip_TRS
-		for &ch in clip.channels {
+		// A running game has each row's slot as a number (clip_slots).
+		known: []i32
+		if len(b.clip_slots) > 0 {
+			if slots, kept := b.clip_slots[rawptr(raw_data(clip.channels))]; kept && len(slots) == len(clip.channels) do known = slots
+		}
+		for &ch, ci in clip.channels {
 			// No keys, nothing to contribute: sampling would write zeros over
 			// the pose (see animation_clip_apply).
 			if len(ch.times) == 0 do continue
+			if known != nil && known[ci] < 0 do continue
 			if animation_channel_is_property(&ch) {
-				idx, found := b.by_prop[_prop_key(ch.target, ch.component, ch.field)]
+				idx, found := i32(0), true
+				if known != nil {
+					idx = known[ci]
+				} else {
+					idx, found = b.by_prop[_prop_key(ch.target, ch.component, ch.field)]
+				}
 				if !found do continue
 				pval := _animation_channel_sample_value(&ch, t)
 				kind := b.prop_slots[idx].loc.kind
@@ -711,7 +761,12 @@ _eval_node :: proc(
 				_lane_acc_leaf(&out.props[idx].acc, f, animation_channel_lanes_off(&ch, kind))
 				continue
 			}
-			idx, found := b.by_path[ch.target]
+			idx, found := i32(0), true
+			if known != nil {
+				idx = known[ci]
+			} else {
+				idx, found = b.by_path[ch.target]
+			}
 			if !found do continue
 			if trs == nil do trs = make([]Clip_TRS, len(out.trs), allocator)
 			animation_trs_add(&trs[idx], &ch, t)

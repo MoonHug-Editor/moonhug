@@ -30,7 +30,10 @@ Clip_TRS :: struct {
 animation_trs_add :: proc(trs: ^Clip_TRS, ch: ^Animation_Channel, t: f32) {
 	if animation_channel_is_property(ch) || len(ch.times) == 0 do return
 	v := _animation_channel_sample(ch, t)
-	off := animation_channel_lanes_off(ch, .Vec3)
+	// What animation_channel_lanes_off answers for a transform row, without
+	// its questions: three lanes with the row's mask, or a Rotation row,
+	// which has four and ignores it.
+	off := Lane_Set{} if ch.path == .Rotation else Lane_Set(ch.lanes_off) & {0, 1, 2}
 	switch ch.path {
 	case .Position: _trs_set_lanes(&trs.pos, &trs.pos_lanes, v, off)
 	case .Scale:    _trs_set_lanes(&trs.scl, &trs.scl_lanes, v, off)
