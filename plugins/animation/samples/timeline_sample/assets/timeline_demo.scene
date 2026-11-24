@@ -230,10 +230,10 @@
         0.0
       ],
       "rotation": [
-        -0.70710683,
+        -0.7071068,
         0.0,
         0.0,
-        0.70710683
+        0.7071068
       ],
       "scale": [
         1.0,
@@ -1208,7 +1208,7 @@
       ],
       "far_clip": 1000.0,
       "fov": 60.0,
-      "near_clip": 0.30000001,
+      "near_clip": 0.3,
       "order": 0,
       "render_layer_mask": 4294967295
     },
@@ -1236,7 +1236,7 @@
         "enabled": true,
         "local_id": 881202600000024
       },
-      "duration": 3.2999999500000001,
+      "duration": 3.3,
       "ease_in": 0.0,
       "ease_out": 0.0,
       "speed": 0.0,
@@ -1262,8 +1262,8 @@
       ],
       "color_a": [
         1.0,
-        0.89999998,
-        0.69999999,
+        0.9,
+        0.7,
         1.0
       ],
       "color_b": [
@@ -1301,7 +1301,7 @@
 
         ]
       },
-      "gravity_modifier": 0.40000001,
+      "gravity_modifier": 0.4,
       "lifetime_by_speed": {
         "keys": [
 
@@ -1337,7 +1337,7 @@
       "prewarm": false,
       "random_seed": 7,
       "randomize_direction": 0.0,
-      "rate": 0.80000001,
+      "rate": 0.8,
       "rate_over_distance": 0.0,
       "render_mode": 0,
       "rotation_by_speed": {
@@ -1388,8 +1388,8 @@
           ]
         },
         "mode": 1,
-        "value_max": 1.60000002,
-        "value_min": 1.2000000500000001
+        "value_max": 1.6,
+        "value_min": 1.2
       },
       "start_rotation": {
         "curve_max": {
@@ -1419,7 +1419,7 @@
         },
         "mode": 1,
         "value_max": 0.2,
-        "value_min": 0.15000001
+        "value_min": 0.15
       },
       "start_speed": {
         "curve_max": {
@@ -1469,7 +1469,7 @@
           }
         ]
       },
-      "trail_lifetime": 0.40000001,
+      "trail_lifetime": 0.4,
       "trail_material": "00000000-0000-0000-0000-000000000000",
       "trail_min_distance": 0.1,
       "trail_ratio": 1.0,
@@ -1485,7 +1485,7 @@
           },
           {
             "t": 1.0,
-            "value": 0.15000001
+            "value": 0.15
           }
         ]
       },
@@ -1525,14 +1525,14 @@
       ],
       "color_a": [
         1.0,
-        0.80000001,
-        0.30000001,
+        0.8,
+        0.3,
         1.0
       ],
       "color_b": [
         1.0,
-        0.40000001,
-        0.60000002,
+        0.4,
+        0.6,
         1.0
       ],
       "color_by_speed": {
@@ -1556,7 +1556,7 @@
           {
             "color": [
               1.0,
-              0.30000001,
+              0.3,
               0.1,
               0.0
             ],
@@ -1581,7 +1581,7 @@
 
         ]
       },
-      "gravity_modifier": 0.60000002,
+      "gravity_modifier": 0.6,
       "lifetime_by_speed": {
         "keys": [
 
@@ -1676,7 +1676,7 @@
         },
         "mode": 1,
         "value_max": 1.0,
-        "value_min": 0.60000002
+        "value_min": 0.6
       },
       "start_rotation": {
         "curve_max": {
@@ -1790,7 +1790,7 @@
       "ease_in": 0.0,
       "ease_out": 0.0,
       "speed": 0.0,
-      "start": 4.5999999000000003
+      "start": 4.6
     },
     {
       "__type": "889f7ce4-b7cc-4ad1-b669-540bfb5a27ff",
@@ -1844,7 +1844,7 @@
       "ease_in": 0.0,
       "ease_out": 0.0,
       "speed": 0.0,
-      "start": 0.80000001
+      "start": 0.8
     },
     {
       "__type": "6f7fb020-d764-4ce1-bc09-d8088356bd22",
@@ -1868,11 +1868,11 @@
         "enabled": true,
         "local_id": 3246846976901040
       },
-      "duration": 1.3999998600000001,
+      "duration": 1.3999999,
       "ease_in": 0.0,
       "ease_out": 0.0,
       "speed": 0.0,
-      "start": 1.7999999499999999
+      "start": 1.8
     },
     {
       "__type": "889f7ce4-b7cc-4ad1-b669-540bfb5a27ff",
@@ -1910,7 +1910,7 @@
       "ease_in": 0.0,
       "ease_out": 0.0,
       "speed": 0.0,
-      "start": 0.80000001
+      "start": 0.8
     },
     {
       "__type": "d0b0e534-01d0-4b0f-9f2c-1e38daa94c3d",
@@ -1933,7 +1933,7 @@
       "ease_in": 0.0,
       "ease_out": 0.0,
       "speed": 0.0,
-      "start": 1.7999999499999999
+      "start": 1.8
     },
     {
       "__type": "d0b0e534-01d0-4b0f-9f2c-1e38daa94c3d",
@@ -2076,7 +2076,7 @@
       "ease_in": 0.0,
       "ease_out": 0.0,
       "speed": 0.0,
-      "start": 3.0999998999999998
+      "start": 3.1
     },
     {
       "__type": "0f1d4bcc-cf05-4958-8d73-775b9e28a18e",

@@ -5,8 +5,8 @@
   "texture": "00000000-0000-0000-0000-000000000000",
   "color": [
     0.99999994,
-    0.86504197,
-    0.59695131,
+    0.865042,
+    0.5969513,
     1.0
   ],
   "alpha_clip": false,
@@ -16,7 +16,7 @@
   "refraction": 0.0,
   "lit": {
     "metallic": 1.0,
-    "smoothness": 0.60000002,
+    "smoothness": 0.6,
     "metallic_roughness_map": "00000000-0000-0000-0000-000000000000",
     "normal_map": "5376f820-1063-407c-b942-5d00ad87bb21",
     "normal_scale": 1.0,

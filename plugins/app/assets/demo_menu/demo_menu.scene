@@ -253,7 +253,7 @@
       ],
       "far_clip": 1000.0,
       "fov": 60.0,
-      "near_clip": 0.30000001,
+      "near_clip": 0.3,
       "order": 0,
       "render_layer_mask": 4294967295
     },
@@ -381,9 +381,9 @@
       "font_style": 0,
       "graphic": {
         "color": [
-          0.95999998,
-          0.95999998,
-          0.95999998,
+          0.96,
+          0.96,
+          0.96,
           1.0
         ],
         "material": "57209af0-8443-465e-ab7b-cd1deec09ec6",

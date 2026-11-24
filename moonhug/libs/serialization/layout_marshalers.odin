@@ -19,8 +19,6 @@ import "moonhug:libs/slots"
 import "moonhug:libs/time"
 
 register_layout_marshalers :: proc() {
-	json.register_user_marshaler(f32, float_fixed_marshal)
-	json.register_user_marshaler(f64, float_fixed_marshal)
 	json.register_user_marshaler([2]f32, array_one_line_marshal)
 	json.register_user_marshaler([3]f32, array_one_line_marshal)
 	json.register_user_marshaler([4]f32, array_one_line_marshal)
@@ -34,19 +32,6 @@ register_layout_marshalers :: proc() {
 	json.register_user_unmarshaler(time.Clock, clock_unmarshal)
 	json.register_user_marshaler(slots.Slot, slot_marshal)
 	json.register_user_unmarshaler(slots.Slot, slot_unmarshal)
-}
-
-// A float with fixed fraction digits, 8 for an f32 and 16 for an f64. Every
-// asset file holds floats in this text (trailing zeros trimmed by
-// core.json_canonicalize_floats), and an override compares a saved value to
-// a live one after both went through it. The plain writer picks the shortest
-// text that reads back the same, which is other text for the same value.
-float_fixed_marshal :: proc(w: io.Writer, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
-	switch f in v {
-	case f32: io.write_f32(w, f) or_return
-	case f64: io.write_f64(w, f) or_return
-	}
-	return nil
 }
 
 // A fixed array on one line. Each element goes through the writer, so an

@@ -14,7 +14,7 @@
     ],
     "hull_sets": [
       {
-        "concavity": 0.0500000000000000,
+        "concavity": 0.05,
         "id": 8138939204083878639,
         "max_hulls": 8,
         "part": 0,
@@ -28,6 +28,6 @@
         "name": "Avocado"
       }
     ],
-    "scale": 1.0000000000000000
+    "scale": 1.0
   }
 }

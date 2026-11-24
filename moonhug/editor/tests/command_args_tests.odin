@@ -66,7 +66,7 @@ test_command_args_registration :: proc(t: ^testing.T) {
 	testing.expect(t, keymap.command_args_set_json(c, transmute([]u8)string(`{"n": 7}`)))
 	testing.expect_value(t, (^_T_Args)(c.args)^, _T_Args{n = 7, v = {1, 0}})
 	testing.expect(t, !keymap.command_args_set_json(c, transmute([]u8)string(`{"n": "x"}`)))
-	testing.expect_value(t, string(keymap.command_args_json(c)), `{"n":7,"v":[1.00000000,0.00000000]}`)
+	testing.expect_value(t, string(keymap.command_args_json(c)), `{"n":7,"v":[1.0,0.0]}`)
 
 	// Registered again with the same type, the last values stay. Reset puts
 	// the declared defaults back.

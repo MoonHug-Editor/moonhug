@@ -134,7 +134,7 @@
         0.0
       ],
       "rotation": [
-        -0.40821791,
+        -0.4082179,
         0.23456971,
         0.10938165,
         0.87542605
@@ -207,19 +207,19 @@
       "name": "Ramp",
       "is_active": true,
       "position": [
-        2.20000005,
-        -0.80000001,
+        2.2,
+        -0.8,
         0.0
       ],
       "rotation": [
         -0.0,
         -0.0,
         -0.1305262,
-        0.99144489
+        0.9914449
       ],
       "scale": [
         5.0,
-        0.30000001,
+        0.3,
         3.0
       ],
       "render_layer": 1,
@@ -249,7 +249,7 @@
       "name": "Wall",
       "is_active": true,
       "position": [
-        6.80000019,
+        6.8,
         -1.25,
         0.0
       ],
@@ -260,7 +260,7 @@
         1.0
       ],
       "scale": [
-        0.40000001,
+        0.4,
         2.5,
         14.0
       ],
@@ -336,7 +336,7 @@
       "name": "Box B",
       "is_active": true,
       "position": [
-        -1.70000005,
+        -1.7,
         5.0,
         0.2
       ],
@@ -426,7 +426,7 @@
       "name": "Capsule",
       "is_active": true,
       "position": [
-        3.20000005,
+        3.2,
         8.0,
         0.5
       ],
@@ -434,7 +434,7 @@
         0.0,
         0.0,
         0.17364818,
-        0.98480773
+        0.9848077
       ],
       "scale": [
         1.0,
@@ -482,19 +482,19 @@
       },
       "clear_color": [
         0.19,
-        0.30000001,
+        0.3,
         0.47,
         1.0
       ],
       "far_clip": 1000.0,
       "fov": 60.0,
-      "near_clip": 0.30000001,
+      "near_clip": 0.3,
       "order": 0,
       "render_layer_mask": 4294967295
     },
     {
       "__type": "9f36ee91-34b6-4636-a360-ee872af0436b",
-      "ambient": 0.34999999,
+      "ambient": 0.35,
       "base": {
         "enabled": true,
         "local_id": 4411970875294874
@@ -541,7 +541,7 @@
         0.0
       ],
       "density": 1.0,
-      "friction": 0.60000002,
+      "friction": 0.6,
       "is_trigger": false,
       "size": [
         1.0,
@@ -583,7 +583,7 @@
         0.0
       ],
       "density": 1.0,
-      "friction": 0.60000002,
+      "friction": 0.6,
       "is_trigger": false,
       "size": [
         1.0,
@@ -625,7 +625,7 @@
         0.0
       ],
       "density": 1.0,
-      "friction": 0.60000002,
+      "friction": 0.6,
       "is_trigger": false,
       "size": [
         1.0,
@@ -689,7 +689,7 @@
         0.0
       ],
       "density": 1.0,
-      "friction": 0.60000002,
+      "friction": 0.6,
       "is_trigger": false,
       "size": [
         1.0,
@@ -753,7 +753,7 @@
         0.0
       ],
       "density": 1.0,
-      "friction": 0.60000002,
+      "friction": 0.6,
       "is_trigger": false,
       "size": [
         1.0,
@@ -817,7 +817,7 @@
         0.0
       ],
       "density": 1.0,
-      "friction": 0.60000002,
+      "friction": 0.6,
       "is_trigger": false,
       "radius": 0.5
     },
@@ -878,7 +878,7 @@
       ],
       "density": 1.0,
       "direction": 1,
-      "friction": 0.60000002,
+      "friction": 0.6,
       "height": 2.0,
       "is_trigger": false,
       "radius": 0.5

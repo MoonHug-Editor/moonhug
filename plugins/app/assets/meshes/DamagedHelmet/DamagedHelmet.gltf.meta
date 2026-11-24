@@ -18,14 +18,14 @@
     ],
     "hull_sets": [
       {
-        "concavity": 0.0500000000000000,
+        "concavity": 0.05,
         "id": 3737427108111913568,
         "max_hulls": 44,
         "part": 0,
         "remesh_resolution": 20
       },
       {
-        "concavity": 0.0500000000000000,
+        "concavity": 0.05,
         "id": 8000438309671769381,
         "max_hulls": 8,
         "part": 0,
@@ -39,6 +39,6 @@
         "name": "mesh_helmet_LP_13930damagedHelmet"
       }
     ],
-    "scale": 1.0000000000000000
+    "scale": 1.0
   }
 }

@@ -9958,7 +9958,7 @@
    ],
    "far_clip": 1000.0,
    "fov": 60.0,
-   "near_clip": 0.30000001,
+   "near_clip": 0.3,
    "order": 0,
    "render_layer_mask": 4294967295
   },

@@ -16,7 +16,7 @@
   "refraction": 0.0,
   "lit": {
     "metallic": 0.0,
-    "smoothness": 0.69999999,
+    "smoothness": 0.7,
     "metallic_roughness_map": "00000000-0000-0000-0000-000000000000",
     "normal_map": "00000000-0000-0000-0000-000000000000",
     "normal_scale": 1.0,

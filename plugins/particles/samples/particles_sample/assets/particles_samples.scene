@@ -116,10 +116,10 @@
         0.0
       ],
       "rotation": [
-        -0.70710683,
+        -0.7071068,
         0.0,
         0.0,
-        0.70710683
+        0.7071068
       ],
       "scale": [
         1.0,
@@ -188,10 +188,10 @@
         0.0
       ],
       "rotation": [
-        -0.70710683,
+        -0.7071068,
         0.0,
         0.0,
-        0.70710683
+        0.7071068
       ],
       "scale": [
         1.0,
@@ -224,10 +224,10 @@
         0.0
       ],
       "rotation": [
-        0.70710683,
+        0.7071068,
         0.0,
         0.0,
-        0.70710683
+        0.7071068
       ],
       "scale": [
         1.0,
@@ -260,10 +260,10 @@
         0.0
       ],
       "rotation": [
-        -0.70710683,
+        -0.7071068,
         0.0,
         0.0,
-        0.70710683
+        0.7071068
       ],
       "scale": [
         1.0,
@@ -349,7 +349,7 @@
       ],
       "far_clip": 1000.0,
       "fov": 60.0,
-      "near_clip": 0.30000001,
+      "near_clip": 0.3,
       "order": 0,
       "render_layer_mask": 4294967295
     },
@@ -365,8 +365,8 @@
 
       ],
       "color_a": [
-        0.60000002,
-        0.80000001,
+        0.6,
+        0.8,
         1.0,
         1.0
       ],
@@ -475,7 +475,7 @@
         0.0,
         0.0
       ],
-      "shape_radius": 0.15000001,
+      "shape_radius": 0.15,
       "sim_space": 0,
       "simulation_speed": 0.0,
       "size_by_speed": {
@@ -509,8 +509,8 @@
           ]
         },
         "mode": 1,
-        "value_max": 2.2000000499999999,
-        "value_min": 1.60000002
+        "value_max": 2.2,
+        "value_min": 1.6
       },
       "start_rotation": {
         "curve_max": {
@@ -539,7 +539,7 @@
           ]
         },
         "mode": 1,
-        "value_max": 0.40000001,
+        "value_max": 0.4,
         "value_min": 0.25
       },
       "start_speed": {
@@ -575,8 +575,8 @@
           },
           {
             "color": [
-              0.60000002,
-              0.80000001,
+              0.6,
+              0.8,
               1.0,
               0.0
             ],
@@ -600,7 +600,7 @@
           },
           {
             "t": 1.0,
-            "value": 0.15000001
+            "value": 0.15
           }
         ]
       },
@@ -635,18 +635,18 @@
           "cycles": 2,
           "interval": 0.5,
           "probability": 1.0,
-          "time": 0.30000001
+          "time": 0.3
         }
       ],
       "color_a": [
         1.0,
-        0.69999999,
+        0.7,
         0.2,
         1.0
       ],
       "color_b": [
         1.0,
-        0.30000001,
+        0.3,
         0.1,
         1.0
       ],
@@ -790,7 +790,7 @@
           ]
         },
         "mode": 1,
-        "value_max": 0.89999998,
+        "value_max": 0.9,
         "value_min": 0.5
       },
       "start_rotation": {
@@ -821,7 +821,7 @@
         },
         "mode": 1,
         "value_max": 0.5,
-        "value_min": 0.30000001
+        "value_min": 0.3
       },
       "start_speed": {
         "curve_max": {
@@ -889,16 +889,16 @@
 
       ],
       "color_a": [
-        0.60000002,
-        0.60000002,
-        0.60000002,
-        0.80000001
+        0.6,
+        0.6,
+        0.6,
+        0.8
       ],
       "color_b": [
-        0.34999999,
-        0.34999999,
-        0.34999999,
-        0.80000001
+        0.35,
+        0.35,
+        0.35,
+        0.8
       ],
       "color_by_speed": {
         "keys": [
@@ -1070,8 +1070,8 @@
           ]
         },
         "mode": 1,
-        "value_max": 0.60000002,
-        "value_min": 0.40000001
+        "value_max": 0.6,
+        "value_min": 0.4
       },
       "start_speed": {
         "curve_max": {
@@ -1085,8 +1085,8 @@
           ]
         },
         "mode": 1,
-        "value_max": 1.39999998,
-        "value_min": 0.80000001
+        "value_max": 1.4,
+        "value_min": 0.8
       },
       "stretch_length_scale": 0.0,
       "stretch_speed_scale": 0.0,
@@ -1193,7 +1193,7 @@
       "manual_start": false,
       "material": "00000000-0000-0000-0000-000000000000",
       "max_particles": 1000,
-      "noise_frequency": 2.30999994,
+      "noise_frequency": 2.31,
       "noise_scroll_speed": 0.75,
       "noise_strength": 1.0,
       "orbital_x": {
@@ -1296,7 +1296,7 @@
           ]
         },
         "mode": 1,
-        "value_max": 0.15000001,
+        "value_max": 0.15,
         "value_min": 0.08
       },
       "start_speed": {
@@ -1366,8 +1366,8 @@
       ],
       "color_a": [
         1.0,
-        0.89999998,
-        0.69999999,
+        0.9,
+        0.7,
         1.0
       ],
       "color_b": [
@@ -1405,7 +1405,7 @@
 
         ]
       },
-      "gravity_modifier": 0.40000001,
+      "gravity_modifier": 0.4,
       "lifetime_by_speed": {
         "keys": [
 
@@ -1441,7 +1441,7 @@
       "prewarm": false,
       "random_seed": 0,
       "randomize_direction": 0.0,
-      "rate": 0.80000001,
+      "rate": 0.8,
       "rate_over_distance": 0.0,
       "render_mode": 0,
       "rotation_by_speed": {
@@ -1492,8 +1492,8 @@
           ]
         },
         "mode": 1,
-        "value_max": 1.60000002,
-        "value_min": 1.2000000500000001
+        "value_max": 1.6,
+        "value_min": 1.2
       },
       "start_rotation": {
         "curve_max": {
@@ -1523,7 +1523,7 @@
         },
         "mode": 1,
         "value_max": 0.2,
-        "value_min": 0.15000001
+        "value_min": 0.15
       },
       "start_speed": {
         "curve_max": {
@@ -1573,7 +1573,7 @@
           }
         ]
       },
-      "trail_lifetime": 0.40000001,
+      "trail_lifetime": 0.4,
       "trail_material": "00000000-0000-0000-0000-000000000000",
       "trail_min_distance": 0.1,
       "trail_ratio": 1.0,
@@ -1589,7 +1589,7 @@
           },
           {
             "t": 1.0,
-            "value": 0.15000001
+            "value": 0.15
           }
         ]
       },
@@ -1629,14 +1629,14 @@
       ],
       "color_a": [
         1.0,
-        0.80000001,
-        0.30000001,
+        0.8,
+        0.3,
         1.0
       ],
       "color_b": [
         1.0,
-        0.40000001,
-        0.60000002,
+        0.4,
+        0.6,
         1.0
       ],
       "color_by_speed": {
@@ -1660,7 +1660,7 @@
           {
             "color": [
               1.0,
-              0.30000001,
+              0.3,
               0.1,
               0.0
             ],
@@ -1685,7 +1685,7 @@
 
         ]
       },
-      "gravity_modifier": 0.60000002,
+      "gravity_modifier": 0.6,
       "lifetime_by_speed": {
         "keys": [
 
@@ -1780,7 +1780,7 @@
         },
         "mode": 1,
         "value_max": 1.0,
-        "value_min": 0.60000002
+        "value_min": 0.6
       },
       "start_rotation": {
         "curve_max": {

@@ -336,10 +336,9 @@ test_remove_and_restore_unknown_component :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(string(saved2), "mystery"), "restored record must re-save")
 }
 
-// Float text must be canonical regardless of serialization path: typed f32
-// fields print 8 fraction digits, json.Value floats (unknown components,
-// overrides) print 16 — canonicalization trims both to the shortest form with
-// at least one fraction digit, so one file never mixes widths.
+// Float text must be canonical whoever wrote it: a file made by hand or by a
+// generator can hold trailing fraction zeros, and canonicalization trims them
+// to the shortest form with at least one fraction digit.
 @(test)
 test_float_canonical_formatting :: proc(t: ^testing.T) {
 	// Unit-level: the trimmer itself.

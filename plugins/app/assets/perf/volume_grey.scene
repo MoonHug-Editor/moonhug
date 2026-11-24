@@ -200,10 +200,10 @@
         5.0
       ],
       "rotation": [
-        -0.23911799,
+        -0.239118,
         -0.209272,
         0.052422,
-        0.94676399
+        0.946764
       ],
       "scale": [
         1.0,
@@ -900,7 +900,7 @@
       "far_clip": 1000.0,
       "fov": 50.0,
       "graph": "",
-      "near_clip": 0.30000001,
+      "near_clip": 0.3,
       "order": 0,
       "render_layer_mask": 4294967295
     },
@@ -917,7 +917,7 @@
         0.9,
         1.0
       ],
-      "inner_spot_angle": 21.79999924,
+      "inner_spot_angle": 21.8,
       "intensity": 1.4,
       "range": 10.0,
       "shadows": 0,
@@ -959,7 +959,7 @@
     },
     {
       "__type": "9f36ee91-34b6-4636-a360-ee872af0436b",
-      "ambient": 0.34999999,
+      "ambient": 0.35,
       "base": {
         "enabled": true,
         "local_id": 107
@@ -970,7 +970,7 @@
         0.2,
         1.0
       ],
-      "inner_spot_angle": 21.79999924,
+      "inner_spot_angle": 21.8,
       "intensity": 3.0,
       "range": 6.0,
       "shadows": 0,
@@ -979,7 +979,7 @@
     },
     {
       "__type": "9f36ee91-34b6-4636-a360-ee872af0436b",
-      "ambient": 0.34999999,
+      "ambient": 0.35,
       "base": {
         "enabled": true,
         "local_id": 109

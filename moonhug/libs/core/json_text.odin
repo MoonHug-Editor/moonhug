@@ -3,11 +3,10 @@ package core
 // Canonical JSON text shared by every serialize path, so a value writes the
 // same bytes whichever path produced it.
 
-// Canonicalizes float text in marshaled JSON. Core's writer emits floats at
-// fixed width — f32 fields with 8 fraction digits, f64 (every json.Value
-// number) with 16 — so the same value serializes to different text depending
-// on whether it took the typed-struct or the json.Value path, and one scene
-// file mixes both. Trimming trailing fraction zeros converges the two forms.
+// Canonicalizes float text in marshaled JSON. Core's writer emits the
+// shortest text that reads back the same value, which is already canonical.
+// A file written by hand or by a generator can hold `1.50`: trimming
+// trailing fraction zeros converges it with what a save writes.
 // One digit always stays after the '.' so the token reparses as Float, not
 // Integer (override diffs compare parsed values, and Integer(1) != Float(1.0)).
 // Numbers inside strings and exponent forms are untouched. Returns a new
