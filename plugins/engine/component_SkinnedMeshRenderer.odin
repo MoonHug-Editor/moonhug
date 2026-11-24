@@ -25,6 +25,7 @@ import "core:math/linalg"
 import "core:slice"
 import gfx "moonhug:libs/gfx"
 import "moonhug:libs/log"
+import "moonhug:libs/prof"
 
 @(component={menu="Mesh/SkinnedMeshRenderer"})
 @(typ_guid={guid = "5f2e77c4-8a3b-4d19-9e06-1c7b4a2f3d85"})
@@ -172,21 +173,65 @@ _transform_name :: proc(h: Transform_Handle) -> string {
     return t != nil ? t.name : "<gone>"
 }
 
+// A skeleton's joints while their world values are worked out (_skin_pose).
+@(private = "file")
+_Joint_Worlds :: struct {
+    handles: []Transform_Handle,
+    worlds:  []Transform_World,
+    done:    []bool,
+    index:   map[Transform_Handle]int, // a joint's place in `handles`
+}
+
+// Joint `j`'s world value, the same as transform_world gives: from its
+// parent's when the parent is a joint, worked out once and kept.
+@(private = "file")
+_joint_world :: proc(w: ^World, joints: ^_Joint_Worlds, j: int) -> Transform_World {
+    if joints.done[j] do return joints.worlds[j]
+    h := joints.handles[j]
+    world := Transform_World{{}, QUAT_IDENTITY, {1, 1, 1}}
+    if t := pool_get(&w.transforms, Handle(h)); t != nil {
+        parent := Transform_Handle(t.parent.handle)
+        if !pool_valid(&w.transforms, Handle(parent)) {
+            world = {t.position, _quat_safe(t.rotation), t.scale}
+        } else if pj, is_joint := joints.index[parent]; is_joint && pj != j {
+            world = transform_world_under(t, _joint_world(w, joints, pj))
+        } else {
+            world = transform_world_under(t, transform_world(parent))
+        }
+    }
+    joints.worlds[j] = world
+    joints.done[j] = true
+    return world
+}
+
 // Build the palette from the current joint world transforms and, when it
 // changed, queue it for the skinning pass (render_collect_commands runs it).
 @(private = "file")
 _skin_pose :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh) {
+    prof.zone()
     w := ctx_world()
     // skin[j] = joint world * inverse bind. The inverse bind puts a vertex into
     // the joint's local space at bind time, the world matrix puts it back where
     // the joint is now.
+    //
+    // A joint's world value is its parent's and its own step. The parent is a
+    // joint too for all but the skeleton's root, so each joint's value is
+    // worked out once and its children read it: one step a joint, where
+    // asking transform_world for each walked every chain to the scene's root.
     palette := make([]matrix[4, 4]f32, len(mesh.inverse_binds), context.temp_allocator)
+    n := min(len(palette), len(smr.joints))
+    joints := _Joint_Worlds{
+        handles = smr.joints[:n],
+        worlds  = make([]Transform_World, n, context.temp_allocator),
+        done    = make([]bool, n, context.temp_allocator),
+        index   = make(map[Transform_Handle]int, n, context.temp_allocator),
+    }
+    for h, j in joints.handles do joints.index[h] = j
     for j in 0 ..< len(palette) {
         palette[j] = linalg.MATRIX4F32_IDENTITY
-        if j >= len(smr.joints) do continue
-        h := smr.joints[j]
-        if !pool_valid(&w.transforms, Handle(h)) do continue
-        tw := transform_world(h)
+        if j >= n do continue
+        if !pool_valid(&w.transforms, Handle(joints.handles[j])) do continue
+        tw := _joint_world(w, &joints, j)
         palette[j] = trs_matrix(tw.position, tw.rotation, tw.scale) * mesh.inverse_binds[j]
     }
     if slice.equal(palette, smr.palette[:]) do return
@@ -228,6 +273,7 @@ _skin_pose :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh) {
 // palette and queue the same pass again.
 @(render_collector)
 collect_skinned_meshes :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
+    prof.zone()
     if view.quads_only do return
     w := ctx_world()
     it := pool_iterator(skinned_mesh_renderers(w))

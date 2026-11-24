@@ -212,6 +212,7 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 // The mesh renderers: one Draw_Mesh per visible part.
 @(render_collector)
 collect_mesh_renderers :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
+	prof.zone()
 	if view.quads_only do return
 	world := ctx_world()
 	mr_it := pool_iterator(mesh_renderers(world))

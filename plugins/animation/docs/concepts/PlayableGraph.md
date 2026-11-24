@@ -72,6 +72,7 @@ Sampling, blending and writing are separate steps with a pose in between:
 
 - An output resolves each channel's object by its name path from the bound root, once, and caches it.
 - A channel whose path does not resolve writes nothing. The Animation window shows its row in the warning colour.
+- In a running game an output binds again only when the clips it can reach change, a clip is loaded or reloaded, or a channel has no object yet. In the editor it binds every frame, since a clip there can be edited under a preview.
 
 ### Component fields
 

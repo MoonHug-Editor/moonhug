@@ -23,6 +23,7 @@ import "base:runtime"
 import "moonhug:packages/engine"
 import "core:math/linalg"
 import "core:strings"
+import "moonhug:libs/prof"
 
 PLAYABLE_WEIGHT_EPS :: f32(0.0001)
 
@@ -333,6 +334,12 @@ Animation_Binding :: struct {
 	by_path:    map[string]i32,
 	prop_slots: [dynamic]Prop_Slot,
 	by_prop:    map[string]i32,
+	// What the slots were last bound for: the clips reachable from the
+	// output, as one number, and whether every one of them was loaded and
+	// every slot found its target. While both hold in a running game, a frame
+	// binds nothing (_graph_bind).
+	bound_for:  u64,
+	bound_all:  bool,
 }
 
 animation_binding_init :: proc(b: ^Animation_Binding, owner: engine.Transform_Handle) {
@@ -494,6 +501,7 @@ animation_binding_refresh_defaults :: proc(b: ^Animation_Binding) {
 		ptr := _prop_slot_ptr(&s)
 		if ptr == nil {
 			s.resolved = false
+			b.bound_all = false // bound again once it has a target
 			continue
 		}
 		_prop_default_capture(&s, ptr)
@@ -558,11 +566,23 @@ Script_Invocation :: struct {
 // covers only its own subtree. Binding a sibling output's clips would size the
 // pose for channels this target never writes, and resolve their name paths
 // against the wrong root.
+//
+// In a running game the pass over the channels is skipped while the same
+// clips are reachable and the last bind was complete: it looks every channel
+// up by its path, which for a character is hundreds of lookups a frame for
+// an answer that does not change. In the editor it runs every frame, since a
+// clip there can be edited in place under a preview.
 @(private = "file")
 _graph_bind :: proc(g: ^Playable_Graph, root: Playable_Handle, b: ^Animation_Binding) {
 	if len(g.nodes) == 0 do return
 	seen := make([]bool, len(g.nodes), context.temp_allocator)
 	stack := make([dynamic]Playable_Handle, 0, 8, context.temp_allocator)
+	clips := make([dynamic]^AnimationClip, 0, 8, context.temp_allocator)
+	// One number for the reachable clips: which nodes, which clips, and each
+	// clip's channel list as it is in memory, which a reload replaces.
+	bound_for := u64(0xcbf29ce484222325)
+	mix :: proc(h: ^u64, v: u64) { h^ = (h^ ~ v) * 0x100000001b3 }
+	all := true
 	append(&stack, root)
 	for len(stack) > 0 {
 		h := pop(&stack)
@@ -575,7 +595,19 @@ _graph_bind :: proc(g: ^Playable_Graph, root: Playable_Handle, b: ^Animation_Bin
 		c, is_clip := n.kind.(Playable_Clip)
 		if !is_clip do continue
 		clip, ok := animation_clip_load(c.clip)
-		if !ok do continue
+		mix(&bound_for, u64(h))
+		if !ok {
+			// Not loaded yet: bound again once it is.
+			all = false
+			continue
+		}
+		mix(&bound_for, u64(uintptr(raw_data(clip.channels))))
+		mix(&bound_for, u64(len(clip.channels)))
+		append(&clips, clip)
+	}
+	if b.bound_all && b.bound_for == bound_for && engine.game_running() do return
+
+	for clip in clips {
 		for &ch in clip.channels {
 			if animation_channel_is_property(&ch) {
 				// The slot index first: the call may grow prop_slots.
@@ -590,6 +622,11 @@ _graph_bind :: proc(g: ^Playable_Graph, root: Playable_Handle, b: ^Animation_Bin
 			_binding_slot(b, ch.target, ch.path, ~animation_channel_lanes_off(&ch, .Vec3))
 		}
 	}
+	// A slot with no target yet is looked for again on the next bind.
+	for s in b.slots do if !s.resolved do all = false
+	for s in b.prop_slots do if !s.resolved do all = false
+	b.bound_for = bound_for
+	b.bound_all = all
 }
 
 // Pull the pose for the subtree at `root` at the nodes' current local times.
@@ -602,6 +639,7 @@ playable_graph_evaluate :: proc(
 	scripts: ^[dynamic]Script_Invocation = nil,
 	allocator := context.temp_allocator,
 ) -> Pose {
+	prof.zone()
 	_graph_bind(g, root, b)
 	out := _pose_make(b, allocator)
 	if playable_node(g, root) != nil {
@@ -928,6 +966,7 @@ playable_output_tick :: proc(o: ^Playable_Output) {
 // field's current value (_lane_acc_finalize). Slots whose handle died
 // re-resolve here — that covers reparent/delete/reload of the target.
 animation_pose_apply :: proc(b: ^Animation_Binding, pose: Pose) {
+	prof.zone()
 	w := engine.ctx_world()
 	for i in 0 ..< len(pose.trs) {
 		s := &b.slots[i]
@@ -951,6 +990,7 @@ animation_pose_apply :: proc(b: ^Animation_Binding, pose: Pose) {
 		ptr := _prop_slot_ptr(s)
 		if ptr == nil {
 			s.resolved = false
+			b.bound_all = false // bound again once it has a target
 			continue
 		}
 		p := &pose.props[i]

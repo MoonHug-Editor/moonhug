@@ -284,12 +284,17 @@ transform_world :: proc(tH: Transform_Handle) -> Transform_World {
         return {t.position, rot, t.scale}
     }
 
-    p := transform_world(Transform_Handle(t.parent.handle))
+    return transform_world_under(t, transform_world(Transform_Handle(t.parent.handle)))
+}
 
+// A transform's world value from its parent's `p`: one step of the chain
+// transform_world walks. For code that has the parent's value already, a
+// skeleton computing every joint, and so walks each chain once.
+transform_world_under :: proc(t: ^Transform, p: Transform_World) -> Transform_World {
+    rot := _quat_safe(t.rotation)
     world_scale := p.scale * t.scale
     world_rot   := quat_from_native(quat_to_native(p.rotation) * quat_to_native(rot))
     world_pos   := p.position + linalg.quaternion128_mul_vector3(quat_to_native(p.rotation), t.position * p.scale)
-
     return {world_pos, world_rot, world_scale}
 }
 

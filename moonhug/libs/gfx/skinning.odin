@@ -15,6 +15,7 @@ package gfx
 
 import "base:runtime"
 import sdl "vendor:sdl3"
+import "moonhug:libs/prof"
 
 // Per-vertex skin data, parallel to the vertices. u16 joints: Blender writes
 // joint indices as UNSIGNED_BYTE and other exporters as UNSIGNED_SHORT, the
@@ -199,6 +200,7 @@ skinned_mesh_pose :: proc(m: ^Skinned_Mesh, src: Skin_Source, palette: []matrix[
 // poses and before the command buffer that draws them is submitted. Nothing
 // queued costs nothing.
 skinning_flush :: proc() {
+	prof.zone()
 	if len(_skin_pending) == 0 do return
 	defer clear(&_skin_pending)
 

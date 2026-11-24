@@ -6,6 +6,7 @@ package sprites
 // commands; the engine sorts and submits them.
 
 import "moonhug:packages/engine"
+import "moonhug:libs/prof"
 
 // The world-space quad and uvs a SpriteRenderer covers: bl, br, tr, tl. The
 // editor picks, outlines and frames sprites by the commands this feeds. Sprites are transform-oriented (not billboards), sized
@@ -49,7 +50,11 @@ sprite_quad :: proc(sr: ^SpriteRenderer, tw: engine.Transform_World, tex: ^engin
 
 @(render_collector)
 collect_sprites :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render_Command) {
+	prof.zone()
 	w := engine.ctx_world()
+	// No sprite, nothing to draw: the sort keys below cost a pass over every
+	// object of every loaded scene.
+	if sprite_renderers(w).count == 0 do return
 
 	// One tree pass resolves every sprite's sort key (groups folded in).
 	sort_keys := sprite_sort_build_keys(view)
