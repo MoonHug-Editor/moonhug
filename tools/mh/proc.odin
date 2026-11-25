@@ -29,6 +29,21 @@ IGNORE_ATTRS :: "-ignore-unknown-attributes"
 // unneeded, but Asset_GUID is a distinct [16]u8 and Odin has no cast for that.
 VET :: "-vet-unused"
 
+// The imgui bindings link their library and libc++ from several packages, and
+// the macOS linker notes each duplicate. Harmless, and it would hide a real
+// warning, so the note is turned off for the builds that link imgui.
+when ODIN_OS == .Darwin {
+	LINK_QUIET :: "-extra-linker-flags:-Wl,-no_warn_duplicate_libraries"
+} else {
+	LINK_QUIET :: ""
+}
+
+// Appends the flags every editor, test and scenario build passes.
+append_repo_flags :: proc(cmd: ^[dynamic]string) {
+	append(cmd, IGNORE_ATTRS, COLLECTION, VET)
+	if LINK_QUIET != "" do append(cmd, LINK_QUIET)
+}
+
 // run executes a command to completion with this process's stdio, so compiler
 // diagnostics and program output reach the terminal unbuffered and in order.
 // Returns its exit code, or -1 when it could not start.

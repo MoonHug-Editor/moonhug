@@ -8,6 +8,7 @@ package editor_tests
 import "base:runtime"
 import "core:encoding/uuid"
 import "core:strings"
+import "core:slice"
 import "core:testing"
 import "moonhug:editor"
 import "moonhug:editor/command_palette"
@@ -52,8 +53,10 @@ test_asset_search_words_mean_the_same_in_the_project_search_and_the_palette :: p
 		assets.asset_db.guid_to_path[uuid.Identifier(g)] = path
 		assets.asset_db.path_to_guid[path] = uuid.Identifier(g)
 	}
-	subs := []assets.Asset_Sub_Info{{id = 7, name = "Marble", kind = "mat"}}
+	// The table outlives this test, so the list is not this proc's literal.
+	subs := slice.clone([]assets.Asset_Sub_Info{{id = 7, name = "Marble", kind = "mat"}}, context.temp_allocator)
 	assets.asset_db.sub_assets[guids[_HERO]] = subs
+	defer delete_key(&assets.asset_db.sub_assets, guids[_HERO])
 
 	// Hero's root has a component: any registered named type stands for it.
 	comp: string

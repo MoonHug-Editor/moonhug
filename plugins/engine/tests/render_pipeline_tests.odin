@@ -347,6 +347,7 @@ test_render_pipeline_window_optional_reads :: proc(t: ^testing.T) {
 	engine.pipeline_add_slot(&without, engine.MAIN_SLOT)
 	engine.pipeline_add_step(&without, "scene_opaque", engine.MAIN_SLOT)
 	rpv._rp.doc = &without
+	defer rpv._rp.doc = nil // the window's state must not keep this proc's local
 	m = rpv._rp_model(engine.MAIN_SLOT)
 	testing.expect(t, find(m, engine.SSAO_TARGET) == nil, "no ssao row without its writer")
 	testing.expect(t, find(m, engine.SHADOW_TARGET) == nil, "no shadow row without its writer")

@@ -73,7 +73,8 @@ build_editor :: proc(debug: bool, prof := "", opt := "") -> bool {
 	if !shaders_if_available() do return false
 	os.make_directory_all("builds")
 	cmd := make([dynamic]string, context.temp_allocator)
-	append(&cmd, "odin", "build", "moonhug/editor", IGNORE_ATTRS, COLLECTION, VET)
+	append(&cmd, "odin", "build", "moonhug/editor")
+	append_repo_flags(&cmd)
 	if debug do append(&cmd, "-debug")
 	if opt != "" do append(&cmd, fmt.tprintf("-o:%s", opt))
 	if prof != "" && prof != "none" {
@@ -180,7 +181,8 @@ cmd_deps :: proc(args: []string) -> int {
 cmd_test :: proc(args: []string) -> int {
 	if !prebuild() do return 1
 	cmd := make([dynamic]string, context.temp_allocator)
-	append(&cmd, "odin", "test", "moonhug/tests", "-all-packages", IGNORE_ATTRS, COLLECTION, VET, "-define:ODIN_TEST_THREADS=1")
+	append(&cmd, "odin", "test", "moonhug/tests", "-all-packages", "-define:ODIN_TEST_THREADS=1")
+	append_repo_flags(&cmd)
 	if name := flag_value(args, "--name"); name != "" {
 		append(&cmd, fmt.tprintf("-define:ODIN_TEST_NAMES=%s", name))
 	}
@@ -216,7 +218,8 @@ cmd_test_asan :: proc(args: []string) -> int {
 	if !prebuild() do return 1
 	os.make_directory_all("builds")
 	cmd := make([dynamic]string, context.temp_allocator)
-	append(&cmd, "odin", "build", "moonhug/tests", "-build-mode:test", "-all-packages", IGNORE_ATTRS, COLLECTION, VET, "-define:ODIN_TEST_THREADS=1", "-debug", "-sanitize:address", fmt.tprintf("-out:%s", TESTS_ASAN_BIN))
+	append(&cmd, "odin", "build", "moonhug/tests", "-build-mode:test", "-all-packages", "-define:ODIN_TEST_THREADS=1", "-debug", "-sanitize:address", fmt.tprintf("-out:%s", TESTS_ASAN_BIN))
+	append_repo_flags(&cmd)
 	if name := flag_value(args, "--name"); name != "" {
 		append(&cmd, fmt.tprintf("-define:ODIN_TEST_NAMES=%s", name))
 	}
@@ -247,7 +250,8 @@ cmd_test_asan :: proc(args: []string) -> int {
 cmd_scenarios :: proc(args: []string) -> int {
 	if !build_editor(true) do return 1
 	cmd := make([dynamic]string, context.temp_allocator)
-	append(&cmd, "odin", "test", "moonhug/scenarios", IGNORE_ATTRS, COLLECTION, VET, "-define:ODIN_TEST_THREADS=1")
+	append(&cmd, "odin", "test", "moonhug/scenarios", "-define:ODIN_TEST_THREADS=1")
+	append_repo_flags(&cmd)
 	if name := flag_value(args, "--name"); name != "" {
 		if !strings.contains(name, ".") do name = fmt.tprintf("scenarios.%s", name)
 		append(&cmd, fmt.tprintf("-define:ODIN_TEST_NAMES=%s", name))

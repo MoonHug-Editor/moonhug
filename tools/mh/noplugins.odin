@@ -67,7 +67,10 @@ _build_bare :: proc(r: ^No_Plugins_Result, report: proc(stage: No_Plugins_Stage,
 	if report == nil do fmt.println("mh: building the bare shell, the packages folder ignored")
 	if !done(r, report, .Prebuild, prebuild(no_packages = true)) do return false
 	os.make_directory_all("builds")
-	built := step("editor build (no plugins)", "odin", "build", "moonhug/editor", IGNORE_ATTRS, COLLECTION, VET, fmt.tprintf("-out:%s", NOPLUGINS_BIN))
+	cmd := make([dynamic]string, context.temp_allocator)
+	append(&cmd, "odin", "build", "moonhug/editor", fmt.tprintf("-out:%s", NOPLUGINS_BIN))
+	append_repo_flags(&cmd)
+	built := step("editor build (no plugins)", ..cmd[:])
 	if !done(r, report, .Build, built, NOPLUGINS_BIN if built else "") do return false
 	if report == nil do fmt.printfln("mh: the shell builds with no plugins, %s", NOPLUGINS_BIN)
 	ran, detail := _smoke_run()

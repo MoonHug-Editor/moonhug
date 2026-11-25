@@ -79,6 +79,8 @@ test_command_palette_rank :: proc(t: ^testing.T) {
 	command_palette.mode_add("T Rank", "%", _rank_list, _pal_run, id = "t.rank")
 	_rank_labels = {"Assets/Create/Physics", "Assets/Copy Path", "Frame Selected", "Fs Helper", "Refs Table", "Scene/Frame", "Select Off", "Select All", "Window/Scene"}
 	_rank_off = {"Select Off"}
+	// The lists are this proc's literals: the globals let go of them on return.
+	defer _rank_labels, _rank_off = nil, nil
 
 	order := _rank_order("%fs")
 	testing.expect_value(t, len(order), 3)

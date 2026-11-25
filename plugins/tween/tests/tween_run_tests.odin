@@ -313,6 +313,7 @@ test_on_complete_may_start_the_next_run :: proc(t: ^testing.T) {
 	defer tween.authored_destroy(&second)
 
 	_chain_next, _chain_subject, _chain_handle = &second, owner, {}
+	defer _chain_next = nil // `second` is this proc's local
 	h := tween.run(&first, tween.TweenContext{subject = owner})
 	tween.on_complete(h, proc(user: rawptr) {
 		_chain_handle = tween.run(_chain_next, tween.TweenContext{subject = _chain_subject})
