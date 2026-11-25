@@ -24,6 +24,7 @@ package scene_windows
 // with a node that has no parent rect (a canvas root) draws the generic rows.
 
 import "moonhug:editor/session"
+import "base:runtime"
 import "core:fmt"
 import "core:math"
 import im "moonhug:external/odin-imgui"
@@ -77,6 +78,8 @@ property_drawer_RectTransform_inspector :: proc(ctx: ^inspector.Ctx) {
 // of them has none.
 @(private = "file")
 _rt_collect :: proc(active: ^engine.RectTransform) -> bool {
+	// Kept across frames: the default allocator, never the frame's context.
+	if _rt_targets == nil do _rt_targets = make([dynamic]_Rt_Target, runtime.default_allocator())
 	clear(&_rt_targets)
 	frame, ok := engine.rect_frame(active.owner)
 	if !ok do return false

@@ -34,21 +34,22 @@ editor_open_scene :: proc(path: string) {
 _recent_scenes_push :: proc(path: string) {
 	guid, ok := assets.asset_db_get_guid(path)
 	if !ok do return
-	// The list is loaded by json.unmarshal under the default allocator and
-	// saved from here, so every string in it is owned by that one allocator.
-	context.allocator = runtime.default_allocator()
-	guid_str := uuid.to_string(guid)
+	// The list and its strings are owned by one allocator: the one the
+	// settings load gave it, or the default allocator for a list that starts
+	// here. Not the caller's context, which may be a frame's temp memory.
 	list := &editor_settings.recent_scene_guids
+	if list.allocator.procedure == nil do list.allocator = runtime.default_allocator()
+	guid_str := uuid.to_string(guid, list.allocator)
 	for g, i in list {
 		if g == guid_str {
 			ordered_remove(list, i)
-			delete(g)
+			delete(g, list.allocator)
 			break
 		}
 	}
 	inject_at(list, 0, guid_str)
 	for len(list) > RECENT_SCENES_MAX {
-		delete(pop(list))
+		delete(pop(list), list.allocator)
 	}
 }
 

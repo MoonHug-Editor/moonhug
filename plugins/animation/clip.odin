@@ -224,7 +224,8 @@ animation_package_init :: proc() {
 }
 
 animation_clip_cache_init :: proc() {
-	animation_clip_cache = make(map[engine.PPtr]AnimationClip)
+	// Kept for the whole run, as its entries: the default allocator.
+	animation_clip_cache = make(map[engine.PPtr]AnimationClip, runtime.default_allocator())
 	_animation_clip_owned = make(map[engine.PPtr]bool, runtime.default_allocator())
 	_animation_clip_cache_ready = true
 }

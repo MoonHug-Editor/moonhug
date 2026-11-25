@@ -198,7 +198,9 @@ project_settings_window_draw :: proc(w: ^wnd.Window) {
 			strings.clone_to_cstring(tab.name, context.temp_allocator),
 			selected != nil && selected.name == tab.name,
 		) {
-			editor_settings.project_settings_tab = tab.name
+			// Owned: the loaded name and every later pick are the settings' own.
+			delete(editor_settings.project_settings_tab)
+			editor_settings.project_settings_tab = strings.clone(tab.name)
 			selected = &tab
 		}
 		widgets.tooltip("")

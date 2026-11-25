@@ -169,6 +169,14 @@ generate :: proc(w: ^db.World) -> bool {
 		fmt.sbprintf(&b, "\t__core.project_settings_load(%q, &%s)\n", e.tab_name, q)
 		fmt.sbprintf(&b, "\tsettings_add_tab(%q, &%s, typeid_of(type_of(%s)), origin = %q)\n", e.tab_name, q, q, e.origin)
 	}
+	strings.write_string(&b, "}\n\n")
+	// The debug editor's exit: the memory the settings own, freed so the
+	// leak report shows only real leaks (editor/leak_report.odin).
+	strings.write_string(&b, "_free_project_settings :: proc(owned: proc(block: rawptr) -> bool) {\n")
+	for e in entries {
+		q := _qualified_name(e)
+		fmt.sbprintf(&b, "\t__core.value_free(&%s, typeid_of(type_of(%s)), owned)\n", q, q)
+	}
 	strings.write_string(&b, "}\n")
 
 	db.emit(w, "moonhug/editor/project_settings_generated.odin", strings.to_string(b))

@@ -63,6 +63,9 @@ _run_configs: [dynamic]Run_Config
 // Editor cwd is normalized to moonhug/, so packages sit at "packages" and
 // config source paths get the "moonhug/" prefix back for the repo-root spawn.
 _scan_run_configs :: proc() {
+    // A list kept for the whole run: the default allocator, the list and its
+    // strings alike, whatever the caller's context is.
+    context.allocator = runtime.default_allocator()
     for &rc in _run_configs {
         delete(rc.id)
         delete(rc.label)

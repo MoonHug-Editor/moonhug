@@ -265,13 +265,12 @@ overlays_apply_settings :: proc() {
 	}
 }
 
-// Snapshot overlay placement into editor_settings (temp-allocated, mirroring
-// open_scene_guids in save_editor_settings).
-overlays_capture_settings :: proc() {
-	delete(editor_settings.scene_overlays)
-	editor_settings.scene_overlays = make([dynamic]Overlay_Setting, context.temp_allocator)
+// Snapshot overlay placement into the settings a save writes (temp memory,
+// as the other lists save_editor_settings rebuilds).
+overlays_capture_settings :: proc(out: ^EditorSettings) {
+	out.scene_overlays = make([dynamic]Overlay_Setting, context.temp_allocator)
 	for ov in _overlays {
-		append(&editor_settings.scene_overlays, Overlay_Setting{
+		append(&out.scene_overlays, Overlay_Setting{
 			id     = string(ov.id),
 			anchor = u8(ov.anchor),
 			x      = ov.float_pos.x,

@@ -77,7 +77,10 @@ build_editor :: proc(debug: bool, prof := "", opt := "") -> bool {
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, "odin", "build", "moonhug/editor")
 	append_repo_flags(&cmd)
-	if debug do append(&cmd, "-debug")
+	// The debug editor's leak report walks each allocation's stack to the
+	// repo's own line, and json's nested readers are deeper than the default
+	// 16 frames (editor/leak_report.odin).
+	if debug do append(&cmd, "-debug", "-define:ODIN_TRACE_SIZE=64")
 	if opt != "" do append(&cmd, fmt.tprintf("-o:%s", opt))
 	if prof != "" && prof != "none" {
 		if !tracy_client() do return false

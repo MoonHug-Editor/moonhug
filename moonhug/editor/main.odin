@@ -37,19 +37,10 @@ import "moonhug:editor/session"
 
 main :: proc() {
     when ODIN_DEBUG {
-        track: mem.Tracking_Allocator
-        mem.tracking_allocator_init(&track, context.allocator)
-        context.allocator = mem.tracking_allocator(&track)
-
-        defer {
-            for _, entry in track.allocation_map {
-                fmt.eprintf("leak %v bytes @ %v\n", entry.size, entry.location)
-            }
-            for entry in track.bad_free_array {
-                fmt.eprintf("bad free @ %v\n", entry.location)
-            }
-            mem.tracking_allocator_destroy(&track)
-        }
+        // Every allocation of the run is tracked, and the exit report lists
+        // what was not freed (leak_report.odin).
+        context.allocator = leak_tracking_begin(context.allocator)
+        defer leak_tracking_end()
     }
 
     // Anchor at moonhug/ before anything reads a relative path. Detection is

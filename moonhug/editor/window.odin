@@ -172,14 +172,6 @@ save_editor_settings :: proc() {
     editor_settings.theme  = menu.active_theme
 
     editor_settings.has_window_state       = true
-
-    // Plugin windows: imgui.ini keeps each instance's dock and size, not
-    // whether it existed: the instance keys are what reopen them.
-    delete(editor_settings.open_window_ids)
-    editor_settings.open_window_ids = make([dynamic]string, context.temp_allocator)
-    for key in wnd.open_keys() do append(&editor_settings.open_window_ids, key)
-
-    overlays_capture_settings()
     editor_settings.grid = grid_settings
     editor_settings.snap = snap_settings
     editor_settings.scene_camera = scene_camera_prefs
@@ -188,30 +180,38 @@ save_editor_settings :: proc() {
     editor_settings.scene_mode = _sv_plain.view_mode
     editor_settings.scene_gizmos_off = !gizmos.scene_gizmos
     editor_settings.gizmo_icon_px = handles.icon_px
-    delete(editor_settings.gizmo_hidden_icons)
-    delete(editor_settings.gizmo_hidden_gizmos)
-    editor_settings.gizmo_hidden_icons = gizmos.gizmo_types_hiding(.Icon)
-    editor_settings.gizmo_hidden_gizmos = gizmos.gizmo_types_hiding(.Gizmo)
+
+    // The lists below are rebuilt from the live state for each write, on
+    // temp memory, in a copy that exists only for the write. editor_settings
+    // keeps what was loaded at startup, which only startup reads, and owns
+    // it until exit.
+    out := editor_settings
+
+    // Plugin windows: imgui.ini keeps each instance's dock and size, not
+    // whether it existed: the instance keys are what reopen them.
+    out.open_window_ids = make([dynamic]string, context.temp_allocator)
+    for key in wnd.open_keys() do append(&out.open_window_ids, key)
+
+    overlays_capture_settings(&out)
+    out.gizmo_hidden_icons = gizmos.gizmo_types_hiding(.Icon)
+    out.gizmo_hidden_gizmos = gizmos.gizmo_types_hiding(.Gizmo)
 
     // The selection and the inspector locks, named so they resolve next run.
-    selection_persist_capture()
+    selection_persist_capture(&out)
 
-    // The palette's own copy, temp: the loaded list stays unfreed until exit.
-    editor_settings.command_palette_recent = command_palette.recent_saved()
+    out.command_palette_recent = command_palette.recent_saved()
 
-    // The last values of every command with arguments. Temp, as above.
-    editor_settings.command_args = make(map[string]string, context.temp_allocator)
+    // The last values of every command with arguments.
+    out.command_args = make(map[string]string, context.temp_allocator)
     for c in keymap.commands() {
-        if args := keymap.command_args_json(c); args != nil do editor_settings.command_args[c.id] = string(args)
+        if args := keymap.command_args_json(c); args != nil do out.command_args[c.id] = string(args)
     }
 
-    delete(editor_settings.open_scene_guids)
-    editor_settings.open_scene_guids = make([dynamic]string, context.temp_allocator)
-
+    out.open_scene_guids = make([dynamic]string, context.temp_allocator)
     for path in session.document_open_paths() {
         if guid, ok := assets.asset_db_get_guid(path); ok {
             guid_str := uuid.to_string(guid, context.temp_allocator)
-            append(&editor_settings.open_scene_guids, guid_str)
+            append(&out.open_scene_guids, guid_str)
         }
     }
 
@@ -224,7 +224,7 @@ save_editor_settings :: proc() {
         // the file reads the same whenever it is written.
         sort_maps_by_key = true,
     }
-    if data, err := json.marshal(editor_settings, opts, allocator = context.temp_allocator); err == nil {
+    if data, err := json.marshal(out, opts, allocator = context.temp_allocator); err == nil {
         text := core.json_canonicalize_floats(data, context.temp_allocator)
         // Written only when it differs from what the file holds.
         if string(text) == string(_settings_written) do return

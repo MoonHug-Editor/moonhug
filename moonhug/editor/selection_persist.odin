@@ -87,9 +87,11 @@ window_states_restore :: proc() {
 	}
 }
 
-// Fills the editor settings' selection and lock fields from the editor as it
-// is now. Temp-allocated, as save_editor_settings writes the file at once.
-selection_persist_capture :: proc() {
+// Fills the selection and lock fields of `target` (the copy
+// save_editor_settings writes, editor_settings for nil) from the editor as it is now. Temp-allocated, as the save writes the
+// file at once.
+selection_persist_capture :: proc(target: ^EditorSettings = nil) {
+	out := target if target != nil else &editor_settings
 	// Quit before the restore ran (scenes still loading): what was saved has
 	// not been seen yet, so it stays.
 	if !_persist_restored do return
@@ -102,7 +104,7 @@ selection_persist_capture :: proc() {
 		assets      = _persist_assets_of_refs(state.proj),
 		kept_assets = _persist_assets_of_refs(state.kept_proj),
 	}
-	editor_settings.selection = sel
+	out.selection = sel
 
 	windows := make([dynamic]Persisted_Window)
 	for l in window_locks_held() {
@@ -131,7 +133,7 @@ selection_persist_capture :: proc() {
 		if err != nil do continue
 		_persist_window(&windows, strings.clone(key)).state = state
 	}
-	editor_settings.windows = windows
+	out.windows = windows
 }
 
 @(private = "file")

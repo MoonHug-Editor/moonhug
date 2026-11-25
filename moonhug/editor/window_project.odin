@@ -176,7 +176,11 @@ _project_window_free :: proc(pv: ^Project_Window) {
     delete(pv.ping_path)
     delete(pv.range_pending)
     delete(pv.search_for)
-    for h in pv.search_hits do delete(h.path)
+    for h in pv.search_hits {
+        delete(h.path)
+        delete(h.sub_name)
+        delete(h.sub_kind)
+    }
     delete(pv.search_hits)
     delete(pv.filter_files)
     delete(pv.filter_dirs)

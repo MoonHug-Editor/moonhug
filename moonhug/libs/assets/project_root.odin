@@ -1,5 +1,6 @@
 package assets
 
+import "base:runtime"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
@@ -82,7 +83,8 @@ project_root_find :: proc(start: string, allocator := context.temp_allocator) ->
 project_chdir_root :: proc() -> string {
     for arg in os.args[1:] {
         if !strings.has_prefix(arg, "--project=") do continue
-        dir := strings.clone(arg[len("--project="):])
+        // The run's project folder, for the whole run: the default allocator.
+        dir := strings.clone(arg[len("--project="):], runtime.default_allocator())
         if serr := os.set_working_directory(dir); serr != nil {
             log.errorf("cannot enter the project directory %q: %v", dir, serr)
             panic("cannot enter the project directory named by --project")

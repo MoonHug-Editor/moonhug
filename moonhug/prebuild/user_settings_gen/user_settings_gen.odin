@@ -171,6 +171,15 @@ generate :: proc(w: ^db.World) -> bool {
 			fmt.sbprintf(&b, "\t__core.%s_settings_save(%q, &%s, typeid_of(type_of(%s)))\n", level, e.tab_name, q, q)
 		}
 		strings.write_string(&b, "}\n\n")
+		// The debug editor's exit: the memory the settings own, freed so the
+		// leak report shows only real leaks (editor/leak_report.odin).
+		fmt.sbprintf(&b, "_free_%s_settings :: proc(owned: proc(block: rawptr) -> bool) {{\n", level)
+		for e in entries {
+			if e.system != (level == "system") do continue
+			q := _qualified_name(e)
+			fmt.sbprintf(&b, "\t__core.value_free(&%s, typeid_of(type_of(%s)), owned)\n", q, q)
+		}
+		strings.write_string(&b, "}\n\n")
 	}
 
 	db.emit(w, "moonhug/editor/user_settings_generated.odin", strings.to_string(b))
