@@ -60,6 +60,7 @@ Options:
 - `make test NAME=pkg.test_name` runs a single test, and `make test-asan NAME=...` the same under AddressSanitizer.
 - `make scenarios NAME=<test>` runs one scenario, and `SHOW=1` puts the editor's window on screen.
 - `make build DEBUG=1` builds the editor with `-debug`, and `make build NOPLUGINS=1` proves the shell builds with no plugin installed.
+- A debug editor tracks every allocation and prints what was not freed when it quits, one line per place (`leak 3 x 120 B  moonhug/editor/window.odin:97 ...`), nothing when all is freed. A place inside a library (a line of `core:encoding/json`) names that library's line: start the editor with `MH_LEAK_TRACE=1` and the report names the repo's line behind it, from a stack trace kept per allocation. That makes the editor slower while it runs, opening a scene several times over.
 - `make play PKG=<pkg>:<config> FLAGS=--dev|--run-only|--build-only` are the Play button's modifier keys Alt, Shift and Alt+Shift.
 - `OPT=speed` on `make build`, `make run`, `make debug` and `make play` compiles with Odin's `-o:speed`. Code runs several times faster (200 animated characters went from 28 ms to 6.6 ms a frame), and the editor build takes about a minute and a half instead of seconds. `OPT` takes Odin's levels: `none`, `minimal`, `size`, `speed`, `aggressive`. The editor's Relaunch rebuilds without it.
 - `make setup FORCE=1` rebuilds vendored libraries that are already built.
