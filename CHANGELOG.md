@@ -1,3 +1,18 @@
+## [0.173.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.172.0...v0.173.0) (2026-11-25)
+
+### Features
+
+* OPT=speed builds the editor or a game optimized, and fix build warnings ([ffb0100](https://github.com/MoonHug-Editor/moonhug/commit/ffb01000aaadfb616d3c25f68e28c56081f2bcf7))
+* raycasters are declared with @(pointer_raycaster), and the physics2d sample's balloons take the pointer ([5dcddab](https://github.com/MoonHug-Editor/moonhug/commit/5dcddabbd73f0d49480cebfc6c3e2d3d344bbd04))
+* the compiler reports unknown attributes, from the prebuild's list of declared ones ([449b1de](https://github.com/MoonHug-Editor/moonhug/commit/449b1de6ab39d8def547042325c925792517603f))
+* the physics2d sample is a machine a marble goes around ([1c0a0d2](https://github.com/MoonHug-Editor/moonhug/commit/1c0a0d26377796fe2e476d80fe9b94bd158d7482))
+
+### Bug Fixes
+
+* make no longer rebuilds its build tool on every command, and a build prints how long it took ([02a60a3](https://github.com/MoonHug-Editor/moonhug/commit/02a60a3738431e323ff6cd9c89922e637ae99f28))
+* tests and linker warnings ([409a425](https://github.com/MoonHug-Editor/moonhug/commit/409a4258167dccbd1915bc310017901a0c8bc5a4))
+* the debug editor exits with no leaks, and its report names one repo line per leak ([41378ed](https://github.com/MoonHug-Editor/moonhug/commit/41378edc99f451d2f57437b40db525c588034612))
+
 ## [0.172.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.171.0...v0.172.0) (2026-11-24)
 
 ### Features
