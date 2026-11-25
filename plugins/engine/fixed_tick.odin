@@ -167,6 +167,7 @@ Late_Update_Proc :: proc(dt: f32)
 // @(late_update) for every enabled instance of one component type:
 // `component = T`, `proc(dt: f32, c: ^T)` named `comp_late_update_<T>`, as for
 // @(comp_update).
+@(reserved)
 @(extension_point={attribute="comp_late_update", target="proc", fields="order component"})
 Comp_Late_Update_Proc :: proc(dt: f32, c: rawptr)
 

@@ -108,6 +108,7 @@ window_menu_add_dynamic :: proc(window, label: string, draw: proc(window: sessio
 // sort by `order`. The proc draws the widget with imgui for the window it is
 // given, and should keep a fixed width. The bar belongs to the dock node, so
 // the window itself needs no code.
+@(reserved)
 @(extension_point={attribute="window_tab_bar", target="proc", fields="window order"})
 window_tab_bar_add_item :: proc(window: string, draw: proc(window: session.Window_Ref), order := 0, origin := "") {
 	context.allocator = runtime.default_allocator()

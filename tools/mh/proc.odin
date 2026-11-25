@@ -18,6 +18,19 @@ EXE :: ".exe" when ODIN_OS == .Windows else ""
 COLLECTION :: "-collection:moonhug=moonhug"
 IGNORE_ATTRS :: "-ignore-unknown-attributes"
 
+// The prebuild's list of every declared attribute (attributes_gen), the file
+// runconfig.attributes_flag reads too.
+CUSTOM_ATTRIBUTES_FILE :: "builds/custom_attributes.txt"
+
+// -custom-attribute with the prebuild's list: the compiler accepts the
+// engine's attributes and reports any other unknown one. Before the first
+// prebuild there is no list, and every unknown attribute is ignored.
+attributes_flag :: proc() -> string {
+	data, err := os.read_entire_file(CUSTOM_ATTRIBUTES_FILE, context.temp_allocator)
+	if err != nil || len(data) == 0 do return IGNORE_ATTRS
+	return fmt.tprintf("-custom-attribute:%s", string(data))
+}
+
 // Unused imports and variables are compile errors here. They accumulate
 // silently otherwise — a moved call leaves its import behind and nothing ever
 // says so.
@@ -40,7 +53,7 @@ when ODIN_OS == .Darwin {
 
 // Appends the flags every editor, test and scenario build passes.
 append_repo_flags :: proc(cmd: ^[dynamic]string) {
-	append(cmd, IGNORE_ATTRS, COLLECTION, VET)
+	append(cmd, attributes_flag(), COLLECTION, VET)
 	if LINK_QUIET != "" do append(cmd, LINK_QUIET)
 }
 

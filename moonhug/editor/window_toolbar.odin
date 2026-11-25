@@ -644,13 +644,13 @@ run_app_play :: proc(id: string, source: string, with_current_scene := false, mo
 
     // Config binaries sit in builds/ beside the game binaries they produce.
     // Always rebuilt, so there is no staleness to invalidate and nothing to
-    // clean up. -file compiles the single config source, -ignore-unknown-
-    // attributes lets a config import engine or editor packages.
+    // clean up. -file compiles the single config source, and the attributes
+    // flag lets a config import engine or editor packages.
     safe_id, _ := strings.replace_all(id, "/", "_", context.temp_allocator)
     config_exe := fmt.tprintf("builds/run_config_%s%s", safe_id, runconfig.EXE_SUFFIX)
     build_parts := []string{
         "odin", "build", source, "-file",
-        "-ignore-unknown-attributes", "-collection:moonhug=moonhug",
+        runconfig.attributes_flag(repo_root), "-collection:moonhug=moonhug",
         fmt.tprintf("-out:%s", config_exe),
     }
 

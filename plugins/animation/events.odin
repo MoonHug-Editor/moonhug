@@ -40,6 +40,7 @@ Animation_Event_Proc :: proc(c: rawptr, ev: Animation_Event)
 //
 // The package's generated animation_events_generated.odin (animation/gen)
 // registers it with animation_event_proc_register.
+@(reserved)
 @(extension_point={attribute="comp_on_animation_event", target="proc", fields="component"})
 animation_event_procs: [engine.TypeKey]Animation_Event_Proc
 

@@ -26,6 +26,7 @@ component_on_collision_enter_procs: [TypeKey]Physics_Hook_Proc
 
 // Runs a proc on a component when a collider of its object stops touching
 // another collider: `comp_on_collision_exit_<T>`, as comp_on_collision_enter.
+@(reserved)
 @(extension_point={attribute="comp_on_collision_exit", target="proc", fields="component"})
 component_on_collision_exit_procs: [TypeKey]Physics_Hook_Proc
 
@@ -37,6 +38,7 @@ component_on_trigger_enter_procs: [TypeKey]Physics_Hook_Proc
 
 // Runs a proc on a component when a trigger overlap of its object ends:
 // `comp_on_trigger_exit_<T>`, as comp_on_collision_enter.
+@(reserved)
 @(extension_point={attribute="comp_on_trigger_exit", target="proc", fields="component"})
 component_on_trigger_exit_procs: [TypeKey]Physics_Hook_Proc
 

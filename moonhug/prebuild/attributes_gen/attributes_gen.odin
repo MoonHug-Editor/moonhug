@@ -9,9 +9,11 @@ package attributes_gen
 // attribute, and its package is the package the attribute extends.
 //
 //   lint     - every attribute used in scanned code is Odin's or declared, and
-//              uses only the fields its declaration lists. The build passes
-//              -ignore-unknown-attributes, so without this a misspelled
-//              @(menu_iten) or `ordr=` compiles and silently does nothing.
+//              uses only the fields its declaration lists, with a "did you
+//              mean" for a misspelled @(menu_iten) or `ordr=`.
+//   list     - builds/custom_attributes.txt, the declared names the builds
+//              pass to the compiler as -custom-attribute, so it reports any
+//              other unknown attribute in code the lint does not scan.
 //   generate - docs/reference/attributes/: one page per declared attribute
 //              (explanation, extended package, fields, then every declaration
 //              using it), and an index grouped by extended package. Also the
@@ -140,6 +142,8 @@ generate :: proc(w: ^db.World) -> bool {
 		fmt.eprintln("prebuild: attributes are declared by @(extension_point) on the declaration that receives them, see docs/general/Documentation.md")
 		return false
 	}
+
+	_write_custom_attributes(declared)
 
 	// Pass 3: the pages.
 	list := make([dynamic]^Declaration, context.temp_allocator)
@@ -358,4 +362,25 @@ _check_field :: proc(d: ^Declaration, key: string, name: string, where_: string,
 @(private = "file")
 _doc_summary :: proc(decl: ^db.DeclInfo) -> string {
 	return gen_facts.first_sentence(gen_facts.doc_markdown(decl))
+}
+
+// The file the builds read to name every attribute the compiler should accept:
+// the declared ones and the two the generators read. Odin's own are known to it.
+// With the list the compiler reports any other unknown attribute, in code the
+// prebuild never scans too (run configs, tools). One line, names joined by
+// commas, the value of -custom-attribute. Written only when it changes.
+CUSTOM_ATTRIBUTES_FILE :: "builds/custom_attributes.txt"
+
+@(private = "file")
+_write_custom_attributes :: proc(declared: map[string]^Declaration) {
+	names := make([dynamic]string, context.temp_allocator)
+	append(&names, "extension_point", "reserved")
+	for name in declared do append(&names, name)
+	slice.sort(names[:])
+	line := strings.join(names[:], ",", context.temp_allocator)
+	if old, err := os.read_entire_file(CUSTOM_ATTRIBUTES_FILE, context.temp_allocator); err == nil && string(old) == line do return
+	os.make_directory_all("builds")
+	if err := os.write_entire_file(CUSTOM_ATTRIBUTES_FILE, transmute([]u8)line); err != nil {
+		fmt.eprintfln("prebuild: cannot write %s: %v", CUSTOM_ATTRIBUTES_FILE, err)
+	}
 }

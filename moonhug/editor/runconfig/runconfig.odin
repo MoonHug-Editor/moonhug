@@ -263,7 +263,7 @@ build :: proc(cfg: Config) -> (exe: string, ok: bool) {
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, "odin", "build", cfg.package_path)
 	// Every package in this repo needs these two, so no config repeats them.
-	append(&cmd, "-ignore-unknown-attributes", "-collection:moonhug=moonhug")
+	append(&cmd, attributes_flag(), "-collection:moonhug=moonhug")
 	append(&cmd, ..cfg.flags)
 	if opt := opt_level(); opt != "" do append(&cmd, fmt.tprintf("-o:%s", opt))
 	append(&cmd, fmt.tprintf("-out:%s", rel))
@@ -310,4 +310,16 @@ spawn :: proc(command: []string) -> int {
 		return -1
 	}
 	return state.exit_code
+}
+
+// -custom-attribute with the prebuild's list of declared attributes
+// (builds/custom_attributes.txt under `repo_root`, "" for the working
+// directory): the compiler accepts the engine's attributes and reports any
+// other unknown one. With no list yet, every unknown attribute is ignored.
+attributes_flag :: proc(repo_root := "") -> string {
+	path := "builds/custom_attributes.txt"
+	if repo_root != "" do path, _ = filepath.join({repo_root, path}, context.temp_allocator)
+	data, err := os.read_entire_file(path, context.temp_allocator)
+	if err != nil || len(data) == 0 do return "-ignore-unknown-attributes"
+	return fmt.tprintf("-custom-attribute:%s", string(data))
 }
