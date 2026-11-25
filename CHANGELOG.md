@@ -1,3 +1,9 @@
+## [0.173.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.173.0...v0.173.1) (2026-11-25)
+
+### Bug Fixes
+
+* the debug editor exits with no leaks and reports each one by place, stack traces only with MH_LEAK_TRACE=1 ([a602d74](https://github.com/MoonHug-Editor/moonhug/commit/a602d74f2b19da8254da5f7ef02821d6b8f86e55))
+
 ## [0.173.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.172.0...v0.173.0) (2026-11-25)
 
 ### Features
