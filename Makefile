@@ -22,13 +22,17 @@ MH_BIN := builds/tools/mh
 MH := $(MH_BIN)
 ODIN_STAMP := builds/tools/.odin-root
 
-$(ODIN_STAMP): FORCE
-	@mkdir -p builds/tools && odin root | cmp -s - $@ || odin root > $@
+# Checked when make reads this file, not as a target: make 3.81, the one macOS
+# ships, takes a target with a FORCE prerequisite as changed even when its
+# file was not rewritten, which rebuilt mh on every make.
+ODIN_ROOT := $(shell odin root)
+ifneq ($(ODIN_ROOT),$(shell cat $(ODIN_STAMP) 2>/dev/null))
+$(shell mkdir -p builds/tools && odin root > $(ODIN_STAMP))
+endif
 
 $(MH_BIN): $(wildcard tools/mh/*.odin) $(ODIN_STAMP)
 	@mkdir -p builds/tools && odin build tools/mh -out:$@
 
-FORCE:
 
 .PHONY: help setup run debug build check-noplugins play test scenarios prebuild deps shaders docs mcp clean distclean
 

@@ -69,8 +69,10 @@ opt_valid :: proc(opt: string) -> bool {
 // shows that in the App Switcher and menu bar instead of the package name.
 build_editor :: proc(debug: bool, prof := "", opt := "") -> bool {
 	if !opt_valid(opt) do return false
+	start := time.tick_now()
 	if !prebuild() do return false
 	if !shaders_if_available() do return false
+	generated := time.tick_since(start)
 	os.make_directory_all("builds")
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, "odin", "build", "moonhug/editor")
@@ -82,7 +84,10 @@ build_editor :: proc(debug: bool, prof := "", opt := "") -> bool {
 		append(&cmd, fmt.tprintf("-define:PROF=%s", prof))
 	}
 	append(&cmd, fmt.tprintf("-out:%s", EDITOR_BIN))
-	return step("editor build", ..cmd[:])
+	if !step("editor build", ..cmd[:]) do return false
+	total := time.tick_since(start)
+	fmt.printfln("mh: built %s in %.1f s (prebuild and shaders %.1f s, compile %.1f s)", EDITOR_BIN, time.duration_seconds(total), time.duration_seconds(generated), time.duration_seconds(total - generated))
+	return true
 }
 
 // The Tracy client library moonhug/libs/prof links in a profiling build
@@ -154,7 +159,6 @@ launch_editor :: proc(mode: string, prof := "", opt := "") -> int {
 cmd_build :: proc(args: []string) -> int {
 	if has_flag(args, "--no-plugins") do return 0 if build_without_plugins() else 1
 	if !build_editor(has_flag(args, "--debug"), flag_value(args, "--prof"), flag_value(args, "--opt")) do return 1
-	fmt.printfln("mh: built %s", EDITOR_BIN)
 	return 0
 }
 
