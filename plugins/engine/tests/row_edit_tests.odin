@@ -31,7 +31,8 @@ _row_restore_drawers :: proc() {
 // with whether an item was active on the frame before.
 @(private = "file")
 _row_draw_replay :: proc(ptr: rawptr, tid: typeid, offset: uintptr, frames: []Frame) {
-	ws: inspector.Widget_State
+	// The inspector keeps the pointer: a file global, not a local.
+	@(static) ws: inspector.Widget_State
 	inspector.field_edit_set_widget_state(&ws)
 	defer inspector.field_edit_set_widget_state(nil)
 	prev_active := false

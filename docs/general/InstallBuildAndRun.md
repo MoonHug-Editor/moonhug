@@ -61,6 +61,7 @@ Options:
 - `make scenarios NAME=<test>` runs one scenario, and `SHOW=1` puts the editor's window on screen.
 - `make build DEBUG=1` builds the editor with `-debug`, and `make build NOPLUGINS=1` proves the shell builds with no plugin installed.
 - `make play PKG=<pkg>:<config> FLAGS=--dev|--run-only|--build-only` are the Play button's modifier keys Alt, Shift and Alt+Shift.
+- `OPT=speed` on `make build`, `make run`, `make debug` and `make play` compiles with Odin's `-o:speed`. Code runs several times faster (200 animated characters went from 28 ms to 6.6 ms a frame), and the editor build takes about a minute and a half instead of seconds. `OPT` takes Odin's levels: `none`, `minimal`, `size`, `speed`, `aggressive`. The editor's Relaunch rebuilds without it.
 - `make setup FORCE=1` rebuilds vendored libraries that are already built.
 - `make deps NAME=<plugin>` gathers one plugin's dependencies.
 - `make docs OPEN=1` serves the site with search and opens the browser.

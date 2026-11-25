@@ -4,6 +4,7 @@ import "moonhug:packages/engine"
 import sim "moonhug:editor/simulate"
 import "core:os"
 
+import "core:slice"
 import "core:testing"
 
 // The Simulate state machine (docs/core/Simulate.md), reachable because the logic lives
@@ -51,7 +52,8 @@ _sim_install :: proc(hosts: []sim.Host) {
 	_sim_ticks = 0
 	_sim_fixed_ticks = 0
 	_phase_n = 0
-	sim.install(sim.Hooks{phase = _record_phase}, hosts)
+	// sim keeps the table: a copy, not the caller's literal.
+	sim.install(sim.Hooks{phase = _record_phase}, slice.clone(hosts, context.temp_allocator))
 }
 
 // Drops the phase recorder before shutdown, whose stop() would record

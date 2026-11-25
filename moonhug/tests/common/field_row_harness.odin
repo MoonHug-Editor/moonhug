@@ -50,7 +50,6 @@ Row_Harness :: struct {
 	field_tid: typeid,
 	offset:    uintptr,
 	label:     string,
-	ws:        inspector.Widget_State,
 }
 
 // The drawer the harness hands to the row. It performs this frame's write, so
@@ -58,6 +57,9 @@ Row_Harness :: struct {
 // change it — inside the row, between the before-snapshot and the commit checks.
 @(private)
 _harness_pending_write: proc(field_ptr: rawptr)
+
+@(private)
+_harness_ws: inspector.Widget_State
 
 @(private)
 _harness_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
@@ -70,11 +72,13 @@ _harness_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 // Returns how many frames reported the edit as finished, which is the count of
 // undo steps the sequence should have produced.
 row_replay :: proc(h: ^Row_Harness, frames: []Frame) -> (finish_count: int) {
-	inspector.field_edit_set_widget_state(&h.ws)
+	// The installed state is the harness package's own, not the caller's:
+	// the inspector keeps the pointer.
+	inspector.field_edit_set_widget_state(&_harness_ws)
 	defer inspector.field_edit_set_widget_state(nil)
 
 	for f in frames {
-		h.ws = inspector.Widget_State{
+		_harness_ws = inspector.Widget_State{
 			activated              = f.activated,
 			active                 = f.active,
 			deactivated_after_edit = f.deactivated,

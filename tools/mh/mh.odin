@@ -35,11 +35,11 @@ Command :: struct {
 
 COMMANDS := []Command {
 	{"setup", "build the vendored Odin libraries this repo links against", cmd_setup, false},
-	{"run", "build and launch the editor", cmd_run, true},
+	{"run", "build and launch the editor (--opt=speed builds it optimized)", cmd_run, true},
 	{"debug", "build with -debug and launch the editor", cmd_debug, true},
-	{"build", "build the editor without launching it (--no-plugins proves the shell builds alone)", cmd_build, true},
+	{"build", "build the editor without launching it (--opt=speed builds it optimized, --no-plugins proves the shell builds alone)", cmd_build, true},
 	{"check-noplugins", "check that the editor shell builds with every plugin set aside: one row per stage, PASS or FAIL with the first errors", cmd_check_noplugins, true},
-	{"play", "run a package's run configuration: mh play [pkg[:config]] [--dev|--run-only|--build-only]", cmd_play, true},
+	{"play", "run a package's run configuration: mh play [pkg[:config]] [--dev|--run-only|--build-only] [--opt=speed]", cmd_play, true},
 	{"test", "run the test suite (--name=pkg.test runs one)", cmd_test, true},
 	{"test-asan", "run the test suite under AddressSanitizer, four times slower (--name=pkg.test runs one)", cmd_test_asan, true},
 	{"scenarios", "run the editor scenarios: tests that drive the real editor (--name=<test> runs one, --show shows its window)", cmd_scenarios, true},

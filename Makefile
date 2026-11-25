@@ -34,11 +34,11 @@ FORCE:
 
 help:      $(MH_BIN) ; @$(MH) help
 setup:     $(MH_BIN) ; @$(MH) setup $(if $(FORCE),--force,)
-run:       $(MH_BIN) ; @$(MH) run $(if $(PROF),--prof=$(PROF),)
-debug:     $(MH_BIN) ; @$(MH) debug $(if $(PROF),--prof=$(PROF),)
-build:     $(MH_BIN) ; @$(MH) build $(if $(DEBUG),--debug,) $(if $(NOPLUGINS),--no-plugins,) $(if $(PROF),--prof=$(PROF),)
+run:       $(MH_BIN) ; @$(MH) run $(if $(PROF),--prof=$(PROF),) $(if $(OPT),--opt=$(OPT),)
+debug:     $(MH_BIN) ; @$(MH) debug $(if $(PROF),--prof=$(PROF),) $(if $(OPT),--opt=$(OPT),)
+build:     $(MH_BIN) ; @$(MH) build $(if $(DEBUG),--debug,) $(if $(NOPLUGINS),--no-plugins,) $(if $(PROF),--prof=$(PROF),) $(if $(OPT),--opt=$(OPT),)
 check-noplugins: $(MH_BIN) ; @$(MH) check-noplugins
-play:      $(MH_BIN) ; @$(MH) play $(PKG) $(FLAGS)
+play:      $(MH_BIN) ; @$(MH) play $(PKG) $(FLAGS) $(if $(OPT),--opt=$(OPT),)
 prebuild:  $(MH_BIN) ; @$(MH) prebuild
 deps:      $(MH_BIN) ; @$(MH) deps $(NAME)
 shaders:   $(MH_BIN) ; @$(MH) shaders

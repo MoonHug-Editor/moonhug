@@ -99,7 +99,8 @@ test_text_inspector_row_order_keeps_generic_undo :: proc(t: ^testing.T) {
 	defer undo.pop_owner()
 	before := s.top
 
-	ws: inspector.Widget_State
+	// The inspector keeps the pointer: a static, not a local.
+	@(static) ws: inspector.Widget_State
 	idle := inspector.Widget_State{}
 	press := inspector.Widget_State{activated = true, active = true}
 	release := inspector.Widget_State{deactivated_after_edit = true}

@@ -80,6 +80,8 @@ chdir_repo_root :: proc() -> bool {
 //                 against the live catalog, without it, against the staged data)
 //   --build-only  build (and stage, without --dev), skip every run step. No
 //                 toolbar input sends it, `mh play --build-only` does
+//   --opt=<level> compile with Odin's -o:<level> (speed for a shipping
+//                 build). No toolbar input sends it, `mh play --opt=speed` does
 FLAGS :: [?]string{"--dev", "--run-only", "--build-only"}
 
 build_only :: proc() -> bool { return _flag("--build-only") }
@@ -97,7 +99,15 @@ _flag :: proc(name: string) -> bool {
 @(private = "file")
 _is_rc_flag :: proc(arg: string) -> bool {
 	for f in FLAGS do if arg == f do return true
-	return false
+	return strings.has_prefix(arg, "--opt=")
+}
+
+// The level of --opt=<level>, "" without it.
+opt_level :: proc() -> string {
+	for arg in os.args[1:] {
+		if strings.has_prefix(arg, "--opt=") do return arg[len("--opt="):]
+	}
+	return ""
 }
 
 // The scene the invoker passed (the editor's Build button forwards its
@@ -255,6 +265,7 @@ build :: proc(cfg: Config) -> (exe: string, ok: bool) {
 	// Every package in this repo needs these two, so no config repeats them.
 	append(&cmd, "-ignore-unknown-attributes", "-collection:moonhug=moonhug")
 	append(&cmd, ..cfg.flags)
+	if opt := opt_level(); opt != "" do append(&cmd, fmt.tprintf("-o:%s", opt))
 	append(&cmd, fmt.tprintf("-out:%s", rel))
 
 	if spawn(cmd[:]) != 0 do return "", false

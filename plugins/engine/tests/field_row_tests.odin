@@ -11,6 +11,7 @@ import "moonhug:editor/inspector"
 import "moonhug:editor/undo"
 import "moonhug:packages/engine"
 
+import "core:slice"
 import "core:testing"
 
 // Merely DRAWING a picker row must not touch any object.
@@ -40,9 +41,9 @@ test_row_idle_frames_change_nothing :: proc(t: ^testing.T) {
 	mf_a.mesh.guid = mesh_a
 	mf_b.mesh.guid = mesh_b
 
-	peers := []inspector.Multi_Peer{
+	peers := slice.clone([]inspector.Multi_Peer{
 		{base = b_ptr, handle = _comp_handle(b, .MeshFilter), scene = _scene_of(b)},
-	}
+	}, context.temp_allocator)
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 	undo.push_component_owner(_comp_handle(a, .MeshFilter))
@@ -89,9 +90,9 @@ test_row_button_click_is_not_an_edit :: proc(t: ^testing.T) {
 	mf_a.mesh.guid = mesh_a
 	mf_b.mesh.guid = mesh_b
 
-	peers := []inspector.Multi_Peer{
+	peers := slice.clone([]inspector.Multi_Peer{
 		{base = b_ptr, handle = _comp_handle(b, .MeshFilter), scene = _scene_of(b)},
-	}
+	}, context.temp_allocator)
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 	undo.push_component_owner(_comp_handle(a, .MeshFilter))
@@ -131,9 +132,9 @@ test_row_picker_write_propagates_and_records :: proc(t: ^testing.T) {
 	mf_a.mesh.guid = mesh_a
 	mf_b.mesh.guid = mesh_b
 
-	peers := []inspector.Multi_Peer{
+	peers := slice.clone([]inspector.Multi_Peer{
 		{base = b_ptr, handle = _comp_handle(b, .MeshFilter), scene = _scene_of(b)},
-	}
+	}, context.temp_allocator)
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 	undo.push_component_owner(_comp_handle(a, .MeshFilter))
@@ -367,16 +368,16 @@ test_row_rotation_euler_is_fieldwise :: proc(t: ^testing.T) {
 
 	// The peer points at ITS cache, and the undo target is its QUATERNION —
 	// exactly the split the wrapper sets up.
-	peers := []inspector.Multi_Peer{
+	peers := slice.clone([]inspector.Multi_Peer{
 		{base = rawptr(&euler_b), handle = engine.Handle(b), scene = _scene_of(b)},
-	}
+	}, context.temp_allocator)
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 
-	targets := []undo.Edit_Target{
+	targets := slice.clone([]undo.Edit_Target{
 		undo.edit_target_transform(a, &ta.rotation, typeid_of([4]f32)),
 		undo.edit_target_transform(b, &tb.rotation, typeid_of([4]f32)),
-	}
+	}, context.temp_allocator)
 	prev_targets := inspector.field_edit_set_targets(targets)
 	defer inspector.field_edit_set_targets(prev_targets)
 
@@ -430,9 +431,9 @@ test_row_color_popup_drags_are_undo_steps :: proc(t: ^testing.T) {
 	cam_a.clear_color = start
 	cam_b.clear_color = start
 
-	peers := []inspector.Multi_Peer{
+	peers := slice.clone([]inspector.Multi_Peer{
 		{base = b_ptr, handle = _comp_handle(b, .Camera), scene = _scene_of(b)},
-	}
+	}, context.temp_allocator)
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 	undo.push_component_owner(_comp_handle(a, .Camera))
@@ -531,9 +532,9 @@ test_row_slider_drag_is_one_undo_step :: proc(t: ^testing.T) {
 	cam_a.fov = 60
 	cam_b.fov = 60
 
-	peers := []inspector.Multi_Peer{
+	peers := slice.clone([]inspector.Multi_Peer{
 		{base = b_ptr, handle = _comp_handle(b, .Camera), scene = _scene_of(b)},
-	}
+	}, context.temp_allocator)
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 	undo.push_component_owner(_comp_handle(a, .Camera))

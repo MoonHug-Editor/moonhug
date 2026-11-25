@@ -54,15 +54,28 @@ shaders_if_available :: proc() -> bool {
 	return shaders_compile()
 }
 
+// The optimization levels `--opt=` takes, Odin's -o: values. Empty is
+// Odin's default. An optimized editor build takes about a minute and a half.
+OPT_LEVELS :: [?]string{"none", "minimal", "size", "speed", "aggressive"}
+
+opt_valid :: proc(opt: string) -> bool {
+	if opt == "" do return true
+	for o in OPT_LEVELS do if o == opt do return true
+	fmt.eprintfln("mh: --opt=%s is no optimization level, use one of %v", opt, OPT_LEVELS)
+	return false
+}
+
 // build_editor: generate, shaders, compile. `out` is named MoonHug so macOS
 // shows that in the App Switcher and menu bar instead of the package name.
-build_editor :: proc(debug: bool, prof := "") -> bool {
+build_editor :: proc(debug: bool, prof := "", opt := "") -> bool {
+	if !opt_valid(opt) do return false
 	if !prebuild() do return false
 	if !shaders_if_available() do return false
 	os.make_directory_all("builds")
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, "odin", "build", "moonhug/editor", IGNORE_ATTRS, COLLECTION, VET)
 	if debug do append(&cmd, "-debug")
+	if opt != "" do append(&cmd, fmt.tprintf("-o:%s", opt))
 	if prof != "" && prof != "none" {
 		if !tracy_client() do return false
 		append(&cmd, fmt.tprintf("-define:PROF=%s", prof))
@@ -83,11 +96,11 @@ tracy_client :: proc() -> bool {
 // Build then run as a CHILD process, not `odin run`: `odin run` keeps the
 // ~1GB compiler resident for the whole life of the editor just to wait on it.
 cmd_run :: proc(args: []string) -> int {
-	return launch_editor("run", flag_value(args, "--prof"))
+	return launch_editor("run", flag_value(args, "--prof"), flag_value(args, "--opt"))
 }
 
 cmd_debug :: proc(args: []string) -> int {
-	return launch_editor("debug", flag_value(args, "--prof"))
+	return launch_editor("debug", flag_value(args, "--prof"), flag_value(args, "--opt"))
 }
 
 // The file that tells a running editor its replacement is built. Lives under
@@ -103,8 +116,8 @@ RELAUNCH_MARKER :: "builds/relaunch_ready"
 // editor to exit, removes the marker and launches the new one. A failed build
 // writes no marker, so the old editor stays up with the compiler output in
 // its terminal.
-launch_editor :: proc(mode: string, prof := "") -> int {
-	if !build_editor(mode == "debug", prof) do return 1
+launch_editor :: proc(mode: string, prof := "", opt := "") -> int {
+	if !build_editor(mode == "debug", prof, opt) do return 1
 
 	if pid_str, relaunching := os.lookup_env("MH_RELAUNCH_PID", context.temp_allocator); relaunching {
 		if pid, ok := strconv.parse_int(pid_str); ok {
@@ -139,7 +152,7 @@ launch_editor :: proc(mode: string, prof := "") -> int {
 
 cmd_build :: proc(args: []string) -> int {
 	if has_flag(args, "--no-plugins") do return 0 if build_without_plugins() else 1
-	if !build_editor(has_flag(args, "--debug"), flag_value(args, "--prof")) do return 1
+	if !build_editor(has_flag(args, "--debug"), flag_value(args, "--prof"), flag_value(args, "--opt")) do return 1
 	fmt.printfln("mh: built %s", EDITOR_BIN)
 	return 0
 }

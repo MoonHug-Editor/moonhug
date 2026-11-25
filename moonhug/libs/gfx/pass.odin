@@ -1132,13 +1132,22 @@ draw_fullscreen :: proc(shader: string, inputs: []^Texture, material: []u8 = nil
 	if e, ok := _gfx.fullscreen[shader]; ok {
 		fmt.assertf(u32(len(inputs)) >= e.inputs, "gfx: fullscreen shader %q declares %d inputs, the draw gives %d", shader, e.inputs, len(inputs), loc = loc)
 	}
+	// The draw is read at pass_end. The inputs and the material are often
+	// the caller's locals, so the draw keeps copies of them, on the frame's
+	// temp allocator. A nil input stays nil: white.
+	copies := make([]Texture, len(inputs), context.temp_allocator)
+	texs := make([]^Texture, len(inputs), context.temp_allocator)
+	for t, i in inputs do if t != nil {
+		copies[i] = t^
+		texs[i] = &copies[i]
+	}
 	append(&_pass.draws, _Draw{
 		fullscreen = true,
-		texture    = inputs[0],
+		texture    = texs[0],
 		vp_index   = _current_vp(),
 		shader     = shader,
-		material   = material,
-		extra_tex  = inputs[1:],
+		material   = slice.clone(material, context.temp_allocator) if material != nil else nil,
+		extra_tex  = texs[1:],
 	})
 }
 
@@ -1155,9 +1164,9 @@ draw_sky :: proc(shader: string, inputs: []^Texture, material: []u8 = nil) {
 // perspective camera's depth, which bunches near 1, an orthographic one
 // (a shadow map) reads as it is.
 draw_depth_view :: proc(depth: Texture, perspective: bool) {
-	tex := new_clone(depth, context.temp_allocator) // read at pass_end
-	mode := new_clone([4]f32{perspective ? 1 : 0, 0, 0, 0}, context.temp_allocator)
-	draw_fullscreen(DEPTH_VIEW_SHADER, []^Texture{tex}, (^[16]u8)(mode)[:])
+	depth := depth
+	mode := [4]f32{perspective ? 1 : 0, 0, 0, 0}
+	draw_fullscreen(DEPTH_VIEW_SHADER, {&depth}, (^[16]u8)(&mode)[:])
 }
 
 _color_u8 :: proc(c: [4]f32) -> [4]u8 {

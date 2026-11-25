@@ -289,9 +289,11 @@ _pg_draw :: proc(g: ^anim.Playable_Graph, live: bool) {
 	for &n, i in g.nodes {
 		if !n.alive do continue
 		id := i + 1
-		pos := _pg.pos[id]
-		nc.canvas_node(cv, id, &pos, descs[i].title, descs[i].color, descs[i].rows, !_pg_is_output_root(g, id))
-		_pg.pos[id] = pos
+		// The canvas keeps the pointer until canvas_end, which moves every
+		// selected node through it: it points into the map, not at a copy.
+		pos, ok := &_pg.pos[id]
+		if !ok do continue
+		nc.canvas_node(cv, id, pos, descs[i].title, descs[i].color, descs[i].rows, !_pg_is_output_root(g, id))
 	}
 }
 

@@ -14,6 +14,7 @@ import "moonhug:editor/inspector"
 import "moonhug:editor/undo"
 import "moonhug:packages/engine"
 
+import "core:slice"
 import "core:testing"
 
 @(test)
@@ -32,11 +33,11 @@ test_session_multi_target_is_one_undo_step :: proc(t: ^testing.T) {
 	tb := engine.pool_get(&w.transforms, engine.Handle(b))
 	tc := engine.pool_get(&w.transforms, engine.Handle(c))
 
-	targets := []undo.Edit_Target{
+	targets := slice.clone([]undo.Edit_Target{
 		undo.edit_target_transform(a, &ta.position, typeid_of([3]f32)),
 		undo.edit_target_transform(b, &tb.position, typeid_of([3]f32)),
 		undo.edit_target_transform(c, &tc.position, typeid_of([3]f32)),
-	}
+	}, context.temp_allocator)
 	sess := undo.edit_session_begin(targets, "Position")
 	ta.position = {1, 1, 1}
 	tb.position = {2, 2, 2}
@@ -80,9 +81,9 @@ test_session_array_element_records_whole_component :: proc(t: ^testing.T) {
 	append(&mr.materials, engine.PPtr{})
 
 	// Point at the ELEMENT, which is outside the component.
-	targets := []undo.Edit_Target{
+	targets := slice.clone([]undo.Edit_Target{
 		undo.edit_target_pooled(h, &mr.materials[0], typeid_of(engine.PPtr)),
-	}
+	}, context.temp_allocator)
 	sess := undo.edit_session_begin(targets, "Material")
 	mat := engine.PPtr{guid = {9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9}}
 	mr.materials[0] = mat
@@ -117,9 +118,9 @@ test_session_no_change_records_nothing :: proc(t: ^testing.T) {
 	ta.position = {5, 5, 5}
 
 	before := s.top
-	targets := []undo.Edit_Target{
+	targets := slice.clone([]undo.Edit_Target{
 		undo.edit_target_transform(a, &ta.position, typeid_of([3]f32)),
-	}
+	}, context.temp_allocator)
 	sess := undo.edit_session_begin(targets, "Position")
 	// Nothing written: clicking into a field and tabbing out must not record.
 	undo.edit_session_end(&sess)
@@ -144,10 +145,10 @@ test_session_records_only_changed_targets :: proc(t: ^testing.T) {
 	tb := engine.pool_get(&w.transforms, engine.Handle(b))
 	tb.position = {7, 7, 7} // already at the destination
 
-	targets := []undo.Edit_Target{
+	targets := slice.clone([]undo.Edit_Target{
 		undo.edit_target_transform(a, &ta.position, typeid_of([3]f32)),
 		undo.edit_target_transform(b, &tb.position, typeid_of([3]f32)),
-	}
+	}, context.temp_allocator)
 	sess := undo.edit_session_begin(targets, "Position")
 	ta.position = {7, 7, 7}
 	tb.position = {7, 7, 7} // unchanged
@@ -171,9 +172,9 @@ test_session_abort_records_nothing :: proc(t: ^testing.T) {
 	ta := engine.pool_get(&w.transforms, engine.Handle(a))
 
 	before := s.top
-	targets := []undo.Edit_Target{
+	targets := slice.clone([]undo.Edit_Target{
 		undo.edit_target_transform(a, &ta.position, typeid_of([3]f32)),
-	}
+	}, context.temp_allocator)
 	sess := undo.edit_session_begin(targets, "Position")
 	ta.position = {4, 4, 4}
 	undo.edit_session_abort(&sess)
@@ -200,9 +201,9 @@ test_session_spans_intervening_edits :: proc(t: ^testing.T) {
 	ta := engine.pool_get(&w.transforms, engine.Handle(a))
 	tb := engine.pool_get(&w.transforms, engine.Handle(b))
 
-	targets := []undo.Edit_Target{
+	targets := slice.clone([]undo.Edit_Target{
 		undo.edit_target_transform(a, &ta.position, typeid_of([3]f32)),
-	}
+	}, context.temp_allocator)
 	sess := undo.edit_session_begin(targets, "Position")
 
 	// Several frames of dragging, plus an unrelated recorded edit in between.
@@ -284,10 +285,10 @@ test_session_array_element_undo_restores_each_own_value :: proc(t: ^testing.T) {
 
 	// A material assigned across both, as the inspector's element row does.
 	picked := engine.PPtr{guid = {9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9}}
-	targets := []undo.Edit_Target{
+	targets := slice.clone([]undo.Edit_Target{
 		undo.edit_target_pooled(_comp_handle_of(a, .MeshRenderer), &mr_a.materials[0], typeid_of(engine.PPtr)),
 		undo.edit_target_pooled(_comp_handle_of(b, .MeshRenderer), &mr_b.materials[0], typeid_of(engine.PPtr)),
-	}
+	}, context.temp_allocator)
 	sess := undo.edit_session_begin(targets, "Material")
 	mr_a.materials[0] = picked
 	mr_b.materials[0] = picked
@@ -325,9 +326,9 @@ test_session_single_target_records_step :: proc(t: ^testing.T) {
 	mf.mesh = original
 
 	before := s.top
-	targets := []undo.Edit_Target{
+	targets := slice.clone([]undo.Edit_Target{
 		undo.edit_target_pooled(_comp_handle_of(a, .MeshFilter), &mf.mesh, typeid_of(engine.PPtr)),
-	}
+	}, context.temp_allocator)
 	sess := undo.edit_session_begin(targets, "mesh")
 	picked := engine.PPtr{guid = engine.Asset_GUID{7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7}}
 	mf.mesh = picked
@@ -362,9 +363,9 @@ test_structural_edit_covers_selection_in_one_step :: proc(t: ^testing.T) {
 	light_a.intensity = 1
 	light_b.intensity = 1
 
-	peers := []inspector.Multi_Peer{
+	peers := slice.clone([]inspector.Multi_Peer{
 		{base = b_ptr, handle = _comp_handle_of(b, .Light), scene = _scene_of(b)},
-	}
+	}, context.temp_allocator)
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 
@@ -408,9 +409,9 @@ test_inspector_button_invokes_across_selection :: proc(t: ^testing.T) {
 	light_a.intensity = 1
 	light_b.intensity = 1
 
-	peers := []inspector.Multi_Peer{
+	peers := slice.clone([]inspector.Multi_Peer{
 		{base = b_ptr, handle = _comp_handle_of(b, .Light), scene = _scene_of(b)},
-	}
+	}, context.temp_allocator)
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 

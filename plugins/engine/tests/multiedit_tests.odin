@@ -5,6 +5,7 @@ import "moonhug:editor/undo"
 import "moonhug:packages/engine"
 
 import "base:runtime"
+import "core:slice"
 import "core:testing"
 import "moonhug:packages/engine/editor/scene_windows"
 
@@ -256,9 +257,9 @@ test_multi_array_append_grows_every_peer :: proc(t: ^testing.T) {
 	mr_a := cast(^engine.MeshRenderer)a_ptr
 	mr_b := cast(^engine.MeshRenderer)b_ptr
 
-	peers := []inspector.Multi_Peer{
+	peers := slice.clone([]inspector.Multi_Peer{
 		{base = b_ptr, handle = _comp_handle(b, .MeshRenderer), scene = _scene_of(b)},
-	}
+	}, context.temp_allocator)
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 
@@ -294,10 +295,10 @@ test_multi_array_append_is_one_undo_step :: proc(t: ^testing.T) {
 	mr_b := cast(^engine.MeshRenderer)b_ptr
 	mr_c := cast(^engine.MeshRenderer)c_ptr
 
-	peers := []inspector.Multi_Peer{
+	peers := slice.clone([]inspector.Multi_Peer{
 		{base = b_ptr, handle = _comp_handle(b, .MeshRenderer), scene = _scene_of(b)},
 		{base = c_ptr, handle = _comp_handle(c, .MeshRenderer), scene = _scene_of(c)},
-	}
+	}, context.temp_allocator)
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 
@@ -333,9 +334,9 @@ test_multi_array_remove_skips_shorter_peers :: proc(t: ^testing.T) {
 	mr_a := cast(^engine.MeshRenderer)a_ptr
 	mr_b := cast(^engine.MeshRenderer)b_ptr
 
-	peers := []inspector.Multi_Peer{
+	peers := slice.clone([]inspector.Multi_Peer{
 		{base = b_ptr, handle = _comp_handle(b, .MeshRenderer), scene = _scene_of(b)},
-	}
+	}, context.temp_allocator)
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 
@@ -444,9 +445,9 @@ test_multi_picker_row_does_not_write_on_draw :: proc(t: ^testing.T) {
 	mf_a.mesh = mesh_a
 	mf_b.mesh = mesh_b
 
-	peers := []inspector.Multi_Peer{
+	peers := slice.clone([]inspector.Multi_Peer{
 		{base = b_ptr, handle = _comp_handle(b, .MeshFilter), scene = _scene_of(b)},
-	}
+	}, context.temp_allocator)
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 

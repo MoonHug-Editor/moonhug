@@ -13,11 +13,12 @@ import "moonhug:editor/undo"
 // session. Returns the caller's group depth and its sub count afterwards.
 @(private = "file")
 _session_under_outer_group :: proc(s: ^undo.Undo_Stack, field: ^int, stop: proc(s: ^undo.Undo_Stack)) -> (depth, subs: int) {
-	outer: int
+	// The stack keeps the target past this proc: the value lives on the heap.
+	outer := new(int, context.temp_allocator)
 	undo.begin_group_command(s)
-	old_json := undo.capture_json(&outer, int)
-	outer = 1
-	undo.push_value(s, undo.make_raw_target(&outer, 0, int), old_json, undo.capture_json(&outer, int))
+	old_json := undo.capture_json(outer, int)
+	outer^ = 1
+	undo.push_value(s, undo.make_raw_target(outer, 0, int), old_json, undo.capture_json(outer, int))
 
 	targets := []undo.Edit_Target{{kind = .Raw, raw_ptr = field, raw_tid = int, field_ptr = field, field_tid = int}}
 	sess := undo.edit_session_begin(targets, "Field")
@@ -86,11 +87,12 @@ test_session_begun_while_applying_keeps_outer_group :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown_undo(tc_mem, s)
 
-	outer: int
+	// The stack keeps the target past this proc: the value lives on the heap.
+	outer := new(int, context.temp_allocator)
 	undo.begin_group_command(s)
-	old_json := undo.capture_json(&outer, int)
-	outer = 1
-	undo.push_value(s, undo.make_raw_target(&outer, 0, int), old_json, undo.capture_json(&outer, int))
+	old_json := undo.capture_json(outer, int)
+	outer^ = 1
+	undo.push_value(s, undo.make_raw_target(outer, 0, int), old_json, undo.capture_json(outer, int))
 
 	field: int
 	s.applying = true
