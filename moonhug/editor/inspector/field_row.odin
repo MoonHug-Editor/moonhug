@@ -3,6 +3,7 @@ package inspector
 import "core:fmt"
 import "core:math"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/widgets"
 
 // Unity's inspector row: the label occupies a fixed-width left column and the
 // value fills the rest of the row. Ported from UnityCsReference —
@@ -121,14 +122,18 @@ field_column_screen_x :: proc() -> f32 {
 ROW_FRAME_PAD_Y :: f32(2)
 ROW_SPACING_Y :: f32(2)
 
-// Packs the rows drawn until compact_rows_pop. An inspector window wraps its
-// body in the pair.
+// Packs the rows drawn until compact_rows_pop, and draws their text in the
+// light weight: header names keep the editor's medium weight
+// (widgets.font_headers), which sets them apart. An inspector window wraps
+// its body in the pair.
 compact_rows_push :: proc() {
 	style := im.GetStyle()
+	im.PushFontFloat(widgets.font_rows, 0)
 	im.PushStyleVarImVec2(.FramePadding, {style.FramePadding.x, ROW_FRAME_PAD_Y})
 	im.PushStyleVarImVec2(.ItemSpacing, {style.ItemSpacing.x, ROW_SPACING_Y})
 }
 
 compact_rows_pop :: proc() {
 	im.PopStyleVar(2)
+	im.PopFont()
 }

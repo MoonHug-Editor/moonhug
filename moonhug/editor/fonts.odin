@@ -13,6 +13,16 @@ FONT_SIZE :: widgets.FONT_SIZE
 
 ROBOTO_FONT_DATA := #load("moonhug:external/odin-imgui/imgui/misc/fonts/Roboto-Medium.ttf")
 
+// Roboto Light (moonhug/external/fonts/roboto, Apache-2.0): the inspectors'
+// row text. Header names stay in the base Medium, which sets the headers
+// apart from the rows under them.
+ROBOTO_LIGHT_FONT_DATA := #load("moonhug:external/fonts/roboto/Roboto-Light.ttf")
+
+// How much the Light font's glyph coverage is raised. Thin strokes cover less
+// of each pixel, so at the same text color they read as a lighter grey than
+// the Medium beside them: this brings them back to the same ink.
+ROBOTO_LIGHT_INK :: f32(1.75)
+
 // Large Material-icon font size for spots that show an icon spanning ~2 text
 // rows (e.g. the console's per-entry icon column, Unity-style).
 ICON_FONT_SIZE_LG :: 26
@@ -44,6 +54,34 @@ _font_config :: proc(size_px: f32 = FONT_SIZE) -> im.FontConfig {
 	return cfg
 }
 
+// One text font from `data` at FONT_SIZE, with the Material icons merged into
+// it, so a label that mixes text and an icon draws under any of them. `ink`
+// raises the text glyphs' coverage (the icons keep theirs).
+@(private = "file")
+_add_text_font :: proc(data: []byte, ink: f32 = 1) -> ^im.Font {
+	fonts := im.GetIO().Fonts
+	// At an EXPLICIT size (config with SizePixels > 0 keeps it explicit-size,
+	// so the icon merge below can use GlyphOffset). The config must be fully
+	// defaulted or text bakes invisible.
+	base_cfg := _font_config()
+	base_cfg.FontDataOwnedByAtlas = false // static (#load) data; imgui must not free
+	base_cfg.RasterizerMultiply = ink
+	font := im.FontAtlas_AddFontFromMemoryTTF(fonts, raw_data(data), i32(len(data)), FONT_SIZE, &base_cfg)
+
+	// Merge Material icons into it at the same explicit size. GlyphOffset
+	// nudges the icons down onto the text baseline (Material's em box is
+	// taller than Roboto's).
+	@(static) icon_ranges := [?]im.Wchar{ icons.ICON_MD_MIN, icons.ICON_MD_MAX, 0 }
+	icon_cfg := _font_config()
+	icon_cfg.MergeMode = true
+	icon_cfg.PixelSnapH = true
+	icon_cfg.GlyphMinAdvanceX = FONT_SIZE
+	icon_cfg.GlyphOffset = im.Vec2{0, 2}
+	icon_cfg.FontDataOwnedByAtlas = false // static (#load) data; imgui must not free
+	im.FontAtlas_AddFontFromMemoryTTF(fonts, raw_data(MATERIAL_FONT_DATA), i32(len(MATERIAL_FONT_DATA)), FONT_SIZE, &icon_cfg, &icon_ranges[0])
+	return font
+}
+
 // Load editor UI fonts: Roboto Medium at FONT_SIZE with Material Symbols icons
 // merged into it. Call once after im.CreateContext() and before the first
 // NewFrame / backend texture build. The backend advertises RendererHasTextures,
@@ -51,37 +89,10 @@ _font_config :: proc(size_px: f32 = FONT_SIZE) -> im.FontConfig {
 editor_fonts_init :: proc() {
 	fonts := im.GetIO().Fonts
 
-	// Base text font at an EXPLICIT size (config with SizePixels > 0 keeps it
-	// explicit-size, so the icon merge below can use GlyphOffset). The config
-	// must be fully defaulted or text bakes invisible.
-	base_cfg := _font_config()
-	base_cfg.FontDataOwnedByAtlas = false // static (#load) data; imgui must not free
-	im.FontAtlas_AddFontFromMemoryTTF(
-		fonts,
-		raw_data(ROBOTO_FONT_DATA),
-		i32(len(ROBOTO_FONT_DATA)),
-		FONT_SIZE,
-		&base_cfg,
-	)
-
-	// Merge Material icons into the base font at the same explicit size.
-	// GlyphOffset nudges the icons down onto the text baseline (Material's em
-	// box is taller than Roboto's).
+	// The base UI font first: imgui's default font is the first one added.
+	widgets.font_headers = _add_text_font(ROBOTO_FONT_DATA)
+	widgets.font_rows = _add_text_font(ROBOTO_LIGHT_FONT_DATA, ROBOTO_LIGHT_INK)
 	icon_ranges := [?]im.Wchar{ icons.ICON_MD_MIN, icons.ICON_MD_MAX, 0 }
-	icon_cfg := _font_config()
-	icon_cfg.MergeMode = true
-	icon_cfg.PixelSnapH = true
-	icon_cfg.GlyphMinAdvanceX = FONT_SIZE
-	icon_cfg.GlyphOffset = im.Vec2{0, 2}
-	icon_cfg.FontDataOwnedByAtlas = false // static (#load) data; imgui must not free
-	im.FontAtlas_AddFontFromMemoryTTF(
-		fonts,
-		raw_data(MATERIAL_FONT_DATA),
-		i32(len(MATERIAL_FONT_DATA)),
-		FONT_SIZE,
-		&icon_cfg,
-		&icon_ranges[0],
-	)
 	// Scene icons draw Material Symbols glyphs from the same static data
 	// (editor/handles/icons.odin).
 	handles.icon_font_set(MATERIAL_FONT_DATA)

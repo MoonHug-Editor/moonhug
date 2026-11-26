@@ -11,3 +11,10 @@ FONT_SIZE :: 15
 
 // The standalone large Material icon font. Nil until the fonts load.
 icon_font_lg: ^im.Font
+
+// The inspectors' two text fonts at FONT_SIZE, icons merged: Roboto Light for
+// rows, and the base Roboto Medium for header names. Nil until the fonts
+// load, and pushing nil keeps the current font, so code that pushes them runs
+// in a test too.
+font_rows: ^im.Font
+font_headers: ^im.Font

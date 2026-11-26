@@ -3,10 +3,17 @@
 Fonts for the **editor UI chrome** (not app/game resources — those live in
 `assets/`).
 
-Text uses imgui's built-in **ProggyClean** (a crisp 13px bitmap font, no file
-needed). Icons are **Material Symbols Outlined**, merged into that font and
-embedded into the editor binary at compile time via `#load` in
-`moonhug/editor/fonts.odin` — so the icon files must be present to build.
+Text is **Roboto** at 15px: Medium for the editor and the inspectors' header
+names (the file ships with imgui,
+`moonhug/external/odin-imgui/imgui/misc/fonts`), Light for the inspectors'
+rows (`roboto/`). Icons are **Material Symbols Outlined**, merged into each
+text font. All of them are embedded into the editor binary at compile time via
+`#load` in `moonhug/editor/fonts.odin`, so the files must be present to build.
+
+## `roboto/`
+
+- `Roboto-Light.ttf`: **Apache-2.0** (`LICENSE-Roboto.txt`). From the v2.138
+  release of https://github.com/googlefonts/roboto (`roboto-unhinted.zip`).
 
 ## `material/`
 
@@ -22,6 +29,5 @@ embedded into the editor binary at compile time via `#load` in
 
 - imgui does NOT do ligatures — icons are addressed by raw codepoint
   (`\uXXXX`), not name. See `material_icons.odin`.
-- Both text and the icon merge load at an explicit 13px (ProggyClean's native
-  size) so the merge can nudge icon baseline via `GlyphOffset` — see
-  `editor_fonts_init`.
+- Each text font and its icon merge load at an explicit 15px so the merge can
+  nudge the icon baseline via `GlyphOffset`. See `editor_fonts_init`.

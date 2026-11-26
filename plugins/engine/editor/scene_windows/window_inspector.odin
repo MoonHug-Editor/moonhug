@@ -700,7 +700,10 @@ _header_name :: proc(name: cstring, bar_y: f32) {
 	// The checkbox before it sits lower than the bar's top: back to the top.
 	im.SetCursorScreenPos({im.GetCursorScreenPos().x, bar_y})
 	im.AlignTextToFramePadding()
+	// The editor's medium weight, against the rows' light one.
+	im.PushFontFloat(widgets.font_headers, 0)
 	im.TextUnformatted(name)
+	im.PopFont()
 }
 
 // The padding of a header's enable checkbox. A checkbox is as tall as a
