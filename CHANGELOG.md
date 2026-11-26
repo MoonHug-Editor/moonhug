@@ -1,3 +1,9 @@
+## [0.175.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.174.0...v0.175.0) (2026-11-26)
+
+### Features
+
+* Inspector rows start under the header's fold arrow, a foldout's arrow sits left of its label, and a per-axis bool field is one row of X Y Z checkboxes ([9762b00](https://github.com/MoonHug-Editor/moonhug/commit/9762b0001d62de5f5180e4b34727e3786aa1f5af))
+
 ## [0.174.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.173.1...v0.174.0) (2026-11-26)
 
 ### Features
