@@ -1,3 +1,18 @@
+## [0.174.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.173.1...v0.174.0) (2026-11-26)
+
+### Features
+
+* a color row in the Inspector is one wide swatch that opens the picker ([90098ab](https://github.com/MoonHug-Editor/moonhug/commit/90098abb6ab465a6f197e5652913532108963026))
+* asset preview gets studio light with a sky and a shadow, a shader ball as the default material shape, a light that turns with Shift+drag, texture channels and mips, an info line under the picture, and the material preview for a scene's sub-asset materials ([4f139b4](https://github.com/MoonHug-Editor/moonhug/commit/4f139b4f90f81f21a46efd8d2141435411b53919))
+* Inspector show_if field tag,  @(component={icon=...}), list's row shows its length ([069cbf0](https://github.com/MoonHug-Editor/moonhug/commit/069cbf0370c5daa14387c26bb5125f3d40891ecb))
+* the Inspector draws its rows in Roboto Light and its header names in Medium ([baf8e26](https://github.com/MoonHug-Editor/moonhug/commit/baf8e26acae3b4430044ce5cdc1fb49b40aae806))
+* the Inspector shows field names as words and packs its rows closer ([e10ec80](https://github.com/MoonHug-Editor/moonhug/commit/e10ec801f0cb41ca24914d8e0809665cbde931f0))
+
+### Bug Fixes
+
+* a list's length shows in brackets, and the Scale link button sits at the label column's end ([281ac19](https://github.com/MoonHug-Editor/moonhug/commit/281ac191ff7b0b48fcc445cd50d3090cff0567c4))
+* Alt held on a handle drag no longer moves the Scene camera, and the Handles tool's tooltip is its name ([782bb15](https://github.com/MoonHug-Editor/moonhug/commit/782bb15ee5ad761c8f7f13e0ff12500794af4dd9))
+
 ## [0.173.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.173.0...v0.173.1) (2026-11-25)
 
 ### Bug Fixes
