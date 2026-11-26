@@ -55,7 +55,7 @@ property_drawer_material_properties :: proc(ctx: ^inspector.Ctx) {
 			inspector.drag_float3(inspector.field_row(name_c), cast(^[3]f32)&prop.value, 0.01, format = "%g")
 		case:
 			if engine.material_property_is_color(sp.name, sp.size) {
-				im.ColorEdit4(inspector.field_row(name_c), &prop.value)
+				inspector.color_swatch_field(inspector.field_row(name_c), &prop.value, alpha = true)
 			} else {
 				inspector.drag_float4(inspector.field_row(name_c), &prop.value, 0.01, format = "%g")
 			}

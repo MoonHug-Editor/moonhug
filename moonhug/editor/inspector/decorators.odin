@@ -138,40 +138,53 @@ decorator_readonly :: proc(ctx: ^DrawContext) {
     }
 }
 
-// Draws a [4]f32 or [3]f32 field as a color swatch with a popup picker.
+// Draws a [4]f32 or [3]f32 field as one wide color swatch across the value
+// column. A click opens the picker, which has the number fields.
 decorator_color :: proc(ctx: ^DrawContext) {
 	if !ctx.is_pre do return
 	if ctx.field_ptr == nil do return
 	label := ctx.field_label
-	row := field_row(label)
 	switch ctx.field_type {
 	case typeid_of([4]f32):
-		if im.ColorEdit4(row, cast(^[4]f32)ctx.field_ptr) {
+		if color_swatch_field(field_row(label), cast(^[4]f32)ctx.field_ptr, alpha = true) {
 			mark_inspector_changed()
 		}
-		_color_popup_hold(row)
 		ctx.is_visible = false
 		ctx.handled_draw = true
 	case typeid_of([3]f32):
-		if im.ColorEdit3(row, cast(^[3]f32)ctx.field_ptr) {
+		rgb := cast(^[3]f32)ctx.field_ptr
+		rgba := [4]f32{rgb.x, rgb.y, rgb.z, 1}
+		if color_swatch_field(field_row(label), &rgba, alpha = false) {
+			rgb^ = rgba.xyz
 			mark_inspector_changed()
 		}
-		_color_popup_hold(row)
 		ctx.is_visible = false
 		ctx.handled_draw = true
 	case:
 	}
 }
 
-// ColorEdit opens its picker as a popup named "picker" under PushID(label), so
-// the same id scope reads whether it is open. While it is, the row's undo
-// bracket follows the popup's drags instead of the swatch (field_edit_row).
-@(private = "file")
-_color_popup_hold :: proc(row_label: cstring) {
+// A color as one swatch as wide as the item about to be drawn, with a popup
+// picker behind a click. `row_label` is the row's "##id" label. Returns
+// whether the color changed. A color with alpha shows half of the swatch
+// see-through over a checkerboard.
+//
+// While the picker is open the row's undo bracket follows the picker's
+// drags, not the swatch (field_edit_row_hold).
+color_swatch_field :: proc(row_label: cstring, color: ^[4]f32, alpha: bool) -> (changed: bool) {
+	size := im.Vec2{im.CalcItemWidth(), im.GetFrameHeight()}
+	flags: im.ColorEditFlags = {.NoTooltip}
+	flags += {.AlphaPreviewHalf} if alpha else {.NoAlpha}
 	im.PushID(row_label)
-	open := im.IsPopupOpen("picker")
-	im.PopID()
-	if open do field_edit_row_hold()
+	defer im.PopID()
+	if im.ColorButton("##swatch", color^, flags, size) do im.OpenPopup("picker")
+	if im.BeginPopup("picker") {
+		field_edit_row_hold()
+		picker: im.ColorEditFlags = {.AlphaBar, .AlphaPreviewHalf} if alpha else {.NoAlpha}
+		if im.ColorPicker4("##picker", color, picker) do changed = true
+		im.EndPopup()
+	}
+	return
 }
 
 // Edits a quaternion field ([4]f32) as XYZ Euler angles in degrees.

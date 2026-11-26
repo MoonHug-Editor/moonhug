@@ -162,5 +162,5 @@ property_drawer_Blackboard_override :: proc(ctx: ^inspector.Ctx) {
 
 @(private = "file")
 _color_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
-	if im.ColorEdit4(label, cast(^[4]f32)ptr, {.AlphaBar}) do inspector.mark_inspector_changed()
+	if inspector.color_swatch_field(label, cast(^[4]f32)ptr, alpha = true) do inspector.mark_inspector_changed()
 }

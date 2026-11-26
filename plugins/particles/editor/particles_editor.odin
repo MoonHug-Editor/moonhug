@@ -52,7 +52,7 @@ _ps_color :: proc(ps: ^particles.ParticleSystem, ptr: ^[4]f32, label: cstring, p
 
 @(private = "file")
 _color_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
-	if im.ColorEdit4(inspector.field_row(label), cast(^[4]f32)ptr, {.AlphaBar}) do inspector.mark_inspector_changed()
+	if inspector.color_swatch_field(inspector.field_row(label), cast(^[4]f32)ptr, alpha = true) do inspector.mark_inspector_changed()
 }
 
 // A module header: enable checkbox + collapsing header on one row.
