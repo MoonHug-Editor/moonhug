@@ -136,7 +136,7 @@ draw_fixed_array :: proc(ptr: rawptr, count: int, elem_ti: ^runtime.Type_Info, f
 	if !inline {
 		tree_open := im.TreeNode(row_tree_label(label))
 		draw_field_context_menu(ptr, field_tid)
-		_array_count_text(fmt.tprintf("%d", count))
+		_array_count_text(fmt.tprintf("[%d]", count))
 		if !tree_open do return
 	}
 	defer if !inline do im.TreePop()
@@ -188,9 +188,9 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 		// The length on the list's own row, so a folded list says how long
 		// it is. Mixed across a selection, it is the mixed marker.
 		if multi_active() && multi_array_len_mixed(array_offset, da.len) {
-			_array_count_text(MIXED_VALUE_TEXT)
+			_array_count_text(fmt.tprintf("[%s]", MIXED_VALUE_TEXT))
 		} else {
-			_array_count_text(fmt.tprintf("%d", da.len))
+			_array_count_text(fmt.tprintf("[%d]", da.len))
 		}
 		if !tree_open do return
 	}

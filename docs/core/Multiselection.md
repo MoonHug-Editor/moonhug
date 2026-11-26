@@ -66,7 +66,7 @@ em dash as a `?` box.
 Rows draw up to the **shortest** array in the selection, each an ordinary
 field with its own dash. Rows past that length have no counterpart on some
 object, so there is nothing to edit. A list's row shows its length after its
-name, and a dash when the lengths differ. Then a size row under it explains:
+name, as `[3]`, and `[-]` when the lengths differ. Then a size row under it explains:
 `Size: - this object N, showing M common`.
 
 **Add and remove apply to the whole selection**, so lists converge as you work

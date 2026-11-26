@@ -813,7 +813,9 @@ _draw_scale_link_toggle :: proc() {
 	size := im.GetFrameHeight()
 	row := im.GetCursorPos()
 	// The label column is measured from the panel's edge, whatever the row's indent.
-	im.SetCursorPosX(im.GetCursorStartPos().x + inspector.field_label_width() - size - im.GetStyle().ItemInnerSpacing.x)
+	// Its right edge at the label column's end, so the gap to the value boxes
+	// is the one every row has between its label column and its value.
+	im.SetCursorPosX(im.GetCursorStartPos().x + inspector.field_label_width() - size)
 	on := transform_inspector_prefs.scale_linked // the click below flips the flag: the pop must match the push
 	// No button face while it is off. The glyph is centered by the shared
 	// icon button: as a button's label it sits off-center.
