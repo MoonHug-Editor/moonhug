@@ -39,6 +39,17 @@ Field_Tag :: struct {
 // that `json:"-"` would hide.
 TAG_INSPECT :: Field_Tag{key = "inspect", form = .Value}
 
+// Shows the field only while another field of the same struct holds one of
+// the listed values.
+//
+// `show_if:"type=Point,Spot"` names the other field, then a comma list of
+// values: an enum field's value names, `true` or `false` for a bool, a number
+// for an integer. With several objects selected the active one decides. The
+// field is still saved and still part of undo: only its row is left out. A
+// field name the struct does not have stops the editor with a message
+// (field_show_if in show_if.odin).
+TAG_SHOW_IF :: Field_Tag{key = "show_if", form = .Value}
+
 // Odin's core:encoding/json key: the field's name in JSON, and options.
 //
 // `json:"name"` renames the field's key and `json:"name,omitempty"` leaves an

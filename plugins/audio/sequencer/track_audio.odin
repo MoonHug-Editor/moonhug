@@ -25,7 +25,7 @@ import audio "moonhug:packages/audio"
 // The kind's components: the track carries what it drives, the clip carries
 // its payload. `ref:`/`ext:` tags drive the inspector's pickers, so the
 // sequencer window needs no per-kind knowledge.
-@(component={menu="Playables/Tracks/TrackAudio"})
+@(component={menu="Playables/Tracks/TrackAudio", icon="MUSIC_NOTE"})
 @(typ_guid={guid = "b6ddf9c5-02a9-4ff9-8e6d-8a64e5e1edd6"})
 TrackAudio :: struct {
 	using base: engine.CompData `inspect:"-"`,
@@ -36,7 +36,7 @@ TrackAudio :: struct {
 	source: engine.Ref_Local `ref:"AudioSource"`,
 }
 
-@(component={menu="Playables/Clips/ClipAudio"})
+@(component={menu="Playables/Clips/ClipAudio", icon="MUSIC_NOTE"})
 @(typ_guid={guid = "889f7ce4-b7cc-4ad1-b669-540bfb5a27ff"})
 ClipAudio :: struct {
 	using base: engine.CompData `inspect:"-"`,

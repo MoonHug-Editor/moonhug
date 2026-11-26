@@ -1149,6 +1149,8 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             if !has_inspect && has_json && json_val == "-" {
                 continue
             }
+            // `show_if`: the row is for another state of the struct.
+            if !field_show_if(own.tag, ptr, tid) do continue
         }
         field_info := reflect.struct_field_at(tid, i)
 
@@ -1232,9 +1234,14 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             }
             ctx.field_ptr = field_ptr
         } else {
+            // A group that drew nothing still takes a line of spacing, which
+            // put a gap above every row no decorator draws. The cursor goes
+            // back for one.
+            before_y := im.GetCursorPosY()
             im.BeginGroup()
             run_field_decorators(tid, i, &ctx)
             im.EndGroup()
+            if im.GetItemRectSize().y <= 0 do im.SetCursorPosY(before_y)
             if ctx.handled_draw do driven_mark_field(field_ptr, field_type.id)
         }
 

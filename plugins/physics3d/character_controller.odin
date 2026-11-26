@@ -40,7 +40,7 @@ Collision_Flag :: enum u8 {
 }
 Collision_Flags :: bit_set[Collision_Flag; u8]
 
-@(component={menu="Physics/CharacterController"})
+@(component={menu="Physics/CharacterController", icon="DIRECTIONS_RUN"})
 @(typ_guid={guid = "206a30cd-c18f-4a08-a6ad-6f6c90620012"})
 CharacterController :: struct {
 	using base:      engine.CompData `inspect:"-"`,

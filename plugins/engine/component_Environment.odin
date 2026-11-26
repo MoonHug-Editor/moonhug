@@ -15,7 +15,7 @@ Environment_Sky :: enum u8 {
 	Color,      // one color, the sky top's
 }
 
-@(component={max=4, menu="Rendering/Environment"})
+@(component={max=4, menu="Rendering/Environment", icon="LANDSCAPE"})
 @(typ_guid={guid = "9d79f55a-e5ac-4e37-a2bf-12c807ec781e"})
 Environment :: struct {
 	using base: CompData `inspect:"-"`,

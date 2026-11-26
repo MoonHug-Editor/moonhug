@@ -21,7 +21,7 @@ package rigging
 import "core:math/linalg"
 import "moonhug:packages/engine"
 
-@(component={menu="Rigging/SpringBones"})
+@(component={menu="Rigging/SpringBones", icon="WAVES"})
 @(typ_guid={guid="5eb047b4-f145-4d04-9826-11f4a7ef51af"})
 SpringBones :: struct {
 	using base: engine.CompData `inspect:"-"`,
@@ -49,7 +49,7 @@ Spring_Joint :: struct {
 
 // A sphere the bones of a SpringBones chain stay out of: a head for hair, a
 // body for a cape.
-@(component={menu="Rigging/SpringBoneCollider"})
+@(component={menu="Rigging/SpringBoneCollider", icon="CIRCLE"})
 @(typ_guid={guid="f7f0458e-eaf1-4e70-9b88-28b1fb7058a4"})
 SpringBoneCollider :: struct {
 	using base: engine.CompData `inspect:"-"`,

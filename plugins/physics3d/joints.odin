@@ -24,7 +24,7 @@ import "moonhug:packages/engine"
 import "moonhug:libs/log"
 
 // A hinge: the two bodies share a point and turn about an axis through it.
-@(component={menu="Physics3D/HingeJoint"})
+@(component={menu="Physics3D/HingeJoint", icon="SYNC"})
 @(typ_guid={guid = "6a2d9f14-c83b-4e75-a10f-3b8e5d7c2a96"})
 HingeJoint :: struct {
 	using base:       engine.CompData `inspect:"-"`,
@@ -70,7 +70,7 @@ type_cleanup_HingeJoint :: proc(j: ^HingeJoint) {
 }
 
 // Keeps two anchors at a distance: a rod, a rope, or a spring.
-@(component={menu="Physics3D/DistanceJoint"})
+@(component={menu="Physics3D/DistanceJoint", icon="STRAIGHTEN"})
 @(typ_guid={guid = "c35e81b7-29d4-4a6f-9e0c-5f71a8b3d24e"})
 DistanceJoint :: struct {
 	using base:        engine.CompData `inspect:"-"`,
@@ -111,7 +111,7 @@ type_cleanup_DistanceJoint :: proc(j: ^DistanceJoint) {
 }
 
 // Holds the two bodies together as one.
-@(component={menu="Physics3D/FixedJoint"})
+@(component={menu="Physics3D/FixedJoint", icon="LINK"})
 @(typ_guid={guid = "8f04b6d2-71ea-4c39-b85d-e2a9c6f1037b"})
 FixedJoint :: struct {
 	using base:       engine.CompData `inspect:"-"`,

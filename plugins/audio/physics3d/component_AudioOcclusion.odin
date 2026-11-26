@@ -13,7 +13,7 @@ import "moonhug:packages/engine"
 import audio "moonhug:packages/audio"
 import physics3d "moonhug:packages/physics3d"
 
-@(component={menu="Audio/AudioOcclusion"})
+@(component={menu="Audio/AudioOcclusion", icon="HEARING_DISABLED"})
 @(typ_guid={guid="17b81d42-e588-4873-a078-b1629516489e"})
 AudioOcclusion :: struct {
 	using base: engine.CompData `inspect:"-"`,

@@ -19,7 +19,7 @@ package physics3d
 import b3 "vendor:box3d"
 import "moonhug:packages/engine"
 
-@(component={menu="Physics/BoxCollider"})
+@(component={menu="Physics/BoxCollider", icon="CHECK_BOX_OUTLINE_BLANK"})
 @(typ_guid={guid = "13101cd5-e0a6-49d4-a310-953001ebae6b"})
 BoxCollider :: struct {
 	using base:  engine.CompData `inspect:"-"`,
@@ -52,7 +52,7 @@ type_cleanup_BoxCollider :: proc(comp: ^BoxCollider) {
 	engine.comp_zero(comp)
 }
 
-@(component={menu="Physics/SphereCollider"})
+@(component={menu="Physics/SphereCollider", icon="CIRCLE"})
 @(typ_guid={guid = "8295fbf3-a792-4f02-9bea-b63fc056b99f"})
 SphereCollider :: struct {
 	using base:  engine.CompData `inspect:"-"`,
@@ -89,7 +89,7 @@ Capsule_Direction :: enum {
 	Z_Axis,
 }
 
-@(component={menu="Physics/CapsuleCollider"})
+@(component={menu="Physics/CapsuleCollider", icon="PILL"})
 @(typ_guid={guid = "91ddc047-6a91-4142-bc9c-d219570192b6"})
 CapsuleCollider :: struct {
 	using base:  engine.CompData `inspect:"-"`,
@@ -133,7 +133,7 @@ type_cleanup_CapsuleCollider :: proc(comp: ^CapsuleCollider) {
 // must be of the collider's mesh, since the hulls are in that mesh's space. Not convex, the
 // triangles collide as they are, which box3d allows on a static body only,
 // so it needs no Rigidbody above it. Transform scale applies per axis.
-@(component={menu="Physics/MeshCollider"})
+@(component={menu="Physics/MeshCollider", icon="POLYLINE"})
 @(typ_guid={guid = "d6e5cf75-88a6-45e3-ac22-93aaa6b21a05"})
 MeshCollider :: struct {
 	using base:  engine.CompData `inspect:"-"`,

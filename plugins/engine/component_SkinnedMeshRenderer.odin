@@ -27,7 +27,7 @@ import gfx "moonhug:libs/gfx"
 import "moonhug:libs/log"
 import "moonhug:libs/prof"
 
-@(component={menu="Mesh/SkinnedMeshRenderer"})
+@(component={menu="Mesh/SkinnedMeshRenderer", icon="ACCESSIBILITY_NEW"})
 @(typ_guid={guid = "5f2e77c4-8a3b-4d19-9e06-1c7b4a2f3d85"})
 SkinnedMeshRenderer :: struct {
     using base: CompData `inspect:"-"`,

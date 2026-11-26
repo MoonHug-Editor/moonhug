@@ -54,7 +54,7 @@ Input_Lines :: enum u8 {
 // The character a Password field shows for each one typed.
 PASSWORD_RUNE :: '•'
 
-@(component={menu="UI/InputField"})
+@(component={menu="UI/InputField", icon="INPUT"})
 @(typ_guid={guid = "6d0f6b1e-3f0a-4c53-8f5e-2b1d7c9a4e61"})
 InputField :: struct {
 	using base:       engine.CompData `inspect:"-"`,
@@ -85,7 +85,7 @@ InputField :: struct {
 // Draws the caret and the selection of the InputField that edits a Text
 // under this node. On the Text's parent, so they draw behind the glyphs and
 // follow the Text Area. It draws nothing unless a field is being edited.
-@(component={menu="UI/InputCaret"})
+@(component={menu="UI/InputCaret", icon="EDIT"})
 @(typ_guid={guid = "b0a5b0c2-93a4-4e0f-a2b6-5d3f1e7c8a92"})
 InputCaret :: struct {
 	using base:    engine.CompData `inspect:"-"`,

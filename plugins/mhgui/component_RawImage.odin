@@ -10,7 +10,7 @@ package mhgui
 
 import "moonhug:packages/engine"
 
-@(component={menu="UI/RawImage"})
+@(component={menu="UI/RawImage", icon="PHOTO"})
 @(typ_guid={guid = "3a9d5e70-c184-4b2f-8d06-e5f17a2c9b84"})
 RawImage :: struct {
 	using base:    engine.CompData `inspect:"-"`,

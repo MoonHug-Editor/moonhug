@@ -27,16 +27,16 @@ Light_Shadows :: enum u8 {
     None,
 }
 
-@(component={max=256, menu="Rendering/Light"})
+@(component={max=256, menu="Rendering/Light", icon="LIGHTBULB"})
 @(typ_guid={guid = "9f36ee91-34b6-4636-a360-ee872af0436b"})
 Light :: struct {
     using base: CompData `inspect:"-"`,
     type:             Light_Type,
     color:            [4]f32 `decor:color()`, // alpha unused
     intensity:        f32,
-    range:            f32 `decor:min(0)`, // point/spot: falloff reaches zero here
-    spot_angle:       f32 `decor:min(0)`, // spot: full cone angle, degrees (Unity spotAngle)
-    inner_spot_angle: f32 `decor:min(0)`, // spot: full-brightness cone, degrees
+    range:            f32 `show_if:"type=Point,Spot" decor:min(0)`, // point/spot: falloff reaches zero here
+    spot_angle:       f32 `show_if:"type=Spot" decor:min(0)`, // spot: full cone angle, degrees (Unity spotAngle)
+    inner_spot_angle: f32 `show_if:"type=Spot" decor:min(0)`, // spot: full-brightness cone, degrees
     ambient:          f32 `decor:min(0)`, // unlit floor 0..1, first enabled light wins
     shadows:          Light_Shadows,
     // The render layers the light lights: a mesh on none of them gets no

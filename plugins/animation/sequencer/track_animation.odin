@@ -23,7 +23,7 @@ import anim "moonhug:packages/animation"
 
 // The kind's components. The clip carries its .anim; the track carries the
 // object those clips play on.
-@(component={menu="Playables/Tracks/TrackAnimation"})
+@(component={menu="Playables/Tracks/TrackAnimation", icon="ANIMATION"})
 @(typ_guid={guid = "89aaf6a3-5c2e-4af3-8893-81833e7f79b9"})
 TrackAnimation :: struct {
 	using base: engine.CompData `inspect:"-"`,
@@ -41,7 +41,7 @@ TrackAnimation :: struct {
 	target: engine.Ref_Local `ref:"Animation"`,
 }
 
-@(component={menu="Playables/Clips/ClipAnimation"})
+@(component={menu="Playables/Clips/ClipAnimation", icon="ANIMATION"})
 @(typ_guid={guid = "d0b0e534-01d0-4b0f-9f2c-1e38daa94c3d"})
 ClipAnimation :: struct {
 	using base: engine.CompData `inspect:"-"`,

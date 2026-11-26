@@ -53,7 +53,7 @@ type_cleanup_Blackboard_Entry :: proc(e: ^Blackboard_Entry) {
 	e^ = {}
 }
 
-@(component={menu="Blackboard/Blackboard"})
+@(component={menu="Blackboard/Blackboard", icon="TABLE_CHART"})
 @(typ_guid={guid = "9da7f7af-b616-4937-af42-8dea0c54aad9"})
 Blackboard :: struct {
 	using base: engine.CompData `inspect:"-"`,

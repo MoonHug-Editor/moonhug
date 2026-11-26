@@ -12,7 +12,7 @@ import "core:hash"
 import "core:strings"
 import "moonhug:packages/engine"
 
-@(component={menu="UI/Text"})
+@(component={menu="UI/Text", icon="TEXT_FIELDS"})
 @(typ_guid={guid = "32d4e528-8898-4fd3-9fc4-2ac0cc34609e"})
 Text :: struct {
 	using base:    engine.CompData `inspect:"-"`,

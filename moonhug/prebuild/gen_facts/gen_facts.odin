@@ -214,6 +214,7 @@ Component_GenComp :: struct {
 	has_on_trigger_enter:   bool,
 	has_on_trigger_exit:    bool,
 	ref_tags:        []string,
+	icon:            string, // `icon="LIGHTBULB"`: the ICON_MD_ glyph of its inspector header, "" for the default
 	origin:          string,
 	guid:            string, // the type's @(typ_guid) guid, written into its Component_Desc
 }

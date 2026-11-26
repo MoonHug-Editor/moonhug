@@ -598,13 +598,142 @@ _inspector_euler_owner: engine.Transform_Handle
 @(private)
 _inspector_euler_quat_src: [4]f32
 
+// A component's header is a bar across the whole row, as Transform's is. On
+// it, packed close: a small fold arrow, the component's glyph, its enable
+// checkbox, its name. The bar is drawn here and not by CollapsingHeader,
+// whose arrow is a full text line wide with padding on both sides. So the
+// procs below go in this order: the position (before the bar), the bar, the
+// glyph at the position, the checkbox, then the name.
+
+// The gap between the bar's glyph and its checkbox.
+@(private = "file")
+_HEADER_GAP :: f32(4)
+// The gap between the bar's arrow and its glyph.
+@(private = "file")
+_HEADER_ARROW_GAP :: f32(8)
+// The wider gaps: from the bar's left edge to the arrow, and from the
+// checkbox to the name.
+@(private = "file")
+_HEADER_EDGE_GAP :: f32(8)
+@(private = "file")
+_HEADER_NAME_GAP :: f32(8)
+// How strong the fold arrow is drawn: it is there to be found, not noticed.
+@(private = "file")
+_HEADER_ARROW_ALPHA :: f32(0.5)
+
+// Half the fold arrow's width.
+@(private = "file")
+_header_arrow_half :: proc() -> f32 {
+	return im.GetFontSize() * 0.28
+}
+
+// Where the glyph goes on the header bar about to be drawn: after the bar's
+// arrow.
+@(private = "file")
+_comp_header_box_pos :: proc() -> im.Vec2 {
+	pos := im.GetCursorScreenPos()
+	return {pos.x + _HEADER_EDGE_GAP + _header_arrow_half() * 2 + _HEADER_ARROW_GAP, pos.y}
+}
+
+// The bar: a row-wide button in the header colors with a small fold arrow at
+// its left. A click folds or unfolds it. Items drawn after it sit on it.
+// Returns whether it is open now.
+@(private = "file")
+_header_bar :: proc(id: cstring, open: bool) -> bool {
+	open := open
+	pos := im.GetCursorScreenPos()
+	size := im.Vec2{max(im.GetContentRegionAvail().x, 1), im.GetFrameHeight()}
+	im.SetNextItemAllowOverlap()
+	if im.InvisibleButton(id, size) do open = !open
+	col := im.Col.Header
+	if im.IsItemActive() {
+		col = .HeaderActive
+	} else if im.IsItemHovered() {
+		col = .HeaderHovered
+	}
+	dl := im.GetWindowDrawList()
+	im.DrawList_AddRectFilled(dl, pos, pos + size, im.GetColorU32(col), im.GetStyle().FrameRounding)
+	h := _header_arrow_half()
+	c := im.Vec2{pos.x + _HEADER_EDGE_GAP + h, pos.y + size.y * 0.5}
+	ink := im.GetColorU32(.Text, _HEADER_ARROW_ALPHA)
+	if open {
+		im.DrawList_AddTriangleFilled(dl, {c.x - h, c.y - h * 0.6}, {c.x + h, c.y - h * 0.6}, {c.x, c.y + h * 0.8}, ink)
+	} else {
+		im.DrawList_AddTriangleFilled(dl, {c.x - h * 0.6, c.y - h}, {c.x + h * 0.8, c.y}, {c.x - h * 0.6, c.y + h}, ink)
+	}
+	return open
+}
+
+// The bar's label: no text, the type's name as its id.
+@(private = "file")
+_comp_header_id :: proc(type_name: string) -> cstring {
+	return fmt.ctprintf("##%s", type_name)
+}
+
+// The size a header's glyph is drawn at. A Material glyph fills less of its
+// box than a letter does, so at the text's size it reads as smaller than the
+// name beside it.
+@(private = "file")
+_HEADER_ICON_SIZE :: f32(18)
+
+// The glyph on the bar at `pos`, the place _comp_header_box_pos gave, centered
+// in a square of _HEADER_ICON_SIZE. The next item goes after it on the bar.
+@(private = "file")
+_header_icon :: proc(pos: im.Vec2, icon: cstring) {
+	// Drawn, not laid out as text: a text item at this size is taller than
+	// the bar and would push the rows under it down.
+	size := im.Font_CalcTextSizeA(widgets.icon_font_lg, _HEADER_ICON_SIZE, max(f32), 0, icon)
+	at := im.Vec2{pos.x + (_HEADER_ICON_SIZE - size.x) * 0.5, pos.y + (im.GetFrameHeight() - size.y) * 0.5}
+	im.DrawList_AddTextImFontPtr(im.GetWindowDrawList(), widgets.icon_font_lg, _HEADER_ICON_SIZE, at, im.GetColorU32(.Text), icon)
+	im.SetCursorScreenPos(pos)
+	im.Dummy({_HEADER_ICON_SIZE, im.GetFrameHeight()})
+	im.SameLine(0, _HEADER_GAP)
+}
+
+// The name on the bar whose top is `bar_y`, after the item drawn last on it.
+@(private = "file")
+_header_name :: proc(name: cstring, bar_y: f32) {
+	im.SameLine(0, _HEADER_NAME_GAP)
+	// The checkbox before it sits lower than the bar's top: back to the top.
+	im.SetCursorScreenPos({im.GetCursorScreenPos().x, bar_y})
+	im.AlignTextToFramePadding()
+	im.TextUnformatted(name)
+}
+
+// The padding of a header's enable checkbox. A checkbox is as tall as a
+// frame, which fills the bar's whole height: this one is smaller, a little
+// taller than the text, and centered on the bar.
+@(private = "file")
+_HEADER_CHECK_PAD :: im.Vec2{1, 1}
+
+@(private = "file")
+_header_check_size :: proc() -> f32 {
+	return im.GetFontSize() + _HEADER_CHECK_PAD.y * 2
+}
+
+// The enable checkbox on a header bar, after the glyph.
+@(private = "file")
+_header_checkbox :: proc(id: cstring, v: ^bool) -> bool {
+	im.SetCursorPosY(im.GetCursorPosY() + (im.GetFrameHeight() - _header_check_size()) * 0.5)
+	im.PushStyleVarImVec2(.FramePadding, _HEADER_CHECK_PAD)
+	defer im.PopStyleVar()
+	return im.Checkbox(id, v)
+}
+
 @(private)
 _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handle, peers: []inspector.Multi_Peer) {
 	// UI nodes show one transform block: the RectTransform inspector draws
 	// position, rotation and scale (rect_transform_drawer.odin).
 	if rect_transform_covers_selection(tH, session.window_objects(_inspector_window) if len(peers) > 0 else nil) do return
-	im.SetNextItemOpen(_inspector_transform_open, .Once)
-	if im.CollapsingHeader("Transform", {.DefaultOpen}) {
+	// The same bar a component has. A transform has no enable checkbox: its
+	// place after the glyph stays empty, so the name starts where a
+	// component's does.
+	box_pos := _comp_header_box_pos()
+	transform_open := _header_bar(_comp_header_id("Transform"), _inspector_transform_open)
+	_header_icon(box_pos, icons.ICON_MD_DRAG_PAN)
+	im.Dummy({_header_check_size(), im.GetFrameHeight()})
+	_header_name("Transform", box_pos.y)
+	if transform_open {
 		_inspector_transform_open = true
 		// The rows' marks (override, driven, key) go in the gutter.
 		gutter := inspector.gutter_begin()
@@ -683,11 +812,13 @@ _draw_scale_link_toggle :: proc() {
 	// The label column is measured from the panel's edge, whatever the row's indent.
 	im.SetCursorPosX(im.GetCursorStartPos().x + inspector.field_label_width() - size - im.GetStyle().ItemInnerSpacing.x)
 	on := transform_inspector_prefs.scale_linked // the click below flips the flag: the pop must match the push
-	if on do im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
-	else do im.PushStyleColorImVec4(.Button, {0, 0, 0, 0})
-	if im.Button(fmt.ctprintf("%s##scale_link", icons.ICON_MD_LINK), {size, size}) do transform_inspector_prefs.scale_linked = !on
-	im.PopStyleColor()
-	widgets.tooltip("Linked: changing one axis scales the other two by the same ratio")
+	// No button face while it is off. The glyph is centered by the shared
+	// icon button: as a button's label it sits off-center.
+	if !on do im.PushStyleColorImVec4(.Button, {0, 0, 0, 0})
+	if widgets.icon_button(icons.ICON_MD_LINK, "##scale_link", "Linked: changing one axis scales the other two by the same ratio", active = on, size = size) {
+		transform_inspector_prefs.scale_linked = !on
+	}
+	if !on do im.PopStyleColor()
 	im.SetCursorPos(row)
 }
 
@@ -1403,7 +1534,10 @@ _draw_component_overflow_menu :: proc(
 	nested := false,
 ) {
 	popup_id := strings.clone_to_cstring(fmt.tprintf("##CompCtx_%v_%v", comp.handle.type_key, comp.handle.index), context.temp_allocator)
-	im.SameLine(im.GetCursorPosX() + im.GetContentRegionAvail().x - 20)
+	// At the bar's right end, its own width and a small margin in from the
+	// edge: the bar ends where the rows' value boxes end.
+	button_w := im.CalcTextSize(icons.ICON_MD_MENU).x + im.GetStyle().FramePadding.x * 2
+	im.SameLine(im.GetCursorPosX() + im.GetContentRegionAvail().x - button_w - _HEADER_GAP)
 	btn_label := strings.clone_to_cstring(fmt.tprintf("%s##btn_%v_%v", icons.ICON_MD_MENU, comp.handle.type_key, comp.handle.index), context.temp_allocator)
 	if im.SmallButton(btn_label) {
 		im.OpenPopup(popup_id)
@@ -1545,19 +1679,14 @@ _draw_components_section :: proc(
 		type_name := fmt.tprintf("%v", comp_tid)
 		c_type_name := strings.clone_to_cstring(type_name, context.temp_allocator)
 
-		checkbox_size := im.GetFrameHeight()
-		checkbox_pos := im.GetCursorScreenPos()
-		im.Indent(checkbox_size + im.GetStyle().ItemSpacing.x)
+		checkbox_pos := _comp_header_box_pos()
 
 		is_open := _inspector_comp_open[comp.handle.type_key] or_else true
-		im.SetNextItemOpen(is_open, .Once)
 
-		header_open := im.CollapsingHeader(c_type_name, {.DefaultOpen, .AllowOverlap})
+		header_open := _header_bar(_comp_header_id(type_name), is_open)
 		_inspector_comp_open[comp.handle.type_key] = header_open
 
-		im.Unindent(checkbox_size + im.GetStyle().ItemSpacing.x)
-
-		im.SetCursorScreenPos(checkbox_pos)
+		_header_icon(checkbox_pos, component_icon(comp.handle.type_key))
 		comp_base := cast(^engine.CompData)comp_ptr
 		enabled := comp_base.enabled
 		enabled_id := strings.clone_to_cstring(fmt.tprintf("##enabled_%v_%v", comp.handle.type_key, comp.handle.index), context.temp_allocator)
@@ -1569,7 +1698,7 @@ _draw_components_section :: proc(
 		inspector.multi_probe_field(&comp_base.enabled, typeid_of(bool), enabled_offset)
 		enabled_mixed := inspector.current_field_mixed
 		if enabled_mixed do enabled = false
-		if im.Checkbox(enabled_id, &enabled) {
+		if _header_checkbox(enabled_id, &enabled) {
 			// A click is a complete gesture: open, write, close. The owner is
 			// pushed explicitly — this row draws ABOVE the component's own owner
 			// scope, so current_owner() would otherwise name the transform and
@@ -1588,6 +1717,7 @@ _draw_components_section :: proc(
 		// checkbox, and the rest of this block draws with the outer list.
 		inspector.multi_set_peers(enabled_prev_peers)
 
+		_header_name(c_type_name, checkbox_pos.y)
 		_draw_component_overflow_menu(t, tH, &comp, comp_ptr, comp_tid, comp_idx, comp_count)
 
 		if header_open {
@@ -1757,25 +1887,14 @@ _draw_components_section_nested_rows :: proc(
 		// hosts, or via a breadcrumb for deep ones).
 		comp_has_any_override := engine.nested_scene_has_any_root_override_for_target(t.scene, host_tH, comp_base.local_id)
 
-		checkbox_size := im.GetFrameHeight()
-		checkbox_pos := im.GetCursorScreenPos()
-		im.Indent(checkbox_size + im.GetStyle().ItemSpacing.x)
+		checkbox_pos := _comp_header_box_pos()
 
 		is_open := _inspector_comp_open[comp.handle.type_key] or_else true
-		im.SetNextItemOpen(is_open, .Once)
 
-		if comp_has_any_override {
-			im.PushStyleColorImVec4(im.Col.Text, _override_color)
-		}
-		header_open := im.CollapsingHeader(c_type_name, {.DefaultOpen, .AllowOverlap})
-		if comp_has_any_override {
-			im.PopStyleColor(1)
-		}
+		header_open := _header_bar(_comp_header_id(type_name), is_open)
 		_inspector_comp_open[comp.handle.type_key] = header_open
 
-		im.Unindent(checkbox_size + im.GetStyle().ItemSpacing.x)
-
-		im.SetCursorScreenPos(checkbox_pos)
+		_header_icon(checkbox_pos, component_icon(comp.handle.type_key))
 		enabled := comp_base.enabled
 		enabled_id := strings.clone_to_cstring(fmt.tprintf("##enabled_%v_%v", comp.handle.type_key, comp.handle.index), context.temp_allocator)
 
@@ -1784,7 +1903,7 @@ _draw_components_section_nested_rows :: proc(
 		// context menu uses this for revert.
 		enabled_overridden := engine.nested_scene_has_root_override(t.scene, host_tH, comp_base.local_id, "base.enabled")
 		enabled_pushed := _push_override_style(enabled_overridden)
-		if im.Checkbox(enabled_id, &enabled) {
+		if _header_checkbox(enabled_id, &enabled) {
 			e := undo.edit_begin(comp.handle, comp_tid, "Enabled")
 			comp_base.enabled = enabled
 			undo.edit_end(&e)
@@ -1795,6 +1914,9 @@ _draw_components_section_nested_rows :: proc(
 		inspector.draw_field_context_menu(&comp_base.enabled, typeid_of(bool), "base.enabled")
 		engine.inspector_set_nested_local_id(prev_enabled_lid)
 
+		if comp_has_any_override do im.PushStyleColorImVec4(im.Col.Text, _override_color)
+		_header_name(c_type_name, checkbox_pos.y)
+		if comp_has_any_override do im.PopStyleColor(1)
 		_draw_component_overflow_menu(t, tH, &comp, comp_ptr, comp_tid, comp_idx, comp_count, nested = true)
 
 		if header_open {

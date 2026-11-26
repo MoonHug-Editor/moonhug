@@ -35,7 +35,7 @@ import mhgui "moonhug:packages/mhgui"
 // everything else on the canvas.
 DROPDOWN_Z :: 1000
 
-@(component={menu="UI/Dropdown"})
+@(component={menu="UI/Dropdown", icon="ARROW_DROP_DOWN_CIRCLE"})
 @(typ_guid={guid = "2c7e1d94-58b3-4a6f-9d21-7e4b0a3c6f15"})
 Dropdown :: struct {
 	using base:       engine.CompData `inspect:"-"`,
@@ -53,7 +53,7 @@ Dropdown :: struct {
 
 // One row of a Dropdown's list. The Template holds one, and the open list
 // has a copy for each option.
-@(component={menu="UI/DropdownItem"})
+@(component={menu="UI/DropdownItem", icon="LIST"})
 @(typ_guid={guid = "8f3a6c50-1e92-47d8-b6a4-0c5d9e2f7b38"})
 DropdownItem :: struct {
 	using base:       engine.CompData `inspect:"-"`,

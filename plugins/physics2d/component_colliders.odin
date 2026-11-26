@@ -19,7 +19,7 @@ package physics2d
 import b2 "vendor:box2d"
 import "moonhug:packages/engine"
 
-@(component={menu="Physics2D/BoxCollider2D"})
+@(component={menu="Physics2D/BoxCollider2D", icon="CHECK_BOX_OUTLINE_BLANK"})
 @(typ_guid={guid = "1e2d0da1-9df6-4668-9f86-f76351378394"})
 BoxCollider2D :: struct {
 	using base:  engine.CompData `inspect:"-"`,
@@ -52,7 +52,7 @@ type_cleanup_BoxCollider2D :: proc(comp: ^BoxCollider2D) {
 	engine.comp_zero(comp)
 }
 
-@(component={menu="Physics2D/CircleCollider2D"})
+@(component={menu="Physics2D/CircleCollider2D", icon="CIRCLE"})
 @(typ_guid={guid = "657711b4-6689-479e-9eec-da439658cadf"})
 CircleCollider2D :: struct {
 	using base:  engine.CompData `inspect:"-"`,
@@ -87,7 +87,7 @@ Capsule_Direction :: enum {
 	Horizontal,
 }
 
-@(component={menu="Physics2D/CapsuleCollider2D"})
+@(component={menu="Physics2D/CapsuleCollider2D", icon="PILL"})
 @(typ_guid={guid = "11cbe045-afe7-413a-837e-167ca23b7ca1"})
 CapsuleCollider2D :: struct {
 	using base:  engine.CompData `inspect:"-"`,
@@ -124,7 +124,7 @@ type_cleanup_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {
 // (polygon.odin), one shape each on the body. A path that is not a simple
 // polygon (self-intersecting, all on a line) builds nothing and says so in
 // the log, until it is edited. Transform scale applies per axis.
-@(component={menu="Physics2D/PolygonCollider2D"})
+@(component={menu="Physics2D/PolygonCollider2D", icon="PENTAGON"})
 @(typ_guid={guid = "2db4c7a5-5189-4f3f-a96f-36f1b3c13b20"})
 PolygonCollider2D :: struct {
 	using base:  engine.CompData `inspect:"-"`,
@@ -172,7 +172,7 @@ type_cleanup_PolygonCollider2D :: proc(comp: ^PolygonCollider2D) {
 // and one-sided: the solid side is to the right of the path's direction, so
 // a floor's points run from right to left, and a body behind the line passes
 // through it. The chain's ends continue straight for a body sliding off them.
-@(component={menu="Physics2D/EdgeCollider2D"})
+@(component={menu="Physics2D/EdgeCollider2D", icon="TIMELINE"})
 @(typ_guid={guid = "d3835978-f15b-4a58-b33a-774f6a83daf4"})
 EdgeCollider2D :: struct {
 	using base:  engine.CompData `inspect:"-"`,

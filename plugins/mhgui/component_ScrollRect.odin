@@ -33,7 +33,7 @@ Scroll_Movement :: enum u8 {
 	Unrestricted, // no ends
 }
 
-@(component={menu="UI/ScrollRect"})
+@(component={menu="UI/ScrollRect", icon="SWIPE_VERTICAL"})
 @(typ_guid={guid = "50a4a56d-c4e2-4cf1-bc7f-0d86f52eb9c8"})
 ScrollRect :: struct {
 	using base:   engine.CompData `inspect:"-"`,

@@ -33,7 +33,7 @@ Rect :: struct {
 // it, size_delta grows that sub-rect, and the pivot lands on the anchor
 // reference point plus anchored_position. The node's Transform position
 // takes no part; rotation and scale apply around the pivot.
-@(component={menu="UI/RectTransform"})
+@(component={menu="UI/RectTransform", icon="ASPECT_RATIO"})
 @(typ_guid={guid = "36e133bb-7979-48ba-8b1b-57385558f37d"})
 RectTransform :: struct {
 	using base:        CompData `inspect:"-"`,
@@ -73,7 +73,7 @@ Canvas_Render_Mode :: enum u8 {
 }
 
 // The root of a UI tree. Canvases stack by sort_order.
-@(component={menu="UI/Canvas"})
+@(component={menu="UI/Canvas", icon="WEB_ASSET"})
 @(typ_guid={guid = "ba2db3cd-79be-4d26-9cab-be3fc317d685"})
 Canvas :: struct {
 	using base:     CompData `inspect:"-"`,
@@ -91,7 +91,7 @@ type_reset_Canvas :: proc(c: ^Canvas) {
 // (packages/mhgui Image); a CanvasRenderer without one draws nothing.
 // Disabling it hides the node's graphic without touching the graphic's
 // settings.
-@(component={menu="UI/CanvasRenderer"})
+@(component={menu="UI/CanvasRenderer", icon="BRUSH"})
 @(typ_guid={guid = "56334c3e-5a5d-4a74-981f-3682e7c9dc9a"})
 CanvasRenderer :: struct {
 	using base: CompData `inspect:"-"`,
@@ -106,7 +106,7 @@ CanvasRenderer :: struct {
 // included. Groups nest: a node takes the alpha of every group above it
 // multiplied, and is interactable and hit by the pointer only when every
 // group above it says so. A group with ignore_parent_groups starts over.
-@(component={menu="UI/CanvasGroup"})
+@(component={menu="UI/CanvasGroup", icon="LAYERS"})
 @(typ_guid={guid = "a38382c2-9aa1-46bc-9b65-814fa68cb532"})
 CanvasGroup :: struct {
 	using base:      CompData `inspect:"-"`,

@@ -20,7 +20,7 @@ import particles "moonhug:packages/particles"
 
 // The kind's components: the track carries what it drives; the clip needs no
 // payload (the span itself is the instruction).
-@(component={menu="Playables/Tracks/TrackParticles"})
+@(component={menu="Playables/Tracks/TrackParticles", icon="AUTO_AWESOME"})
 @(typ_guid={guid = "e4302a74-3eae-4bce-93c0-b3cc8eba2661"})
 TrackParticles :: struct {
 	using base: engine.CompData `inspect:"-"`,
@@ -28,7 +28,7 @@ TrackParticles :: struct {
 	system: engine.Ref_Local `ref:"ParticleSystem"`,
 }
 
-@(component={menu="Playables/Clips/ClipParticles"})
+@(component={menu="Playables/Clips/ClipParticles", icon="AUTO_AWESOME"})
 @(typ_guid={guid = "8ab6c411-bcd5-4f71-8e0d-ff13b17dc52f"})
 ClipParticles :: struct {
 	using base: engine.CompData `inspect:"-"`,

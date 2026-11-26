@@ -9,7 +9,7 @@ package physics3d
 import b3 "vendor:box3d"
 import "moonhug:packages/engine"
 
-@(component={menu="Physics/Rigidbody"})
+@(component={menu="Physics/Rigidbody", icon="WEIGHT"})
 @(typ_guid={guid = "82976d39-c450-4464-87e2-c260c430c157"})
 Rigidbody :: struct {
 	using base:      engine.CompData `inspect:"-"`,

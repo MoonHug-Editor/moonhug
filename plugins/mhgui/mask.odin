@@ -23,7 +23,7 @@ import "moonhug:packages/engine"
 //   ui_clip.glsl). The built-in unlit shader does, and every shader the
 //   importer compiles does when the project's UiMask setting is Auto Inject
 //   (ui_mask_settings.odin).
-@(component={menu="UI/UiMask"})
+@(component={menu="UI/UiMask", icon="CROP"})
 @(typ_guid={guid = "0907bcc0-c7db-4651-8e5d-826ae1bd8806"})
 UiMask :: struct {
 	using base:    engine.CompData `inspect:"-"`,

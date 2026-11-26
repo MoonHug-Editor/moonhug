@@ -17,7 +17,7 @@ import "core:math"
 import "core:math/linalg"
 import "moonhug:packages/engine"
 
-@(component={menu="Rigging/TwoBoneIK"})
+@(component={menu="Rigging/TwoBoneIK", icon="REBASE"})
 @(typ_guid={guid="8b89d019-7d2f-46ac-b2d3-a3ac5b8ddd63"})
 TwoBoneIK :: struct {
 	using base:     engine.CompData `inspect:"-"`,

@@ -93,9 +93,10 @@ _component_registry_by_guid: map[uuid.Identifier]TypeKey
 //
 // `menu` is its path in the Component menu ("Rendering/Camera"). `ref_tags`
 // names capability tags that a `has:"@Tag"` reference field matches, and `max`
-// caps the pool. The struct also carries @(typ_guid), its identity in scene
-// files.
-@(extension_point={attribute="component", target="type", fields="menu ref_tags max"})
+// caps the pool. `icon` names the glyph on its inspector header, an ICON_MD_
+// constant of moonhug:editor/icons without the prefix ("LIGHTBULB"). The
+// struct also carries @(typ_guid), its identity in scene files.
+@(extension_point={attribute="component", target="type", fields="menu ref_tags max icon"})
 component_register :: proc(desc: Component_Desc) {
 	{
 		// The registry is process-global: it must never borrow the caller's

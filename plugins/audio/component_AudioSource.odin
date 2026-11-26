@@ -13,7 +13,7 @@ import engine "moonhug:packages/engine"
 
 // ref_tags="Output": something a timeline track can drive. A `has:"@Output"`
 // picker offers objects carrying one.
-@(component={menu="Audio/AudioSource", ref_tags="Output"})
+@(component={menu="Audio/AudioSource", ref_tags="Output", icon="VOLUME_UP"})
 @(typ_guid={guid="6f7fb020-d764-4ce1-bc09-d8088356bd22"})
 AudioSource :: struct {
 	using base:    engine.CompData `inspect:"-"`,

@@ -124,6 +124,60 @@ ICON_MD_STRAIGHTEN     :: "\ue41c" // straighten (Measure tool)
 ICON_MD_KEYBOARD       :: "\ue312" // keyboard (Input Debug)
 ICON_MD_SCREEN_ROTATION :: "\ue1c1" // screen_rotation (Game window size flip)
 
+// Component headers in the Inspector: a component names one with
+// @(component={icon="NAME"}).
+ICON_MD_ACCESSIBILITY_NEW       :: "\ue92c" // accessibility_new
+ICON_MD_DRAG_PAN                :: "\uf71e" // drag_pan (the Transform header)
+ICON_MD_COMPONENT               :: "\uef42" // the header of a component that names no icon (the glyph at ef42, which the codepoints file does not name)
+ICON_MD_ADS_CLICK               :: "\ue762" // ads_click
+ICON_MD_ARROW_DROP_DOWN_CIRCLE  :: "\ue5c6" // arrow_drop_down_circle
+ICON_MD_ASPECT_RATIO            :: "\ue85b" // aspect_ratio
+ICON_MD_AUTO_AWESOME            :: "\ue65f" // auto_awesome
+ICON_MD_BLUR_CIRCULAR           :: "\ue3a2" // blur_circular
+ICON_MD_BLUR_ON                 :: "\ue3a5" // blur_on
+ICON_MD_BORDER_STYLE            :: "\ue231" // border_style
+ICON_MD_BRUSH                   :: "\ue3ae" // brush
+ICON_MD_CATEGORY                :: "\ue72c" // category
+ICON_MD_CHECK_BOX_OUTLINE_BLANK :: "\ue835" // check_box_outline_blank
+ICON_MD_CIRCLE                  :: "\uef4a" // circle
+ICON_MD_DIRECTIONS_RUN          :: "\ue566" // directions_run
+ICON_MD_EDIT                    :: "\uf097" // edit
+ICON_MD_EQUALIZER               :: "\ue01d" // equalizer
+ICON_MD_EXPAND                  :: "\ue94f" // expand
+ICON_MD_FIT_SCREEN              :: "\uea10" // fit_screen
+ICON_MD_GRADIENT                :: "\ue3e9" // gradient
+ICON_MD_HEARING                 :: "\ue023" // hearing
+ICON_MD_HEARING_DISABLED        :: "\uf104" // hearing_disabled
+ICON_MD_INPUT                   :: "\ue890" // input
+ICON_MD_LIGHTBULB               :: "\ue90f" // lightbulb
+ICON_MD_LINEAR_SCALE            :: "\ue260" // linear_scale
+ICON_MD_LIST                    :: "\ue896" // list
+ICON_MD_MOVING                  :: "\ue501" // moving
+ICON_MD_PENTAGON                :: "\ueb50" // pentagon
+ICON_MD_PHOTO                   :: "\ue693" // photo
+ICON_MD_PILL                    :: "\ue11f" // pill
+ICON_MD_POLYLINE                :: "\uebbb" // polyline
+ICON_MD_RADIO_BUTTON_CHECKED    :: "\ue837" // radio_button_checked
+ICON_MD_REBASE                  :: "\uf845" // rebase
+ICON_MD_SHAPES                  :: "\ue602" // shapes
+ICON_MD_SMART_BUTTON            :: "\uf1c1" // smart_button
+ICON_MD_SWIPE_VERTICAL          :: "\ueb51" // swipe_vertical
+ICON_MD_SYNC                    :: "\ue627" // sync
+ICON_MD_TABLE_CHART             :: "\ue265" // table_chart
+ICON_MD_TEXT_FIELDS             :: "\ue262" // text_fields
+ICON_MD_TIMELINE                :: "\ue922" // timeline
+ICON_MD_TOGGLE_ON               :: "\ue9f6" // toggle_on
+ICON_MD_TONALITY                :: "\ue427" // tonality
+ICON_MD_TOUCH_APP               :: "\ue913" // touch_app
+ICON_MD_UNFOLD_MORE             :: "\ue5d7" // unfold_more
+ICON_MD_VIEW_IN_AR              :: "\uefc9" // view_in_ar
+ICON_MD_VIEW_QUILT              :: "\ue8f1" // view_quilt
+ICON_MD_VIEW_STREAM             :: "\ue8f2" // view_stream
+ICON_MD_WAVES                   :: "\ue176" // waves
+ICON_MD_WEB_ASSET               :: "\ue069" // web_asset
+ICON_MD_WEIGHT                  :: "\ue13d" // weight
+
+
 // The built-in windows' titles: icon, name, and the name again after
 // ###. imgui hashes only the text after ### and saves settings under it, so
 // the id is the plain name it always was and saved layouts carry over.

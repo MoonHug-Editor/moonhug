@@ -35,6 +35,7 @@ ComponentEntry :: struct {
 	has_on_trigger_enter:   bool,
 	has_on_trigger_exit:    bool,
 	ref_tags:        []string, // `ref_tags="A,B"` on the attribute: capability tags for `ref:"@A"` fields
+	icon:            string,   // `icon="LIGHTBULB"` on the attribute: the ICON_MD_ glyph of the inspector header
 	// Where the @(component) was declared, rendered by gen_facts.attr_origin.
 	// Emitted into the Component menu registration and shown in the item's
 	// tooltip with debug tooltips on.
@@ -216,6 +217,7 @@ components_provide :: proc(w: ^db.World) -> bool {
 				has_on_trigger_enter   = key in trigger_enter,
 				has_on_trigger_exit    = key in trigger_exit,
 				ref_tags        = _split_tags(args.fields["ref_tags"]),
+				icon            = args.fields["icon"],
 				origin          = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, type_name),
 				guid            = guid,
 			})
@@ -308,6 +310,7 @@ _collect_data :: proc(w: ^db.World) -> _ComponentData {
 				has_on_trigger_enter   = component.has_on_trigger_enter,
 				has_on_trigger_exit    = component.has_on_trigger_exit,
 				ref_tags        = component.ref_tags,
+				icon            = component.icon,
 				origin          = component.origin,
 				guid            = component.guid,
 			})
@@ -360,7 +363,8 @@ generate_component_menus :: proc(w: ^db.World) -> bool {
 
 	strings.write_string(&b, "package scene_windows\n\n")
 	fmt.sbprintf(&b, "import engine \"%s\"\n", _ENGINE_IMPORT)
-	strings.write_string(&b, "import \"moonhug:editor/menu\"\n\n")
+	strings.write_string(&b, "import \"moonhug:editor/menu\"\n")
+	strings.write_string(&b, "import \"moonhug:editor/icons\"\n\n")
 
 	// Sorted by menu path (not type name) so the emitted registration mirrors
 	// the menu. Slashes in @(component={menu="Sub/Name"}) nest submenus like
@@ -391,6 +395,20 @@ generate_component_menus :: proc(w: ^db.World) -> bool {
 	// than boilerplate worth generating.
 	strings.write_string(&b, "_component_menu_add :: proc(key: engine.TypeKey) {\n")
 	strings.write_string(&b, "\tcomponent_add_to_selected(key)\n")
+	strings.write_string(&b, "}\n\n")
+
+	// The glyph on a component's inspector header: the ICON_MD_ constant its
+	// @(component={icon="NAME"}) names, so a wrong name is a compile error in
+	// the generated file. A component with no icon gets the default.
+	strings.write_string(&b, "// The glyph a component's inspector header shows.\n")
+	strings.write_string(&b, "component_icon :: proc(key: engine.TypeKey) -> cstring {\n")
+	strings.write_string(&b, "\t#partial switch key {\n")
+	for e in menu_entries {
+		if e.icon == "" do continue
+		fmt.sbprintf(&b, "\tcase .%s: return icons.ICON_MD_%s\n", e.type_name, e.icon)
+	}
+	strings.write_string(&b, "\t}\n")
+	strings.write_string(&b, "\treturn icons.ICON_MD_COMPONENT\n")
 	strings.write_string(&b, "}\n")
 
 	db.emit(w, _COMPONENT_MENU_OUT_FILE, strings.to_string(b))

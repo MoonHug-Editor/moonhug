@@ -26,7 +26,7 @@ Slider_Direction :: enum u8 {
 	Top_To_Bottom,
 }
 
-@(component={menu="UI/Slider"})
+@(component={menu="UI/Slider", icon="LINEAR_SCALE"})
 @(typ_guid={guid = "7a7488cb-9843-4f9e-8243-f5f212c39801"})
 Slider :: struct {
 	using base:       engine.CompData `inspect:"-"`,

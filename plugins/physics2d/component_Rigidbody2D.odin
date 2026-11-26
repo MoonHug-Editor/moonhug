@@ -15,7 +15,7 @@ Body_Type :: enum {
 	Static,
 }
 
-@(component={menu="Physics2D/Rigidbody2D"})
+@(component={menu="Physics2D/Rigidbody2D", icon="WEIGHT"})
 @(typ_guid={guid = "add56122-a3b9-4fcb-a924-0fa64b35d523"})
 Rigidbody2D :: struct {
 	using base:      engine.CompData `inspect:"-"`,

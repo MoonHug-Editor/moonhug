@@ -16,7 +16,7 @@ import "moonhug:packages/engine"
 //
 // Sizes are in canvas units. A radius is cut to half the shorter side, so a
 // large radius on every corner makes a pill or a circle.
-@(component={menu="UI/UiShape"})
+@(component={menu="UI/UiShape", icon="SHAPES"})
 @(typ_guid={guid = "4405f377-8e06-4b47-804a-f6ed73d030fd"})
 UiShape :: struct {
 	using base:     engine.CompData `inspect:"-"`,

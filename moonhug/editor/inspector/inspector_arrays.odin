@@ -125,12 +125,19 @@ is_array_type :: proc(tid: typeid) -> bool {
 	return is_dyn || is_fixed
 }
 
+// A list's length, dimmed, after its name on the foldout's row.
+@(private = "file")
+_array_count_text :: proc(text: string) {
+	im.SameLine()
+	im.TextDisabled("%s", strings.clone_to_cstring(text, context.temp_allocator))
+}
+
 draw_fixed_array :: proc(ptr: rawptr, count: int, elem_ti: ^runtime.Type_Info, field_tid: typeid, label: cstring, array_offset: uintptr = 0, inline := false) {
 	if !inline {
 		tree_open := im.TreeNode(label)
 		draw_field_context_menu(ptr, field_tid)
+		_array_count_text(fmt.tprintf("%d", count))
 		if !tree_open do return
-		im.TextDisabled("Fixed size: %d", count)
 	}
 	defer if !inline do im.TreePop()
 
@@ -178,6 +185,13 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 	if !inline {
 		tree_open := im.TreeNode(label)
 		draw_field_context_menu(field_ptr, field_tid)
+		// The length on the list's own row, so a folded list says how long
+		// it is. Mixed across a selection, it is the mixed marker.
+		if multi_active() && multi_array_len_mixed(array_offset, da.len) {
+			_array_count_text(MIXED_VALUE_TEXT)
+		} else {
+			_array_count_text(fmt.tprintf("%d", da.len))
+		}
 		if !tree_open do return
 	}
 	defer if !inline do im.TreePop()
@@ -202,8 +216,6 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 		// why some rows are missing.
 		im.TextDisabled("Size: %s - this object %d, showing %d common",
 			MIXED_VALUE_TEXT, da.len, common_len)
-	} else {
-		im.TextDisabled("Size: %d", da.len)
 	}
 
 	readonly := core.inspector_is_readonly()

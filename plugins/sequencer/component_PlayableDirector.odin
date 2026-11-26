@@ -16,7 +16,7 @@ Timeline_Wrap :: enum u8 {
 	Loop,
 }
 
-@(component={menu="Playables/PlayableDirector"})
+@(component={menu="Playables/PlayableDirector", icon="MOVIE"})
 @(typ_guid={guid = "b7aaabb5-aaee-4aa9-af14-fdc8e2254d6c"})
 PlayableDirector :: struct {
 	using base: engine.CompData `inspect:"-"`,

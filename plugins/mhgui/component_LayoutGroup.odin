@@ -47,7 +47,7 @@ Rect_Offset :: struct {
 // cell_size, and its rect comes from the flow. Children without a
 // RectTransform stay out of the layout. Plugged into the engine's rect walk
 // as a layout provider (canvas_layout_groups below).
-@(component={menu="UI/LayoutGroup"})
+@(component={menu="UI/LayoutGroup", icon="VIEW_QUILT"})
 @(typ_guid={guid = "de2516a6-7a94-4f67-9c0b-fc2d4c78dbdd"})
 LayoutGroup :: struct {
 	using base:       engine.CompData `inspect:"-"`,
@@ -325,7 +325,7 @@ canvas_layout_groups :: proc(tH: engine.Transform_Handle, rect: engine.Rect, chi
 }
 
 // What a node asks of the LayoutGroup that places it.
-@(component={menu="UI/LayoutElement"})
+@(component={menu="UI/LayoutElement", icon="VIEW_STREAM"})
 @(typ_guid={guid = "f0939073-ff36-44de-ac9f-ac43ed32bb41"})
 LayoutElement :: struct {
 	using base:     engine.CompData `inspect:"-"`,
@@ -350,7 +350,7 @@ Fit_Mode :: enum u8 {
 // LayoutGroup to its children. The node grows and shrinks around its pivot,
 // so a pivot at the top keeps the top edge where it is. A node a LayoutGroup
 // places is sized by that group, which asks for the same sizes.
-@(component={menu="UI/ContentSizeFitter"})
+@(component={menu="UI/ContentSizeFitter", icon="EXPAND"})
 @(typ_guid={guid = "0d6d8690-2676-484f-98ff-c4d41661fb79"})
 ContentSizeFitter :: struct {
 	using base:     engine.CompData `inspect:"-"`,
@@ -367,7 +367,7 @@ Aspect_Mode :: enum u8 {
 }
 
 // Keeps its node at a width to height ratio.
-@(component={menu="UI/AspectRatioFitter"})
+@(component={menu="UI/AspectRatioFitter", icon="ASPECT_RATIO"})
 @(typ_guid={guid = "aae9ec5a-8b42-46d9-8e5d-537c8742d450"})
 AspectRatioFitter :: struct {
 	using base:   engine.CompData `inspect:"-"`,

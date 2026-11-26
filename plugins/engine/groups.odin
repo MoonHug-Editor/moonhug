@@ -52,7 +52,7 @@ groups_settings: Groups_Settings
 // The groups an object belongs to, one bit per group of the Group Names
 // asset. Disabled, the object stays alive in its groups but leaves the active
 // lists.
-@(component={menu="Scene/Groups"})
+@(component={menu="Scene/Groups", icon="CATEGORY"})
 @(typ_guid={guid = "4b8e7d12-6f3a-4c95-a1e0-2d7c9b5f8e31"})
 Groups :: struct {
 	using base: CompData `inspect:"-"`,

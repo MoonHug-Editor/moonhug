@@ -13,7 +13,7 @@ package engine
 // geometry. Hidden from the default inspector: the mesh_editor inspector
 // step draws the part picker.
 
-@(component={menu="Mesh/MeshFilter"})
+@(component={menu="Mesh/MeshFilter", icon="DEPLOYED_CODE"})
 @(typ_guid={guid = "32f52908-51a9-4f3b-819b-fc9d8cbc5972"})
 MeshFilter :: struct {
     using base: CompData `inspect:"-"`,

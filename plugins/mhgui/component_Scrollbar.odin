@@ -21,7 +21,7 @@ Scrollbar_Direction :: enum u8 {
 	Top_To_Bottom,
 }
 
-@(component={menu="UI/Scrollbar"})
+@(component={menu="UI/Scrollbar", icon="UNFOLD_MORE"})
 @(typ_guid={guid = "86a0269e-7429-4b05-af43-6ad20df46638"})
 Scrollbar :: struct {
 	using base: engine.CompData `inspect:"-"`,

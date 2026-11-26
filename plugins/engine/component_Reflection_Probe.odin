@@ -24,7 +24,7 @@ Probe_Resolution :: enum u8 {
 	Res_256,
 }
 
-@(component={max=32, menu="Rendering/Reflection Probe"})
+@(component={max=32, menu="Rendering/Reflection Probe", icon="BLUR_CIRCULAR"})
 @(typ_guid={guid = "8909eabd-746b-4bfd-b405-e3a34003d0b9"})
 Reflection_Probe :: struct {
 	using base: CompData `inspect:"-"`,

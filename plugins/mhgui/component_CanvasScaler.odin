@@ -12,7 +12,7 @@ Scale_Mode :: enum u8 {
 
 // Scales the canvas as a whole so a layout authored once holds up across
 // window sizes. Without a CanvasScaler one canvas unit is one screen pixel.
-@(component={menu="UI/CanvasScaler"})
+@(component={menu="UI/CanvasScaler", icon="FIT_SCREEN"})
 @(typ_guid={guid = "39805feb-6d86-481c-bb1a-f662b7309f64"})
 CanvasScaler :: struct {
 	using base:           engine.CompData `inspect:"-"`,

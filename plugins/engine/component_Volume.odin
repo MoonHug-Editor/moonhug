@@ -15,7 +15,7 @@ Volume_Override :: struct {
 	settings: string, // owned
 }
 
-@(component={max=64, menu="Rendering/Volume"})
+@(component={max=64, menu="Rendering/Volume", icon="TONALITY"})
 @(typ_guid={guid = "b3ac006d-03a0-4f97-8040-56f373894b95"})
 Volume :: struct {
 	using base: CompData `inspect:"-"`,

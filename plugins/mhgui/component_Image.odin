@@ -17,7 +17,7 @@ import "moonhug:packages/engine"
 // (the Sprite Editor, or the texture's import settings in Single mode);
 // pixels_per_unit_multiplier scales the pixel size the borders and tiles
 // draw at, so 2 halves them.
-@(component={menu="UI/Image"})
+@(component={menu="UI/Image", icon="IMAGE"})
 @(typ_guid={guid = "0a7604a3-0097-4b7d-a565-7ebbdfcaa795"})
 Image :: struct {
 	using base:      engine.CompData `inspect:"-"`,

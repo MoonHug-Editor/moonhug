@@ -26,7 +26,7 @@ Gradient_Span :: enum u8 {
 	Each,    // across each quad: every glyph of a Text
 }
 
-@(component={menu="UI/Effects/UiGradient"})
+@(component={menu="UI/Effects/UiGradient", icon="GRADIENT"})
 @(typ_guid={guid = "4b1f0c7a-2d63-4e8b-9a15-c3e7d8f2a640"})
 UiGradient :: struct {
 	using base: engine.CompData `inspect:"-"`,
@@ -36,7 +36,7 @@ UiGradient :: struct {
 	to:         [4]f32 `decor:color() decor:tooltip(desc="The colour at the bottom or the right. It multiplies the graphic's own colour.")`,
 }
 
-@(component={menu="UI/Effects/UiShadow"})
+@(component={menu="UI/Effects/UiShadow", icon="BLUR_ON"})
 @(typ_guid={guid = "9e2a5d18-7c40-4f36-b1d9-0a6c4e8f3b27"})
 UiShadow :: struct {
 	using base: engine.CompData `inspect:"-"`,
@@ -44,7 +44,7 @@ UiShadow :: struct {
 	offset:     [2]f32 `decor:tooltip(desc="How far the shadow is moved, in canvas units, y up.")`,
 }
 
-@(component={menu="UI/Effects/UiOutline"})
+@(component={menu="UI/Effects/UiOutline", icon="BORDER_STYLE"})
 @(typ_guid={guid = "c5d81e3f-6a02-49b7-8e4c-1f7b9a0d2e53"})
 UiOutline :: struct {
 	using base: engine.CompData `inspect:"-"`,

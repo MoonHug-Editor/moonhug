@@ -11,7 +11,7 @@ package mhgui
 import "moonhug:packages/engine"
 import pointer "moonhug:packages/engine/pointer"
 
-@(component={menu="UI/Toggle"})
+@(component={menu="UI/Toggle", icon="TOGGLE_ON"})
 @(typ_guid={guid = "cd4cc473-9feb-4b44-9bd4-cc5e3f5164ce"})
 Toggle :: struct {
 	using base:       engine.CompData `inspect:"-"`,
@@ -24,7 +24,7 @@ Toggle :: struct {
 }
 
 // Makes the toggles that name it a set: turning one on turns the others off.
-@(component={menu="UI/ToggleGroup"})
+@(component={menu="UI/ToggleGroup", icon="RADIO_BUTTON_CHECKED"})
 @(typ_guid={guid = "e6261cce-a4e8-4564-9677-6112f984a7c4"})
 ToggleGroup :: struct {
 	using base:       engine.CompData `inspect:"-"`,

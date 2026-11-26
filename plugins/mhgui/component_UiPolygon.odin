@@ -19,7 +19,7 @@ package mhgui
 import "core:math/linalg"
 import "moonhug:packages/engine"
 
-@(component={menu="UI/UiPolygon"})
+@(component={menu="UI/UiPolygon", icon="PENTAGON"})
 @(typ_guid={guid = "71c4e9a2-0b5d-4f83-a6e1-3d8f2c7b5094"})
 UiPolygon :: struct {
 	using base:    engine.CompData `inspect:"-"`,

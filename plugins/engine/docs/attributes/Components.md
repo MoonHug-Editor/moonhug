@@ -38,6 +38,7 @@ type_reset_Lifetime :: proc(comp: ^Lifetime) {
 | `menu` | The path in the Component menu and in Add Component, such as `"Rendering/Camera"`. A plugin's components go under the plugin's name. |
 | `ref_tags` | Capability tags a reference field with `has:"@Tag"` matches, such as `"Output"` for what a timeline track can drive. |
 | `max` | The pool's size in every world. Going past it stops the program with an error that names the type. |
+| `icon` | The glyph on the component's header in the Inspector: an `ICON_MD_` constant of `moonhug:editor/icons`, written without the prefix, such as `"LIGHTBULB"`. A name with no constant is a compile error. A component with no icon shows a default glyph. |
 
 ## Reference
 

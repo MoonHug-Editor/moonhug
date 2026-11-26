@@ -86,7 +86,7 @@ Animator_State_Runtime :: struct {
 	done:        bool, // a Once timeline ran past its end
 }
 
-@(component={menu="Animation/TimelineAnimator"})
+@(component={menu="Animation/TimelineAnimator", icon="ANIMATION"})
 @(typ_guid={guid = "0959886b-dc83-491c-9843-df105c69e01d"})
 TimelineAnimator :: struct {
 	using base: engine.CompData `inspect:"-"`,

@@ -8,17 +8,17 @@ Camera_Projection :: enum u8 {
     Orthographic, // everything keeps its size at every distance, orthographic_size sets the view height: 2D games, top-down maps
 }
 
-@(component={max=32, menu="Rendering/Camera"})
+@(component={max=32, menu="Rendering/Camera", icon="VIDEOCAM"})
 @(typ_guid={guid = "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d"})
 Camera :: struct {
     using base: CompData `inspect:"-"`,
     order:             i32,
     projection:        Camera_Projection,
     // Perspective: the vertical view angle, in degrees.
-    fov:               f32 `decor:range(1, 179)`,
+    fov:               f32 `show_if:"projection=Perspective" decor:range(1, 179)`,
     // Orthographic: half the visible height, in world units. The width
     // follows from the view's aspect.
-    orthographic_size: f32 `decor:min(0.001)`,
+    orthographic_size: f32 `show_if:"projection=Orthographic" decor:min(0.001)`,
     near_clip:         f32,
     far_clip:          f32,
     clear_color:       [4]f32 `decor:color()`,

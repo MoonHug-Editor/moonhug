@@ -13,7 +13,7 @@ import pointer "moonhug:packages/engine/pointer"
 
 // Makes a canvas receive pointer events: the pointer pass (canvas_raycast)
 // only looks at engine.canvases carrying one. GameObject > UI > engine.Canvas adds it.
-@(component={menu="UI/GraphicRaycaster"})
+@(component={menu="UI/GraphicRaycaster", icon="ADS_CLICK"})
 @(typ_guid={guid = "b625f6b5-e1fd-4590-9757-ffa073e23bef"})
 GraphicRaycaster :: struct {
 	using base:               engine.CompData `inspect:"-"`,
@@ -28,7 +28,7 @@ type_reset_GraphicRaycaster :: proc(r: ^GraphicRaycaster) {
 // events as a graphic with raycast_target does. For an
 // invisible button over a picture, a drag surface, or a larger touch area
 // around a small icon. It needs no engine.CanvasRenderer.
-@(component={menu="UI/HitArea"})
+@(component={menu="UI/HitArea", icon="TOUCH_APP"})
 @(typ_guid={guid = "1b81a833-e1e0-4857-bb17-eea53665ee29"})
 HitArea :: struct {
 	using base: engine.CompData `inspect:"-"`,

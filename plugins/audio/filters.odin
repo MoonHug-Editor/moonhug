@@ -17,7 +17,7 @@ import sdl "vendor:sdl3"
 import mix "vendor:sdl3/mixer"
 import engine "moonhug:packages/engine"
 
-@(component={menu="Audio/AudioLowPassFilter"})
+@(component={menu="Audio/AudioLowPassFilter", icon="EQUALIZER"})
 @(typ_guid={guid="1ffdaaa6-5fe6-423a-9e78-a62061a02ac3"})
 AudioLowPassFilter :: struct {
 	using base: engine.CompData `inspect:"-"`,
@@ -33,7 +33,7 @@ type_reset_AudioLowPassFilter :: proc(f: ^AudioLowPassFilter) {
 	f.resonance = 1
 }
 
-@(component={menu="Audio/AudioHighPassFilter"})
+@(component={menu="Audio/AudioHighPassFilter", icon="EQUALIZER"})
 @(typ_guid={guid="03938595-c225-497d-85b2-64d2f2b28e87"})
 AudioHighPassFilter :: struct {
 	using base: engine.CompData `inspect:"-"`,

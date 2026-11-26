@@ -32,7 +32,7 @@ import pointer "moonhug:packages/engine/pointer"
 import "moonhug:libs/input"
 import "moonhug:libs/time"
 
-@(component={menu="UI/Button"})
+@(component={menu="UI/Button", icon="SMART_BUTTON"})
 @(typ_guid={guid = "df76380d-f03d-4b86-9872-9f35af0d58e6"})
 Button :: struct {
 	using base:       engine.CompData `inspect:"-"`,

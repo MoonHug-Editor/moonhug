@@ -175,7 +175,7 @@ Animation_Layer_Runtime :: struct {
 
 // ref_tags="Output": something a timeline track can drive. A `has:"@Output"`
 // picker offers objects carrying one.
-@(component={menu="Animation/Animation", ref_tags="Output"})
+@(component={menu="Animation/Animation", ref_tags="Output", icon="ANIMATION"})
 @(typ_guid={guid = "5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13"})
 Animation :: struct {
 	using base:         engine.CompData `inspect:"-"`,

@@ -17,7 +17,7 @@ package physics2d
 import "moonhug:packages/engine"
 import pointer "moonhug:packages/engine/pointer"
 
-@(component={menu="Physics2D/Physics2DRaycaster"})
+@(component={menu="Physics2D/Physics2DRaycaster", icon="ADS_CLICK"})
 @(typ_guid={guid = "7f1c3e59-8a2d-4b06-a4e7-0d9b5c3f6e28"})
 Physics2DRaycaster :: struct {
 	using base: engine.CompData `inspect:"-"`,
