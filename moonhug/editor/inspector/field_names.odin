@@ -10,9 +10,9 @@ package inspector
 // loop did not give (a custom row's "Mesh", a list element, a name from data
 // such as a blackboard entry) is drawn as it is.
 
-import "core:fmt"
 import "core:strings"
 import "core:unicode"
+import im "moonhug:external/odin-imgui"
 
 // Words written in capitals when they stand alone in a name.
 @(private = "file")
@@ -82,8 +82,51 @@ row_label_text :: proc(label: cstring) -> cstring {
 	return label
 }
 
-// `label` for a tree node: the shown text, with the label as the node's id.
-row_tree_label :: proc(label: cstring) -> cstring {
-	if label != nil && label == _row_label do return fmt.ctprintf("%s###%s", _row_text, label)
-	return label
+// A foldout row: `label`'s text where every label of the panel starts, with
+// a small fold arrow LEFT of it, in the room the gutter leaves. So a foldout
+// lines up with the plain rows around it. A click on the arrow or the name
+// folds or unfolds it, and it is closed at first unless `default_open`.
+//
+// The open state is kept in the window's storage under the label's id, as a
+// tree node keeps its own. When it returns true the rows inside are indented
+// and the caller ends them with im.TreePop().
+row_foldout :: proc(label: cstring, default_open := false) -> bool {
+	FOLD_ARROW_GAP :: f32(4)
+	FOLD_ARROW_ALPHA :: f32(0.6)
+	id := im.GetID(label)
+	storage := im.GetStateStorage()
+	open := im.Storage_GetBool(storage, id, default_open)
+
+	text := row_label_text(label)
+	text_end := im.FindRenderedTextEnd(text)
+	pos := im.GetCursorScreenPos()
+	height := im.GetFrameHeight()
+	half := im.GetFontSize() * 0.28
+	arrow_w := half * 2 + FOLD_ARROW_GAP
+	width := arrow_w + max(im.CalcTextSize(text, text_end).x, 1)
+
+	// One item over the arrow and the name: the row's context menu and the
+	// length a list draws after it attach to it.
+	im.SetCursorScreenPos({pos.x - arrow_w, pos.y})
+	if im.InvisibleButton(label, {width, height}) {
+		open = !open
+		im.Storage_SetBool(storage, id, open)
+	}
+
+	// The arrow may reach into the window's padding, which the window clips.
+	dl := im.GetWindowDrawList()
+	lo, hi := im.DrawList_GetClipRectMin(dl), im.DrawList_GetClipRectMax(dl)
+	im.DrawList_PushClipRect(dl, {min(lo.x, pos.x - arrow_w), lo.y}, hi, false)
+	c := im.Vec2{pos.x - FOLD_ARROW_GAP - half, pos.y + height * 0.5}
+	ink := im.GetColorU32(.Text, FOLD_ARROW_ALPHA)
+	if open {
+		im.DrawList_AddTriangleFilled(dl, {c.x - half, c.y - half * 0.6}, {c.x + half, c.y - half * 0.6}, {c.x, c.y + half * 0.8}, ink)
+	} else {
+		im.DrawList_AddTriangleFilled(dl, {c.x - half * 0.6, c.y - half}, {c.x + half * 0.8, c.y}, {c.x - half * 0.6, c.y + half}, ink)
+	}
+	im.DrawList_AddText(dl, {pos.x, pos.y + im.GetStyle().FramePadding.y}, im.GetColorU32(.Text), text, text_end)
+	im.DrawList_PopClipRect(dl)
+
+	if open do im.TreePush(label)
+	return open
 }

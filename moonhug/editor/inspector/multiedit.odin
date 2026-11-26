@@ -345,6 +345,10 @@ _scalar_array_shape :: proc(tid: typeid) -> (elem_size: int, elem_count: int) {
 	#partial switch _ in elem.variant {
 	case runtime.Type_Info_Float:
 		return int(elem.size), arr.count
+	case runtime.Type_Info_Boolean:
+		// Per-axis switches (a rigidbody's freeze axes), drawn as one row of
+		// checkboxes: an axis the user never clicked keeps each peer's own.
+		return int(elem.size), arr.count
 	}
 	return 0, 0
 }

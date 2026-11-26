@@ -13,13 +13,18 @@ package inspector
 //   - The key diamond is not a bar: it has a fixed spot at the gutter's right
 //     side, with room left before the label
 //
-// A panel reserves the gutter around the code that draws its fields
-// (gutter_begin, gutter_end): the field area moves right by GUTTER_WIDTH and
-// the marks draw in the space left free, at the same x for every row however
-// deep it is nested. The value column does not move (field_row.odin measures
-// it from the panel, not from the indent), so labels are GUTTER_WIDTH
-// narrower. A row drawn outside any gutter scope puts its marks just left of
-// its own left edge instead, where the window padding may clip them.
+// The gutter runs from the window's left edge to where the fields start:
+// the window's own left padding plus GUTTER_INDENT. That is where a field at
+// indent level 0 starts, the same x as the fold arrow of the header above it,
+// and the marks draw left of it at the same x for every row however deep it
+// is nested. The window clips
+// at its content edge, so the marks draw with the clip widened to the left
+// (_gutter_clip_push).
+//
+// A panel opens the gutter around the code that draws its fields
+// (gutter_begin, gutter_end), which fixes the marks' x and the bars' order.
+// A row drawn outside any gutter scope puts its marks just left of its own
+// left edge instead.
 
 import "base:runtime"
 import "core:slice"
@@ -31,18 +36,25 @@ Gutter_Bar_Kind :: enum u8 {
 	Animation,
 }
 
-// The reserved width.
-GUTTER_WIDTH :: f32(22)
+// How far a field at indent level 0 starts from the panel's content edge. A
+// header bar puts its fold arrow at the same distance, so the labels line up
+// under the arrow.
+GUTTER_INDENT :: f32(8)
+
+// The gutter's width: the window's left padding and the indent.
+gutter_width :: proc() -> f32 {
+	return im.GetStyle().WindowPadding.x + GUTTER_INDENT
+}
+
 // The bars: the first slot's left edge, each bar's width, and the step from
 // one slot to the next. Stacked bars touch: the step is the bar's width.
-GUTTER_BAR_X :: f32(2)
+GUTTER_BAR_X :: f32(1)
 GUTTER_BAR_W :: f32(2)
 GUTTER_BAR_STEP :: GUTTER_BAR_W
-// The key diamond: its centre from the gutter's left edge and its half
-// width. It ends GUTTER_WIDTH - GUTTER_DIAMOND_X - GUTTER_DIAMOND_R before
-// the label.
-GUTTER_DIAMOND_X :: f32(14)
-GUTTER_DIAMOND_R :: f32(3.5)
+// The key diamond: its half width, and the gap it keeps before the label. It
+// sits at the gutter's right side.
+GUTTER_DIAMOND_R :: f32(3)
+GUTTER_DIAMOND_GAP :: f32(1)
 
 // An open gutter scope. Scopes nest: only the outermost one reserves the
 // column, the inner ones (a panel drawing a panel) share it.
@@ -82,13 +94,14 @@ _gutter_bars: [dynamic]_Gutter_Bar
 @(private = "file")
 _gutter_frame: i32 = -1
 
-// Reserves the gutter for the fields drawn until gutter_end: the cursor
-// moves right by GUTTER_WIDTH. Call at the start of a panel's field area.
+// Opens the gutter for the fields drawn until gutter_end: the fields move
+// right by GUTTER_INDENT, and the marks of their rows go left of them. Call
+// at the start of a panel's field area.
 gutter_begin :: proc() -> Gutter_Scope {
 	_gutter_depth += 1
 	if _gutter_depth > 1 do return {}
-	_gutter_x = im.GetCursorScreenPos().x
-	im.Indent(GUTTER_WIDTH)
+	_gutter_x = im.GetCursorScreenPos().x - im.GetStyle().WindowPadding.x
+	im.Indent(GUTTER_INDENT)
 	return {outer = true}
 }
 
@@ -96,7 +109,7 @@ gutter_end :: proc(g: Gutter_Scope) {
 	assert(_gutter_depth > 0, "inspector: gutter_end matches a gutter_begin")
 	_gutter_depth -= 1
 	if !g.outer do return
-	im.Unindent(GUTTER_WIDTH)
+	im.Unindent(GUTTER_INDENT)
 	_gutter_flush()
 }
 
@@ -132,13 +145,25 @@ _gutter_free_slot :: proc(placed: []_Gutter_Bar, b: _Gutter_Bar) -> int {
 @(private = "file")
 _gutter_draw :: proc(b: _Gutter_Bar) {
 	x := b.left + GUTTER_BAR_X + f32(b.slot) * GUTTER_BAR_STEP
+	_gutter_clip_push(b.dl, b.left)
 	im.DrawList_AddRectFilled(b.dl, {x, b.y0}, {x + GUTTER_BAR_W, b.y1}, b.color)
+	im.DrawList_PopClipRect(b.dl)
+}
+
+// Widens the draw list's clip to the left, out to the gutter's left edge:
+// the window clips at its content edge, and the gutter is the padding left
+// of it. The clip keeps its top, bottom and right, so a scrolled panel still
+// cuts its marks.
+@(private = "file")
+_gutter_clip_push :: proc(dl: ^im.DrawList, left: f32) {
+	lo, hi := im.DrawList_GetClipRectMin(dl), im.DrawList_GetClipRectMax(dl)
+	im.DrawList_PushClipRect(dl, {min(lo.x, left), lo.y}, hi, false)
 }
 
 // The gutter's left edge for a row starting at `row_min`.
 @(private = "file")
 _gutter_left :: proc(row_min: im.Vec2) -> f32 {
-	return _gutter_depth > 0 ? _gutter_x : row_min.x - GUTTER_WIDTH
+	return _gutter_depth > 0 ? _gutter_x : row_min.x - gutter_width()
 }
 
 // A bar of kind `kind` from the row's top `rmin` to its bottom `rmax`.
@@ -174,6 +199,10 @@ gutter_bar :: proc(kind: Gutter_Bar_Kind, rmin, rmax: im.Vec2, color: im.Vec4) {
 gutter_diamond :: proc(rmin, rmax: im.Vec2, color: im.Vec4) {
 	if rmax.y <= rmin.y do return
 	r := GUTTER_DIAMOND_R
-	c := im.Vec2{_gutter_left(rmin) + GUTTER_DIAMOND_X, (rmin.y + rmax.y) * 0.5}
-	im.DrawList_AddQuadFilled(im.GetWindowDrawList(), {c.x, c.y - r}, {c.x + r, c.y}, {c.x, c.y + r}, {c.x - r, c.y}, im.GetColorU32ImVec4(color))
+	left := _gutter_left(rmin)
+	c := im.Vec2{left + gutter_width() - GUTTER_DIAMOND_GAP - r, (rmin.y + rmax.y) * 0.5}
+	dl := im.GetWindowDrawList()
+	_gutter_clip_push(dl, left)
+	im.DrawList_AddQuadFilled(dl, {c.x, c.y - r}, {c.x + r, c.y}, {c.x, c.y + r}, {c.x - r, c.y}, im.GetColorU32ImVec4(color))
+	im.DrawList_PopClipRect(dl)
 }

@@ -1104,7 +1104,7 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
     folds := nested && !ctx.inline
     if nested do ctx.menu_drawn = true // the header's menu, or none for inline
     if folds {
-        tree_open := im.TreeNode(row_tree_label(label))
+        tree_open := row_foldout(label)
         draw_field_context_menu(ptr, tid, path_prefix)
         if !tree_open do return
     }

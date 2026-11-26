@@ -614,10 +614,11 @@ _HEADER_GAP :: f32(4)
 // The gap between the bar's arrow and its glyph.
 @(private = "file")
 _HEADER_ARROW_GAP :: f32(8)
-// The wider gaps: from the bar's left edge to the arrow, and from the
-// checkbox to the name.
+// From the bar's left edge to the arrow: where the rows under the bar start
+// (inspector.GUTTER_INDENT), so their labels line up under the arrow.
 @(private = "file")
-_HEADER_EDGE_GAP :: f32(8)
+_HEADER_EDGE_GAP :: inspector.GUTTER_INDENT
+// From the checkbox to the name.
 @(private = "file")
 _HEADER_NAME_GAP :: f32(8)
 // How strong the fold arrow is drawn: it is there to be found, not noticed.

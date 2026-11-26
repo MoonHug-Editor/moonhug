@@ -155,6 +155,38 @@ property_drawer_vec3 :: proc(ctx: ^Ctx) {
     drag_float3(field_row(label), v, 0.1)
 }
 
+// A switch per axis, as one row of checkboxes named X, Y and Z: a rigidbody's
+// freeze axes.
+@(property_drawer={type=[3]bool})
+property_drawer_bool3 :: proc(ctx: ^Ctx) {
+    _bool_axes_row(ctx.label, (cast(^[3]bool)ctx.ptr)[:])
+}
+
+@(property_drawer={type=[2]bool})
+property_drawer_bool2 :: proc(ctx: ^Ctx) {
+    _bool_axes_row(ctx.label, (cast(^[2]bool)ctx.ptr)[:])
+}
+
+@(private = "file")
+_bool_axes_row :: proc(label: cstring, axes: []bool) {
+    names := [4]cstring{"X", "Y", "Z", "W"}
+    im.PushID(field_row(label))
+    defer im.PopID()
+    for &axis, i in axes {
+        if i > 0 do im.SameLine()
+        // Mixed per axis, as a vector row's numbers are: the dash sits only
+        // on the axes the selection disagrees on, and a click on one sets
+        // that axis on every object.
+        mixed := current_field_mixed && (i >= len(current_field_mixed_comps) || current_field_mixed_comps[i])
+        value := axis && !mixed
+        if im.Checkbox(names[i], &value) {
+            axis = true if mixed else value
+        } else if mixed {
+            draw_mixed_check_mark()
+        }
+    }
+}
+
 @(property_drawer={type=[2]f32})
 property_drawer_vec2 :: proc(ctx: ^Ctx) {
     ptr, label := ctx.ptr, ctx.label
