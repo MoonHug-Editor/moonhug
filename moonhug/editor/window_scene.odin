@@ -922,7 +922,7 @@ draw_tools_overlay :: proc(vertical: bool) {
 	mode_button(icons.ICON_MD_OPEN_WITH, keymap.labelled("Move", "Scene/Translate Tool"), .Translate, vertical)
 	mode_button(icons.ICON_MD_ROTATE_RIGHT, keymap.labelled("Rotate", "Scene/Rotate Tool"), .Rotate, vertical)
 	mode_button(icons.ICON_MD_OPEN_IN_FULL, keymap.labelled("Scale", "Scene/Scale Tool"), .Scale, vertical)
-	mode_button(icons.ICON_MD_CROP_FREE, keymap.labelled("Handles: the selection's own handles, like the rect tool", "Scene/Handles Tool"), .Handles, vertical)
+	mode_button(icons.ICON_MD_CROP_FREE, keymap.labelled("Handles", "Scene/Handles Tool"), .Handles, vertical)
 	mode_button(icons.ICON_MD_STRAIGHTEN, keymap.labelled("Measure: drag from one point to another, in pixels on a canvas", "Scene/Measure Tool"), .Measure, vertical)
 }
 
@@ -1079,6 +1079,10 @@ handle_scene_input :: proc() {
 	io := im.GetIO()
 	dt := io.DeltaTime
 	alt_down := io.KeyAlt
+	// Alt with a left drag moves the camera, but not while a handle is being
+	// dragged: there Alt is the handle's own modifier (a bounds handle sizes
+	// around the centre).
+	alt_cam := alt_down && !viewport.tools_dragging()
 
 	rmb_down := im.IsMouseDown(.Right)
 	rmb_dragging := im.IsMouseDragging(.Right, 1)
@@ -1135,7 +1139,7 @@ handle_scene_input :: proc() {
 	}
 
 	// Any manual camera input takes over from an in-flight frame tween.
-	if rmb_down || mmb_dragging || (alt_down && lmb_dragging) || io.MouseWheel != 0 {
+	if rmb_down || mmb_dragging || (alt_cam && lmb_dragging) || io.MouseWheel != 0 {
 		_sv.tween_active = false
 	}
 
@@ -1260,7 +1264,7 @@ handle_scene_input :: proc() {
 		}
 	}
 
-	if alt_down && lmb_dragging && !_sv.mode_2d {
+	if alt_cam && lmb_dragging && !_sv.mode_2d {
 		// Orbit around the anchor captured when the drag started (Unity's
 		// pivot model: F/pan/zoom place it, orbit revolves around it).
 		if !_sv.orbit_active {
@@ -1288,7 +1292,7 @@ handle_scene_input :: proc() {
 	}
 
 	// Pan: middle drag, and in 2D also right drag and alt-drag (no orbit there).
-	if mmb_dragging || (_sv.mode_2d && _sv.hovered && (rmb_dragging || (alt_down && lmb_dragging))) {
+	if mmb_dragging || (_sv.mode_2d && _sv.hovered && (rmb_dragging || (alt_cam && lmb_dragging))) {
 		delta := io.MouseDelta
 		_, r, u := _scene_cam_basis()
 
