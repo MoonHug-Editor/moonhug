@@ -304,10 +304,40 @@ _draw_project_inspector :: proc() {
                 _preview_split_ratio = preview_h / split_total
             }
 
-            im.SeparatorText("Preview")
+            _preview_bar(filepath.base(inspectorData.filePath))
             preview(inspectorData.filePath)
         }
     }
+}
+
+// The preview's title bar: one dark row with the asset's name on its left.
+// A preview drawer puts its controls on the right of the same row
+// (preview_bar_controls), so the picture gets the rest of the pane.
+@(private = "file") _preview_bar_min, _preview_bar_max: im.Vec2
+
+@(private = "file")
+_preview_bar :: proc(name: string) {
+    pos := im.GetCursorScreenPos()
+    size := im.Vec2{im.GetContentRegionAvail().x, im.GetFrameHeight()}
+    _preview_bar_min, _preview_bar_max = pos, pos + size
+    dl := im.GetWindowDrawList()
+    im.DrawList_AddRectFilled(dl, pos, pos + size, im.GetColorU32(.TitleBg))
+    pad := im.GetStyle().FramePadding
+    im.DrawList_PushClipRect(dl, pos, pos + size, true)
+    im.DrawList_AddText(dl, pos + pad, im.GetColorU32(.Text), strings.clone_to_cstring(name, context.temp_allocator))
+    im.DrawList_PopClipRect(dl)
+    im.Dummy(size)
+}
+
+// Moves the cursor onto the preview's title bar, `width` from its right
+// edge: the controls a preview drawer draws next sit there, on one line, over
+// the end of a long name. What the drawer draws after that line starts under
+// the bar.
+preview_bar_controls :: proc(width: f32) {
+    if _preview_bar_max.x <= _preview_bar_min.x do return
+    x := max(_preview_bar_max.x - width, _preview_bar_min.x)
+    im.DrawList_AddRectFilled(im.GetWindowDrawList(), {x - 6, _preview_bar_min.y}, _preview_bar_max, im.GetColorU32(.TitleBg))
+    im.SetCursorScreenPos({x, _preview_bar_min.y})
 }
 
 _asset_preview_drawer :: proc() -> proc(path: string) {

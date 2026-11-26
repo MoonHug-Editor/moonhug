@@ -53,7 +53,6 @@ Skinned_Mesh :: struct {
 	using mesh:   Mesh,
 	palette:      ^sdl.GPUBuffer,
 	transfer:     ^sdl.GPUTransferBuffer, // palette staging, kept across poses
-	vertex_count: u32,
 	joint_count:  u32,
 }
 
@@ -149,10 +148,9 @@ skinned_mesh_create :: proc(vertex_count, joint_count: int, ibuf: ^sdl.GPUBuffer
 		return {}
 	}
 	return Skinned_Mesh{
-		mesh         = Mesh{vbuf = vbuf, ibuf = ibuf, index_count = index_count},
+		mesh         = Mesh{vbuf = vbuf, ibuf = ibuf, index_count = index_count, vertex_count = u32(vertex_count)},
 		palette      = palette,
 		transfer     = transfer,
-		vertex_count = u32(vertex_count),
 		joint_count  = u32(joint_count),
 	}
 }

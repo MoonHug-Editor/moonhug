@@ -35,8 +35,9 @@ Texture :: struct {
 }
 
 Mesh :: struct {
-	vbuf, ibuf:  ^sdl.GPUBuffer,
-	index_count: u32,
+	vbuf, ibuf:   ^sdl.GPUBuffer,
+	index_count:  u32,
+	vertex_count: u32, // for the editor's mesh info
 }
 
 _Pipeline_Kind :: enum u8 {
@@ -92,6 +93,18 @@ DEPTH_SHADER :: "depth"
 
 // The fullscreen shader that shows a depth texture as grey (draw_depth_view).
 DEPTH_VIEW_SHADER :: "depth_view"
+
+// The fullscreen shader that shows a texture as the editor's preview does:
+// a region, a mip level, chosen channels, alpha over a checkerboard
+// (shaders/texture_view.frag.glsl).
+TEXTURE_VIEW_SHADER :: "texture_view"
+
+// Its parameters, the shader's Params block.
+Texture_View_Params :: struct {
+	uv:       [4]f32, // the region: min uv, max uv
+	channels: [4]f32, // 1 for each of r, g, b, a shown
+	view:     [4]f32, // mip level, checker cell in pixels, 1 for alpha over the checker, unused
+}
 
 // Temporal anti-aliasing's resolve (shaders/taa.frag.glsl): this frame's
 // image, the history, the depth and the motion vectors in, the blended image
@@ -691,7 +704,7 @@ mesh_create :: proc(vertices: []Vertex, indices: []u32) -> Mesh {
 	sdl.EndGPUCopyPass(copy_pass)
 	_ = sdl.SubmitGPUCommandBuffer(cmd)
 
-	return Mesh{vbuf = vbuf, ibuf = ibuf, index_count = u32(len(indices))}
+	return Mesh{vbuf = vbuf, ibuf = ibuf, index_count = u32(len(indices)), vertex_count = u32(len(vertices))}
 }
 
 mesh_destroy :: proc(mesh: ^Mesh) {

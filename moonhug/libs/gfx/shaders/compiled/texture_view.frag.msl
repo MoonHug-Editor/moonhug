@@ -1,0 +1,95 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+// Implementation of the GLSL mod() function, which is slightly different than Metal fmod()
+template<typename Tx, typename Ty>
+inline Tx mod(Tx x, Ty y)
+{
+    return x - y * floor(x / y);
+}
+
+struct Params
+{
+    float4 uv;
+    float4 channels;
+    float4 view;
+};
+
+struct main0_out
+{
+    float4 out_color [[color(0)]];
+};
+
+struct main0_in
+{
+    float2 frag_uv [[user(locn0)]];
+};
+
+fragment main0_out main0(main0_in in [[stage_in]], constant Params& _13 [[buffer(1)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]], float4 gl_FragCoord [[position]])
+{
+    main0_out out = {};
+    float2 at = mix(_13.uv.xy, _13.uv.zw, in.frag_uv);
+    float4 c = tex.sample(texSmplr, at, level(_13.view.x));
+    float cell = fast::max(_13.view.y, 1.0);
+    float2 square = floor(gl_FragCoord.xy / float2(cell));
+    float3 checker = select(float3(0.2199999988079071044921875), float3(0.319999992847442626953125), bool3(mod(square.x + square.y, 2.0) < 0.5));
+    float color_count = (_13.channels.x + _13.channels.y) + _13.channels.z;
+    float alpha = 1.0;
+    bool _92 = color_count == 0.0;
+    bool _99;
+    if (_92)
+    {
+        _99 = _13.channels.w > 0.5;
+    }
+    else
+    {
+        _99 = _92;
+    }
+    float3 rgb;
+    if (_99)
+    {
+        rgb = float3(c.w);
+    }
+    else
+    {
+        if (color_count == 1.0)
+        {
+            rgb = float3(dot(c.xyz, _13.channels.xyz));
+            float _121;
+            if (_13.channels.w > 0.5)
+            {
+                _121 = c.w;
+            }
+            else
+            {
+                _121 = 1.0;
+            }
+            alpha = _121;
+        }
+        else
+        {
+            rgb = c.xyz * _13.channels.xyz;
+            float _138;
+            if (_13.channels.w > 0.5)
+            {
+                _138 = c.w;
+            }
+            else
+            {
+                _138 = 1.0;
+            }
+            alpha = _138;
+        }
+    }
+    if (_13.view.z < 0.5)
+    {
+        alpha = 1.0;
+    }
+    out.out_color = float4(mix(checker, rgb, float3(alpha)), 1.0);
+    return out;
+}
+

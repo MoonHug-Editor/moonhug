@@ -75,6 +75,8 @@ _Fullscreen_Entry :: struct {
 @(private) _CASTER_FRAG_MSL     := #load("shaders/compiled/caster.frag.msl")
 @(private) _DEPTH_VIEW_FRAG_SPV := #load("shaders/compiled/depth_view.frag.spv")
 @(private) _DEPTH_VIEW_FRAG_MSL := #load("shaders/compiled/depth_view.frag.msl")
+@(private) _TEXTURE_VIEW_FRAG_SPV := #load("shaders/compiled/texture_view.frag.spv")
+@(private) _TEXTURE_VIEW_FRAG_MSL := #load("shaders/compiled/texture_view.frag.msl")
 @(private) _TAA_FRAG_SPV        := #load("shaders/compiled/taa.frag.spv")
 @(private) _TAA_FRAG_MSL        := #load("shaders/compiled/taa.frag.msl")
 @(private) _MOTION_FRAG_SPV     := #load("shaders/compiled/motion.frag.spv")
@@ -114,6 +116,7 @@ _create_pipelines :: proc() -> bool {
 		e.caster_samplers = MAX_FRAGMENT_SAMPLERS
 	}
 	if !fullscreen_register(DEPTH_VIEW_SHADER, _DEPTH_VIEW_FRAG_SPV, _DEPTH_VIEW_FRAG_MSL, 1, 2) do return false
+	if !fullscreen_register(TEXTURE_VIEW_SHADER, _TEXTURE_VIEW_FRAG_SPV, _TEXTURE_VIEW_FRAG_MSL, 1, 2) do return false
 	if !fullscreen_register(TAA_SHADER, _TAA_FRAG_SPV, _TAA_FRAG_MSL, 4, 2) do return false
 	if !fullscreen_register(SSAO_SHADER, _SSAO_FRAG_SPV, _SSAO_FRAG_MSL, 1, 2) do return false
 	if !fullscreen_register(SSAO_BLUR_SHADER, _SSAO_BLUR_FRAG_SPV, _SSAO_BLUR_FRAG_MSL, 1, 2) do return false

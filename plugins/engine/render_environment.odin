@@ -43,9 +43,16 @@ _Env_Key :: struct {
 	has_pano: bool,
 }
 
+// A sky rendered into cubes: the source, its prefiltered reflection, its
+// diffuse irradiance.
+@(private = "file")
+_Env_Cubes :: struct {
+	source, specular, irradiance: ^gfx.Cubemap,
+}
+
 @(private = "file")
 _env: struct {
-	source, specular, irradiance: ^gfx.Cubemap,
+	using cubes: _Env_Cubes,
 	key:        _Env_Key,
 	built:      bool,
 	active:     bool, // an Environment drives this frame
@@ -57,16 +64,19 @@ _env: struct {
 
 @(render_step={summary="renders the scene's Environment into cubes for reflections and ambient light, when it changed", frame=true, reads="scene"})
 environment_pass :: proc(ctx: ^Render_Ctx) {
+	was_active := _env.active
 	_env.active = false
+	defer if _env.active != was_active do environment_version += 1
 	env := _active_environment()
 	if env == nil do return
 
 	params, pano, has_pano := _capture_params(env)
 	key := _Env_Key{params = params, panorama = asset_key(env.panorama), has_pano = has_pano}
 	if !_env.built || key != _env.key {
-		if !_env_rebuild(params, pano) do return
+		if !_env_rebuild(&_env.cubes, params, pano) do return
 		_env.key = key
 		_env.built = true
+		environment_version += 1
 	}
 	_env.active = true
 	_env.draw_sky = env.draw_sky
@@ -99,10 +109,56 @@ scene_sky :: proc(ctx: ^Render_Ctx) {
 }
 
 _render_environment_shutdown :: proc() {
-	gfx.cubemap_destroy(_env.source)
-	gfx.cubemap_destroy(_env.specular)
-	gfx.cubemap_destroy(_env.irradiance)
+	for c in ([]^_Env_Cubes{&_env.cubes, &_studio}) {
+		gfx.cubemap_destroy(c.source)
+		gfx.cubemap_destroy(c.specular)
+		gfx.cubemap_destroy(c.irradiance)
+	}
 	_env = {}
+	_studio = {}
+}
+
+// Goes up when the sky environment_preview_bind gives changes: a scene's
+// Environment rebuilt, or one starting or ending. The editor's previews
+// render again then.
+environment_version: u64
+
+// A neutral sky for the editor's asset previews when the open scene has no
+// Environment, built once: a grey-blue top, a bright horizon, a darker ground.
+@(private = "file") _studio: _Env_Cubes
+
+// The sky environment_preview_bind gives, made ready: the studio sky is
+// rendered into its cubes the first time. Outside a pass, as cube rendering
+// must be.
+environment_preview_prepare :: proc() {
+	if _env.active && _env.built do return
+	if _studio.source != nil do return
+	p: _Capture_Params
+	p.face_mode = {0, 0, 0, 1} // procedural, no rotation, exposure 1
+	p.sky_top = gfx.srgb_to_linear({0.42, 0.47, 0.55, 1})
+	p.sky_horizon = gfx.srgb_to_linear({0.78, 0.78, 0.76, 1})
+	p.ground = gfx.srgb_to_linear({0.30, 0.29, 0.28, 1})
+	// Where the previews' key light comes from (asset_previews.odin _PV_KEY).
+	p.sun_dir = {-0.56, 0.61, 0.18, math.cos(math.to_radians(f32(2)))}
+	p.sun_color = {1.6, 1.5, 1.4, 0}
+	if !_env_rebuild(&_studio, p, gfx.white_texture()) {
+		gfx.cubemap_destroy(_studio.source)
+		gfx.cubemap_destroy(_studio.specular)
+		gfx.cubemap_destroy(_studio.irradiance)
+		_studio = {}
+	}
+}
+
+// Lights the CURRENT pass with a sky, for a picture of an asset: the open
+// scene's Environment as its last render built it, or the studio sky when it
+// has none (environment_preview_prepare made it). `turn` turns it around Y,
+// in radians, with the preview's light.
+environment_preview_bind :: proc(turn: f32 = 0) {
+	if _env.active && _env.built {
+		gfx.set_environment(_env.specular, _env.irradiance, _env.diffuse, _env.reflection, turn)
+		return
+	}
+	if _studio.source != nil do gfx.set_environment(_studio.specular, _studio.irradiance, 0.6, 0.8, turn)
 }
 
 // The first enabled Environment on an active object, nil when none.
@@ -164,27 +220,27 @@ _sun :: proc() -> (gfx.Light, bool) {
 	return {}, false
 }
 
-// Renders the sky into the source cube, then the reflection's mips and the
-// irradiance from it. False when the cubes cannot be made (no device).
+// Renders the sky into `cubes`' source cube, then the reflection's mips and
+// the irradiance from it. False when the cubes cannot be made (no device).
 @(private = "file")
-_env_rebuild :: proc(params: _Capture_Params, pano: gfx.Texture) -> bool {
-	if _env.source == nil {
-		_env.source = gfx.cubemap_create(ENV_SOURCE_SIZE, i32(math.log2(f32(ENV_SOURCE_SIZE))) + 1)
-		_env.specular = gfx.cubemap_create(ENV_SPECULAR_SIZE, ENV_SPECULAR_MIPS)
-		_env.irradiance = gfx.cubemap_create(ENV_IRRADIANCE_SIZE, 1)
+_env_rebuild :: proc(cubes: ^_Env_Cubes, params: _Capture_Params, pano: gfx.Texture) -> bool {
+	if cubes.source == nil {
+		cubes.source = gfx.cubemap_create(ENV_SOURCE_SIZE, i32(math.log2(f32(ENV_SOURCE_SIZE))) + 1)
+		cubes.specular = gfx.cubemap_create(ENV_SPECULAR_SIZE, ENV_SPECULAR_MIPS)
+		cubes.irradiance = gfx.cubemap_create(ENV_IRRADIANCE_SIZE, 1)
 	}
-	if _env.source == nil || _env.specular == nil || _env.irradiance == nil do return false
+	if cubes.source == nil || cubes.specular == nil || cubes.irradiance == nil do return false
 
 	p := params
 	inputs := []gfx.Texture{pano}
 	for face in 0 ..< i32(6) {
 		p.face_mode.x = f32(face)
-		gfx.cubemap_render(_env.source, face, 0, gfx.ENV_CAPTURE_SHADER, inputs, (^[size_of(p)]u8)(&p)[:])
+		gfx.cubemap_render(cubes.source, face, 0, gfx.ENV_CAPTURE_SHADER, inputs, (^[size_of(p)]u8)(&p)[:])
 	}
-	gfx.cubemap_generate_mips(_env.source)
+	gfx.cubemap_generate_mips(cubes.source)
 
-	_env_prefilter(_env.source, _env.specular)
-	_env_irradiance(_env.source, _env.irradiance)
+	_env_prefilter(cubes.source, cubes.specular)
+	_env_irradiance(cubes.source, cubes.irradiance)
 	return true
 }
 

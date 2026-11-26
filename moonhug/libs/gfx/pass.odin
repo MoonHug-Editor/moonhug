@@ -814,13 +814,15 @@ set_lights :: proc(ls: []Light, ambient: f32) {
 // cube whose mips are prefiltered for rising roughness, and `irradiance`,
 // its cosine-convolved diffuse light, scaled by the two intensities. Not
 // calling this keeps the ambient level as a uniform white environment.
-set_environment :: proc(specular, irradiance: ^Cubemap, diffuse_intensity, specular_intensity: f32) {
+// `turn` turns the environment around Y, in radians: a preview's light
+// turned by hand takes its sky along.
+set_environment :: proc(specular, irradiance: ^Cubemap, diffuse_intensity, specular_intensity: f32, turn: f32 = 0) {
 	if specular == nil || irradiance == nil do return
 	_pass.env = _Env{
 		has        = true,
 		specular   = specular,
 		irradiance = irradiance,
-		params     = {diffuse_intensity, specular_intensity, f32(specular.mips - 1), 0},
+		params     = {diffuse_intensity, specular_intensity, f32(specular.mips - 1), turn},
 	}
 }
 

@@ -64,7 +64,7 @@ layout(set = 3, binding = 0) uniform LightUBO {
     vec4 cascade_rects[MAX_CASCADES];
     vec4 cascade_params[MAX_CASCADES];
     vec4 shadow_params; // x = one atlas texel in uv, y = cascade count (0 none), z = where shadows end, w = the light they belong to
-    vec4 env_params;    // x = diffuse intensity, y = specular intensity, z = the specular cube's last mip (gfx.set_environment)
+    vec4 env_params;    // x = diffuse intensity, y = specular intensity, z = the specular cube's last mip, w = the environment's turn around Y in radians (gfx.set_environment)
     // Spot and point light shadows (gfx.set_shadow_atlas), tiles of
     // shadow_atlas: x one atlas texel in uv, y bias along the light ray
     // (world), z normal bias (texels) of these tiles, w the cascades'.
@@ -213,8 +213,17 @@ vec3 box_projected(vec3 r, vec3 p, vec3 centre, vec3 box_min, vec3 box_max) {
 // draw's probe when one is bound, box projected when it says so, else the
 // scene's environment, each at its intensity. Near the probe's box edge it
 // fades into what it blends with by its weight.
+// A direction as the scene's environment is asked for it: turned back by
+// the environment's turn around Y (env_params.w). A probe is never turned.
+vec3 env_turned(vec3 d) {
+    float a = env_params.w;
+    if (a == 0.0) return d;
+    float c = cos(a), s = sin(a);
+    return vec3(c * d.x - s * d.z, d.y, s * d.x + c * d.z);
+}
+
 vec3 env_along(vec3 r, vec3 p, float lod) {
-    if (probe_max.w < 0.5) return textureLod(env_specular, r, lod).rgb * env_params.y;
+    if (probe_max.w < 0.5) return textureLod(env_specular, env_turned(r), lod).rgb * env_params.y;
     vec3 dir = probe_pos.w > 0.5 ? box_projected(r, p, probe_pos.xyz, probe_min.xyz, probe_max.xyz) : r;
     vec3 c = textureLod(env_specular, dir, lod).rgb * probe_min.w;
     if (probe_blend.x >= 1.0) return c;
@@ -226,7 +235,7 @@ vec3 env_along(vec3 r, vec3 p, float lod) {
 // probe's when it lights diffusely, else the scene's environment, faded
 // into what the probe blends with near its box's edge.
 vec3 env_irradiance_at(vec3 n) {
-    vec3 c = texture(env_irradiance, n).rgb * (probe_max.w > 1.5 ? probe_min.w : env_params.x);
+    vec3 c = texture(env_irradiance, probe_max.w > 1.5 ? n : env_turned(n)).rgb * (probe_max.w > 1.5 ? probe_min.w : env_params.x);
     if (probe_max.w < 0.5 || probe_blend.x >= 1.0) return c;
     return mix(texture(env_irradiance2, n).rgb * probe2_max.w, c, probe_blend.x);
 }
