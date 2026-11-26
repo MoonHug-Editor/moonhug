@@ -75,7 +75,8 @@ field_row :: proc(label: cstring) -> cstring {
 	label_w := max(_field_column_x() - PREFIX_PADDING_RIGHT - im.GetCursorPosX(), 0)
 	im.PushClipRect(p, im.Vec2{p.x + label_w, p.y + im.GetFrameHeight()}, true)
 	im.AlignTextToFramePadding()
-	im.TextEx(label, im.FindRenderedTextEnd(label), {})
+	text := row_label_text(label)
+	im.TextEx(text, im.FindRenderedTextEnd(text), {})
 	im.PopClipRect()
 
 	return field_row_value(label)
@@ -113,3 +114,21 @@ field_column_screen_x :: proc() -> f32 {
 	return im.GetCursorScreenPos().x + _field_column_x() - im.GetCursorPosX()
 }
 
+
+// The inspectors' rows are packed closer than the theme packs the other
+// windows: a frame two pixels taller than its text, and two pixels between
+// rows. Kept here, not in a theme, so it holds under every theme.
+ROW_FRAME_PAD_Y :: f32(2)
+ROW_SPACING_Y :: f32(2)
+
+// Packs the rows drawn until compact_rows_pop. An inspector window wraps its
+// body in the pair.
+compact_rows_push :: proc() {
+	style := im.GetStyle()
+	im.PushStyleVarImVec2(.FramePadding, {style.FramePadding.x, ROW_FRAME_PAD_Y})
+	im.PushStyleVarImVec2(.ItemSpacing, {style.ItemSpacing.x, ROW_SPACING_Y})
+}
+
+compact_rows_pop :: proc() {
+	im.PopStyleVar(2)
+}

@@ -97,10 +97,10 @@ draw_union_field :: proc(ptr: rawptr, info: runtime.Type_Info_Union, label: cstr
 
 	tree_open := false
 	if has_content {
-		tree_open = im.TreeNodeEx(label, {.DefaultOpen})
+		tree_open = im.TreeNodeEx(row_tree_label(label), {.DefaultOpen})
 	} else {
 		im.AlignTextToFramePadding()
-		im.TextUnformatted(label)
+		im.TextUnformatted(row_label_text(label))
 	}
 	draw_field_context_menu(ptr, field_tid)
 

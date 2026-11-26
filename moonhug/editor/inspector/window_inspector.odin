@@ -289,6 +289,9 @@ _draw_project_inspector :: proc() {
             body_h = split_total - preview_h
             im.BeginChild("##inspector_body", {0, body_h})
         }
+        // The rows are packed (field_row.odin). The preview under them keeps
+        // the theme's spacing.
+        compact_rows_push()
         switch inspectorData.mode {
         case .Asset:
             _draw_asset_inspector()
@@ -297,6 +300,7 @@ _draw_project_inspector :: proc() {
         case .Package:
             _draw_package_inspector()
         }
+        compact_rows_pop()
         if preview != nil {
             im.EndChild()
 
@@ -1100,7 +1104,7 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
     folds := nested && !ctx.inline
     if nested do ctx.menu_drawn = true // the header's menu, or none for inline
     if folds {
-        tree_open := im.TreeNode(label)
+        tree_open := im.TreeNode(row_tree_label(label))
         draw_field_context_menu(ptr, tid, path_prefix)
         if !tree_open do return
     }
@@ -1158,6 +1162,9 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
         // What the row is called: the slot's name on a slot's row.
         c_field_name := strings.clone_to_cstring(names[fi])
         defer delete(c_field_name)
+        // Shown as words, addressed by its name (field_names.odin).
+        row_label := row_label_push(c_field_name, strings.clone_to_cstring(field_display_name(names[fi]), context.temp_allocator))
+        defer row_label_pop(row_label)
         field_type := types[i]
 
         field_ptr := rawptr(uintptr(ptr) + field_info.offset)

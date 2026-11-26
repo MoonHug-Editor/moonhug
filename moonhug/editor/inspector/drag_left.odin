@@ -190,7 +190,8 @@ _drag_raw :: proc(
 @(private = "file")
 _draw_trailing_label :: proc(label: cstring) {
 	im.SameLine(0, im.GetStyle().ItemInnerSpacing.x)
-	im.TextEx(label, im.FindRenderedTextEnd(label), {})
+	text := row_label_text(label)
+	im.TextEx(text, im.FindRenderedTextEnd(text), {})
 }
 
 // N components on one line, mirroring ImGui::DragScalarN's layout (grouped,

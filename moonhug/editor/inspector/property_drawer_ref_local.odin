@@ -355,7 +355,7 @@ picker_field_row_readonly :: proc(
 	if inline_label {
 		if len(string(label)) > 0 {
 			im.AlignTextToFramePadding()
-			im.TextUnformatted(label)
+			im.TextUnformatted(row_label_text(label))
 			im.SameLine()
 		}
 	} else {

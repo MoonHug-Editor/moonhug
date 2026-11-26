@@ -128,7 +128,7 @@ ICON_MD_SCREEN_ROTATION :: "\ue1c1" // screen_rotation (Game window size flip)
 // @(component={icon="NAME"}).
 ICON_MD_ACCESSIBILITY_NEW       :: "\ue92c" // accessibility_new
 ICON_MD_DRAG_PAN                :: "\uf71e" // drag_pan (the Transform header)
-ICON_MD_COMPONENT               :: "\uef42" // the header of a component that names no icon (the glyph at ef42, which the codepoints file does not name)
+ICON_MD_COMPONENT               :: "\ue873" // the header of a component that names no icon (the glyph at ef42, which the codepoints file does not name)
 ICON_MD_ADS_CLICK               :: "\ue762" // ads_click
 ICON_MD_ARROW_DROP_DOWN_CIRCLE  :: "\ue5c6" // arrow_drop_down_circle
 ICON_MD_ASPECT_RATIO            :: "\ue85b" // aspect_ratio
@@ -194,4 +194,3 @@ TITLE_OUTPUT            :: ICON_MD_RECEIPT_LONG + " Output###Output"
 TITLE_HISTORY           :: ICON_MD_HISTORY + " History###History"
 TITLE_ANIMATION         :: ICON_MD_ANIMATION + " Animation###Animation"
 TITLE_PLAYABLE_GRAPH    :: ICON_MD_HUB + " Playable Graph###Playable Graph"
-

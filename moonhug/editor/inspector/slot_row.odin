@@ -198,7 +198,7 @@ _origin_in_label :: proc(start: im.Vec2, label: cstring, o: slots.Origin) {
 	style := im.GetStyle()
 	text := strings.clone_to_cstring(_origin_text(o), context.temp_allocator)
 	right := _column_x - im.GetFrameHeight() - style.ItemInnerSpacing.x * 2
-	label_end := start.x + im.CalcTextSize(label, nil, true).x + style.ItemInnerSpacing.x * 2
+	label_end := start.x + im.CalcTextSize(row_label_text(label), nil, true).x + style.ItemInnerSpacing.x * 2
 	x := max(label_end, right - im.CalcTextSize(text).x)
 	if x >= right do return
 	_origin = {{x, start.y}, right, text, o.holder}

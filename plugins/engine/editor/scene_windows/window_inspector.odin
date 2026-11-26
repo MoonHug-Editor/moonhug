@@ -57,6 +57,9 @@ scene_inspector_window_draw :: proc(w: ^wnd.Window) {
 	// Through the lock: a pinned inspector keeps drawing what it was pinned
 	// to while the selection moves on (editor/window_lock.odin).
 	if session.window_lock_missing_note(_inspector_window) do return
+	// The rows are packed closer than the theme's (inspector/field_row.odin).
+	inspector.compact_rows_push()
+	defer inspector.compact_rows_pop()
 	tH := session.window_object(_inspector_window)
 	if tH == _HANDLE_NONE {
 		im.TextDisabled("No object selected")

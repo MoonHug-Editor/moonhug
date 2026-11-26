@@ -134,7 +134,7 @@ _array_count_text :: proc(text: string) {
 
 draw_fixed_array :: proc(ptr: rawptr, count: int, elem_ti: ^runtime.Type_Info, field_tid: typeid, label: cstring, array_offset: uintptr = 0, inline := false) {
 	if !inline {
-		tree_open := im.TreeNode(label)
+		tree_open := im.TreeNode(row_tree_label(label))
 		draw_field_context_menu(ptr, field_tid)
 		_array_count_text(fmt.tprintf("%d", count))
 		if !tree_open do return
@@ -183,7 +183,7 @@ ARRAY_REMOVE_BTN_W :: f32(24)
 
 draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Type_Info, field_ptr: rawptr, field_tid: typeid, label: cstring, array_offset: uintptr = 0, inline := false) {
 	if !inline {
-		tree_open := im.TreeNode(label)
+		tree_open := im.TreeNode(row_tree_label(label))
 		draw_field_context_menu(field_ptr, field_tid)
 		// The length on the list's own row, so a folded list says how long
 		// it is. Mixed across a selection, it is the mixed marker.
